@@ -55,9 +55,23 @@ class AuthRepository {
                     "isVerified" to true,
                     "rating" to 5.0,
                     "totalDeliveries" to 0,
+                    "walletBalance" to 0.0,
                     "createdAt" to java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date()),
                 )
             )
+            // Set customer role via API
+            try {
+                val url = java.net.URL("${FirebaseService.BACKEND_BASE_URL}/api/auth/set-role")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Authorization", "Bearer $token")
+                conn.doOutput = true
+                conn.outputStream.write("{\"role\":\"customer\"}".toByteArray())
+                conn.outputStream.close()
+                conn.responseCode
+                conn.disconnect()
+            } catch (_: Exception) {}
             NetworkResult.Success(AuthResponse(token, user, "Registration successful"))
         } catch (e: FirebaseAuthUserCollisionException) {
             NetworkResult.Error("Email already registered", 409)

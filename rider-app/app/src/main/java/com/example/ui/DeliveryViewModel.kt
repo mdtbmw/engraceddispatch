@@ -249,10 +249,25 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
                         FirebaseService.db.collection("riders").document(uid).set(mapOf(
                             "fullName" to user.fullName, "email" to user.email, "phone" to user.phone,
                             "photoUrl" to user.photoUrl, "isVerified" to true, "rating" to 5.0,
-                            "totalDeliveries" to 0, "status" to "active", "isOnline" to false,
+                            "totalDeliveries" to 0, "walletBalance" to 0.0,
+                            "status" to "active", "isOnline" to true,
                             "bikeNumber" to "", "bikeModel" to "", "zone" to "Lagos Mainland",
                             "joinedAt" to java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date())
                         )).await()
+                        token?.let {
+                            try {
+                                val url = java.net.URL("${FirebaseService.BACKEND_BASE_URL}/api/auth/set-role")
+                                val conn = url.openConnection() as java.net.HttpURLConnection
+                                conn.requestMethod = "POST"
+                                conn.setRequestProperty("Content-Type", "application/json")
+                                conn.setRequestProperty("Authorization", "Bearer $it")
+                                conn.doOutput = true
+                                conn.outputStream.write("{\"role\":\"rider\"}".toByteArray())
+                                conn.outputStream.close()
+                                conn.responseCode
+                                conn.disconnect()
+                            } catch (_: Exception) {}
+                        }
                     } else {
                         loadRiderFromFirestore()
                     }

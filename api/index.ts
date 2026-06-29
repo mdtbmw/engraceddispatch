@@ -185,11 +185,42 @@ app.post('/api/auth/setup-admin', firebaseAuthMiddleware, async (req, res) => {
       return
     }
     await adminAuth.setCustomUserClaims(req.uid!, { admin: true })
+    await db.collection('admins').doc(req.uid!).set({
+      email: req.email,
+      displayName: user.displayName || req.email?.substring(0, req.email.indexOf('@')) || 'Admin',
+      photoUrl: user.photoURL || '',
+      role: 'admin',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
     await createAuditLog('auth.setup-admin', req.email || 'unknown', { uid: req.uid })
     res.json({ success: true, data: { uid: req.uid, email: req.email }, message: 'Admin privileges granted' })
   } catch (err: any) {
     console.error('POST /api/auth/setup-admin', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
+// ─── Auth — Set customer role (called by mobile app after signup) ─────────
+app.post('/api/auth/set-role', firebaseAuthMiddleware, async (req, res) => {
+  try {
+    const { role } = req.body
+    if (!role || !['customer', 'rider'].includes(role)) {
+      res.status(400).json({ success: false, error: { message: 'Role must be "customer" or "rider"', code: 400 } })
+      return
+    }
+    const user = await adminAuth.getUser(req.uid!)
+    if (user.customClaims?.[role]) {
+      res.json({ success: true, data: { uid: req.uid, role }, message: `Already ${role}` })
+      return
+    }
+    await adminAuth.setCustomUserClaims(req.uid!, { [role]: true })
+    await createAuditLog(`auth.set-${role}`, req.email || 'unknown', { uid: req.uid })
+    res.json({ success: true, data: { uid: req.uid, role }, message: `${role} role granted` })
+  } catch (err: any) {
+    console.error('POST /api/auth/set-role', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Failed to set role', code: 500 } })
   }
 })
 
