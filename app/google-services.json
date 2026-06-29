@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "858437923778",
+    "project_id": "engraceddispatch-ffba4",
+    "storage_bucket": "engraceddispatch-ffba4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:858437923778:android:2d29558caf1a2f15955c5b",
+        "android_client_info": {
+          "package_name": "com.aistudio.engraceddispatch.kxmpzq"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDa7J-JOfQIW4ZZo59jjEBiLUSRyvdK6uY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

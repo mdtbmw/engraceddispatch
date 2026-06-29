@@ -1,0 +1,40 @@
+# Android
+*.iml
+.gradle
+.kotlin
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+debug.keystore
+
+# Node
+node_modules/
+dist/
+.env
+.env.local
+
+# Firebase
+serviceAccountKey.json
+firebase/service-account.json
+
+# Old Express server (no longer used)
+admin/server/
+admin/node_modules/
+admin/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime
+*.log
+npm-debug.log*

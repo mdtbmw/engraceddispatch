@@ -1,0 +1,6 @@
+{
+  "name": "Engraced Smile Dispatch",
+  "description": "Premium logistics & bike delivery platform for Express, Economy, Batch, and Multi-Pickup dispatch operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

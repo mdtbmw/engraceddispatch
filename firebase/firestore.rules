@@ -1,0 +1,145 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper Functions ──────────────────────────────────
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.admin == true;
+    }
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isRider() {
+      return request.auth != null
+        && request.auth.token.rider == true;
+    }
+
+    // ─── Deliveries ───────────────────────────────────────
+    // Customers can read their own; riders can read assigned; admin can read all
+    match /deliveries/{docId} {
+      allow read: if isAdmin()
+        || (isAuthenticated() && resource.data.userId == request.auth.uid)
+        || (isAuthenticated() && resource.data.riderId == request.auth.uid);
+      // Only admin can create/update/delete deliveries through the API
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Riders ────────────────────────────────────────────
+    // Riders can read and update their own profile; admin can read/write all
+    match /riders/{docId} {
+      allow read: if isAdmin() || isOwner(docId);
+      allow create: if isAdmin();
+      allow update: if isAdmin() || isOwner(docId);
+      allow delete: if isAdmin();
+    }
+
+    // ─── Customers ─────────────────────────────────────────
+    // Customers can read/update their own profile; admin can read/write all
+    // walletBalance is NOT writable by customers — only through admin API (server-side)
+    match /customers/{docId} {
+      allow read: if isAdmin() || isOwner(docId);
+      allow create: if isAuthenticated() && isOwner(docId);
+      allow update: if isAdmin()
+        || (isOwner(docId) && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['walletBalance']));
+      allow delete: if isAdmin();
+    }
+
+    // ─── Zones ─────────────────────────────────────────────
+    match /zones/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ─── Pricing Rules ─────────────────────────────────────
+    match /pricingRules/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ─── Settings ──────────────────────────────────────────
+    match /settings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ─── Transactions ──────────────────────────────────────
+    // Customers can read their own; admin can read/write all
+    // Customers can create only PENDING transactions (for Paystack init)
+    match /transactions/{docId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin()
+        || (isAuthenticated() && request.resource.data.userId == request.auth.uid
+          && request.resource.data.status == 'PENDING');
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Addresses ─────────────────────────────────────────
+    match /addresses/{docId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    }
+
+    // ─── Reviews ───────────────────────────────────────────
+    match /reviews/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    // ─── Notifications ─────────────────────────────────────
+    // Users read their own; admin creates/manages
+    match /notifications/{docId} {
+      allow read: if isAdmin()
+        || (isAuthenticated() && resource.data.userId == request.auth.uid)
+        || (isAuthenticated() && resource.data.riderId == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Promotions ────────────────────────────────────────
+    match /promotions/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ─── Referrals ─────────────────────────────────────────
+    match /referrals/{docId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Audit Logs ────────────────────────────────────────
+    match /auditLogs/{docId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Internal Meta ─────────────────────────────────────
+    match /_meta/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ─── Deny everything else ──────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  --color-luxury-black: #090D1A;
+  --color-biro-blue: #5C58FF;
+  --color-royal-gold: #D4AF37;
+  --color-success-green: #10B981;
+  --color-danger-red: #DC2626;
+  --color-warning-orange: #F97316;
+  --color-text-gray: #64748B;
+  --color-card-border-gray: #E2E8F0;
+  --color-dark-gradient-blue: #0F172A;
+  --color-text-main: #1A1D26;
+  --color-text-muted: #8A8D9F;
+  --color-admin-bg: #050508;
+  --color-admin-surface: #08080C;
+  --color-admin-border: #151522;
+  --color-admin-hover: #10101A;
+  --color-admin-active: #1B1B29;
+}
+
+:root {
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  color: #E2E8F0;
+  background-color: var(--color-admin-bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--color-admin-bg);
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #08080C; }
+::-webkit-scrollbar-thumb { background: #1B1B29; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-biro-blue); }
+
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.08); opacity: 0.8; }
+}
+
+@keyframes mapDotPulse {
+  0% { r: 3px; opacity: 1; }
+  100% { r: 10px; opacity: 0; }
+}
+
+.glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.15;
+}
+
+.glow-blue { background: radial-gradient(circle, var(--color-biro-blue) 0%, transparent 70%); }
+.glow-purple { background: radial-gradient(circle, #8B5CF6 0%, transparent 70%); }
+.glow-emerald { background: radial-gradient(circle, var(--color-success-green) 0%, transparent 70%); }
+.glow-gold { background: radial-gradient(circle, var(--color-royal-gold) 0%, transparent 70%); }

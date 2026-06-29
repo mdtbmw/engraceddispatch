@@ -1,0 +1,92 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Shadow Effect for Motorcycle Silhouette -->
+    <path
+        android:fillColor="#55000000"
+        android:pathData="M38,70 L78,70 L74,74 L42,74 Z" />
+
+    <!-- Back Wheel Outer -->
+    <path
+        android:fillColor="#E2E8F0"
+        android:pathData="M 36 68 A 12 12 0 1 1 35.999 68 Z" />
+    <!-- Back Wheel Inner Tire Rim -->
+    <path
+        android:fillColor="#0A0A0A"
+        android:pathData="M 36 68 A 8 8 0 1 1 35.999 68 Z" />
+    <!-- Back Wheel Hub (Biro Blue) -->
+    <path
+        android:fillColor="#5C58FF"
+        android:pathData="M 36 68 A 3 3 0 1 1 35.999 68 Z" />
+
+    <!-- Front Wheel Outer -->
+    <path
+        android:fillColor="#E2E8F0"
+        android:pathData="M 76 68 A 12 12 0 1 1 75.999 68 Z" />
+    <!-- Front Wheel Inner Tire Rim -->
+    <path
+        android:fillColor="#0A0A0A"
+        android:pathData="M 76 68 A 8 8 0 1 1 75.999 68 Z" />
+    <!-- Front Wheel Hub (Biro Blue) -->
+    <path
+        android:fillColor="#5C58FF"
+        android:pathData="M 76 68 A 3 3 0 1 1 75.999 68 Z" />
+
+    <!-- Main Chassis & Body Frame (Premium Warning Orange / Gold) -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M36,68 L48,68 L56,52 L68,38 L72,38"
+        android:strokeWidth="3.5"
+        android:strokeColor="#F59E0B"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+        
+    <!-- Fork connecting front wheel to handlebars -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M76,68 L68,36"
+        android:strokeWidth="3.0"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+
+    <!-- Handlebars (Biro Blue Accent) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M64,36 L72,36"
+        android:strokeWidth="2.5"
+        android:strokeColor="#5C58FF"
+        android:strokeLineCap="round" />
+
+    <!-- Premium Comfort Seat -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,52 L56,52 C58,52 60,54 60,56 L40,56 C40,54 42,52 44,52 Z" />
+
+    <!-- Engraced Smile Cargo/Dispatch Delivery Box -->
+    <!-- Solid White Base -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M22,34 L42,34 L42,52 L22,52 Z" />
+    <!-- Biro Blue Ribbon Emblem on Cargo Box -->
+    <path
+        android:fillColor="#5C58FF"
+        android:pathData="M28,34 L36,34 L36,52 L28,52 Z" />
+    <path
+        android:fillColor="#0A0A0A"
+        android:pathData="M30,41 L34,41 L34,45 L30,45 Z" />
+
+    <!-- Connective Frame (Reinforcement bars) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M42,52 L36,68"
+        android:strokeWidth="2"
+        android:strokeColor="#E2E8F0" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M42,52 L76,68"
+        android:strokeWidth="1.5"
+        android:strokeColor="#44FFFFFF" />
+</vector>

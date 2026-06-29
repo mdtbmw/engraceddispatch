@@ -1,0 +1,17 @@
+{
+  "name": "engraced-smile-dispatch-(1)",
+  "version": "1.0.0",
+  "description": "<div align=\"center\"> <img width=\"1200\" height=\"475\" alt=\"GHBanner\" src=\"https://ai.google.dev/static/site-assets/images/share-ais-513315318.png\" /> </div>",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "firebase-admin": "^14.1.0",
+    "formdata-polyfill": "^4.0.10"
+  }
+}
