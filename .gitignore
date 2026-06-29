@@ -28,8 +28,6 @@ firebase/service-account.json
 
 # Old Express server (no longer used)
 admin/server/
-admin/node_modules/
-admin/dist/
 
 # OS
 .DS_Store
