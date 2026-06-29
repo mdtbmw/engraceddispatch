@@ -3,6 +3,9 @@
   "outputDirectory": "admin/dist",
   "installCommand": "npm install && cd admin && npm install",
   "framework": "vite",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",
