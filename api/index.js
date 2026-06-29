@@ -1,19 +1,19 @@
-import express from 'express'
-import serverless from 'serverless-http'
-import cors from 'cors'
-import { FieldValue } from 'firebase-admin/firestore'
-import { db, auth as adminAuth } from './_lib/firebase-admin'
-import { adminAuthMiddleware } from './_lib/middleware'
-import { firebaseAuthMiddleware } from './_lib/auth-token'
-import { initializeTransaction, verifyTransaction, generateReference } from './_lib/paystack'
-import { sendToDevice, sendDeliveryNotification } from './_lib/fcm'
+'use strict'
+const express = require('express')
+const cors = require('cors')
+const { FieldValue } = require('firebase-admin/firestore')
+const { db, auth: adminAuth } = require('./_lib/firebase')
+const { adminAuthMiddleware } = require('./_lib/middleware')
+const { firebaseAuthMiddleware } = require('./_lib/auth-token')
+const { initializeTransaction, verifyTransaction, generateReference } = require('./_lib/paystack')
+const { sendToDevice, sendDeliveryNotification } = require('./_lib/fcm')
 
 const app = express()
 app.use(express.json())
 app.use(cors({ origin: true }))
 
 // ─── Health Check (no auth) ──────────────────────────────────────────────
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok', timestamp: Date.now() } })
 })
 
@@ -21,22 +21,14 @@ app.get('/api/health', (_req, res) => {
 app.post('/api/payments/webhook', async (req, res) => {
   try {
     const event = req.body
-    // Verify Paystack webhook secret (optional but recommended)
-    // const hash = crypto.createHmac('sha512', process.env.PAYSTACK_SECRET_KEY || '').update(JSON.stringify(req.body)).digest('hex')
-    // if (hash !== req.headers['x-paystack-signature']) { res.status(401).send('Invalid signature'); return }
-
     if (event.event === 'charge.success') {
       const { reference, metadata } = event.data
       const userId = metadata?.userId
-      const amount = event.data.amount / 100 // convert from kobo to naira
-
+      const amount = event.data.amount / 100
       if (userId && amount > 0) {
-        // Update wallet balance
         await db.collection('customers').doc(userId).update({
           walletBalance: FieldValue.increment(amount),
         })
-
-        // Create transaction record
         await db.collection('transactions').add({
           userId,
           title: 'Wallet Topup (Paystack)',
@@ -48,8 +40,6 @@ app.post('/api/payments/webhook', async (req, res) => {
           channel: event.data.channel || 'card',
           createdAt: Date.now(),
         })
-
-        // Send push notification
         const customerSnap = await db.collection('customers').doc(userId).get()
         const deviceToken = customerSnap.data()?.fcmToken
         if (deviceToken) {
@@ -57,9 +47,8 @@ app.post('/api/payments/webhook', async (req, res) => {
         }
       }
     }
-
     res.json({ success: true })
-  } catch (err: any) {
+  } catch (err) {
     console.error('Paystack webhook error:', err)
     res.status(500).json({ success: false, error: { message: 'Webhook processing failed', code: 500 } })
   }
@@ -73,19 +62,15 @@ app.post('/api/payments/initialize', firebaseAuthMiddleware, async (req, res) =>
       res.status(400).json({ success: false, error: { message: 'Amount must be greater than 0', code: 400 } })
       return
     }
-
-    const userSnap = await db.collection('customers').doc(req.uid!).get()
+    const userSnap = await db.collection('customers').doc(req.uid).get()
     const email = userSnap.data()?.email || req.email
-
     const reference = generateReference()
     const result = await initializeTransaction({
       email,
-      amount: Math.round(amount * 100), // convert to kobo
+      amount: Math.round(amount * 100),
       reference,
       metadata: { userId: req.uid },
     })
-
-    // Save pending transaction
     await db.collection('transactions').add({
       userId: req.uid,
       title: 'Wallet Topup (Pending)',
@@ -97,9 +82,8 @@ app.post('/api/payments/initialize', firebaseAuthMiddleware, async (req, res) =>
       paystackReference: reference,
       createdAt: Date.now(),
     })
-
     res.json({ success: true, data: { authorizationUrl: result.data.authorization_url, reference } })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/payments/initialize', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Payment initialization failed', code: 500 } })
   }
@@ -112,16 +96,12 @@ app.post('/api/payments/verify', firebaseAuthMiddleware, async (req, res) => {
       res.status(400).json({ success: false, error: { message: 'Reference is required', code: 400 } })
       return
     }
-
     const result = await verifyTransaction(reference)
-
     if (result.data.status === 'success') {
       const amount = result.data.amount / 100
-      // Update transaction status
       const txSnap = await db.collection('transactions')
         .where('reference', '==', reference).limit(1).get()
       txSnap.docs.forEach(doc => doc.ref.update({ status: 'COMPLETED', updatedAt: Date.now() }))
-
       res.json({
         success: true,
         data: { status: 'success', amount, reference, paidAt: result.data.paid_at },
@@ -129,30 +109,29 @@ app.post('/api/payments/verify', firebaseAuthMiddleware, async (req, res) => {
     } else {
       res.json({ success: true, data: { status: result.data.status, reference } })
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/payments/verify', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Verification failed', code: 500 } })
   }
 })
 
-// ─── Register FCM device token (any authenticated user) ───────────────────
+// ─── Register FCM device token ───────────────────────────────────────────
 app.post('/api/notifications/register-token', firebaseAuthMiddleware, async (req, res) => {
   try {
-    const { token, role } = req.body // role: 'customer' | 'rider'
+    const { token, role } = req.body
     if (!token) {
       res.status(400).json({ success: false, error: { message: 'Token is required', code: 400 } })
       return
     }
     const collection = role === 'rider' ? 'riders' : 'customers'
-    await db.collection(collection).doc(req.uid!).update({ fcmToken: token, fcmTokenUpdatedAt: Date.now() })
+    await db.collection(collection).doc(req.uid).update({ fcmToken: token, fcmTokenUpdatedAt: Date.now() })
     res.json({ success: true, data: { registered: true } })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/notifications/register-token', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Token registration failed', code: 500 } })
   }
 })
 
-// ─── Send notification (any authenticated user can trigger their own) ─────
 app.post('/api/notifications/send', firebaseAuthMiddleware, async (req, res) => {
   try {
     const { title, body, data } = req.body
@@ -160,34 +139,32 @@ app.post('/api/notifications/send', firebaseAuthMiddleware, async (req, res) => 
       res.status(400).json({ success: false, error: { message: 'Title and body are required', code: 400 } })
       return
     }
-
-    const userSnap = await db.collection('customers').doc(req.uid!).get()
+    const userSnap = await db.collection('customers').doc(req.uid).get()
     const fcmToken = userSnap.data()?.fcmToken
     if (!fcmToken) {
       res.status(400).json({ success: false, error: { message: 'No FCM token registered', code: 400 } })
       return
     }
-
     const sent = await sendToDevice(fcmToken, title, body, { ...data, type: data?.type || 'general' })
     res.json({ success: true, data: { sent } })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/notifications/send', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Send failed', code: 500 } })
   }
 })
 
-// ─── Auth — Setup admin (must be BEFORE admin auth middleware) ────────────
+// ─── Auth — Setup admin (before admin auth middleware) ────────────────────
 app.post('/api/auth/setup-admin', firebaseAuthMiddleware, async (req, res) => {
   try {
-    const user = await adminAuth.getUser(req.uid!)
+    const user = await adminAuth.getUser(req.uid)
     if (user.customClaims?.admin) {
       res.json({ success: true, data: { uid: req.uid, email: req.email }, message: 'Already admin' })
       return
     }
-    await adminAuth.setCustomUserClaims(req.uid!, { admin: true })
-    await db.collection('admins').doc(req.uid!).set({
+    await adminAuth.setCustomUserClaims(req.uid, { admin: true })
+    await db.collection('admins').doc(req.uid).set({
       email: req.email,
-      displayName: user.displayName || req.email?.substring(0, req.email.indexOf('@')) || 'Admin',
+      displayName: user.displayName || (req.email ? req.email.substring(0, req.email.indexOf('@')) : 'Admin'),
       photoUrl: user.photoURL || '',
       role: 'admin',
       isActive: true,
@@ -196,13 +173,13 @@ app.post('/api/auth/setup-admin', firebaseAuthMiddleware, async (req, res) => {
     })
     await createAuditLog('auth.setup-admin', req.email || 'unknown', { uid: req.uid })
     res.json({ success: true, data: { uid: req.uid, email: req.email }, message: 'Admin privileges granted' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/auth/setup-admin', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
-// ─── Auth — Set customer role (called by mobile app after signup) ─────────
+// ─── Auth — Set customer/rider role (called by mobile app after signup) ───
 app.post('/api/auth/set-role', firebaseAuthMiddleware, async (req, res) => {
   try {
     const { role } = req.body
@@ -210,15 +187,15 @@ app.post('/api/auth/set-role', firebaseAuthMiddleware, async (req, res) => {
       res.status(400).json({ success: false, error: { message: 'Role must be "customer" or "rider"', code: 400 } })
       return
     }
-    const user = await adminAuth.getUser(req.uid!)
+    const user = await adminAuth.getUser(req.uid)
     if (user.customClaims?.[role]) {
       res.json({ success: true, data: { uid: req.uid, role }, message: `Already ${role}` })
       return
     }
-    await adminAuth.setCustomUserClaims(req.uid!, { [role]: true })
+    await adminAuth.setCustomUserClaims(req.uid, { [role]: true })
     await createAuditLog(`auth.set-${role}`, req.email || 'unknown', { uid: req.uid })
     res.json({ success: true, data: { uid: req.uid, role }, message: `${role} role granted` })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/auth/set-role', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Failed to set role', code: 500 } })
   }
@@ -232,19 +209,14 @@ app.post('/api/wallet/admin-fund', adminAuthMiddleware, async (req, res) => {
       res.status(400).json({ success: false, error: { message: 'userId and positive amount required', code: 400 } })
       return
     }
-
     const customerSnap = await db.collection('customers').doc(userId).get()
     if (!customerSnap.exists) {
       res.status(404).json({ success: false, error: { message: 'Customer not found', code: 404 } })
       return
     }
-
-    // Credit wallet
     await db.collection('customers').doc(userId).update({
-      walletBalance: FieldValue.increment(amount as number),
+      walletBalance: FieldValue.increment(amount),
     })
-
-    // Create transaction record
     const txRef = `ESD-ADMIN-FUND-${Date.now()}`
     await db.collection('transactions').add({
       userId,
@@ -257,23 +229,19 @@ app.post('/api/wallet/admin-fund', adminAuthMiddleware, async (req, res) => {
       approvedBy: req.email,
       createdAt: Date.now(),
     })
-
     await createAuditLog('wallet.admin-fund', req.email || 'admin', { userId, amount, note })
-
-    // Send push notification
     const fcmToken = customerSnap.data()?.fcmToken
     if (fcmToken) {
       await sendToDevice(fcmToken, 'Wallet Credited by Admin', `₦${Number(amount).toLocaleString()} added to your wallet`, { type: 'wallet', amount: amount.toString() })
     }
-
     res.json({ success: true, data: { userId, amount, reference: txRef }, message: 'Wallet credited' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/wallet/admin-fund', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Funding failed', code: 500 } })
   }
 })
 
-// ─── Admin Wallet — Debit customer wallet (for refunds/chargebacks) ───────
+// ─── Admin Wallet — Debit customer wallet ─────────────────────────────────
 app.post('/api/wallet/admin-debit', adminAuthMiddleware, async (req, res) => {
   try {
     const { userId, amount, note } = req.body
@@ -281,23 +249,19 @@ app.post('/api/wallet/admin-debit', adminAuthMiddleware, async (req, res) => {
       res.status(400).json({ success: false, error: { message: 'userId and positive amount required', code: 400 } })
       return
     }
-
     const customerSnap = await db.collection('customers').doc(userId).get()
     if (!customerSnap.exists) {
       res.status(404).json({ success: false, error: { message: 'Customer not found', code: 404 } })
       return
     }
-
     const currentBalance = customerSnap.data()?.walletBalance || 0
     if (currentBalance < amount) {
       res.status(400).json({ success: false, error: { message: 'Insufficient balance', code: 400 } })
       return
     }
-
     await db.collection('customers').doc(userId).update({
-      walletBalance: FieldValue.increment(-(amount as number)),
+      walletBalance: FieldValue.increment(-amount),
     })
-
     const txRef = `ESD-ADMIN-DEBIT-${Date.now()}`
     await db.collection('transactions').add({
       userId,
@@ -310,11 +274,9 @@ app.post('/api/wallet/admin-debit', adminAuthMiddleware, async (req, res) => {
       approvedBy: req.email,
       createdAt: Date.now(),
     })
-
     await createAuditLog('wallet.admin-debit', req.email || 'admin', { userId, amount, note })
-
     res.json({ success: true, data: { userId, amount, reference: txRef }, message: 'Wallet debited' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/wallet/admin-debit', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Debit failed', code: 500 } })
   }
@@ -328,19 +290,16 @@ app.post('/api/notifications/admin-send', adminAuthMiddleware, async (req, res) 
       res.status(400).json({ success: false, error: { message: 'userId, title, and body are required', code: 400 } })
       return
     }
-
     const userSnap = await db.collection('customers').doc(userId).get()
     const fcmToken = userSnap.data()?.fcmToken
     if (!fcmToken) {
       res.status(400).json({ success: false, error: { message: 'User has no FCM token', code: 400 } })
       return
     }
-
-    const sent = await sendToDevice(fcmToken, title, body, data as Record<string, string> | undefined)
+    const sent = await sendToDevice(fcmToken, title, body, data)
     await createAuditLog('notification.admin-send', req.email || 'admin', { userId, title, sent })
-
     res.json({ success: true, data: { sent }, message: sent ? 'Notification sent' : 'Failed to send' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/notifications/admin-send', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Send failed', code: 500 } })
   }
@@ -350,9 +309,6 @@ app.post('/api/notifications/admin-send', adminAuthMiddleware, async (req, res) 
 // ALL ROUTES BELOW REQUIRE ADMIN AUTH (admin claim on Firebase user)
 // ===========================================================================
 app.use('/api', adminAuthMiddleware)
-
-// ─── All existing admin routes (deliveries, riders, zones, pricing, etc.) ──
-// (unchanged from previous implementation)
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 function uid() {
@@ -365,8 +321,8 @@ function uid() {
     .catch(() => Math.random().toString(36).slice(2, 7).toUpperCase())
 }
 
-function generateTrackingNumber(type: string): string {
-  const prefixMap: Record<string, string> = {
+function generateTrackingNumber(type) {
+  const prefixMap = {
     Express: 'ESD-EXP', Economy: 'ESD-ECO', Batch: 'ESD-BAT', 'Multi-Pickup': 'ESD-MUL',
   }
   const prefix = prefixMap[type] || 'ESD-DLV'
@@ -374,7 +330,7 @@ function generateTrackingNumber(type: string): string {
   return `${prefix}-${suffix}`
 }
 
-const STATUS_FLOW: Record<string, string[]> = {
+const STATUS_FLOW = {
   PENDING: ['ASSIGNED'],
   ASSIGNED: ['PICKED_UP'],
   PICKED_UP: ['OUT_FOR_DELIVERY'],
@@ -383,11 +339,11 @@ const STATUS_FLOW: Record<string, string[]> = {
   CANCELLED: [],
 }
 
-function isValidTransition(current: string, next: string): boolean {
+function isValidTransition(current, next) {
   return STATUS_FLOW[current]?.includes(next) ?? false
 }
 
-async function createAuditLog(action: string, actor: string, details: Record<string, unknown>) {
+async function createAuditLog(action, actor, details) {
   await db.collection('auditLogs').add({
     action,
     actor,
@@ -397,40 +353,24 @@ async function createAuditLog(action: string, actor: string, details: Record<str
 }
 
 // ─── Pricing Calculation ────────────────────────────────────────────────
-async function calculatePrice(opts: {
-  deliveryType: string
-  itemWeight: number
-  zoneName?: string
-}): Promise<{
-  basePrice: number
-  perKgCharge: number
-  surgeAmount: number
-  serviceFee: number
-  total: number
-  breakdown: string
-}> {
+async function calculatePrice(opts) {
   const pricingSnap = await db.collection('pricingRules').where('deliveryType', '==', opts.deliveryType).limit(1).get()
   const settingsSnap = await db.collection('settings').limit(1).get()
-
-  const rule = pricingSnap.empty ? null : { ...pricingSnap.docs[0].data(), id: pricingSnap.docs[0].id } as any
-  const settingsDoc = settingsSnap.empty ? null : { ...settingsSnap.docs[0].data(), id: settingsSnap.docs[0].id } as any
-
+  const rule = pricingSnap.empty ? null : { ...pricingSnap.docs[0].data(), id: pricingSnap.docs[0].id }
+  const settingsDoc = settingsSnap.empty ? null : { ...settingsSnap.docs[0].data(), id: settingsSnap.docs[0].id }
   const basePrice = rule?.basePrice ?? 5000
   const perKgRate = rule?.perKgRate ?? 500
   const surgeEnabled = settingsDoc?.surgePricingActive ?? false
   const surgeMultiplier = settingsDoc?.surgeMultiplier ?? 1.5
   const serviceFeePercent = settingsDoc?.serviceFeePercent ?? 5
-
   let surgeAmount = 0
   if (surgeEnabled) {
     surgeAmount = (rule?.surgeAmount ?? basePrice * 0.3) * surgeMultiplier
   }
-
   const perKgCharge = perKgRate * Math.max(0, opts.itemWeight || 1)
   const subtotal = basePrice + perKgCharge + surgeAmount
   const serviceFee = Math.round(subtotal * (serviceFeePercent / 100))
   const total = subtotal + serviceFee
-
   return {
     basePrice,
     perKgCharge,
@@ -442,58 +382,91 @@ async function calculatePrice(opts: {
 }
 
 // ─── Auto-Assign Rider ───────────────────────────────────────────────────
-async function autoAssignRider(): Promise<{ id: string; name: string; bikeNumber: string } | null> {
+async function autoAssignRider() {
   const settingsSnap = await db.collection('settings').limit(1).get()
-  const settings = settingsSnap.empty ? null : settingsSnap.docs[0].data() as any
+  const settings = settingsSnap.empty ? null : settingsSnap.docs[0].data()
   const autoAssign = settings?.autoAssignRider ?? false
   if (!autoAssign) return null
-
   const maxActive = settings?.maxActiveDeliveriesPerRider ?? 5
-
   const ridersSnap = await db.collection('riders')
     .where('status', 'in', ['active', 'offline'])
     .orderBy('rating', 'desc')
     .limit(5)
     .get()
-
   for (const doc of ridersSnap.docs) {
-    const rider = { id: doc.id, ...doc.data() } as any
+    const rider = { id: doc.id, ...doc.data() }
     if (!rider.isOnline) continue
-
     const activeCount = await db.collection('deliveries')
       .where('riderId', '==', rider.id)
       .where('status', 'in', ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'])
       .count()
       .get()
-
     if ((activeCount.data().count || 0) < maxActive) {
       return { id: rider.id, name: rider.name, bikeNumber: rider.bikeNumber }
     }
   }
-
   return null
 }
 
-// ─── Deliveries ──────────────────────────────────────────────────────────
+// ─── GET /api/deliveries/stats ────────────────────────────────────────────
+app.get('/api/deliveries/stats', async (req, res) => {
+  try {
+    const allSnap = await db.collection('deliveries').get()
+    const all = allSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const active = all.filter(d => ['PENDING', 'ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(d.status))
+    const completed = all.filter(d => d.status === 'DELIVERED')
+    const cancelled = all.filter(d => d.status === 'CANCELLED')
+    res.json({ success: true, data: { total: all.length, active: active.length, completed: completed.length, cancelled: cancelled.length } })
+  } catch (err) {
+    console.error('GET /api/deliveries/stats', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
+// ─── GET /api/deliveries ──────────────────────────────────────────────────
+app.get('/api/deliveries', async (req, res) => {
+  try {
+    const snap = await db.collection('deliveries').orderBy('createdAt', 'desc').get()
+    const deliveries = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    res.json({ success: true, data: deliveries })
+  } catch (err) {
+    console.error('GET /api/deliveries', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
+// ─── GET /api/deliveries/:id ──────────────────────────────────────────────
+app.get('/api/deliveries/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const snap = await db.collection('deliveries').doc(id).get()
+    if (!snap.exists) {
+      res.status(404).json({ success: false, error: { message: 'Delivery not found', code: 404 } })
+      return
+    }
+    res.json({ success: true, data: { id: snap.id, ...snap.data() } })
+  } catch (err) {
+    console.error('GET /api/deliveries/:id', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
+// ─── POST /api/deliveries ─────────────────────────────────────────────────
 app.post('/api/deliveries', async (req, res) => {
   try {
     const { deliveryType, pickupAddress, deliveryAddress, itemName, itemWeight, customerName, schedule } = req.body
-
     if (!deliveryType || !pickupAddress || !deliveryAddress || !itemName) {
       res.status(400).json({ success: false, error: { message: 'Missing required fields', code: 400 } })
       return
     }
-
     const pricing = await calculatePrice({ deliveryType, itemWeight: itemWeight || 1 })
     const trackingNumber = generateTrackingNumber(deliveryType)
     const settingsSnap = await db.collection('settings').limit(1).get()
-    const settings = settingsSnap.empty ? null : settingsSnap.docs[0].data() as any
+    const settings = settingsSnap.empty ? null : settingsSnap.docs[0].data()
     const otpEnabled = settings?.otpVerificationEnabled ?? false
     const otpCode = otpEnabled ? String(Math.floor(1000 + Math.random() * 9000)) : ''
-
     const assigned = await autoAssignRider()
-
-    const deliveryData: Record<string, unknown> = {
+    const deliveryData = {
       trackingNumber,
       deliveryType,
       status: assigned ? 'ASSIGNED' : 'PENDING',
@@ -518,10 +491,8 @@ app.post('/api/deliveries', async (req, res) => {
       pricingBreakdown: pricing.breakdown,
       otpEnabled,
     }
-
     const docRef = await db.collection('deliveries').add(deliveryData)
     const created = { id: docRef.id, ...deliveryData }
-
     await createAuditLog('delivery.create', req.email || 'admin', {
       deliveryId: docRef.id,
       trackingNumber,
@@ -530,48 +501,41 @@ app.post('/api/deliveries', async (req, res) => {
       autoAssigned: !!assigned,
       assignedRider: assigned?.name || null,
     })
-
     if (assigned) {
       await db.collection('riders').doc(assigned.id).update({ status: 'delivering', updatedAt: new Date().toISOString() })
-      // Notify rider
       const riderSnap = await db.collection('riders').doc(assigned.id).get()
       const riderFcm = riderSnap.data()?.fcmToken
       if (riderFcm) {
         await sendToDevice(riderFcm, 'New Dispatch Assignment', `Delivery ${trackingNumber} assigned to you`, { trackingNumber, type: 'delivery_assigned' })
       }
     }
-
-    // Notify customer
-    const customerSnap = await db.collection('customers').doc(req.uid!).get()
+    const customerSnap = await db.collection('customers').doc(req.uid).get()
     const customerFcm = customerSnap.data()?.fcmToken
     if (customerFcm) {
       await sendToDevice(customerFcm, 'Dispatch Created', `Your delivery ${trackingNumber} has been created`, { trackingNumber, type: 'delivery_created' })
     }
-
     res.status(201).json({ success: true, data: created, message: assigned ? `Auto-assigned to ${assigned.name}` : 'Dispatch created' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/deliveries', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
+// ─── PUT /api/deliveries/:id/status ────────────────────────────────────────
 app.put('/api/deliveries/:id/status', async (req, res) => {
   try {
     const { id } = req.params
     const { status: nextStatus } = req.body
-
     if (!nextStatus) {
       res.status(400).json({ success: false, error: { message: 'Status is required', code: 400 } })
       return
     }
-
     const snap = await db.collection('deliveries').doc(id).get()
     if (!snap.exists) {
       res.status(404).json({ success: false, error: { message: 'Delivery not found', code: 404 } })
       return
     }
-
-    const current = snap.data()!.status as string
+    const current = snap.data().status
     if (!isValidTransition(current, nextStatus)) {
       res.status(400).json({
         success: false,
@@ -579,20 +543,16 @@ app.put('/api/deliveries/:id/status', async (req, res) => {
       })
       return
     }
-
     await db.collection('deliveries').doc(id).update({
       status: nextStatus,
       updatedAt: new Date().toISOString(),
     })
-
     await createAuditLog('delivery.status', req.email || 'admin', {
       deliveryId: id,
       from: current,
       to: nextStatus,
     })
-
-    // Send push notifications
-    const delivery = snap.data()!
+    const delivery = snap.data()
     const trackingNumber = delivery.trackingNumber
     const customerSnap = await db.collection('customers').doc(delivery.userId).get()
     const customerFcm = customerSnap.data()?.fcmToken
@@ -606,31 +566,27 @@ app.put('/api/deliveries/:id/status', async (req, res) => {
         await sendDeliveryNotification(riderFcm, trackingNumber, nextStatus)
       }
     }
-
     res.json({ success: true, data: { id, status: nextStatus }, message: `Status advanced to ${nextStatus}` })
-  } catch (err: any) {
+  } catch (err) {
     console.error('PUT /api/deliveries/:id/status', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
+// ─── POST /api/deliveries/:id/verify ─────────────────────────────────────
 app.post('/api/deliveries/:id/verify', async (req, res) => {
   try {
     const { id } = req.params
     const { otp } = req.body
-
     const snap = await db.collection('deliveries').doc(id).get()
     if (!snap.exists) {
       res.status(404).json({ success: false, error: { message: 'Delivery not found', code: 404 } })
       return
     }
-
-    const delivery = snap.data()!
+    const delivery = snap.data()
     const settingsSnap = await db.collection('settings').limit(1).get()
-    const settings = settingsSnap.empty ? null : settingsSnap.docs[0].data() as any
+    const settings = settingsSnap.empty ? null : settingsSnap.docs[0].data()
     const otpEnabled = settings?.otpVerificationEnabled ?? false
-
-    // If OTP is enabled, validate it
     if (otpEnabled) {
       if (!otp) {
         res.status(400).json({ success: false, error: { message: 'OTP is required', code: 400 } })
@@ -645,52 +601,44 @@ app.post('/api/deliveries/:id/verify', async (req, res) => {
         return
       }
     }
-
     if (delivery.status === 'DELIVERED') {
       res.status(400).json({ success: false, error: { message: 'Already delivered', code: 400 } })
       return
     }
-
     await db.collection('deliveries').doc(id).update({
       otpVerified: true,
       status: 'DELIVERED',
       updatedAt: new Date().toISOString(),
     })
-
     await createAuditLog('delivery.verify.success', req.email || 'admin', {
       deliveryId: id,
       trackingNumber: delivery.trackingNumber,
     })
-
-    // Notify customer
     const customerSnap = await db.collection('customers').doc(delivery.userId).get()
     const customerFcm = customerSnap.data()?.fcmToken
     if (customerFcm) {
       await sendToDevice(customerFcm, 'Delivery Completed', `Your package ${delivery.trackingNumber} has been delivered`, { trackingNumber: delivery.trackingNumber, type: 'delivery_completed' })
     }
-
     res.json({ success: true, data: { id, status: 'DELIVERED', otpVerified: true }, message: 'Delivery verified and completed' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/deliveries/:id/verify', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
+// ─── POST /api/deliveries/:id/assign ──────────────────────────────────────
 app.post('/api/deliveries/:id/assign', async (req, res) => {
   try {
     const { id } = req.params
     const { riderId } = req.body
-
     if (!riderId) {
       res.status(400).json({ success: false, error: { message: 'riderId is required', code: 400 } })
       return
     }
-
     const [delSnap, riderSnap] = await Promise.all([
       db.collection('deliveries').doc(id).get(),
       db.collection('riders').doc(riderId).get(),
     ])
-
     if (!delSnap.exists) {
       res.status(404).json({ success: false, error: { message: 'Delivery not found', code: 404 } })
       return
@@ -699,8 +647,7 @@ app.post('/api/deliveries/:id/assign', async (req, res) => {
       res.status(404).json({ success: false, error: { message: 'Rider not found', code: 404 } })
       return
     }
-
-    const rider = { id: riderSnap.id, ...riderSnap.data() } as any
+    const rider = { id: riderSnap.id, ...riderSnap.data() }
     await db.collection('deliveries').doc(id).update({
       status: 'ASSIGNED',
       riderId: rider.id,
@@ -710,32 +657,28 @@ app.post('/api/deliveries/:id/assign', async (req, res) => {
       etaMinutes: 25,
       updatedAt: new Date().toISOString(),
     })
-
     await db.collection('riders').doc(riderId).update({
       status: 'delivering',
       updatedAt: new Date().toISOString(),
     })
-
     await createAuditLog('delivery.assign', req.email || 'admin', {
       deliveryId: id,
       riderId,
       riderName: rider.name,
     })
-
-    // Notify rider
     const riderFcm = riderSnap.data()?.fcmToken
-    const trackingNumber = delSnap.data()!.trackingNumber
+    const trackingNumber = delSnap.data().trackingNumber
     if (riderFcm) {
       await sendToDevice(riderFcm, 'New Dispatch', `Delivery ${trackingNumber} assigned to you`, { trackingNumber, type: 'delivery_assigned' })
     }
-
     res.json({ success: true, data: { id, riderId, riderName: rider.name }, message: `Assigned to ${rider.name}` })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/deliveries/:id/assign', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
+// ─── DELETE /api/deliveries/:id ───────────────────────────────────────────
 app.delete('/api/deliveries/:id', async (req, res) => {
   try {
     const { id } = req.params
@@ -744,8 +687,7 @@ app.delete('/api/deliveries/:id', async (req, res) => {
       res.status(404).json({ success: false, error: { message: 'Delivery not found', code: 404 } })
       return
     }
-
-    const delivery = snap.data()!
+    const delivery = snap.data()
     if (delivery.status !== 'PENDING' && delivery.status !== 'CANCELLED') {
       res.status(400).json({
         success: false,
@@ -753,20 +695,30 @@ app.delete('/api/deliveries/:id', async (req, res) => {
       })
       return
     }
-
     await db.collection('deliveries').doc(id).delete()
     await createAuditLog('delivery.delete', req.email || 'admin', {
       deliveryId: id,
       trackingNumber: delivery.trackingNumber,
     })
     res.json({ success: true, data: { id }, message: 'Delivery deleted' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('DELETE /api/deliveries/:id', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
 // ─── Riders ──────────────────────────────────────────────────────────────
+app.get('/api/riders', async (req, res) => {
+  try {
+    const snap = await db.collection('riders').orderBy('createdAt', 'desc').get()
+    const riders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    res.json({ success: true, data: riders })
+  } catch (err) {
+    console.error('GET /api/riders', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
 app.post('/api/riders', async (req, res) => {
   try {
     const { name, phone, bikeNumber } = req.body
@@ -774,8 +726,7 @@ app.post('/api/riders', async (req, res) => {
       res.status(400).json({ success: false, error: { message: 'Name and bike number are required', code: 400 } })
       return
     }
-
-    const riderData: Record<string, unknown> = {
+    const riderData = {
       name,
       phone: phone || '+234 800 000 0000',
       bikeNumber,
@@ -787,13 +738,11 @@ app.post('/api/riders', async (req, res) => {
       joinedAt: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
       createdAt: new Date().toISOString(),
     }
-
     const docRef = await db.collection('riders').add(riderData)
     const created = { id: docRef.id, ...riderData }
-
     await createAuditLog('rider.create', req.email || 'admin', { riderId: docRef.id, name })
     res.status(201).json({ success: true, data: created, message: 'Rider enrolled' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/riders', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
@@ -807,11 +756,10 @@ app.put('/api/riders/:id', async (req, res) => {
       res.status(404).json({ success: false, error: { message: 'Rider not found', code: 404 } })
       return
     }
-
     await db.collection('riders').doc(id).update({ ...req.body, updatedAt: new Date().toISOString() })
     await createAuditLog('rider.update', req.email || 'admin', { riderId: id, changes: Object.keys(req.body) })
     res.json({ success: true, data: { id, ...req.body }, message: 'Rider updated' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('PUT /api/riders/:id', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
@@ -825,28 +773,36 @@ app.delete('/api/riders/:id', async (req, res) => {
       res.status(404).json({ success: false, error: { message: 'Rider not found', code: 404 } })
       return
     }
-
     const activeDeliveries = await db.collection('deliveries')
       .where('riderId', '==', id)
       .where('status', 'in', ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'])
       .count()
       .get()
-
     if ((activeDeliveries.data().count || 0) > 0) {
       res.status(400).json({ success: false, error: { message: 'Cannot delete rider with active deliveries', code: 400 } })
       return
     }
-
     await db.collection('riders').doc(id).delete()
-    await createAuditLog('rider.delete', req.email || 'admin', { riderId: id, name: snap.data()!.name })
+    await createAuditLog('rider.delete', req.email || 'admin', { riderId: id, name: snap.data().name })
     res.json({ success: true, data: { id }, message: 'Rider removed' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('DELETE /api/riders/:id', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
-// ─── Zones ───────────────────────────────────────────────────────────────
+// ─── Zones ────────────────────────────────────────────────────────────────
+app.get('/api/zones', async (req, res) => {
+  try {
+    const snap = await db.collection('zones').orderBy('createdAt', 'desc').get()
+    const zones = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    res.json({ success: true, data: zones })
+  } catch (err) {
+    console.error('GET /api/zones', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
 app.post('/api/zones', async (req, res) => {
   try {
     const { name, basePrice, surgeMultiplier } = req.body
@@ -854,8 +810,7 @@ app.post('/api/zones', async (req, res) => {
       res.status(400).json({ success: false, error: { message: 'Zone name is required', code: 400 } })
       return
     }
-
-    const zoneData: Record<string, unknown> = {
+    const zoneData = {
       name,
       basePrice: parseFloat(basePrice) || 0,
       surgeMultiplier: parseFloat(surgeMultiplier) || 1.0,
@@ -864,12 +819,11 @@ app.post('/api/zones', async (req, res) => {
       deliveryCount: 0,
       createdAt: new Date().toISOString(),
     }
-
     const docRef = await db.collection('zones').add(zoneData)
     const created = { id: docRef.id, ...zoneData }
     await createAuditLog('zone.create', req.email || 'admin', { zoneId: docRef.id, name })
     res.status(201).json({ success: true, data: created, message: 'Zone added' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/zones', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
@@ -883,11 +837,10 @@ app.put('/api/zones/:id', async (req, res) => {
       res.status(404).json({ success: false, error: { message: 'Zone not found', code: 404 } })
       return
     }
-
     await db.collection('zones').doc(id).update({ ...req.body, updatedAt: new Date().toISOString() })
     await createAuditLog('zone.update', req.email || 'admin', { zoneId: id, changes: Object.keys(req.body) })
     res.json({ success: true, data: { id, ...req.body }, message: 'Zone updated' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('PUT /api/zones/:id', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
@@ -901,17 +854,27 @@ app.delete('/api/zones/:id', async (req, res) => {
       res.status(404).json({ success: false, error: { message: 'Zone not found', code: 404 } })
       return
     }
-
     await db.collection('zones').doc(id).delete()
-    await createAuditLog('zone.delete', req.email || 'admin', { zoneId: id, name: snap.data()!.name })
+    await createAuditLog('zone.delete', req.email || 'admin', { zoneId: id, name: snap.data().name })
     res.json({ success: true, data: { id }, message: 'Zone removed' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('DELETE /api/zones/:id', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
 // ─── Pricing ─────────────────────────────────────────────────────────────
+app.get('/api/pricing', async (req, res) => {
+  try {
+    const snap = await db.collection('pricingRules').get()
+    const rules = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    res.json({ success: true, data: rules })
+  } catch (err) {
+    console.error('GET /api/pricing', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
 app.post('/api/pricing/calculate', async (req, res) => {
   try {
     const { deliveryType, itemWeight } = req.body
@@ -919,11 +882,32 @@ app.post('/api/pricing/calculate', async (req, res) => {
       res.status(400).json({ success: false, error: { message: 'deliveryType is required', code: 400 } })
       return
     }
-
     const pricing = await calculatePrice({ deliveryType, itemWeight: itemWeight || 1 })
     res.json({ success: true, data: pricing })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/pricing/calculate', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
+app.post('/api/pricing', async (req, res) => {
+  try {
+    const { deliveryType, basePrice, perKgRate, surgeAmount } = req.body
+    if (!deliveryType) {
+      res.status(400).json({ success: false, error: { message: 'deliveryType is required', code: 400 } })
+      return
+    }
+    const docRef = await db.collection('pricingRules').add({
+      deliveryType,
+      basePrice: parseFloat(basePrice) || 5000,
+      perKgRate: parseFloat(perKgRate) || 500,
+      surgeAmount: parseFloat(surgeAmount) || 1500,
+      updatedAt: new Date().toISOString(),
+    })
+    await createAuditLog('pricing.create', req.email || 'admin', { ruleId: docRef.id, deliveryType })
+    res.status(201).json({ success: true, data: { id: docRef.id, deliveryType, basePrice, perKgRate, surgeAmount }, message: 'Pricing rule created' })
+  } catch (err) {
+    console.error('POST /api/pricing', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
@@ -936,43 +920,74 @@ app.put('/api/pricing/:id', async (req, res) => {
       res.status(404).json({ success: false, error: { message: 'Pricing rule not found', code: 404 } })
       return
     }
-
     const prev = snap.data()
     await db.collection('pricingRules').doc(id).update({ ...req.body, updatedAt: new Date().toISOString() })
     await createAuditLog('pricing.update', req.email || 'admin', {
       ruleId: id,
-      deliveryType: prev!.deliveryType,
-      before: { basePrice: prev!.basePrice, surgeAmount: prev!.surgeAmount, perKgRate: prev!.perKgRate },
+      deliveryType: prev.deliveryType,
+      before: { basePrice: prev.basePrice, surgeAmount: prev.surgeAmount, perKgRate: prev.perKgRate },
       after: { basePrice: req.body.basePrice, surgeAmount: req.body.surgeAmount, perKgRate: req.body.perKgRate },
     })
     res.json({ success: true, data: { id, ...req.body }, message: 'Pricing updated' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('PUT /api/pricing/:id', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
 // ─── Settings ────────────────────────────────────────────────────────────
+app.get('/api/settings', async (req, res) => {
+  try {
+    const snap = await db.collection('settings').limit(1).get()
+    const settings = snap.empty ? {} : { id: snap.docs[0].id, ...snap.docs[0].data() }
+    res.json({ success: true, data: settings })
+  } catch (err) {
+    console.error('GET /api/settings', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
 app.put('/api/settings', async (req, res) => {
   try {
     const snap = await db.collection('settings').limit(1).get()
     const data = { ...req.body, updatedAt: new Date().toISOString() }
-
     if (snap.empty) {
       await db.collection('settings').add(data)
     } else {
       await snap.docs[0].ref.update(data)
     }
-
     await createAuditLog('settings.update', req.email || 'admin', { changes: Object.keys(req.body) })
     res.json({ success: true, data, message: 'Settings saved' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('PUT /api/settings', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
+// ─── Users (customers) ──────────────────────────────────────────────────
+app.get('/api/users', async (req, res) => {
+  try {
+    const snap = await db.collection('customers').get()
+    const users = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    res.json({ success: true, data: users })
+  } catch (err) {
+    console.error('GET /api/users', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
 // ─── Transactions ────────────────────────────────────────────────────────
+app.get('/api/finance/transactions', async (req, res) => {
+  try {
+    const snap = await db.collection('transactions').orderBy('createdAt', 'desc').limit(100).get()
+    const transactions = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    res.json({ success: true, data: transactions })
+  } catch (err) {
+    console.error('GET /api/finance/transactions', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
 app.post('/api/transactions/:id/approve', async (req, res) => {
   try {
     const { id } = req.params
@@ -981,20 +996,17 @@ app.post('/api/transactions/:id/approve', async (req, res) => {
       res.status(404).json({ success: false, error: { message: 'Transaction not found', code: 404 } })
       return
     }
-
-    const tx = snap.data()!
+    const tx = snap.data()
     if (tx.status !== 'PENDING') {
       res.status(400).json({ success: false, error: { message: 'Transaction is not pending', code: 400 } })
       return
     }
-
     await db.collection('transactions').doc(id).update({
       status: 'COMPLETED',
       approvedBy: req.email || 'admin',
       approvedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     })
-
     await createAuditLog('transaction.approve', req.email || 'admin', {
       transactionId: id,
       amount: tx.amount,
@@ -1002,24 +1014,21 @@ app.post('/api/transactions/:id/approve', async (req, res) => {
       userId: tx.userId,
     })
     res.json({ success: true, data: { id, status: 'COMPLETED' }, message: 'Transaction approved' })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/transactions/:id/approve', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
 // ─── Finance ─────────────────────────────────────────────────────────────
-app.get('/api/finance/revenue', async (_req, res) => {
+app.get('/api/finance/revenue', async (req, res) => {
   try {
     const txSnap = await db.collection('transactions').get()
-    const transactions = txSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any))
-
+    const transactions = txSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     const revenue = transactions.filter((t) => t.type === 'CREDIT' && t.status === 'COMPLETED').reduce((s, t) => s + (t.amount || 0), 0)
     const expenses = transactions.filter((t) => t.type === 'DEBIT' && t.status === 'COMPLETED').reduce((s, t) => s + (t.amount || 0), 0)
-
-    const monthlyBuckets: Record<string, { revenue: number; expenses: number }> = {}
+    const monthlyBuckets = {}
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
     for (const tx of transactions) {
       const date = new Date(tx.createdAt || Date.now())
       const key = months[date.getMonth()]
@@ -1029,9 +1038,7 @@ app.get('/api/finance/revenue', async (_req, res) => {
         else monthlyBuckets[key].expenses += tx.amount || 0
       }
     }
-
     const monthlyData = months.filter((m) => monthlyBuckets[m]).map((m) => ({ month: m, ...monthlyBuckets[m] }))
-
     res.json({
       success: true,
       data: {
@@ -1047,32 +1054,29 @@ app.get('/api/finance/revenue', async (_req, res) => {
         ],
       },
     })
-  } catch (err: any) {
+  } catch (err) {
     console.error('GET /api/finance/revenue', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
-app.get('/api/finance/wallet-stats', async (_req, res) => {
+app.get('/api/finance/wallet-stats', async (req, res) => {
   try {
     const txSnap = await db.collection('transactions').get()
-    const transactions = txSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any))
-
+    const transactions = txSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     const totalRevenue = transactions.filter((t) => t.type === 'CREDIT' && t.status === 'COMPLETED').reduce((s, t) => s + (t.amount || 0), 0)
     const pendingWithdrawals = transactions.filter((t) => t.type === 'DEBIT' && t.status === 'PENDING').reduce((s, t) => s + (t.amount || 0), 0)
     const customersSnap = await db.collection('customers').count().get()
     const customerCount = customersSnap.data().count || 0
-
     res.json({
       success: true,
       data: { balance: 845000, currency: 'NGN', totalRevenue, pendingWithdrawals, customerCount },
     })
-  } catch (err: any) {
+  } catch (err) {
     console.error('GET /api/finance/wallet-stats', err)
     res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
   }
 })
 
 // ─── Export for Vercel ───────────────────────────────────────────────────
-export const handler = serverless(app)
-export default handler
+module.exports = app

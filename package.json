@@ -9,7 +9,6 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.0",
-    "firebase-admin": "^14.1.0",
-    "serverless-http": "^3.2.0"
+    "firebase-admin": "^12.7.0"
   }
 }

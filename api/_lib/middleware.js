@@ -1,22 +1,12 @@
-import type { Request, Response, NextFunction } from 'express'
-import { auth as adminAuth } from './firebase-admin'
+'use strict'
+const { auth: adminAuth } = require('./firebase')
 
-declare global {
-  namespace Express {
-    interface Request {
-      uid?: string
-      email?: string
-    }
-  }
-}
-
-export async function adminAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+async function adminAuthMiddleware(req, res, next) {
   const header = req.headers.authorization
-  if (!header?.startsWith('Bearer ')) {
+  if (!header || !header.startsWith('Bearer ')) {
     res.status(401).json({ success: false, error: { message: 'Missing or invalid Authorization header', code: 401 } })
     return
   }
-
   const token = header.slice(7)
   try {
     const decoded = await adminAuth.verifyIdToken(token)
@@ -31,3 +21,5 @@ export async function adminAuthMiddleware(req: Request, res: Response, next: Nex
     res.status(401).json({ success: false, error: { message: 'Invalid or expired token', code: 401 } })
   }
 }
+
+module.exports = { adminAuthMiddleware }

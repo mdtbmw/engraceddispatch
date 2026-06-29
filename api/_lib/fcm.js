@@ -1,39 +1,8 @@
-/**
- * Firebase Cloud Messaging service for push notifications.
- * Sends notifications to customer and rider device tokens.
- */
-
+'use strict'
 const FCM_URL = 'https://fcm.googleapis.com/fcm/send'
 const FCM_SERVER_KEY = process.env.FCM_SERVER_KEY || ''
 
-interface FcmMessage {
-  to?: string           // single device token
-  registration_ids?: string[]  // multiple device tokens
-  notification: {
-    title: string
-    body: string
-    image?: string
-  }
-  data?: Record<string, string>
-  android?: {
-    priority: 'normal' | 'high'
-    notification?: {
-      channel_id?: string
-      sound?: string
-      click_action?: string
-    }
-  }
-  apns?: {
-    payload: {
-      aps: {
-        sound: string
-        badge?: number
-      }
-    }
-  }
-}
-
-async function sendFcm(message: FcmMessage): Promise<boolean> {
+async function sendFcm(message) {
   if (!FCM_SERVER_KEY) {
     console.warn('[FCM] FCM_SERVER_KEY not set — notification not sent')
     return false
@@ -59,12 +28,7 @@ async function sendFcm(message: FcmMessage): Promise<boolean> {
   }
 }
 
-export async function sendToDevice(
-  deviceToken: string,
-  title: string,
-  body: string,
-  data?: Record<string, string>,
-): Promise<boolean> {
+async function sendToDevice(deviceToken, title, body, data) {
   return sendFcm({
     to: deviceToken,
     notification: { title, body },
@@ -74,12 +38,7 @@ export async function sendToDevice(
   })
 }
 
-export async function sendToMultipleDevices(
-  deviceTokens: string[],
-  title: string,
-  body: string,
-  data?: Record<string, string>,
-): Promise<boolean> {
+async function sendToMultipleDevices(deviceTokens, title, body, data) {
   if (deviceTokens.length === 0) return false
   return sendFcm({
     registration_ids: deviceTokens,
@@ -90,12 +49,8 @@ export async function sendToMultipleDevices(
   })
 }
 
-export async function sendDeliveryNotification(
-  deviceToken: string,
-  trackingNumber: string,
-  status: string,
-): Promise<boolean> {
-  const statusLabels: Record<string, string> = {
+async function sendDeliveryNotification(deviceToken, trackingNumber, status) {
+  const statusLabels = {
     ASSIGNED: 'Rider Assigned',
     PICKED_UP: 'Package Picked Up',
     OUT_FOR_DELIVERY: 'Out for Delivery',
@@ -109,3 +64,5 @@ export async function sendDeliveryNotification(
     { trackingNumber, status, type: 'delivery_update' },
   )
 }
+
+module.exports = { sendToDevice, sendToMultipleDevices, sendDeliveryNotification }
