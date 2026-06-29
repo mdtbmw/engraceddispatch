@@ -176,6 +176,23 @@ app.post('/api/notifications/send', firebaseAuthMiddleware, async (req, res) => 
   }
 })
 
+// ─── Auth — Setup admin (must be BEFORE admin auth middleware) ────────────
+app.post('/api/auth/setup-admin', firebaseAuthMiddleware, async (req, res) => {
+  try {
+    const user = await adminAuth.getUser(req.uid!)
+    if (user.customClaims?.admin) {
+      res.json({ success: true, data: { uid: req.uid, email: req.email }, message: 'Already admin' })
+      return
+    }
+    await adminAuth.setCustomUserClaims(req.uid!, { admin: true })
+    await createAuditLog('auth.setup-admin', req.email || 'unknown', { uid: req.uid })
+    res.json({ success: true, data: { uid: req.uid, email: req.email }, message: 'Admin privileges granted' })
+  } catch (err: any) {
+    console.error('POST /api/auth/setup-admin', err)
+    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
+  }
+})
+
 // ─── Admin Wallet — Fund customer wallet ──────────────────────────────────
 app.post('/api/wallet/admin-fund', adminAuthMiddleware, async (req, res) => {
   try {
@@ -425,23 +442,6 @@ async function autoAssignRider(): Promise<{ id: string; name: string; bikeNumber
 
   return null
 }
-
-// ─── Auth ────────────────────────────────────────────────────────────────
-app.post('/api/auth/setup-admin', async (req, res) => {
-  try {
-    const user = await adminAuth.getUser(req.uid!)
-    if (user.customClaims?.admin) {
-      res.json({ success: true, data: { uid: req.uid, email: req.email }, message: 'Already admin' })
-      return
-    }
-    await adminAuth.setCustomUserClaims(req.uid!, { admin: true })
-    await createAuditLog('auth.setup-admin', req.email || 'unknown', { uid: req.uid })
-    res.json({ success: true, data: { uid: req.uid, email: req.email }, message: 'Admin privileges granted' })
-  } catch (err: any) {
-    console.error('POST /api/auth/setup-admin', err)
-    res.status(500).json({ success: false, error: { message: err.message || 'Internal server error', code: 500 } })
-  }
-})
 
 // ─── Deliveries ──────────────────────────────────────────────────────────
 app.post('/api/deliveries', async (req, res) => {
