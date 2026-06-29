@@ -4,6 +4,7 @@
   "installCommand": "npm install && cd admin && npm install",
   "framework": "vite",
   "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
