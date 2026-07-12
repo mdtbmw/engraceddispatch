@@ -1207,44 +1207,115 @@ function AppCardsTab({ appContent, db, addLog, addToast }: AppCardsTabProps) {
   </div>;
 }
 
+function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl">
+    <div><p className="text-xs font-bold text-[#111] dark:text-white">{label}</p>{desc && <p className="text-[10px] text-black/40 dark:text-white/40">{desc}</p>}</div>
+    <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="sr-only peer" />
+      <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFC542]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#FFC542]"></div></label></div>;
+}
+
 function SettingsTab({ db, addLog }: SettingsTabProps) {
-  const [sForm, setSForm] = useState({ allowSignups: true, requireApproval: true, defaultRole: "customer", maintenanceMode: false, appVersion: "1.0.0", contactEmail: "", supportPhone: "", playStoreUrl: "", appStoreUrl: "" });
+  const [sForm, setSForm] = useState<any>({});
+  const [fcmKey, setFcmKey] = useState("");
+  const [showFcm, setShowFcm] = useState(false);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "system_config", "global_settings"), snap => { if (snap.exists()) setSForm(snap.data() as any); });
+    const unsub = onSnapshot(doc(db, "system_config", "global_settings"), snap => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setSForm(d);
+        if (d.fcmServerKey) setFcmKey(d.fcmServerKey);
+      }
+    });
     return unsub;
   }, []);
-  const saveSettings = async () => {
-    setSaving(true); await setDoc(doc(db, "system_config", "global_settings"), { ...sForm, updatedAt: Timestamp.now() }, { merge: true }); addLog("Update Settings", "General"); setSaving(false);
+  const upd = (k: string, v: any) => setSForm((f: any) => ({ ...f, [k]: v }));
+  const saveSettings = async (section?: string) => {
+    setSaving(true);
+    const payload = { ...sForm, updatedAt: Timestamp.now() };
+    if (fcmKey) payload.fcmServerKey = fcmKey;
+    await setDoc(doc(db, "system_config", "global_settings"), payload, { merge: true });
+    addLog("Update Settings", section || "General");
+    setSaving(false);
   };
   return <div className="tab-content space-y-6">
     <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Settings2 className="w-5 h-5 text-[#FFC542]" /> Settings</h1>
       <p className="text-xs text-black/40 dark:text-white/40 mt-1">System preferences</p></div>
-    <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-5">
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl"><div><p className="text-xs font-bold text-[#111] dark:text-white">Allow Signups</p><p className="text-[10px] text-black/40 dark:text-white/40">Enable new user registration</p></div>
-          <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={sForm.allowSignups} onChange={e => setSForm(f => ({ ...f, allowSignups: e.target.checked }))} className="sr-only peer" />
-            <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFC542]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#FFC542]"></div></label></div>
-        <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl"><div><p className="text-xs font-bold text-[#111] dark:text-white">Require Approval</p><p className="text-[10px] text-black/40 dark:text-white/40">Admin must approve new accounts</p></div>
-          <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={sForm.requireApproval} onChange={e => setSForm(f => ({ ...f, requireApproval: e.target.checked }))} className="sr-only peer" />
-            <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFC542]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#FFC542]"></div></label></div>
-        <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl"><div><p className="text-xs font-bold text-[#111] dark:text-white">Maintenance Mode</p><p className="text-[10px] text-black/40 dark:text-white/40">Disable app access for users</p></div>
-          <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={sForm.maintenanceMode} onChange={e => setSForm(f => ({ ...f, maintenanceMode: e.target.checked }))} className="sr-only peer" />
-            <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFC542]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-500"></div></label></div>
+
+    {/* Section 1 — System Controls */}
+    <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Shield className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">System Controls</span></div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Toggle label="Allow Signups" desc="Enable new user registration" checked={!!sForm.allowSignups} onChange={v => upd("allowSignups", v)} />
+        <Toggle label="Require Approval" desc="Admin must approve new accounts" checked={!!sForm.requireApproval} onChange={v => upd("requireApproval", v)} />
+        <Toggle label="Maintenance Mode" desc="Disable app access for users" checked={!!sForm.maintenanceMode} onChange={v => upd("maintenanceMode", v)} />
         <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl"><div><p className="text-xs font-bold text-[#111] dark:text-white">Default Role</p></div>
-          <select value={sForm.defaultRole} onChange={e => setSForm(f => ({ ...f, defaultRole: e.target.value }))} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-1.5 text-xs text-[#111] dark:text-white"><option value="customer">Customer</option><option value="rider">Rider</option><option value="admin">Admin</option></select></div>
-        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP VERSION</label>
-          <input value={sForm.appVersion} onChange={e => setSForm(f => ({ ...f, appVersion: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CONTACT EMAIL</label>
-          <input value={sForm.contactEmail} onChange={e => setSForm(f => ({ ...f, contactEmail: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SUPPORT PHONE</label>
-          <input value={sForm.supportPhone} onChange={e => setSForm(f => ({ ...f, supportPhone: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">PLAY STORE URL</label>
-          <input value={sForm.playStoreUrl} onChange={e => setSForm(f => ({ ...f, playStoreUrl: e.target.value }))} placeholder="https://play.google.com/store/apps/details?id=..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP STORE URL</label>
-          <input value={sForm.appStoreUrl} onChange={e => setSForm(f => ({ ...f, appStoreUrl: e.target.value }))} placeholder="https://apps.apple.com/app/id..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <select value={sForm.defaultRole || "customer"} onChange={e => upd("defaultRole", e.target.value)} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-1.5 text-xs text-[#111] dark:text-white"><option value="customer">Customer</option><option value="rider">Rider</option><option value="admin">Admin</option></select></div>
       </div>
-      <div className="flex justify-end pt-2 border-t border-black/10 dark:border-white/10"><SaveBtn onClick={saveSettings} loading={saving} /></div>
+      <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("System Controls")} loading={saving} /></div>
+    </div>
+
+    {/* Section 2 — Feature Toggles */}
+    <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Zap className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Feature Toggles</span></div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Toggle label="Points & Loyalty" desc="Bronze/Silver/Gold/Platinum tier system" checked={!!sForm.pointsAndLoyalty} onChange={v => upd("pointsAndLoyalty", v)} />
+        <Toggle label="Driver Tips" desc="Customers can add tips on delivery" checked={!!sForm.driverTipsEnabled} onChange={v => upd("driverTipsEnabled", v)} />
+        <Toggle label="Referral System" desc="Referral rewards and invite codes" checked={!!sForm.referralEnabled} onChange={v => upd("referralEnabled", v)} />
+        <Toggle label="Dynamic Pricing" desc="Surge pricing based on demand" checked={!!sForm.dynamicPricing} onChange={v => upd("dynamicPricing", v)} />
+      </div>
+      <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Feature Toggles")} loading={saving} /></div>
+    </div>
+
+    {/* Section 3 — Pricing */}
+    <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><DollarSign className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Pricing</span></div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">BASE FARE (₦)</label>
+          <input type="number" value={sForm.baseFare ?? ""} onChange={e => upd("baseFare", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">PER KG RATE (₦)</label>
+          <input type="number" step="0.1" value={sForm.perKgRate ?? ""} onChange={e => upd("perKgRate", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">EXPRESS SURCHARGE (₦)</label>
+          <input type="number" value={sForm.expressSurcharge ?? ""} onChange={e => upd("expressSurcharge", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SURGE MULTIPLIER (×)</label>
+          <input type="number" step="0.1" min="1" value={sForm.surgeMultiplier ?? ""} onChange={e => upd("surgeMultiplier", parseFloat(e.target.value) || 1)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+      </div>
+      <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Pricing")} loading={saving} /></div>
+    </div>
+
+    {/* Section 4 — Branding & Communication */}
+    <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Globe className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Branding & Communication</span></div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP NAME</label>
+          <input value={sForm.appName ?? "Engraced Dispatch"} onChange={e => upd("appName", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP SLOGAN</label>
+          <input value={sForm.appSlogan ?? ""} onChange={e => upd("appSlogan", e.target.value)} placeholder="Premium Logistics & Dispatch" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP VERSION</label>
+          <input value={sForm.appVersion ?? "1.0.0"} onChange={e => upd("appVersion", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CONTACT EMAIL</label>
+          <input value={sForm.contactEmail ?? ""} onChange={e => upd("contactEmail", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SUPPORT PHONE</label>
+          <input value={sForm.supportPhone ?? ""} onChange={e => upd("supportPhone", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div className="relative"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">FCM SERVER KEY</label>
+          <div className="relative"><input type={showFcm ? "text" : "password"} value={fcmKey} onChange={e => setFcmKey(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 pr-8 text-xs text-[#111] dark:text-white" placeholder="AAA..."/>
+            <button onClick={() => setShowFcm(!showFcm)} className="absolute right-2 top-1/2 -translate-y-1/2 text-black/30 dark:text-white/30 hover:text-black/60 dark:hover:text-white/60"><Eye size={14} /></button></div></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">PLAY STORE URL</label>
+          <input value={sForm.playStoreUrl ?? ""} onChange={e => upd("playStoreUrl", e.target.value)} placeholder="https://play.google.com/store/apps/details?id=..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP STORE URL</label>
+          <input value={sForm.appStoreUrl ?? ""} onChange={e => upd("appStoreUrl", e.target.value)} placeholder="https://apps.apple.com/app/id..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+      </div>
+      <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Branding")} loading={saving} /></div>
+    </div>
+
+    {/* Section 5 — Master Overrides */}
+    <div className="bg-white dark:bg-[#1a1a1a] border border-2 border-[#FFC542]/30 rounded-3xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><AlertTriangle className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Master System Overrides</span></div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Toggle label="Broadcast Surge Pricing" desc="Push surge multiplier to all active pricing" checked={!!sForm.broadcastSurge} onChange={v => upd("broadcastSurge", v)} />
+        <Toggle label="Fleet Sync" desc="Force synchronization across all drivers" checked={!!sForm.fleetSync} onChange={v => upd("fleetSync", v)} />
+      </div>
+      <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Master Overrides")} loading={saving} /></div>
     </div>
   </div>;
 }
