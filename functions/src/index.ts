@@ -194,6 +194,58 @@ export const onRiderDocumentChanged = functions.firestore
   });
 
 /**
+ * Cloud Function triggered when a document is created in the root 'notifications' collection.
+ * Fans out the notification to every active user's 'users/{uid}/notifications/' subcollection.
+ */
+export const onNotificationCreated = functions.firestore
+  .document('notifications/{notificationId}')
+  .onCreate(async (snap, context) => {
+    const notificationId = context.params.notificationId;
+    const data = snap.data();
+    const { title, description } = data;
+
+    console.log(`[Notification Fan-out] New notification: ${notificationId} — ${title}`);
+
+    try {
+      const usersSnapshot = await admin.firestore().collection('users')
+        .where('isDeleted', '==', false)
+        .get();
+
+      const batchSize = 500;
+      let batch = admin.firestore().batch();
+      let count = 0;
+
+      usersSnapshot.forEach((userDoc) => {
+        const notifRef = admin.firestore()
+          .collection('users').doc(userDoc.id)
+          .collection('notifications').doc();
+        batch.set(notifRef, {
+          title,
+          description,
+          time: 'Just now',
+          read: false,
+          adminNotifId: notificationId,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          timestamp: Date.now(),
+        });
+        count++;
+        if (count % batchSize === 0) {
+          batch.commit();
+          batch = admin.firestore().batch();
+        }
+      });
+
+      if (count % batchSize !== 0) {
+        await batch.commit();
+      }
+
+      console.log(`[Notification Fan-out] Fanned out to ${count} users successfully.`);
+    } catch (error) {
+      console.error('[Notification Fan-out Error]', error);
+    }
+  });
+
+/**
  * Cloud Function triggered when a document in the sub-collection 'users/{userId}/riders/{riderId}' is written.
  * Automatically updates the parent/root user's role to 'rider'.
  */

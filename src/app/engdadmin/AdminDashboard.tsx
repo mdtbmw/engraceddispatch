@@ -551,12 +551,23 @@ function AdminDashboardPage() {
 
   const createNotification = useCallback(async (title: string, description: string) => {
     try {
-      await addDoc(collection(db, "notifications"), {
+      const notifRef = await addDoc(collection(db, "notifications"), {
         title, description, time: "Just now", read: false,
         createdAt: Timestamp.now(), timestamp: Date.now(),
       });
+      // Fan-out to every active user's subcollection
+      const active = users.filter(u => !u.isDeleted);
+      for (let i = 0; i < active.length; i += 500) {
+        const batch = writeBatch(db);
+        const chunk = active.slice(i, i + 500);
+        chunk.forEach(u => {
+          const ref = doc(collection(db, "users", u.uid, "notifications"));
+          batch.set(ref, { title, description, time: "Just now", read: false, adminNotifId: notifRef.id, createdAt: Timestamp.now(), timestamp: Date.now(), });
+        });
+        await batch.commit();
+      }
     } catch {}
-  }, []);
+  }, [users]);
 
   const markNotifRead = useCallback(async (id: string) => {
     try { await updateDoc(doc(db, "notifications", id), { read: true }); } catch {}
