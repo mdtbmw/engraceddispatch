@@ -1,0 +1,482 @@
+
+  function UsersTab() {
+    const [search, setSearch] = useState("");
+    const [editUser, setEditUser] = useState<UserProfile | null>(null);
+    const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+    const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "" });
+    const filtered = activeUsers.filter(u => { const q = (searchQuery || search).toLowerCase(); return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.phone.includes(q); });
+    const saveUser = async () => {
+      if (!editUser) return;
+      await updateDoc(doc(db, "users", editUser.id), { name: form.name || editUser.name, role: form.role || editUser.role, phone: form.phone || editUser.phone, bikeNumber: form.bikeNumber || editUser.bikeNumber, status: form.status || editUser.status, updatedAt: Timestamp.now() });
+      addLog("Update User", editUser.name + " -> " + (form.name || editUser.name)); setEditUser(null);
+    };
+    const deleteUser = async (id: string) => { await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() }); addLog("Delete User", "Soft-deleted " + id); setConfirmDelete(null); };
+    return <div className="tab-content space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#FFC542]" /> Users</h1>
+          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{activeUsers.length} total | {drivers.length} drivers | {customers.length} customers</p></div>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search users..." />
+      </div>
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
+            <tr><th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Name</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Email</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Role</th>
+              <th className="text-right font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Actions</th></tr>
+          </thead><tbody className="divide-y divide-black/5 dark:divide-white/10">
+            {filtered.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-black/40 dark:text-white/40">No users found.</td></tr>}
+            {filtered.map((u, i) => <tr key={u.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors animate-fade-in " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][i] || "")}>
+              <td className="p-3"><div className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#111] dark:text-white">{u.name.charAt(0).toUpperCase()}</div>
+                <div><p className="font-bold text-[#111] dark:text-white">{u.name}</p><span className="text-[10px] text-black/40 dark:text-white/40">{u.phone || ""}</span></div></div></td>
+              <td className="p-3 hidden md:table-cell"><span className="text-black/60 dark:text-white/60">{u.email}</span></td>
+              <td className="p-3 hidden lg:table-cell"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + rBadge(u.role)}>{u.role.toUpperCase()}</span></td>
+              <td className="p-3 text-right">
+                <button onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role, phone: u.phone, bikeNumber: u.bikeNumber || "", status: u.status }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => setConfirmDelete(u.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button></td>
+            </tr>)}
+          </tbody></table>
+        </div>
+      </div>
+      <ConfirmModal show={confirmDelete !== null} title="Delete User" message="Soft-delete this user?" confirmLabel="Delete" onConfirm={() => deleteUser(confirmDelete!)} onCancel={() => setConfirmDelete(null)} />
+      {editUser && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-[#FFC542]" /> Edit User</h3>
+          <div className="space-y-3">
+            {["name","role","phone","bikeNumber","status"].map(k => <div key={k}><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{k.replace(/([A-Z])/g, ' $1').trim()}</label>
+              <input value={form[k as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>)}
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button onClick={() => setEditUser(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+            <SaveBtn onClick={saveUser} label="Update User" />
+          </div>
+        </div>
+      </div>}
+    </div>;
+  }
+
+  function ShipmentsTab() {
+    const [search, setSearch] = useState("");
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [bulkStatus, setBulkStatus] = useState("");
+    const filtered = deliveries.filter(d => { const q = (searchQuery || search).toLowerCase(); return d.receiverName.toLowerCase().includes(q) || d.senderName.toLowerCase().includes(q) || d.id.includes(q) || (d.itemName && d.itemName.toLowerCase().includes(q)); });
+    const updateStatus = async (id: string, s: string) => { await updateDoc(doc(db, "deliveries", id), { status: s, updatedAt: Timestamp.now() }); addLog("Status", idShort(id) + " -> " + s); };
+    const bulkUpdate = async () => {
+      if (!bulkStatus || selected.size === 0) return;
+      const batch = writeBatch(db); selected.forEach(id => batch.update(doc(db, "deliveries", id), { status: bulkStatus, updatedAt: Timestamp.now() })); await batch.commit();
+      addLog("Bulk", selected.size + " deliveries -> " + bulkStatus); setBulkStatus(""); setSelected(new Set());
+    };
+    return <div className="tab-content space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Package className="w-5 h-5 text-[#FFC542]" /> Shipments</h1>
+          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{deliveries.length} total | {pendingDeliveries.length} pending | {delivered.length} delivered</p></div>
+        <div className="flex items-center gap-3 flex-wrap"><SearchInput value={search} onChange={setSearch} placeholder="Search..." />
+          {selected.size > 0 && <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-black/40 dark:text-white/40">{selected.size} selected</span>
+            <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white">
+              <option value="">Bulk...</option>
+              <option value="ASSIGNED">Assign</option><option value="TRANSIT">Transit</option><option value="OUT_FOR_DELIVERY">Out for delivery</option><option value="DELIVERED">Deliver</option><option value="CANCELLED">Cancel</option>
+            </select>
+            <SaveBtn onClick={bulkUpdate} label="Apply" />
+            <button onClick={() => setSelected(new Set())} className="text-[10px] text-black/40 dark:text-white/40 hover:text-red-500 font-semibold">Clear</button>
+          </div>}
+        </div>
+      </div>
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
+            <tr><th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 w-8"><input type="checkbox" onChange={e => setSelected(e.target.checked ? new Set(filtered.map(d => d.id)) : new Set())} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /></th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Item</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Receiver</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Status</th>
+              <th className="text-right font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Price</th></tr>
+          </thead><tbody className="divide-y divide-black/5 dark:divide-white/10">
+            {filtered.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-black/40 dark:text-white/40">No shipments.</td></tr>}
+            {filtered.map((d, i) => <tr key={d.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors animate-fade-in " + (selected.has(d.id) ? "bg-[#FFC542]/10" : "") + " " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][i] || "")}>
+              <td className="p-3"><input type="checkbox" checked={selected.has(d.id)} onChange={() => { const s = new Set(selected); s.has(d.id) ? s.delete(d.id) : s.add(d.id); setSelected(s); }} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /></td>
+              <td className="p-3"><p className="font-bold text-[#111] dark:text-white">{d.itemName || "Parcel"}</p><p className="text-[10px] text-black/40 dark:text-white/40">#{idShort(d.id)}</p></td>
+              <td className="p-3 hidden md:table-cell"><span className="text-black/60 dark:text-white/60">{d.receiverName}</span></td>
+              <td className="p-3">
+                <select value={d.status} onChange={e => updateStatus(d.id, e.target.value)} className={"text-[10px] font-bold px-1.5 py-0.5 rounded-full border-0 " + sStyle(d.status)}>
+                  <option value="PENDING">PENDING</option><option value="ASSIGNED">ASSIGNED</option><option value="TRANSIT">TRANSIT</option>
+                  <option value="OUT_FOR_DELIVERY">OUT FOR DELIVERY</option><option value="DELIVERED">DELIVERED</option><option value="CANCELLED">CANCELLED</option>
+                </select></td>
+              <td className="p-3 text-right"><span className="font-bold text-[#111] dark:text-white">{fmt(d.price || 0)}</span>
+                {d.tipAmount > 0 && <p className="text-[10px] text-green-600 dark:text-green-400">+{fmt(d.tipAmount)} tip</p>}</td>
+            </tr>)}
+          </tbody></table>
+        </div>
+      </div>
+    </div>;
+  }
+
+  function BannersTab() {
+    const [editBanner, setEditBanner] = useState<Banner | null>(null);
+    const [bForm, setBForm] = useState({ title: "", subtitle: "", imageUrl: "", interval: 5, order: 0, active: true });
+    const [saving, setSaving] = useState(false);
+    const [activeIdx, setActiveIdx] = useState(0);
+    const saveBanner = async (b?: Banner) => {
+      setSaving(true);
+      const data: any = { ...bForm, updatedAt: Timestamp.now() };
+      try {
+        if (b) { await updateDoc(doc(db, "banners", b.id), data); addLog("Update Banner", bForm.title); addToast("success", "Banner updated"); createNotification("Banner Updated", bForm.title); }
+        else { await addDoc(collection(db, "banners"), data); addLog("Create Banner", bForm.title); addToast("success", "Banner created"); createNotification("Banner Created", bForm.title); }
+      } catch (e: any) { addToast("error", e.message); }
+      setSaving(false); setEditBanner(null);
+    };
+    const deleteBanner = async (id: string) => { try { await deleteDoc(doc(db, "banners", id)); addLog("Delete Banner", id); addToast("success", "Banner deleted"); createNotification("Banner Deleted", "Slide removed"); } catch (e: any) { addToast("error", e.message); } };
+    return <div className="tab-content space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-5 h-5 text-[#FFC542]" /> Hero Slides</h1>
+          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{banners.length} slides</p></div>
+        <button onClick={() => { setEditBanner({ id: "", title: "", subtitle: "", imageUrl: "", interval: 5, order: banners.length, active: true }); setBForm({ title: "", subtitle: "", imageUrl: "", interval: 5, order: banners.length, active: true }); }}
+          className="px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Slide</button>
+      </div>
+      <div className="relative w-full h-40 lg:h-56 rounded-3xl overflow-hidden bg-gray-200 dark:bg-gray-800 shadow-sm">
+        {banners.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-black/40 dark:text-white/40 text-xs font-bold">No slides yet.</div>}
+        {banners.length > 0 && <>
+          <div className="absolute inset-0 transition-all duration-500" style={{ backgroundImage: "url(" + banners[activeIdx]?.imageUrl + ")", backgroundSize: "cover", backgroundPosition: "center" }} />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 p-4 lg:p-6">
+            <span className="inline-block bg-[#FFC542] text-[#111] text-[10px] font-black px-2 py-0.5 rounded-sm mb-2">ENGRACED</span>
+            <h2 className="text-white font-black text-sm lg:text-lg leading-tight drop-shadow-lg">{banners[activeIdx]?.title}</h2>
+            <p className="text-white/80 text-[10px] lg:text-xs mt-1 line-clamp-1">{banners[activeIdx]?.subtitle}</p>
+          </div>
+          <div className="absolute top-3 right-3 flex gap-1">
+            {banners.map((_, i) => <button key={i} onClick={() => setActiveIdx(i)} className={"w-2 h-2 rounded-full transition-all " + (i === activeIdx ? "bg-[#FFC542] w-4" : "bg-white/50 hover:bg-white/80")} />)}
+          </div>
+        </>}
+      </div>
+      <div className="grid gap-3">
+        {banners.map((b, i) => <div key={b.id} className={"animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-300 flex items-center gap-4 " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5"][i] || "")}>
+          <div className="w-20 h-14 rounded-xl bg-cover bg-center shrink-0 border border-black/10 dark:border-white/10" style={{ backgroundImage: "url(" + b.imageUrl + ")" }} />
+          <div className="flex-1 min-w-0"><p className="text-xs font-bold text-[#111] dark:text-white truncate">{b.title || "Untitled"}</p>
+            <p className="text-[10px] text-black/40 dark:text-white/40 truncate">{b.subtitle}</p>
+            <span className="text-[10px] text-black/40 dark:text-white/40">Order: {b.order} | Interval: {b.interval}s | {b.active ? "Active" : "Inactive"}</span></div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={() => { setEditBanner(b); setBForm({ title: b.title, subtitle: b.subtitle, imageUrl: b.imageUrl, interval: b.interval, order: b.order, active: b.active }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
+            <button onClick={() => deleteBanner(b.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>
+          </div>
+        </div>)}
+      </div>
+      {editBanner && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditBanner(null)}>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#FFC542]" /> {editBanner.id ? "Edit" : "New"} Slide</h3>
+          <div className="relative w-full h-32 rounded-2xl overflow-hidden bg-gray-200 dark:bg-gray-800">
+            {bForm.imageUrl && <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url(" + bForm.imageUrl + ")" }} />}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+            <div className="absolute bottom-2 left-3">
+              <span className="inline-block bg-[#FFC542] text-[#111] text-[8px] font-black px-1.5 py-0.5 rounded-sm mb-1">ENGRACED</span>
+              <p className="text-white font-black text-xs drop-shadow-lg">{bForm.title || "Slide Title"}</p>
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 30)</label>
+              <input value={bForm.title} maxLength={30} onChange={e => setBForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SUBTITLE (max 80)</label>
+              <input value={bForm.subtitle} maxLength={80} onChange={e => setBForm(f => ({ ...f, subtitle: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">IMAGE URL</label>
+              <input value={bForm.imageUrl} onChange={e => setBForm(f => ({ ...f, imageUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ORDER</label>
+              <input type="number" value={bForm.order} onChange={e => setBForm(f => ({ ...f, order: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">INTERVAL (sec)</label>
+              <input type="number" value={bForm.interval} onChange={e => setBForm(f => ({ ...f, interval: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={bForm.active} onChange={e => setBForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button onClick={() => setEditBanner(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+            <SaveBtn onClick={() => saveBanner(editBanner.id ? editBanner : undefined)} loading={saving} />
+          </div>
+        </div>
+      </div>}
+    </div>;
+  }
+
+  function ReferralsTab() {
+    const [search, setSearch] = useState("");
+    const filtered = referrals.filter(r => { const q = (searchQuery || search).toLowerCase(); return r.referrerName.toLowerCase().includes(q) || r.refereeName.toLowerCase().includes(q); });
+    return <div className="tab-content space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Gift className="w-5 h-5 text-[#FFC542]" /> Referrals</h1>
+          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{referrals.length} total | {completedReferrals.length} completed | {fmt(referrals.reduce((s, r) => s + r.rewardAmount, 0))} total rewards</p></div>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search..." />
+      </div>
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
+            <tr><th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Referrer</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Referee</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Reward</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Status</th></tr>
+          </thead><tbody className="divide-y divide-black/5 dark:divide-white/10">
+            {filtered.map(r => <tr key={r.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+              <td className="p-3"><p className="font-bold text-[#111] dark:text-white">{r.referrerName}</p><span className="text-[10px] text-black/40 dark:text-white/40">{r.referrerEmail}</span></td>
+              <td className="p-3 hidden md:table-cell"><p className="font-bold text-[#111] dark:text-white">{r.refereeName}</p><span className="text-[10px] text-black/40 dark:text-white/40">{r.refereeEmail}</span></td>
+              <td className="p-3 hidden lg:table-cell"><span className="font-bold text-[#111] dark:text-white">{fmt(r.rewardAmount)}</span></td>
+              <td className="p-3"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (r.status === "completed" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300")}>{r.status.toUpperCase()}</span></td>
+            </tr>)}
+          </tbody></table>
+        </div>
+      </div>
+    </div>;
+  }
+
+  function PromotionsTab() {
+    const [editPromo, setEditPromo] = useState<Promotion | null>(null);
+    const [pForm, setPForm] = useState({ title: "", description: "", discountType: "percentage", discountValue: 0, discountDisplay: "", code: "", usageLimit: 0, minOrderAmount: 0, maxDiscount: 0, active: true });
+    const [saving, setSaving] = useState(false);
+    const savePromo = async (p?: Promotion) => {
+      setSaving(true);
+      const data: any = { ...pForm, updatedAt: Timestamp.now() };
+      try {
+        if (p) { await updateDoc(doc(db, "promotions", p.id), data); addLog("Update Promo", pForm.title); addToast("success", "Promotion updated"); createNotification("Promo Updated", pForm.title); }
+        else { await addDoc(collection(db, "promotions"), data); addLog("Create Promo", pForm.title); addToast("success", "Promotion created"); createNotification("Promo Created", pForm.title); }
+      } catch (e: any) { addToast("error", e.message); }
+      setSaving(false); setEditPromo(null);
+    };
+    const deletePromo = async (id: string) => { try { await deleteDoc(doc(db, "promotions", id)); addLog("Delete Promo", id); addToast("success", "Promotion deleted"); createNotification("Promo Deleted", "Promotion removed"); } catch (e: any) { addToast("error", e.message); } };
+    return <div className="tab-content space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-5 h-5 text-[#FFC542]" /> Promotions</h1>
+          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{promotions.length} active</p></div>
+        <button onClick={() => { setEditPromo({ id: "", title: "", description: "", discountType: "percentage", discountValue: 0, discountDisplay: "", code: "", usageLimit: 0, usedCount: 0, minOrderAmount: 0, maxDiscount: 0, active: true }); setPForm({ title: "", description: "", discountType: "percentage", discountValue: 0, discountDisplay: "", code: "", usageLimit: 0, minOrderAmount: 0, maxDiscount: 0, active: true }); }}
+          className="px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Promo</button>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {promotions.length === 0 && <div className="sm:col-span-3 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-8 text-center"><p className="text-sm text-black/40 dark:text-white/40">No promotions yet.</p></div>}
+        {promotions.map((p, i) => {
+          const dd = p.discountDisplay || (p.discountType === "percentage" ? p.discountValue + "% OFF" : "\u20A6" + p.discountValue.toLocaleString() + " OFF");
+          return <div key={p.id} className={"animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300 group " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6"][i] || "")}>
+            <div className="relative h-32 bg-gradient-to-br from-[#FFC542]/20 to-white dark:to-[#222] p-4 flex items-end">
+              <div className="absolute top-3 right-3"><div className="relative"><div className="w-12 h-10 bg-[#FFC542]/80 rounded-md transform rotate-12" />
+                <div className="w-10 h-8 bg-[#FFC542] rounded-md absolute -top-1 -left-1 transform -rotate-6 border border-[#FFC542]/50" />
+                <div className="absolute -top-0.5 -left-0.5 text-[6px] font-black text-white px-1 bg-[#111] rounded-sm shadow-sm">ED</div></div></div>
+              <div className="relative z-10">
+                <div className="inline-block bg-[#111] dark:bg-white text-white dark:text-[#111] text-[10px] font-black px-2 py-0.5 rounded-sm mb-1.5 shadow-sm">{dd}</div>
+                <h3 className="text-xs font-black text-[#111] dark:text-white">{p.title}</h3>
+                <span className="inline-block mt-1 bg-[#FFC542]/20 text-[#111] dark:text-white text-[8px] font-bold px-1.5 py-0.5 rounded-sm border border-[#FFC542]/30">CODE: {p.code}</span>
+              </div>
+            </div>
+            <div className="p-3 space-y-1.5">
+              <p className="text-[10px] text-black/50 dark:text-white/50 line-clamp-2">{p.description}</p>
+              <div className="flex items-center justify-between pt-1">
+                <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (p.active ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400")}>{p.active ? "Active" : "Inactive"}</span>
+                <span className="text-[10px] text-black/40 dark:text-white/40">{p.usedCount}/{p.usageLimit} used</span>
+              </div>
+              <div className="flex items-center justify-end gap-1 pt-1 border-t border-black/10 dark:border-white/10">
+                <button onClick={() => { setEditPromo(p); setPForm({ title: p.title, description: p.description, discountType: p.discountType, discountValue: p.discountValue, discountDisplay: p.discountDisplay, code: p.code, usageLimit: p.usageLimit, minOrderAmount: p.minOrderAmount, maxDiscount: p.maxDiscount, active: p.active }); }} className="p-1.5 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg"><Edit3 className="w-3 h-3" /></button>
+                <button onClick={() => deletePromo(p.id)} className="p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 className="w-3 h-3" /></button>
+              </div>
+            </div>
+          </div>;
+        })}
+      </div>
+      {editPromo && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditPromo(null)}>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-4 h-4 text-[#FFC542]" /> {editPromo.id ? "Edit" : "New"} Promo</h3>
+          <div className="relative h-24 bg-gradient-to-br from-[#FFC542]/20 to-white dark:to-[#222] rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 p-3 flex items-end">
+            <div className="absolute top-2 right-2"><div className="relative"><div className="w-10 h-8 bg-[#FFC542]/80 rounded-md transform rotate-12" />
+              <div className="w-8 h-6 bg-[#FFC542] rounded-md absolute -top-1 -left-1 transform -rotate-6 border border-[#FFC542]/50" /></div></div>
+            <div><div className="inline-block bg-[#111] dark:bg-white text-white dark:text-[#111] text-[8px] font-black px-1.5 py-0.5 rounded-sm mb-1">{pForm.discountDisplay || (pForm.discountType === "percentage" ? pForm.discountValue + "% OFF" : "\u20A6" + pForm.discountValue.toLocaleString() + " OFF")}</div>
+              <p className="text-[10px] font-black text-[#111] dark:text-white">{pForm.title || "Promo Title"}</p>
+              {pForm.code && <span className="inline-block mt-0.5 bg-[#FFC542]/20 text-[#111] dark:text-white text-[7px] font-bold px-1 py-0.5 rounded-sm">CODE: {pForm.code}</span>}
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 25)</label>
+              <input value={pForm.title} maxLength={25} onChange={e => setPForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DESCRIPTION (max 60)</label>
+              <input value={pForm.description} maxLength={60} onChange={e => setPForm(f => ({ ...f, description: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DISCOUNT DISPLAY</label>
+              <input value={pForm.discountDisplay} maxLength={15} onChange={e => setPForm(f => ({ ...f, discountDisplay: e.target.value }))} placeholder="Auto-generated if empty" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TYPE</label>
+              <select value={pForm.discountType} onChange={e => setPForm(f => ({ ...f, discountType: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="percentage">Percentage</option><option value="fixed">Fixed</option></select></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">VALUE</label>
+              <input type="number" value={pForm.discountValue || ""} onChange={e => setPForm(f => ({ ...f, discountValue: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CODE (max 12)</label>
+              <input value={pForm.code} maxLength={12} onChange={e => setPForm(f => ({ ...f, code: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">USAGE LIMIT</label>
+              <input type="number" value={pForm.usageLimit || ""} onChange={e => setPForm(f => ({ ...f, usageLimit: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">MIN ORDER (\u20A6)</label>
+              <input type="number" value={pForm.minOrderAmount || ""} onChange={e => setPForm(f => ({ ...f, minOrderAmount: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">MAX DISCOUNT (\u20A6)</label>
+              <input type="number" value={pForm.maxDiscount || ""} onChange={e => setPForm(f => ({ ...f, maxDiscount: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={pForm.active} onChange={e => setPForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button onClick={() => setEditPromo(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+            <SaveBtn onClick={() => savePromo(editPromo.id ? editPromo : undefined)} loading={saving} />
+          </div>
+        </div>
+      </div>}
+    </div>;
+  }
+
+  function AppCardsTab() {
+    const [editCard, setEditCard] = useState<AppContent | null>(null);
+    const [cForm, setCForm] = useState({ key: "", title: "", description: "", imageUrl: "", ctaText: "", ctaLink: "", order: 0, active: true });
+    const [saving, setSaving] = useState(false);
+    const saveCard = async (c?: AppContent) => {
+      setSaving(true);
+      const data: any = { ...cForm, updatedAt: Timestamp.now() };
+      try {
+        if (c) { await updateDoc(doc(db, "appContent", c.id), data); addLog("Update Card", cForm.title); addToast("success", "Card updated"); createNotification("Card Updated", cForm.title); }
+        else { await addDoc(collection(db, "appContent"), data); addLog("Create Card", cForm.title); addToast("success", "Card created"); createNotification("Card Created", cForm.title); }
+      } catch (e: any) { addToast("error", e.message); }
+      setSaving(false); setEditCard(null);
+    };
+    const deleteCard = async (id: string) => { try { await deleteDoc(doc(db, "appContent", id)); addLog("Delete Card", id); addToast("success", "Card deleted"); createNotification("Card Deleted", "App card removed"); } catch (e: any) { addToast("error", e.message); } };
+    return <div className="tab-content space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-[#FFC542]" /> App Cards</h1>
+          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{appContent.length} cards</p></div>
+        <button onClick={() => { setEditCard({ id: "", key: "", title: "", description: "", imageUrl: "", ctaText: "", ctaLink: "", order: appContent.length, active: true }); setCForm({ key: "", title: "", description: "", imageUrl: "", ctaText: "", ctaLink: "", order: appContent.length, active: true }); }}
+          className="px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Card</button>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {appContent.length === 0 && <div className="sm:col-span-3 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-8 text-center"><p className="text-sm text-black/40 dark:text-white/40">No cards yet.</p></div>}
+        {appContent.map((c, i) => <div key={c.id} className={"animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300 group " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6"][i] || "")}>
+          <div className="relative h-36 overflow-hidden"><div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url(" + c.imageUrl + ")" }} />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+            <div className="absolute bottom-2 left-3 right-3"><span className="inline-block bg-[#FFC542] text-[#111] text-[8px] font-black px-1.5 py-0.5 rounded-sm mb-1">{c.key}</span>
+              <h3 className="text-white font-black text-xs drop-shadow-lg">{c.title}</h3></div>
+          </div>
+          <div className="p-3 space-y-1.5">
+            <p className="text-[10px] text-black/50 dark:text-white/50 line-clamp-2">{c.description}</p>
+            <div className="flex items-center justify-between pt-1 border-t border-black/10 dark:border-white/10">
+              <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (c.active ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400")}>{c.active ? "Active" : "Inactive"}</span>
+              <span className="text-[10px] text-black/40 dark:text-white/40">Order {c.order}</span>
+            </div>
+            <div className="flex items-center justify-end gap-1">
+              <button onClick={() => { setEditCard(c); setCForm({ key: c.key, title: c.title, description: c.description, imageUrl: c.imageUrl, ctaText: c.ctaText, ctaLink: c.ctaLink, order: c.order, active: c.active }); }} className="p-1.5 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg"><Edit3 className="w-3 h-3" /></button>
+              <button onClick={() => deleteCard(c.id)} className="p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 className="w-3 h-3" /></button>
+            </div>
+          </div>
+        </div>)}
+      </div>
+      {editCard && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditCard(null)}>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-4 h-4 text-[#FFC542]" /> {editCard.id ? "Edit" : "New"} Card</h3>
+          <div className="relative h-24 rounded-2xl overflow-hidden bg-gray-200 dark:bg-gray-800 border border-black/10 dark:border-white/10">
+            {cForm.imageUrl && <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url(" + cForm.imageUrl + ")" }} />}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+            <div className="absolute bottom-2 left-3"><span className="inline-block bg-[#FFC542] text-[#111] text-[7px] font-black px-1 py-0.5 rounded-sm">{cForm.key || "key"}</span>
+              <p className="text-white font-black text-[10px] drop-shadow-lg">{cForm.title || "Card Title"}</p></div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">KEY (max 20)</label>
+              <input value={cForm.key} maxLength={20} onChange={e => setCForm(f => ({ ...f, key: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ORDER</label>
+              <input type="number" value={cForm.order} onChange={e => setCForm(f => ({ ...f, order: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 30)</label>
+              <input value={cForm.title} maxLength={30} onChange={e => setCForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DESCRIPTION (max 80)</label>
+              <input value={cForm.description} maxLength={80} onChange={e => setCForm(f => ({ ...f, description: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">IMAGE URL</label>
+              <input value={cForm.imageUrl} onChange={e => setCForm(f => ({ ...f, imageUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CTA TEXT</label>
+              <input value={cForm.ctaText} onChange={e => setCForm(f => ({ ...f, ctaText: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CTA LINK</label>
+              <input value={cForm.ctaLink} onChange={e => setCForm(f => ({ ...f, ctaLink: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={cForm.active} onChange={e => setCForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button onClick={() => setEditCard(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+            <SaveBtn onClick={() => saveCard(editCard.id ? editCard : undefined)} loading={saving} />
+          </div>
+        </div>
+      </div>}
+    </div>;
+  }
+
+  function SettingsTab() {
+    const [sForm, setSForm] = useState({ allowSignups: true, requireApproval: true, defaultRole: "user", maintenanceMode: false, appVersion: "1.0.0", contactEmail: "", supportPhone: "" });
+    const [saving, setSaving] = useState(false);
+    useEffect(() => {
+      const unsub = onSnapshot(doc(db, "settings", "general"), snap => { if (snap.exists()) setSForm(snap.data() as any); });
+      return unsub;
+    }, []);
+    const saveSettings = async () => {
+      setSaving(true); await setDoc(doc(db, "settings", "general"), { ...sForm, updatedAt: Timestamp.now() }); addLog("Update Settings", "General"); setSaving(false);
+    };
+    return <div className="tab-content space-y-6">
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Settings2 className="w-5 h-5 text-[#FFC542]" /> Settings</h1>
+        <p className="text-xs text-black/40 dark:text-white/40 mt-1">System preferences</p></div>
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-5">
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl"><div><p className="text-xs font-bold text-[#111] dark:text-white">Allow Signups</p><p className="text-[10px] text-black/40 dark:text-white/40">Enable new user registration</p></div>
+            <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={sForm.allowSignups} onChange={e => setSForm(f => ({ ...f, allowSignups: e.target.checked }))} className="sr-only peer" />
+              <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFC542]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#FFC542]"></div></label></div>
+          <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl"><div><p className="text-xs font-bold text-[#111] dark:text-white">Require Approval</p><p className="text-[10px] text-black/40 dark:text-white/40">Admin must approve new accounts</p></div>
+            <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={sForm.requireApproval} onChange={e => setSForm(f => ({ ...f, requireApproval: e.target.checked }))} className="sr-only peer" />
+              <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFC542]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#FFC542]"></div></label></div>
+          <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl"><div><p className="text-xs font-bold text-[#111] dark:text-white">Maintenance Mode</p><p className="text-[10px] text-black/40 dark:text-white/40">Disable app access for users</p></div>
+            <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={sForm.maintenanceMode} onChange={e => setSForm(f => ({ ...f, maintenanceMode: e.target.checked }))} className="sr-only peer" />
+              <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFC542]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-500"></div></label></div>
+          <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl"><div><p className="text-xs font-bold text-[#111] dark:text-white">Default Role</p></div>
+            <select value={sForm.defaultRole} onChange={e => setSForm(f => ({ ...f, defaultRole: e.target.value }))} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-1.5 text-xs text-[#111] dark:text-white"><option value="user">User</option><option value="driver">Driver</option></select></div>
+          <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP VERSION</label>
+            <input value={sForm.appVersion} onChange={e => setSForm(f => ({ ...f, appVersion: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CONTACT EMAIL</label>
+            <input value={sForm.contactEmail} onChange={e => setSForm(f => ({ ...f, contactEmail: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SUPPORT PHONE</label>
+            <input value={sForm.supportPhone} onChange={e => setSForm(f => ({ ...f, supportPhone: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        </div>
+        <div className="flex justify-end pt-2 border-t border-black/10 dark:border-white/10"><SaveBtn onClick={saveSettings} loading={saving} /></div>
+      </div>
+    </div>;
+  }
+
+  function LogsTab() {
+    const [typeFilter, setTypeFilter] = useState("all");
+    const filtered = typeFilter === "all" ? logs : logs.filter(l => l.action.includes(typeFilter));
+    return <div className="tab-content space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#FFC542]" /> Audit Log</h1>
+          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{logs.length} entries</p></div>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="all">All Actions</option><option value="Create">Create</option><option value="Update">Update</option><option value="Delete">Delete</option><option value="Toggle">Toggle</option><option value="Login">Login</option></select>
+      </div>
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto max-h-[65vh] overflow-y-auto">
+          <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222] sticky top-0">
+            <tr><th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Action</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Detail</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Admin</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Date</th></tr>
+          </thead><tbody className="divide-y divide-black/5 dark:divide-white/10">
+            {filtered.map(l => <tr key={l.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+              <td className="p-3"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (l.action.startsWith("Create") ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : l.action.startsWith("Delete") ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : l.action.startsWith("Update") ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300")}>{l.action}</span></td>
+              <td className="p-3 hidden md:table-cell"><span className="text-[#111] dark:text-white font-semibold">{l.details}</span></td>
+              <td className="p-3 hidden lg:table-cell"><span className="text-black/60 dark:text-white/60">{l.admin}</span></td>
+              <td className="p-3"><span className="text-black/40 dark:text-white/40 text-[10px]">{new Date(l.timestamp).toLocaleDateString()}</span></td>
+            </tr>)}
+          </tbody></table>
+        </div>
+      </div>
+    </div>;
+  }
+
+  return <div className="flex h-screen bg-[#111] overflow-hidden">
+    <ToastContainer toasts={toasts} />
+    {mobileSidebar && <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setMobileSidebar(false)} />}
+    <Sidebar />
+    <main className="flex-1 flex flex-col bg-white dark:bg-[#050505] rounded-3xl my-3 mr-3 overflow-hidden">
+      <Header />
+      <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 pb-10 pt-6">
+        {tab === "dashboard" && <DashboardTab />}
+        {tab === "users" && <UsersTab />}
+        {tab === "shipments" && <ShipmentsTab />}
+        {tab === "banners" && <BannersTab />}
+        {tab === "referrals" && <ReferralsTab />}
+        {tab === "promotions" && <PromotionsTab />}
+        {tab === "appcards" && <AppCardsTab />}
+        {tab === "settings" && <SettingsTab />}
+        {tab === "logs" && <LogsTab />}
+      </div>
+    </main>
+  </div>;
+}
+
+export default function AdminDashboardWrapper() {
+  return <AdminDashboardPage />;
+}

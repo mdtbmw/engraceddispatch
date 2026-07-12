@@ -1,0 +1,65 @@
+[
+  {
+    "name": "Google Maps",
+    "category": "Navigation",
+    "description": "Real-time GPS routing and traffic-aware dispatch for optimal delivery routes across Benin City.",
+    "link": "",
+    "icon": "/images/tools/google.png"
+  },
+  {
+    "name": "WhatsApp",
+    "category": "Messaging",
+    "description": "Instant order notifications and live tracking updates sent directly to your WhatsApp number.",
+    "link": "",
+    "icon": "/images/tools/mailchimp.png"
+  },
+  {
+    "name": "Opay",
+    "category": "Payments",
+    "description": "Seamless mobile payment integration allowing customers to pay via Opay transfer at checkout.",
+    "link": "",
+    "icon": "/images/tools/discord.png"
+  },
+  {
+    "name": "Palmpay",
+    "category": "Payments",
+    "description": "Fast and secure Palmpay payment processing for all delivery orders within the platform.",
+    "link": "",
+    "icon": "/images/tools/linkedIn.png"
+  },
+  {
+    "name": "SMS Gateway",
+    "category": "Notifications",
+    "description": "Automated SMS alerts for order confirmation, rider assignment, and delivery completion updates.",
+    "link": "",
+    "icon": "/images/tools/zapier.png"
+  },
+  {
+    "name": "GPS Tracking",
+    "category": "Logistics",
+    "description": "Live GPS tracking integration providing real-time location data for all active delivery riders.",
+    "link": "",
+    "icon": "/images/tools/slack.png"
+  },
+  {
+    "name": "Instagram",
+    "category": "Social Media",
+    "description": "Social media ordering integration allowing customers to request deliveries directly from Instagram.",
+    "link": "",
+    "icon": "/images/tools/fb.png"
+  },
+  {
+    "name": "Email",
+    "category": "Communication",
+    "description": "Automated email receipts, delivery summaries, and promotional offers sent to all registered users.",
+    "link": "",
+    "icon": "/images/tools/twitter.png"
+  },
+  {
+    "name": "Payment Terminal",
+    "category": "POS",
+    "description": "POS integration for cashless payments at pickup points, supporting bank cards and USSD transfers.",
+    "link": "",
+    "icon": "/images/tools/youtube.png"
+  }
+]

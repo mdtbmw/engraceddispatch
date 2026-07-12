@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Engraced Dispatch</string>
+    <string name="track_parcel_title">Track Shipment</string>
+    <string name="track_parcel_placeholder">Enter Tracking Number (e.g. 70D20800B)</string>
+    <string name="track_parcel_button">Track Parcel</string>
+    <string name="recent_searches_title">Recent Searches</string>
+    <string name="no_recent_searches">No recent searches yet.</string>
+    <string name="tracking_error_msg">Tracking number not found in local data store.</string>
+</resources>

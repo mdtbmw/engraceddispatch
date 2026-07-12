@@ -1,0 +1,42 @@
+[
+  {
+    "rating": 5,
+    "title": "Fast and reliable delivery!",
+    "description": "I needed an urgent document delivered to GRA and Dispatch got it there in under 30 minutes. Absolutely fantastic service.",
+    "author": {
+      "name": "Chioma Okafor",
+      "role": "Business Owner, Benin City",
+      "avatar": "/images/v1/t_user1.png"
+    }
+  },
+  {
+    "rating": 5,
+    "title": "Best courier in Benin City",
+    "description": "I run a small business and use them daily for my deliveries. Never had a single issue. Their tracking system is amazing.",
+    "author": {
+      "name": "Emeka Nwosu",
+      "role": "E-commerce Seller",
+      "avatar": "/images/v1/t_user2.png"
+    }
+  },
+  {
+    "rating": 5,
+    "title": "Affordable and trustworthy",
+    "description": "Sent a package to my mum in Uselu and it arrived same day. The rider was polite and professional. Highly recommend.",
+    "author": {
+      "name": "Amanda Edeh",
+      "role": "Customer",
+      "avatar": "/images/v1/t_user3.png"
+    }
+  },
+  {
+    "rating": 5,
+    "title": "Life saver for urgent deliveries",
+    "description": "When you need something delivered fast in Benin City, these are the people to call. Fair prices and excellent service every time.",
+    "author": {
+      "name": "David Adekunle",
+      "role": "Manager, Tech Hub",
+      "avatar": "/images/v1/t_user4.png"
+    }
+  }
+]

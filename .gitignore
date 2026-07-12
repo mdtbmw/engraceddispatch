@@ -1,0 +1,22 @@
+# Node / Next.js
+node_modules/
+.next/
+.env.local
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+*.iml
+.idea/
+
+# Build outputs
+/build
+mobile/app/build/
+mobile/.gradle/

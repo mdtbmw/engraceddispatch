@@ -1,0 +1,27 @@
+[
+    {
+      "category": "Delivery Tips",
+      "date": "June 18, 2024",
+      "title": "How to track your package in real time",
+      "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla consectetur libero a condimentum. Nulla vel ultricies mauris. Nulla id varius odio. Curabitur vel tortor sit amet ex viverra rhoncus a at enim. Phasellus suscipit eleifend mi, id lacinia mauris sollicitudin vel. Donec pretium justo sed sapien fringilla dictum. Nullam non lorem eget enim placerat scelerisque. Vivamus sit amet lectus auctor, viverra ex vel, sagittis neque. Duis vitae congue ex. Ut non consectetur velit. Donec id consequat eros. Integer ut mauris sapien. Nulla eu imperdiet libero.",
+      "image": "/images/blog/blog1.png",
+      "link": "single-blog.html"
+    },
+    {
+      "category": "Rider Stories",
+      "date": "June 18, 2024",
+      "title": "What makes a great delivery rider?",
+      "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla consectetur libero a condimentum. Nulla vel ultricies mauris. Nulla id varius odio. Curabitur vel tortor sit amet ex viverra rhoncus a at enim. Phasellus suscipit eleifend mi, id lacinia mauris sollicitudin vel. Donec pretium justo sed sapien fringilla dictum. Nullam non lorem eget enim placerat scelerisque. Vivamus sit amet lectus auctor, viverra ex vel, sagittis neque. Duis vitae congue ex. Ut non consectetur velit. Donec id consequat eros. Integer ut mauris sapien. Nulla eu imperdiet libero.",
+      "image": "/images/blog/blog2.png",
+      "link": "single-blog.html"
+    },
+    {
+      "category": "Logistics",
+      "date": "June 18, 2024",
+      "title": "Best delivery practices for businesses in Benin City",
+      "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla consectetur libero a condimentum. Nulla vel ultricies mauris. Nulla id varius odio. Curabitur vel tortor sit amet ex viverra rhoncus a at enim. Phasellus suscipit eleifend mi, id lacinia mauris sollicitudin vel. Donec pretium justo sed sapien fringilla dictum. Nullam non lorem eget enim placerat scelerisque. Vivamus sit amet lectus auctor, viverra ex vel, sagittis neque. Duis vitae congue ex. Ut non consectetur velit. Donec id consequat eros. Integer ut mauris sapien. Nulla eu imperdiet libero.",
+      "image": "/images/blog/blog3.png",
+      "link": "single-blog.html"
+    }
+  ]
+  

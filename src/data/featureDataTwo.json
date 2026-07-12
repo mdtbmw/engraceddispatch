@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Flexible shifts",
+    "description": "Choose morning, afternoon, or evening shifts that fit your schedule and lifestyle.",
+    "icon": "flexible-shifts"
+  },
+  {
+    "title": "Rider bonuses",
+    "description": "Earn extra with weekly performance bonuses and referral rewards for bringing new riders.",
+    "icon": "rider-bonuses"
+  },
+  {
+    "title": "Safety gear provided",
+    "description": "We provide helmets, reflective vests, and rain gear to keep you safe on every ride.",
+    "icon": "safety-gear"
+  },
+  {
+    "title": "Local routes only",
+    "description": "Deliver within Benin City zones you know best, no long-distance or intercity trips required.",
+    "icon": "local-routes"
+  },
+  {
+    "title": "Insurance coverage",
+    "description": "Every rider receives accident and health insurance cover for peace of mind while working.",
+    "icon": "insurance"
+  },
+  {
+    "title": "Real-time tracking",
+    "description": "Use our dispatch app with GPS navigation, live order updates, and instant customer support.",
+    "icon": "realtime-tracking-2"
+  }
+]

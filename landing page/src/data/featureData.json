@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Fast Bike Delivery",
+    "icon": "/images/v1/icon3.png",
+    "description": "Our motorcycle riders navigate Benin City traffic quickly, ensuring your package arrives in record time."
+  },
+  {
+    "title": "Real-Time Tracking",
+    "icon": "/images/v1/icon4.png",
+    "description": "Track your delivery live from pickup to drop-off with our GPS-enabled tracking system."
+  },
+  {
+    "title": "Secure Packaging",
+    "icon": "/images/v1/icon5.png",
+    "description": "Every item is professionally packed and handled with care to ensure it reaches its destination intact."
+  },
+  {
+    "title": "Affordable Rates",
+    "icon": "/images/v1/icon6.png",
+    "description": "Competitive pricing on all deliveries within Benin City, with no hidden charges or surprises."
+  },
+  {
+    "title": "Same-Day Service",
+    "icon": "/images/v1/icon7.png",
+    "description": "Order in the morning and we deliver before the end of the day. Perfect for urgent documents and packages."
+  },
+  {
+    "title": "Dedicated Support",
+    "icon": "/images/v1/icon8.png",
+    "description": "Our customer service team is available to assist you with bookings, inquiries, and delivery updates."
+  }
+]

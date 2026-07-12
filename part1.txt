@@ -1,0 +1,638 @@
+"use client";
+import React, { useState, useEffect, useCallback } from "react";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, writeBatch, addDoc, increment } from "firebase/firestore";
+import { Shield, Truck, Package, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun } from "lucide-react";
+const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "engraceddispatch-ffba4";
+const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyDa7J-JOfQIW4ZZo59jjEBiLUSRyvdK6uY", authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || `${projectId}.firebaseapp.com`, projectId, storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || `${projectId}.appspot.com`, messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_GCM_SENDER_ID || "858437923778", appId: process.env.NEXT_PUBLIC_FIREBASE_APPLICATION_ID || "1:858437923778:android:2d29558caf1a2f15955c5b" };
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+const auth = getAuth(app);
+const db = getFirestore(app);
+type TabId = "dashboard" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs";
+interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
+interface Delivery { id: string; status: string; receiverName: string; deliveryAddress: string; senderName: string; senderPhone: string; receiverPhone: string; price: number; riderId: string; courierName: string; courierPhone: string; itemName: string; pickupAddress: string; quantity: number; weight: number; dateString: string; tipAmount: number; userId: string; otpCode: string; }
+interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
+interface Referral { id: string; referrerId: string; referrerName: string; referrerEmail: string; refereeId: string; refereeName: string; refereeEmail: string; rewardAmount: number; status: string; }
+interface Promotion { id: string; title: string; description: string; discountType: string; discountValue: number; discountDisplay: string; minOrderAmount: number; maxDiscount: number; code: string; usageLimit: number; usedCount: number; active: boolean; }
+interface AuditEntry { id: string; time: string; action: string; details: string; admin: string; timestamp: number; }
+interface AppContent { id: string; key: string; title: string; description: string; imageUrl: string; ctaText: string; ctaLink: string; order: number; active: boolean; }
+interface Toast { id: number; type: "success" | "error" | "info"; message: string; }
+interface AppNotification { id: string; title: string; description: string; read: boolean; createdAt: Timestamp; type: string; }
+
+const NOTIF_CREATE = (t: string, d: string) => ({ title: t, description: d, read: false, createdAt: Timestamp.now(), type: "system" });
+
+function EdLogoSvg({ size = 36, className = "" }: { size?: number; className?: string }) {
+  const s = size;
+  return <svg width={s} height={Math.round(s * 1.625)} viewBox="0 0 15.39 25.2" className={className} aria-label="ED">
+    <path fill="#FFC542" d="M2.69 17.18c0.97,-0.14 4.71,-1.44 5.83,-1.66l0 0.83c-0.3,0.15 -0.95,0.28 -1.32,0.39 -0.44,0.13 -0.88,0.26 -1.32,0.39 -0.43,0.13 -0.9,0.25 -1.33,0.38 -0.56,0.17 -1,0.09 -0.81,0.73 0.42,-0.01 1.91,-0.52 2.39,-0.66 0.59,-0.18 1.83,-0.62 2.37,-0.68l-0.02 0.9 -4.7 1.34c0.02,0.16 0.17,0.34 0.24,0.48 0.41,-0.02 1.75,-0.49 2.22,-0.62 0.67,-0.19 1.61,-0.55 2.26,-0.65 -0.02,1.15 0.33,0.83 -1.99,1.48l-1.99 0.56 0.25 0.49c0.47,-0.05 1.9,-0.65 2.22,-0.58l-0 0.57c-0.03,0.01 -0.04,0.01 -0.05,0.02 -0.05,0.15 -1.47,0.32 -1.73,0.59 0.05,0.17 0.09,0.2 0.2,0.29 0.36,-0.05 1.3,-0.41 1.58,-0.36l-0 0.62c-0.32,0.18 -0.86,0.2 -1.17,0.36 0.03,0.18 0.12,0.27 0.2,0.39 0.32,-0.06 0.58,-0.22 0.95,-0.23l0.03 0.69 -0.54 0.15c0.04,0.16 1.12,1.69 1.31,1.82 0.19,-0.11 0.35,-0.45 0.47,-0.64 0.32,-0.48 1.19,-1.65 1.33,-2.08 -0.61,0.03 -1.57,0.48 -2.21,0.6 -0.01,-0.83 -0.15,-0.65 0.76,-0.9l1.68 -0.48c0.4,-0.1 0.44,-0.2 0.57,-0.51 -0.44,-0.02 -2.53,0.81 -2.99,0.75 -0.03,-0.24 -0.01,-1.62 0.06,-1.74 0.09,-0.13 0.03,-0.1 0.26,-0.16 0.11,-0.03 0.2,-0.05 0.32,-0.08l1.87 -0.53c0.28,-0.08 1.66,-0.42 1.8,-0.61 0.07,-0.1 0.23,-0.43 0.27,-0.55l-2.99 0.83 0.01 -0.93c0.61,-0.1 1.41,-0.39 2.01,-0.55 0.33,-0.09 0.64,-0.18 0.98,-0.28 0.44,-0.12 0.64,-0.1 0.69,-0.62 -0.79,0.16 -3.15,0.95 -3.66,0.99l-0.02 -1.79c0.01,-0.08 0.04,-0.45 0.1,-0.51 0.09,-0.1 3.72,-1.11 4.34,-1.28 0.52,-0.14 0.43,0.03 0.83,-1.07 0.31,-0.85 0.64,-2 0.81,-2.95 0.11,-0.57 0.51,-3.06 0.26,-3.48 -0.04,-0.03 -0.68,-0.04 -0.76,0.48 -0.19,1.23 -0.05,1.81 -0.76,3.14 -2.02,3.79 -7.24,4.58 -10.28,1.31 -2.83,-3.04 -2.02,-8.22 2.32,-10.07 2.48,-1.06 4.28,-0.09 4.55,-0.22 0.61,-0.67 -0.05,-0.8 -0.6,-0.95 -3.65,-1.03 -7.78,0.58 -9.23,4.17 -0.89,2.22 -0.57,4.54 -0.01,6.89 0.25,1.06 0.58,2.04 0.94,3.01 0.17,0.47 0.39,0.97 0.58,1.43 0.2,0.46 0.45,0.94 0.63,1.37z" />
+    <path fill="#FFC542" d="M11.26 5.05c0.03,0.05 0.02,0.02 0.06,0.05 0.07,0.06 0.12,0.12 0.17,0.2 0.06,0.12 0.08,0.28 0.04,0.42 -0.09,0.38 -0.4,0.42 -0.46,0.49l0.39 1.18c0.12,0.36 0.31,0.86 0.32,1.27 0.03,0.83 -0.56,1.58 -1.33,1.83 -0.29,0.1 -1.15,0.1 -1.48,0.05 -0.48,-0.06 -0.78,-0.32 -0.97,-0.62 -0.4,-0.66 -0.07,-1.53 0.64,-1.79 0.1,-0.04 0.22,-0.05 0.31,-0.08 -0.01,-0.06 -0.14,-0.27 -0.18,-0.34 -0.11,-0.19 -0.09,-0.2 -0.36,-0.19 -0.36,0 -0.72,0.01 -1.07,0.01 -0.56,0 -0.86,0.02 -1.24,-0.36 -0.39,-0.39 0.1,-0.31 -0.98,-0.31 -0.22,0 -0.51,-0.04 -0.64,0.09 -0.14,0.14 -0.12,0.4 0.01,0.54 0.09,0.1 0.29,0.23 0.42,0.32 -0.03,0.02 -0.39,0.16 -0.47,0.19 -0.79,0.39 -1.29,0.98 -1.65,1.76 -0.09,0.2 -0.33,0.82 -0.32,1.06 1.03,-0.01 2.08,-0 3.11,-0 0.52,-0 1.02,0.08 1.32,-0.23 0.79,-0.83 -0.5,-2.42 -2.11,-1.79 -0.53,0.21 -0.97,0.63 -1.21,1.12 -0.1,0.19 -0.15,0.36 -0.21,0.58l-0.31 0c0.03,-0.36 0.37,-0.94 0.53,-1.17 0.12,-0.17 0.27,-0.3 0.42,-0.43 0.49,-0.41 1.27,-0.66 1.95,-0.53 0.9,0.18 1.66,0.99 1.45,1.9 -0.1,0.43 -0.42,0.75 -0.86,0.84 -0.41,0.08 -1.21,0.04 -1.66,0.04 -0.57,0 -1.15,-0.01 -1.72,-0 0,0.51 0.15,0.93 0.45,1.29l0.23 0.22c0.04,0.03 0.05,0.02 0.07,0.07 -0.53,-0.01 0.12,1.42 -0.14,1.52 0.72,0.14 6.76,-1.17 7.79,-1.17 0.44,0 1.09,0.08 1.3,-0.01l-1.54 0.37c0.09,-0.11 1.07,-0.09 1.36,-0.84 0.19,-0.5 -0.59,1.23 -0.87,0.87 -0.58,0.01 2.06,-2.85 1.63,-2.62 -0.28,0.15 -0.46,0.29 -0.67,0.45 -0.08,0.06 -0.53,0.51 -0.55,0.58 -0.02,0.11 0.31,0.59 0.47,0.72l0.23 0.18c0,0 0.01,0.01 0.01,0.01 -1.18,-0.01 -2.96,0.85 -4.15,0.84 -1.05,-0.01 -2.35,0.43 -3.41,0.47 -0.07,0 0.5,-1.39 0.44,-1.39 0.31,-0.27 0.64,-0.54 0.71,-1.04l-0.8 0.01c-0.59,1 -1.73,0.41 -1.73,-0.28 0.72,-0.01 0.37,-0.04 0.62,0.2 0.06,0.06 0.15,0.1 0.26,0.11 0.27,0.01 0.34,-0.16 0.41,-0.31 0.43,-0.01 0.84,-0.02 1.27,-0.05 0.82,-0.06 1.78,-0.04 2.61,-0.04 0.42,0 0.93,0.03 1.34,-0.01 0.39,-0.04 0.68,-0.25 0.89,-0.42 0.32,-0.26 0.71,-1.12 0.96,-1.37 0.19,-0.18 0.32,-0.31 0.56,-0.45 0.16,-0.09 0.32,-0.13 0.47,-0.2 0.01,-0.3 0.01,-0.79 -0.01,-0.98 -0.03,-0.26 -0.03,-0.53 -0.06,-0.79 -0.05,-0.41 -0.11,-0.97 -0.35,-1.27 -0.21,-0.27 -0.67,-0.32 -1.07,-0.31 -0.07,0.56 0.05,1.11 0.12,1.64z" />
+    <path fill="#FFC542" d="M6.11 5.95c-0.01,0.19 -0.18,0.48 0.11,0.9 0.23,0.32 0.48,0.33 0.8,0.34 0.37,0 0.75,-0.01 1.12,-0.01 0.35,-0 0.82,-0.04 1.16,-0.01l0.48 2.36c0.08,-0.01 0.62,-0.25 0.67,-0.28 0.02,-0.15 -0.02,-0.52 -0.03,-0.69 -0.01,-0.23 -0.02,-0.46 -0.03,-0.69 -0.02,-0.36 -0,-1.05 -0.15,-1.32 -0.18,-0.32 -0.69,-0.31 -1.12,-0.35 -0.44,-0.04 -0.9,-0.1 -1.34,-0.13l0.27 -0.7c0.03,-0.09 0.04,-0.08 -0.01,-0.15 -0.09,-0.13 -0.21,-0.35 -0.29,-0.45 -0.06,0.01 -1.12,0.61 -1.3,0.72 -0.15,0.09 -0.41,-0.03 -0.59,-0.05l0.75 -1.89 0.31 0.07c-0.01,0.11 -0.25,0.67 -0.31,0.81 -0.1,0.24 -0.25,0.55 -0.33,0.79 0.11,-0.03 1.37,-0.77 1.55,-0.84 0.08,0.08 0.42,0.64 0.51,0.78 0.22,0.35 0.27,0.55 0.8,0.55l1.15 -0.01c0.03,-0.12 0.01,-0.19 0.06,-0.31 0.04,-0.1 0.09,-0.16 0.13,-0.25 -0.4,-0.05 -0.86,-0.12 -1.26,-0.19 -0.11,-0.02 -0.08,-0.03 -0.16,-0.21 -0.04,-0.09 -0.07,-0.17 -0.11,-0.25 -0.08,-0.17 -0.15,-0.35 -0.22,-0.52 -0.2,-0.46 -0.4,-1.23 -1.12,-1.02 -0.1,0.03 -0.18,0.07 -0.25,0.12 -0.08,0.05 -0.13,0.13 -0.21,0.17l-0.36 -0.1c0.05,-0.51 -0.31,-0.52 -0.76,-0.68 -0.19,-0.07 -0.36,-0.13 -0.55,-0.2 -0.37,-0.13 -0.83,-0.39 -1.11,-0.08 -0.1,0.11 -0.6,1.39 -0.66,1.57 -0.64,1.69 -0.96,1.44 1.28,2.23 0.75,0.27 0.54,-0.16 0.83,-0.08 0.1,0.03 0.2,0.05 0.3,0.08z" />
+    <path fill="#FFC542" d="M12.62 12.57c0.2,-0.22 0.89,-0.93 1.14,-1.1 0.81,-0.53 -0.43,-1.07 0.64,-1.1 -0.02,-0.53 0.95,-0.88 0.09,-1.19 -0.53,-0.19 -1.04,-0.1 -1.48,0.14 -1.48,0.82 -1.54,2.14 -0.4,3.25z" />
+    <path fill="#FFC542" d="M7.73 2.32c0.81,0.02 1.03,0.5 1.2,0.65 0.09,0.08 0.25,0.18 0.43,0.19 0.39,0.04 0.66,-0.22 0.8,-0.44 0.21,-0.35 0.18,-0.63 0.18,-1.08 -0.19,-0.01 -1.06,0.14 -1.18,0.21 -0.03,0.15 0.01,0.39 0.01,0.55 -0.25,-0.08 -0.52,-0.33 -0.37,-0.68 0.12,-0.28 0.44,-0.31 0.77,-0.36 0.33,-0.04 0.66,-0.08 1,-0.13 0.38,-0.05 0.68,-0.05 0.77,-0.35l-1.07 -0.01c-0.2,-0.24 -0.32,-0.45 -0.74,-0.6 -0.73,-0.27 -1.53,0.13 -1.77,0.81 -0.13,0.37 -0.09,0.81 -0.03,1.22z" />
+    <path fill="#FFC542" d="M3.67 13.45l0.13 0.03c1.16,0.07 2.85,0.17 3.91,0.17 0.66,-0 1.38,-0.04 2.03,-0.07 0.68,-0.03 1.35,-0.08 2.02,-0.11 -0.01,-0.01 0,-0 -0.04,-0.02l-0.44 -0.02c-0.16,-0 -0.33,-0 -0.5,-0.01l-3.06 -0.02c-1.35,0 -2.71,-0 -4.06,0.04z" />
+    <path fill="#FFC542" d="M9.83 9.81l0.11 0.51c0.14,-0.01 0.7,-0.28 0.81,-0.35 0.19,-0.12 0.48,-0.4 0.52,-0.62 -0.1,-0 -0.25,0.08 -0.36,0.12 -0.18,0.06 -0.26,0.03 -0.41,0.06 -0.05,0.01 -0.26,0.12 -0.33,0.15 -0.11,0.05 -0.23,0.09 -0.35,0.13z" />
+    <path fill="#FFFFFF" d="M4.49 2.57c0.14,0.09 1.42,0.53 1.64,0.59l0.11 -0.23c-0.22,-0.06 -1.53,-0.57 -1.64,-0.58l-0.1 0.21z" />
+    <path fill="#FFC542" d="M10.85 5.24c-0.43,0.11 -0.29,0.76 0.14,0.66 0.43,-0.1 0.28,-0.76 -0.14,-0.66z" />
+    <path fill="#FFFFFF" d="M12.26 5.84c0.04,-0.05 0.04,-0.13 0.04,-0.19 0.01,-0.08 0.01,-0.16 0.01,-0.24 0,-0.13 -0.01,-0.33 -0.05,-0.44 -0.07,0.08 -0.12,0.29 -0.12,0.42 -0,0.19 0.04,0.3 0.11,0.45z" />
+  </svg>;
+}
+
+function fmt(n: number): string { return "₦" + n.toLocaleString("en-US"); }
+function idShort(id: string): string { return id.length > 8 ? id.slice(-8) : id; }
+function rBadge(role: string): string {
+  switch (role) {
+    case "rider": return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+    case "admin": return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300";
+    case "super_admin": return "bg-[#FFC542]/20 text-[#111] dark:text-white";
+    default: return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+  }
+}
+function sStyle(s: string): string {
+  const m: Record<string, string> = {
+    PENDING: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+    ASSIGNED: "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+    TRANSIT: "bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+    OUT_FOR_DELIVERY: "bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300",
+    DELIVERED: "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+    CANCELLED: "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  };
+  return m[s] || "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+}
+
+function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
+  return <div className="animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300">
+    <div className="flex items-center justify-between"><span className="text-xs font-bold text-black/40 dark:text-white/40">{label}</span>{icon}</div>
+    <h2 className="text-3xl font-black text-[#111] dark:text-white mt-2">{value}</h2>
+    <p className="text-[10px] text-[#FFC542] font-bold mt-1">{sub}</p>
+  </div>;
+}
+function QuickBtn({ label, desc, onClick }: { label: string; desc: string; onClick: () => void }) {
+  return <button onClick={onClick} className="p-4 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 hover:border-[#FFC542]/50 hover:bg-[#FFC542]/10 rounded-2xl text-left transition-all">
+    <p className="text-xs font-bold text-[#FFC542]">{label}</p><p className="text-[10px] text-black/40 dark:text-white/40 mt-1">{desc}</p>
+  </button>;
+}
+function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
+  return <div className={"bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm " + (className || "")}>
+    <h3 className="text-xs font-bold text-[#FFC542] tracking-wider uppercase flex items-center gap-2">{title}</h3>
+    <div className="mt-4">{children}</div>
+  </div>;
+}
+function InlineEdit({ value, onSave, type = "text" }: { value: string; onSave: (v: string) => void; type?: string }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(value);
+  useEffect(() => setVal(value), [value]);
+  if (!editing) return <span onClick={() => setEditing(true)} className="cursor-pointer hover:bg-[#FFC542]/10 px-1.5 py-0.5 rounded-2xl group inline-flex items-center gap-1.5 -ml-1.5 transition-colors text-[#111] dark:text-white">{value || "—"} <Edit3 className="w-3 h-3 text-[#FFC542]/0 group-hover:text-[#FFC542]" /></span>;
+  return <input type={type} value={val} onChange={e => setVal(e.target.value)} onBlur={() => { onSave(val); setEditing(false); }} onKeyDown={e => { if (e.key === "Enter") { onSave(val); setEditing(false); } if (e.key === "Escape") { setVal(value); setEditing(false); }}} className="bg-white dark:bg-[#222] border border-[#FFC542]/50 rounded-xl px-2 py-1 text-sm text-[#111] dark:text-white w-full shadow-sm" autoFocus />;
+}
+function ConfirmModal({ show, title, message, confirmLabel, onConfirm, onCancel }: { show: boolean; title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void }) {
+  if (!show) return null;
+  return <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+      <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-red-500" /> {title}</h3>
+      <p className="text-sm text-black/60 dark:text-white/60">{message}</p>
+      <div className="flex items-center justify-end gap-3 pt-2">
+        <button onClick={onCancel} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Cancel</button>
+        <button onClick={onConfirm} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition-colors">{confirmLabel || "Confirm"}</button>
+      </div>
+    </div>
+  </div>;
+}
+function SearchInput({ value, onChange, placeholder = "Search..." }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return <div className="relative">
+    <Search className="absolute left-3 top-2.5 w-4 h-4 text-black/40 dark:text-white/40" />
+    <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+      className="pl-10 pr-4 py-2 bg-white dark:bg-[#222] border border-black/20 dark:border-white/20 rounded-xl text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40 focus:border-[#FFC542] w-full transition-all" />
+  </div>;
+}
+function SaveBtn({ onClick, label = "Save", loading = false, size = "sm" }: { onClick: () => void; label?: string; loading?: boolean; size?: "sm" | "md" }) {
+  const s = size === "md" ? "px-5 py-2.5 text-sm" : "px-3 py-1.5 text-[10px]";
+  return <button onClick={onClick} disabled={loading}
+    className={"inline-flex items-center gap-1.5 " + s + " bg-[#FFC542] hover:bg-[#FFC542]/80 disabled:bg-[#FFC542]/40 text-[#111] rounded-xl font-black shadow-sm hover:shadow-md transition-all"}>
+    {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} {label}
+  </button>;
+}
+
+function ToastContainer({ toasts }: { toasts: Toast[] }) {
+  if (toasts.length === 0) return null;
+  return <div className="fixed top-4 right-4 z-[60] flex flex-col gap-2 max-w-sm">
+    {toasts.map(t => (
+      <div key={t.id} className={"animate-slide-in px-4 py-3 rounded-3xl shadow-xl border text-xs font-bold flex items-center gap-2 " + (t.type === "success" ? "bg-green-50 dark:bg-green-900/40 border-green-200 dark:border-green-700 text-green-700 dark:text-green-300" : t.type === "error" ? "bg-red-50 dark:bg-red-900/40 border-red-200 dark:border-red-700 text-red-700 dark:text-red-300" : "bg-blue-50 dark:bg-blue-900/40 border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300")}>
+        {t.type === "success" ? <CheckCircle className="w-4 h-4 shrink-0" /> : t.type === "error" ? <AlertTriangle className="w-4 h-4 shrink-0" /> : <Bell className="w-4 h-4 shrink-0" />}
+        {t.message}
+      </div>
+    ))}
+  </div>;
+}
+
+function AdminDashboardPage() {
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [signingUp, setSigningUp] = useState(false);
+  const [email, setEmail] = useState("admin@engraced.com");
+  const [password, setPassword] = useState("");
+  const [authErr, setAuthErr] = useState("");
+  const [authOk, setAuthOk] = useState("");
+  const [tab, setTab] = useState<TabId>("dashboard");
+  const [sidebar, setSidebar] = useState(true);
+  const [mobileSidebar, setMobileSidebar] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dark, setDark] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  const addToast = useCallback((type: Toast["type"], message: string) => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("ed_dark");
+    if (saved !== null) {
+      const isDark = saved === "true";
+      setDark(isDark);
+      document.documentElement.classList.toggle("dark", isDark);
+    } else {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      setDark(prefersDark);
+      document.documentElement.classList.toggle("dark", prefersDark);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("ed_dark", String(dark));
+    document.documentElement.classList.toggle("dark", dark);
+  }, [dark]);
+
+  useEffect(() => {
+    const handler = () => { setShowNotifs(false); setShowUserMenu(false); };
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, []);
+
+  const toggleDark = () => setDark(d => !d);
+
+  const createNotification = useCallback(async (title: string, description: string) => {
+    try { await addDoc(collection(db, "notifications"), NOTIF_CREATE(title, description)); } catch {}
+  }, []);
+
+  const markNotifRead = useCallback(async (id: string) => {
+    try { await updateDoc(doc(db, "notifications", id), { read: true }); } catch {}
+  }, []);
+
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [banners, setBanners] = useState<Banner[]>([]);
+  const [referrals, setReferrals] = useState<Referral[]>([]);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [settings, setSettings] = useState<any>({
+    pointsSystemEnabled: true, tipSystemEnabled: true, pricingModeDynamic: false,
+    referralEnabled: true, referralReward: 500, minDeliveryForPayout: 1,
+    baseFare: 4500, perKgRate: 250, expressSurcharge: 1500, surgeMultiplier: 1.25,
+    dashboardSections: {} as Record<string, boolean>, appContent: {} as Record<string, any>,
+    appName: "ENGRACED DISPATCH", appSlogan: "PREMIUM LOGISTICS & DISPATCH", fcmServerKey: "",
+  });
+  const [appContent, setAppContent] = useState<AppContent[]>([]);
+  const [logs, setLogs] = useState<AuditEntry[]>([]);
+  const [connected, setConnected] = useState(false);
+  const [refreshT, setRefreshT] = useState("");
+
+  const addLog = useCallback((action: string, details: string) => {
+    setLogs((prev: AuditEntry[]) => [{ id: Date.now().toString(), time: "Just now", action, details, admin: currentUser?.email || "Admin", timestamp: Date.now() }, ...prev]);
+  }, [currentUser]);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (u) {
+        const isAdmin = (u.email || "").endsWith("@engraced.com") || (u.email || "").includes("admin");
+        if (isAdmin) { setCurrentUser(u); }
+        else {
+          try { const snap = await getDoc(doc(db, "users", u.uid)); const d = snap.data();
+            if (d?.role === "admin" || d?.role === "super_admin") { setCurrentUser(u); }
+            else { setAuthErr("Unauthorized"); signOut(auth); setCurrentUser(null); }
+          } catch { setCurrentUser(u); }
+        }
+      } else { setCurrentUser(null); }
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubs: (() => void)[] = [];
+    unsubs.push(onSnapshot(collection(db, "users"), snap => {
+      const list: UserProfile[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({
+        id: d.id, uid: x.uid || d.id, name: x.name || "", email: x.email || "", phone: x.phone || "",
+        role: x.role || "customer", status: x.status || "offline", isOnline: x.isOnline || false,
+        rating: x.rating || 0, deliveryCount: x.deliveryCount || 0, walletBalance: x.walletBalance || 0,
+        loyaltyPoints: x.loyaltyPoints || 0, photoUrl: x.photoUrl || "",
+        bikeNumber: x.bikeNumber || "", lat: x.lat || x.latitude, lng: x.lng || x.longitude,
+        isDeleted: x.isDeleted || false, updatedAt: x.updatedAt,
+      }); });
+      setUsers(list); setConnected(true); setRefreshT(new Date().toLocaleTimeString());
+    }, () => setConnected(false)));
+    unsubs.push(onSnapshot(collection(db, "deliveries"), snap => {
+      const list: Delivery[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({
+        id: d.id, status: x.status || "PENDING", receiverName: x.receiverName || "",
+        deliveryAddress: x.deliveryAddress || "", senderName: x.senderName || "",
+        senderPhone: x.senderPhone || "", receiverPhone: x.receiverPhone || "",
+        price: x.price || 0, riderId: x.riderId || "", courierName: x.courierName || "Unassigned",
+        courierPhone: x.courierPhone || "", itemName: x.itemName || "Parcel",
+        pickupAddress: x.pickupAddress || "", quantity: x.quantity || 1, weight: x.weight || 0,
+        dateString: x.dateString || "", tipAmount: x.tipAmount || 0, userId: x.userId || "", otpCode: x.otpCode || "",
+      }); });
+      setDeliveries(list);
+    }));
+    unsubs.push(onSnapshot(collection(db, "banners"), snap => {
+      const list: Banner[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({ id: d.id, title: x.title || "", subtitle: x.subtitle || "", imageUrl: x.imageUrl || "", interval: x.interval || 5, order: x.order || 0, active: x.active !== false }); });
+      setBanners(list.sort((a, b) => a.order - b.order));
+    }));
+    unsubs.push(onSnapshot(collection(db, "referrals"), snap => {
+      const list: Referral[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({
+        id: d.id, referrerId: x.referrerId || "", referrerName: x.referrerName || "",
+        referrerEmail: x.referrerEmail || "", refereeId: x.refereeId || "",
+        refereeName: x.refereeName || "", refereeEmail: x.refereeEmail || "",
+        rewardAmount: x.rewardAmount || 0, status: x.status || "pending",
+      }); });
+      setReferrals(list);
+    }));
+    unsubs.push(onSnapshot(collection(db, "promotions"), snap => {
+      const list: Promotion[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({
+        id: d.id, title: x.title || "", description: x.description || "",
+        discountType: x.discountType || "percentage", discountValue: x.discountValue || 0,
+        discountDisplay: x.discountDisplay || "", minOrderAmount: x.minOrderAmount || 0,
+        maxDiscount: x.maxDiscount || 0, code: x.code || "", usageLimit: x.usageLimit || 0,
+        usedCount: x.usedCount || 0, active: x.active !== false,
+      }); });
+      setPromotions(list);
+    }));
+    unsubs.push(onSnapshot(collection(db, "appContent"), snap => {
+      const list: AppContent[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({
+        id: d.id, key: x.key || "", title: x.title || "", description: x.description || "",
+        imageUrl: x.imageUrl || "", ctaText: x.ctaText || "", ctaLink: x.ctaLink || "",
+        order: x.order || 0, active: x.active !== false,
+      }); });
+      setAppContent(list);
+    }));
+    unsubs.push(onSnapshot(query(collection(db, "notifications"), where("createdAt", ">=", Timestamp.now())), snap => {
+      const list: AppNotification[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({ id: d.id, title: x.title || "", description: x.description || "", read: x.read === true, createdAt: x.createdAt, type: x.type || "system" }); });
+      setNotifications(list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+    }, () => {}));
+    getDoc(doc(db, "system_config", "global_settings")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => {});
+    getDoc(doc(db, "system_config", "pricing")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => {});
+    return () => unsubs.forEach(f => f());
+  }, [currentUser]);
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault(); setAuthErr(""); setAuthOk("");
+    try {
+      if (signingUp) {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split("@")[0], role: "super_admin", createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+        setAuthOk("Admin account created.");
+      } else { await signInWithEmailAndPassword(auth, email, password); }
+    } catch (err: any) { setAuthErr(err.message); }
+  };
+
+  const updateSetting = async (key: string, val: any) => {
+    setSettings((prev: any) => ({ ...prev, [key]: val }));
+    await setDoc(doc(db, "system_config", "global_settings"), { [key]: val, updatedAt: Timestamp.now() }, { merge: true });
+    addLog("Setting", key + " = " + JSON.stringify(val));
+  };
+
+  const activeUsers = users.filter(u => !u.isDeleted);
+  const customers = activeUsers.filter(u => u.role === "customer" || u.role === "");
+  const drivers = activeUsers.filter(u => u.role === "rider");
+  const adminUsers = activeUsers.filter(u => u.role === "admin" || u.role === "super_admin");
+  const pendingDeliveries = deliveries.filter(d => d.status === "PENDING");
+  const inTransit = deliveries.filter(d => ["TRANSIT", "ASSIGNED", "OUT_FOR_DELIVERY"].includes(d.status));
+  const delivered = deliveries.filter(d => d.status === "DELIVERED");
+  const totalRevenue = deliveries.reduce((s, d) => s + (d.price || 0), 0);
+  const totalTips = deliveries.reduce((s, d) => s + (d.tipAmount || 0), 0);
+  const completedReferrals = referrals.filter(r => r.status === "completed");
+
+  if (loading) return (
+    <div className="min-h-screen bg-[#111] flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <EdLogoSvg size={48} />
+        <div className="text-[#FFC542] font-black flex items-center gap-3"><RefreshCw className="w-5 h-5 animate-spin" /> LOADING...</div>
+      </div>
+    </div>
+  );
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-[#111] flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-md bg-white rounded-3xl p-8 shadow-xl">
+          <div className="flex flex-col items-center mb-6">
+            <div className="w-16 h-16 bg-[#FFC542] rounded-2xl flex items-center justify-center shadow-lg mb-4"><EdLogoSvg size={36} /></div>
+            <h1 className="text-xl font-black text-[#111] tracking-wide text-center">{settings.appName || "ENGRACED DISPATCH"}</h1>
+            <p className="text-xs text-[#FFC542] font-semibold tracking-widest mt-1">ADMIN CONTROL CENTER</p>
+          </div>
+          {authErr && <div className="mb-4 p-3 bg-red-50 rounded-xl text-red-700 text-xs flex items-center gap-2"><AlertTriangle className="w-4 h-4 shrink-0" /> {authErr}</div>}
+          {authOk && <div className="mb-4 p-3 bg-green-50 rounded-xl text-green-700 text-xs flex items-center gap-2"><ShieldCheck className="w-4 h-4 shrink-0" /> {authOk}</div>}
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div><label className="block text-xs font-semibold text-black/40 mb-1">Admin Email</label>
+              <div className="relative"><Mail className="absolute left-3 top-3 w-4 h-4 text-black/40" />
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-gray-50 rounded-xl px-10 py-2.5 text-sm text-[#111] focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" required /></div></div>
+            <div><label className="block text-xs font-semibold text-black/40 mb-1">Password</label>
+              <div className="relative"><Key className="absolute left-3 top-3 w-4 h-4 text-black/40" />
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 rounded-xl px-10 py-2.5 text-sm text-[#111] focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" required /></div></div>
+            <button type="submit" className="w-full bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] font-black py-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-sm tracking-wider">
+              <Lock className="w-4 h-4" /> {signingUp ? "CREATE ADMIN" : "SIGN IN"}</button>
+          </form>
+          <div className="mt-6 text-center">
+            <button type="button" onClick={() => setSigningUp(!signingUp)} className="text-xs text-[#FFC542] hover:underline font-semibold">
+              {signingUp ? "Already have an account? Sign In" : "Create an admin account"}</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const activeDeliveriesData = [
+    { tag: "Priority", title: "Priority Document to VI", progress: 5, total: 20, unit: "drops", theme: "gold" as const },
+    { tag: "Standard", title: "Standard Parcels to Ikeja", progress: 12, total: 50, unit: "drops", theme: "white" as const },
+    { tag: "Cold Chain", title: "Food Deliveries to Lekki", progress: 18, total: 22, unit: "drops", theme: "black" as const },
+  ];
+
+  const navItems: { id: TabId; label: string; icon: React.ReactNode }[] = [
+    { id: "dashboard", label: "Dashboard", icon: <Folder size={22} strokeWidth={2} /> },
+    { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} /> },
+    { id: "banners", label: "Hero Slides", icon: <ImageIcon size={24} strokeWidth={2} /> },
+    { id: "referrals", label: "Referrals", icon: <Gift size={24} strokeWidth={2} /> },
+    { id: "promotions", label: "Promotions", icon: <Percent size={24} strokeWidth={2} /> },
+    { id: "appcards", label: "App Cards", icon: <Layers size={24} strokeWidth={2} /> },
+    { id: "users", label: "Users", icon: <Users size={24} strokeWidth={2} /> },
+    { id: "settings", label: "Settings", icon: <Settings size={24} strokeWidth={2} /> },
+    { id: "logs", label: "Audit Log", icon: <Headphones size={24} strokeWidth={2} /> },
+  ];
+
+  function Sidebar() {
+    return <aside className={"h-full bg-[#111] flex flex-col shrink-0 z-10 transition-all duration-300 overflow-hidden " + (sidebar ? "w-[220px] px-3" : "w-[70px] px-1.5") + (mobileSidebar ? " translate-x-0" : " -translate-x-full lg:translate-x-0")}>
+      <div className={"flex items-center gap-3 py-5 mb-8 transition-all duration-300 " + (sidebar ? "justify-start" : "justify-center")}>
+        <div className="bg-[#FFC542] rounded-3xl flex items-center justify-center shrink-0 transition-all duration-300 shadow-lg" style={{ width: 48, height: 48 }}>
+          <EdLogoSvg size={sidebar ? 26 : 22} />
+        </div>
+        <div className={"overflow-hidden transition-all duration-300 " + (sidebar ? "w-auto opacity-100" : "w-0 opacity-0")}>
+          <div className="text-white font-extrabold text-[11px] leading-tight whitespace-nowrap">ENGRACE</div>
+          <div className="text-[#FFC542] font-extrabold text-[11px] leading-tight whitespace-nowrap -mt-0.5">DISPATCH</div>
+        </div>
+      </div>
+      <nav className="flex flex-col gap-1 w-full flex-1">
+        {navItems.map(n => (
+          <button key={n.id} onClick={() => { setTab(n.id); setMobileSidebar(false); }}
+            className={"flex items-center gap-3 px-3 py-3 rounded-2xl cursor-pointer transition-all w-full " + (tab === n.id ? "bg-[#FFC542] text-[#111] shadow-lg" : "text-white/50 hover:text-white hover:bg-white/5")}>
+            <span className="shrink-0">{n.icon}</span>
+            <span className={"text-xs font-bold whitespace-nowrap overflow-hidden transition-all duration-300 " + (sidebar ? "w-auto opacity-100" : "w-0 opacity-0")}>{n.label}</span>
+          </button>
+        ))}
+      </nav>
+      <div className={"flex items-center gap-3 py-5 transition-all duration-300 " + (sidebar ? "justify-start px-3" : "justify-center")}>
+        <div className="w-9 h-9 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#FFC542] shrink-0">{currentUser?.email?.charAt(0).toUpperCase() || "A"}</div>
+        <div className={"overflow-hidden transition-all duration-300 " + (sidebar ? "w-auto opacity-100" : "w-0 opacity-0")}>
+          <div className="text-white font-bold text-[10px] leading-tight whitespace-nowrap">{currentUser?.email?.split("@")[0] || "Admin"}</div>
+          <div className="text-white/40 text-[8px] leading-tight whitespace-nowrap">Super Admin</div>
+        </div>
+      </div>
+      <div className={"pb-4 " + (sidebar ? "px-3" : "flex justify-center")}>
+        <button onClick={() => { signOut(auth); }} className={"flex items-center gap-2 text-white/40 hover:text-red-400 transition-colors cursor-pointer text-xs font-medium " + (sidebar ? "" : "justify-center")}>
+          <LogOut size={18} strokeWidth={2} />
+          {sidebar && <span>Sign Out</span>}
+        </button>
+      </div>
+    </aside>;
+  }
+
+  function Header() {
+    return <header className="flex justify-between items-center px-4 sm:px-8 lg:px-12 pt-6 lg:pt-10 pb-0 shrink-0 gap-4">
+      <div className="flex items-center gap-3">
+        <button className="lg:hidden p-2 text-[#111] dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition-colors" onClick={(e) => { e.stopPropagation(); setMobileSidebar(true); }}>
+          <Menu size={22} />
+        </button>
+        <div className="text-sm sm:text-base text-black/60 dark:text-white/60">
+          Welcome to <span className="font-extrabold text-[#111] dark:text-white text-lg sm:text-xl tracking-tight">Engraced <span className="text-[#FFC542]">Dispatch</span></span>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 sm:gap-5">
+        <div className="hidden sm:flex items-center border border-black/20 dark:border-white/20 rounded-full pl-5 pr-1.5 py-1.5 w-[200px] lg:w-[280px] shadow-sm">
+          <input type="text" placeholder="Search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="outline-none flex-1 text-sm bg-transparent font-medium text-[#111] dark:text-white" />
+          <button className="bg-[#FFC542] text-[#111] p-2 rounded-xl hover:bg-[#FFC542]/90 transition-colors"><Search size={18} strokeWidth={2.5} /></button>
+        </div>
+        <div className="relative" onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => { setShowNotifs(v => !v); setShowUserMenu(false); }} className="relative p-2.5 border border-black/10 dark:border-white/10 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+            <Bell size={20} className="text-[#111] dark:text-white" />
+            {unreadCount > 0 && <div className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-[#FFC542] rounded-full border-2 border-white dark:border-[#1a1a1a] animate-pulse-ring"></div>}
+          </button>
+          {showNotifs && <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-2xl overflow-hidden z-50">
+            <div className="p-4 border-b border-black/10 dark:border-white/10"><p className="text-xs font-bold text-[#FFC542]">NOTIFICATIONS</p></div>
+            <div className="max-h-72 overflow-y-auto">
+              {notifications.length === 0 && <div className="p-6 text-center text-[10px] text-black/40 dark:text-white/40">No notifications yet.</div>}
+              {notifications.map(n => <div key={n.id} onClick={() => { if (!n.read) markNotifRead(n.id); }} className={"p-4 border-b border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer " + (n.read ? "" : "bg-[#FFC542]/5")}>
+                <div className="flex items-start gap-3">
+                  <div className={"w-2 h-2 mt-1.5 rounded-full shrink-0 " + (n.read ? "bg-transparent" : "bg-[#FFC542]")}></div>
+                  <div><p className="text-xs font-bold text-[#111] dark:text-white">{n.title}</p><p className="text-[10px] text-black/50 dark:text-white/50 mt-0.5">{n.description}</p><p className="text-[9px] text-black/30 dark:text-white/30 mt-1">{n.createdAt?.toDate().toLocaleDateString()}</p></div>
+                </div>
+              </div>)}
+            </div>
+          </div>}
+        </div>
+        <div className="relative" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-3 ml-1 cursor-pointer" onClick={() => { setShowUserMenu(v => !v); setShowNotifs(false); }}>
+            <div className="w-11 h-11 rounded-full bg-[#FFC542]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-[#111] dark:text-white font-black text-sm"><EdLogoSvg size={20} /></div>
+            <div className="text-sm hidden sm:block">
+              <div className="font-extrabold text-[#111] dark:text-white">{currentUser?.email?.split("@")[0] || "Admin"}</div>
+              <div className="text-black/50 dark:text-white/50 font-medium text-xs mt-0.5">@dispatcher_hq</div>
+            </div>
+          </div>
+          {showUserMenu && <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-2xl overflow-hidden z-50">
+            <div className="p-4 border-b border-black/10 dark:border-white/10">
+              <p className="text-xs font-bold text-[#111] dark:text-white">{currentUser?.email}</p>
+              <p className="text-[10px] text-black/40 dark:text-white/40 mt-0.5">Super Admin</p>
+            </div>
+            <div className="p-2">
+              <button onClick={toggleDark} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-xs font-bold text-[#111] dark:text-white">
+                {dark ? <Sun className="w-4 h-4 text-[#FFC542]" /> : <Moon className="w-4 h-4 text-[#FFC542]" />}
+                {dark ? "Light Mode" : "Dark Mode"}
+              </button>
+              <button onClick={() => signOut(auth)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs font-bold text-red-500 mt-1">
+                <LogOut className="w-4 h-4" /> Sign Out
+              </button>
+            </div>
+          </div>}
+        </div>
+      </div>
+    </header>;
+  }
+
+  async function seedBanners() {
+    try {
+      const batch = writeBatch(db);
+      [{ title: "Premium Logistics at Your Doorstep", subtitle: "Fast, secure, and reliable delivery across the city.", imageUrl: "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=800", interval: 5, order: 0, active: true },
+      { title: "Send Packages with Ease", subtitle: "Real-time tracking and professional riders at your service.", imageUrl: "https://images.unsplash.com/photo-1566576912320-8a9549693bb9?w=800", interval: 5, order: 1, active: true },
+      { title: "Your Trusted Delivery Partner", subtitle: "Join thousands of happy customers.", imageUrl: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800", interval: 5, order: 2, active: true }]
+        .forEach(s => batch.set(doc(collection(db, "banners")), s)); await batch.commit();
+      addLog("Seeded", "3 sample banner slides"); addToast("success", "3 banners created"); createNotification("Banners Seeded", "3 hero slides added to the system");
+    } catch (e: any) { addToast("error", "Banner seed failed: " + e.message); }
+  }
+  async function seedPromos() {
+    try {
+      const batch = writeBatch(db);
+      [{ title: "Festive Save", description: "Enjoy exclusive Eid discounts.", discountType: "percentage", discountValue: 25, discountDisplay: "25% OFF", minOrderAmount: 1000, maxDiscount: 5000, code: "EID2026", usageLimit: 500, usedCount: 0, active: true },
+      { title: "First Delivery Free", description: "New users get their first delivery free.", discountType: "percentage", discountValue: 100, discountDisplay: "100% OFF", minOrderAmount: 2000, maxDiscount: 7000, code: "FIRSTFREE", usageLimit: 200, usedCount: 0, active: true },
+      { title: "Weekend Rush", description: "Flat discount on every ride.", discountType: "fixed", discountValue: 1500, discountDisplay: "\u20A61,500 OFF", minOrderAmount: 3000, maxDiscount: 1500, code: "WEEKEND30", usageLimit: 300, usedCount: 0, active: true }]
+        .forEach(s => batch.set(doc(collection(db, "promotions")), s)); await batch.commit();
+      addLog("Seeded", "3 sample promotions"); addToast("success", "3 promotions created"); createNotification("Promotions Seeded", "3 promotions added to the system");
+    } catch (e: any) { addToast("error", "Promo seed failed: " + e.message); }
+  }
+  async function seedReferrals() {
+    try {
+      const batch = writeBatch(db);
+      [{ referrerId: "seed1", referrerName: "Aisha Bello", referrerEmail: "aisha@example.com", refereeId: "seed2", refereeName: "Chidi Okonkwo", refereeEmail: "chidi@example.com", rewardAmount: 500, status: "completed" },
+      { referrerId: "seed3", referrerName: "Fatima Musa", referrerEmail: "fatima@example.com", refereeId: "seed4", refereeName: "Emeka Nwosu", refereeEmail: "emeka@example.com", rewardAmount: 500, status: "pending" }]
+        .forEach(s => batch.set(doc(collection(db, "referrals")), s)); await batch.commit();
+      addLog("Seeded", "2 sample referrals"); addToast("success", "2 referrals created"); createNotification("Referrals Seeded", "2 referral records added");
+    } catch (e: any) { addToast("error", "Referral seed failed: " + e.message); }
+  }
+  async function seedAppContent() {
+    try {
+      const content = { referral: { benefitText: "Invite your friends and earn \u20A6500 in wallet credit for each successful referral!", referrerCode: "", reward: 500, active: true }, aiAssistant: { title: "Dispatch Assistant", description: "Need help with your delivery? Our AI assistant is here 24/7.", tag: "Powered by HeyTek AI", active: true }, welcomeGift: { title: "Welcome to Engraced!", credit: 2500, coins: 10, active: true }, weatherTraffic: { optimalMessage: "Light traffic conditions — perfect timing.", congestedMessage: "Heavy traffic on major routes — expect 15-20 min delays.", optimalBadge: "Smooth Sailing", congestedBadge: "Heavy Traffic", active: true }, loyalty: { bronzeThreshold: 10, silverThreshold: 25, goldThreshold: 50, platinumThreshold: 100, ordersForBronze: 3, ordersForSilver: 5, ordersForGold: 10, dailyBonus: 25, active: true }, statsConfig: { promoSavingsPerBooking: 3500, statLabels: ["Deliveries", "Saved", "Earned", "Redeemed"], active: true } };
+      await setDoc(doc(db, "system_config", "global_settings"), { appContent: content, updatedAt: Timestamp.now() }, { merge: true });
+      setSettings((prev: any) => ({ ...prev, appContent: content })); addLog("Seeded", "Default app card content"); addToast("success", "App content seeded"); createNotification("App Content Seeded", "Default dashboard content configured");
+    } catch (e: any) { addToast("error", "App content seed failed: " + e.message); }
+  }
+
+  function DashboardTab() {
+    const recentDeliveries = deliveries.slice(-10).reverse();
+    return <div className="tab-content space-y-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="stagger-1"><StatCard icon={<Users className="w-4 h-4 text-[#FFC542]" />} label="TOTAL USERS" value={activeUsers.length.toString()} sub={customers.length + " customers · " + drivers.length + " drivers"} /></div>
+        <div className="stagger-2"><StatCard icon={<Package className="w-4 h-4 text-[#FFC542]" />} label="SHIPMENTS" value={deliveries.length.toString()} sub={pendingDeliveries.length + " pending · " + delivered.length + " delivered"} /></div>
+        <div className="stagger-3"><StatCard icon={<DollarSign className="w-4 h-4 text-[#FFC542]" />} label="REVENUE" value={fmt(totalRevenue)} sub={fmt(totalTips) + " in tips · " + referrals.length + " referrals"} /></div>
+        <div className="stagger-4"><StatCard icon={<Activity className="w-4 h-4 text-[#FFC542]" />} label="ONLINE" value={(activeUsers.filter(u => u.isOnline).length).toString()} sub={drivers.filter(d => d.isOnline).length + " drivers · " + (activeUsers.filter((u: any) => u.role === "customer" && u.isOnline).length) + " customers"} /></div>
+      </div>
+      <section>
+        <div className="flex justify-between items-end mb-6 flex-wrap gap-4">
+          <h1 className="text-[28px] font-extrabold tracking-tight text-[#111] dark:text-white">Active Deliveries</h1>
+          <div className="flex gap-2.5 flex-wrap">
+            <button className="bg-[#111] dark:bg-white text-white dark:text-[#111] px-5 py-2.5 rounded-full text-sm font-bold shadow-sm">All deliveries</button>
+            <button className="bg-white dark:bg-[#222] text-[#111] dark:text-white border border-black/20 dark:border-white/20 px-5 py-2.5 rounded-full text-sm font-bold hover:bg-black/5 dark:hover:bg-white/10">Priority</button>
+            <button className="bg-white dark:bg-[#222] text-[#111] dark:text-white border border-black/20 dark:border-white/20 px-5 py-2.5 rounded-full text-sm font-bold hover:bg-black/5 dark:hover:bg-white/10">Standard</button>
+            <button className="bg-white dark:bg-[#222] text-[#111] dark:text-white border border-black/20 dark:border-white/20 px-5 py-2.5 rounded-full text-sm font-bold hover:bg-black/5 dark:hover:bg-white/10">Cold Chain</button>
+          </div>
+        </div>
+        {deliveries.length === 0 && <div className="text-center py-12 text-black/40 dark:text-white/40 font-bold text-lg">No deliveries yet. Seed sample data below.</div>}
+        {deliveries.length > 0 && <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {activeDeliveriesData.map((a: any, i: number) => {
+            const g = a.theme === "gold" ? "bg-[#FFC542]" : a.theme === "black" ? "bg-[#111]" : "bg-white border-[2.5px] border-[#111] dark:border-white";
+            const t = a.theme === "gold" ? "bg-[#111] text-white" : a.theme === "black" ? "bg-white text-[#111]" : "bg-[#FFC542] text-[#111]";
+            const p = a.theme === "gold" ? "bg-black/20" : a.theme === "black" ? "bg-white/20" : "bg-black/10 dark:bg-white/10";
+            const pf = a.theme === "black" ? "bg-[#FFC542]" : "bg-[#111]";
+            const tc = a.theme === "black" ? "text-white" : "text-[#111] dark:text-white";
+            const bt = a.theme === "black" ? "bg-[#FFC542] text-[#111]" : "bg-[#111] text-white";
+            const ac = a.theme === "gold" ? "ring-[#FFC542]" : a.theme === "black" ? "ring-[#111]" : "ring-white";
+            const ec = a.theme === "gold" ? "bg-[#111] text-white" : a.theme === "black" ? "bg-white text-[#111]" : "bg-[#FFC542] text-[#111]";
+            const bk = a.theme === "black" ? "fill-none text-white" : a.theme === "gold" ? "fill-[#111] text-[#111]" : "fill-none text-[#111] dark:text-white";
+            const pct = Math.round((a.progress / a.total) * 100);
+            return <div key={i} className={"animate-fade-in hover:scale-[1.02] transition-all duration-300 " + (["stagger-1","stagger-2","stagger-3"][i])}>
+              <div className={g + " rounded-3xl p-7 flex flex-col min-h-[220px] shadow-sm relative overflow-hidden group"}>
+                <div className="flex justify-between items-start mb-6">
+                  <span className={t + " text-xs font-bold px-4 py-1.5 rounded-full z-10"}>{a.tag}</span>
+                  <Bookmark size={24} className={bk} strokeWidth={2} />
+                </div>
+                <h3 className={"text-[22px] font-extrabold leading-snug pr-8 mb-8 z-10 " + tc}>{a.title}</h3>
+                <div className="mt-auto z-10">
+                  <div className={"flex justify-between items-end font-bold text-[13px] mb-3 " + tc}>
+                    <span>Progress</span>
+                    <span>{a.progress}/{a.total} {a.unit}</span>
+                  </div>
+                  <div className={"w-full h-2 rounded-full mb-6 " + p}>
+                    <div className={"h-full rounded-full " + pf} style={{ width: pct + "%" }}></div>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <div className="flex -space-x-3">
+                      {["Mia","John","Sarah"].map((s, j) => <img key={j} src={"https://api.dicebear.com/7.x/avataaars/svg?seed=" + s} alt="" className={"w-9 h-9 rounded-full ring-2 " + ac + " bg-white object-cover"} />)}
+                      <div className={"w-9 h-9 rounded-full ring-2 " + ac + " " + ec + " text-[10px] font-bold flex items-center justify-center"}>+{a.total + 80}</div>
+                    </div>
+                    <button className={bt + " px-6 py-2.5 rounded-full text-sm font-bold shadow-md hover:opacity-80 transition-all"}>Track</button>
+                  </div>
+                </div>
+              </div>
+            </div>;
+          })}
+        </div>}
+      </section>
+      <section className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
+        <div className="lg:col-span-3 border border-black/10 dark:border-white/10 rounded-3xl p-7 flex flex-col bg-white dark:bg-[#1a1a1a]">
+          <div className="flex justify-between items-center mb-5">
+            <h2 className="text-[22px] font-extrabold tracking-tight text-[#111] dark:text-white">Next scheduled drops</h2>
+            <button className="text-[#FFC542] font-bold text-sm hover:underline">View all deliveries</button>
+          </div>
+          {recentDeliveries.length === 0 && <div className="text-center py-10 text-black/40 dark:text-white/40 text-sm">No scheduled drops yet.</div>}
+          {recentDeliveries.length > 0 && <>
+            <div className="grid grid-cols-12 gap-4 pb-3 border-b-2 border-black/5 dark:border-white/10 text-[13px] text-black/50 dark:text-white/50 font-bold px-3">
+              <div className="col-span-6">Delivery Task</div>
+              <div className="col-span-4">Assigned Rider</div>
+              <div className="col-span-2 text-right">Est. Time</div>
+            </div>
+            <div className="flex-1 overflow-y-auto pr-2 mt-2 space-y-1">
+              {recentDeliveries.slice(0, 8).map((d: any, idx: number) => (
+                <div key={d.id} className={"grid grid-cols-12 gap-4 py-3.5 border-b border-black/5 dark:border-white/5 items-center px-3 hover:bg-black/5 dark:hover:bg-white/5 transition-colors rounded-xl last:border-b-0 cursor-pointer animate-fade-in " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][idx] || "stagger-1")}>
+                  <div className="col-span-6 flex flex-col justify-center">
+                    <div className="font-extrabold text-[14px] text-[#111] dark:text-white leading-snug">{(idx + 1).toString().padStart(2,"0")}. {d.itemName || "Parcel"} — {d.receiverName}</div>
+                    <div className="text-[13px] font-medium text-black/50 dark:text-white/50 mt-0.5">{d.status.replace(/_/g, " ")} · {d.pickupAddress}</div>
+                  </div>
+                  <div className="col-span-4 flex items-center gap-3.5">
+                    <div className="w-9 h-9 rounded-full bg-[#FFC542]/10 border border-black/5 dark:border-white/10 flex items-center justify-center text-xs font-black text-[#111] dark:text-white">{d.courierName?.charAt(0) || "?"}</div>
+                    <span className="font-bold text-[14px] text-[#111] dark:text-white">{d.courierName || "Unassigned"}</span>
+                  </div>
+                  <div className="col-span-2 text-right font-extrabold text-[14px] text-[#111] dark:text-white">{d.dateString ? d.dateString.slice(0, 5) : "—"}</div>
+                </div>
+              ))}
+            </div>
+          </>}
+        </div>
+        <div className="bg-[#111] dark:bg-black text-white rounded-3xl p-8 flex flex-col justify-between shadow-lg">
+          <div>
+            <p className="text-white/60 text-sm font-semibold mb-6 tracking-wide">Fleet summary</p>
+            <span className="bg-[#FFC542] text-[#111] text-xs font-bold px-3.5 py-1.5 rounded-lg inline-block mb-4 shadow-sm">{drivers.length} Active</span>
+            <h3 className="text-[26px] font-extrabold leading-snug mb-6 pr-4">Total Fleet: {drivers.length + customers.length}</h3>
+            <p className="text-white/60 text-sm font-semibold mb-4 tracking-wide">Active drivers in region</p>
+            <div className="flex -space-x-3.5 mb-6">
+              {drivers.slice(0, 3).map((d: any) => (
+                <div key={d.id} className="w-[42px] h-[42px] rounded-full ring-[2.5px] ring-[#111] bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#FFC542]">{d.name.charAt(0)}</div>
+              ))}
+              {[...Array(Math.min(3, Math.max(0, 3 - drivers.length)))].map((_: any, i: number) => (
+                <div key={i} className="w-[42px] h-[42px] rounded-full ring-[2.5px] ring-[#111] bg-gray-800 flex items-center justify-center text-xs text-white/40">?</div>
+              ))}
+              <div className="w-[42px] h-[42px] rounded-full ring-[2.5px] ring-[#111] bg-[#FFC542] text-[#111] text-xs font-extrabold flex items-center justify-center shadow-inner">+{Math.max(0, drivers.length - 3)}</div>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between text-sm"><span className="text-white/60">Deliveries today</span><span className="font-bold">{deliveries.length}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-white/60">Revenue</span><span className="font-bold">{fmt(totalRevenue)}</span></div>
+          </div>
+          <button className="w-full bg-[#FFC542] text-[#111] py-4 rounded-[18px] text-[15px] font-extrabold shadow-md hover:bg-[#FFC542]/90 transition-all mt-4">Assign riders</button>
+        </div>
+      </section>
+      <div className="flex flex-wrap gap-3">
+        <QuickBtn label="Seed Banners" desc="Create 3 sample hero slides" onClick={() => seedBanners()} />
+        <QuickBtn label="Seed Promos" desc="Create 3 sample promotions" onClick={() => seedPromos()} />
+        <QuickBtn label="Seed Referrals" desc="Create sample referral records" onClick={() => seedReferrals()} />
+        <QuickBtn label="Seed App Content" desc="Set default dashboard card content" onClick={() => seedAppContent()} />
+      </div>
+    </div>;
+  }

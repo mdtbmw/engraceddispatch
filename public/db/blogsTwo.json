@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "image": "/images/blog/blog1.png",
+    "category": "Delivery Tips",
+    "date": "June 18, 2024",
+    "title": "How same-day delivery works in Benin City",
+    "description": "Same-day delivery is changing the way residents of Benin City shop. With Engraced Smiles Dispatch, getting your packages within hours...",
+    "link": "single-blog"
+  },
+  {
+    "id": 2,
+    "image": "/images/blog/blog2.png",
+    "category": "Rider Stories",
+    "date": "June 18, 2024",
+    "title": "5 tips for safe package delivery in Nigeria",
+    "description": "Whether you are sending documents or groceries, these simple tips will help ensure your packages arrive safely every time...",
+    "link": "single-blog"
+  },
+  {
+    "id": 3,
+    "image": "/images/blog/blog3.png",
+    "category": "Logistics",
+    "date": "June 18, 2024",
+    "title": "A day in the life of a delivery rider in Benin City",
+    "description": "Meet John, one of our top riders in Benin City. From morning pickups at Oba Market to evening drops in GRA, here is what a day looks like...",
+    "link": "single-blog"
+  },
+  {
+    "id": 4,
+    "image": "/images/blog/blog.png",
+    "category": "Business",
+    "date": "June 18, 2024",
+    "title": "Why your business needs a reliable delivery partner",
+    "description": "In today's fast-paced market, having a trusted delivery partner can make or break your business. Here is why Engraced Smiles Dispatch is the right choice...",
+    "link": "single-blog"
+  }
+]

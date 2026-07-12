@@ -1,0 +1,8 @@
+{
+  "name": "Engraced Dispatch",
+  "description": "A pixel-perfect native delivery \u0026 parcel tracking app styled in modern Gold and Obsidian.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,783 @@
+.popup-video {
+  width: 100%;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background-color: rgba(11, 11, 11, 0.8);
+}
+/* .popup-video-container .video {
+    position: relative;
+} */
+.video-wrapper {
+  position: relative;
+  width: 900px;
+  height: 500px;
+}
+
+@media (max-width: 1280px) {
+  .video-wrapper {
+    width: 70%;
+    height: 450px;
+  }
+}
+@media (max-width: 1024px) {
+  .video-wrapper {
+    height: 350px;
+  }
+}
+@media (max-width: 780px) {
+  .video-wrapper {
+    height: 300px;
+  }
+}
+@media (max-width: 560px) {
+  .video-wrapper {
+    height: 200px;
+  }
+}
+.popup {
+  display: flex;
+}
+.popdown {
+  display: none;
+}
+.close-button {
+  position: absolute;
+  top: -7%;
+  right: 0;
+  color: white;
+}
+@media (max-width: 1024px) {
+  .close-button {
+    top: -10%;
+  }
+}
+@media (max-width: 560px) {
+  .close-button {
+    top: -15%;
+  }
+}
+
+/* ------------------------ ACCORDION ------------------------ */
+.zubuz-accordion-wrap .accordion-item {
+  padding: 0px !important;
+  position: relative;
+  margin-bottom: 20px;
+  border-radius: 20px !important;
+  transition: all 0.4s;
+  border: 1px solid var(--light-color) !important;
+  background-color: var(--light-bg) !important;
+  overflow: hidden !important;
+}
+/* .accordion-flush .accordion-item:not(.collapsed) {
+  background-color: blue !important;
+} */
+.zubuz-accordion-wrap .accordion-button {
+  background-color: transparent;
+  box-shadow: none;
+  color: black !important;
+  font-size: 30px;
+  line-height: 1.4em;
+  font-weight: 700;
+  margin: 0;
+  padding: 23px 24px 23px 24px !important;
+}
+.zubuz-accordion-wrap .accordion-button::after {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin-left: auto;
+  content: "";
+  background-image: url("/images/icon/arrow-bottm.svg");
+  background-repeat: no-repeat;
+  background-size: 1.4rem;
+  background-position: center;
+  transition: transform 0.4s ease-in-out;
+}
+.zubuz-accordion-wrap .accordion-button:not(.collapsed)::after {
+  background-image: url("/images/icon/arrow-bottom-green.svg");
+  transform: rotate(180deg);
+}
+.zubuz-accordion-wrap .accordion-button:focus {
+  z-index: 3;
+  border-color: transparent !important;
+  outline: 0;
+  box-shadow: none !important;
+}
+
+.zubuz-accordion-wrap .accordion-button:not(.collapsed) {
+  background-color: black;
+  box-shadow: none;
+  color: #F5A623 !important;
+  font-size: 30px;
+  line-height: 1.4em;
+  font-weight: 700;
+  margin: 0;
+}
+.zubuz-accordion-wrap .accordion-body {
+  background-color: transparent !important;
+  padding: 0px 24px 23px 24px !important;
+  color: black !important;
+}
+.zubuz-accordion-wrap .accordion-body:not(.collapsed) {
+  background-color: var(--dark-bg) !important;
+  box-shadow: none;
+  color: white !important;
+}
+
+/* ----------------- ACCORDION TWO ----------------- */
+
+.zubuz-accordion-wrap2 .accordion-item {
+  padding: 0px !important;
+  position: relative;
+  margin-bottom: 20px;
+  border-radius: 20px !important;
+  transition: all 0.4s;
+  border: 1px solid var(--light-color) !important;
+  background-color: white !important;
+  overflow: hidden !important;
+}
+/* .accordion-flush .accordion-item:not(.collapsed) {
+  background-color: blue !important;
+} */
+.zubuz-accordion-wrap2 .accordion-button {
+  background-color: transparent;
+  box-shadow: none;
+  color: black !important;
+  font-size: 21px;
+  line-height: 1.4em;
+  font-weight: 600;
+  margin: 0;
+  padding: 23px 24px 23px 24px !important;
+}
+.zubuz-accordion-wrap2 .accordion-button::after {
+  flex-shrink: 0;
+  margin-top: 0px;
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  content: "";
+  background-image: url("/images/v3/plus.png");
+  background-repeat: no-repeat;
+  background-size: 18px;
+  background-position: center;
+  transition: transform 0.4s ease-in-out;
+}
+.zubuz-accordion-wrap2 .accordion-button:not(.collapsed)::after {
+  background-image: url("/images/v3/minus.png");
+  transform: rotate(0deg);
+  margin-top: 0px;
+}
+.zubuz-accordion-wrap2 .accordion-button:focus {
+  z-index: 3;
+  border-color: transparent !important;
+  outline: 0;
+  box-shadow: none !important;
+}
+.zubuz-accordion-wrap2 .accordion-button:not(.collapsed) {
+  background-color: white;
+  box-shadow: none;
+  color: #0c0c0c !important;
+  font-size: 21px;
+  line-height: 1.4em;
+  font-weight: 600;
+  margin: 0;
+}
+.zubuz-accordion-wrap2 .accordion-body {
+  color: black !important;
+  background-color: white !important;
+  padding: 0px 70px 23px 24px !important;
+  font-size: 18px;
+  /* margin-top: -8px; */
+}
+.zubuz-accordion-wrap2 .accordion-body:not(.collapsed) {
+  background-color: white !important;
+  box-shadow: none;
+  color: #0c0c0c !important;
+}
+
+/* ----------------------------- PORTFOLIO SECTION ----------------------------- */
+
+.zubuz-portfolio-menu {
+  margin-bottom: 0px;
+}
+.option-set {
+  justify-content: center;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  user-select: none;
+}
+@media (max-width: 565px) {
+  .option-set {
+    gap: 0px;
+    row-gap: 5px;
+  }
+}
+
+#zubuz-one-column {
+  margin: 50px auto 0 auto;
+  height: auto;
+}
+#zubuz-two-column {
+  margin-top: 50px;
+  height: 1051px;
+}
+.filter-item {
+  width: 50%;
+  height: auto;
+  text-align: left;
+}
+
+@media (max-width: 565px) {
+  .filter-item {
+    width: 100%;
+  }
+}
+.zubuz-portfolio-column2 .filter-item {
+  width: 100%;
+}
+
+/* ----------------------------- PAGE HEADER SECTION ----------------------------- */
+.breadcrumbs ul li:last-child {
+  padding-right: 0;
+  margin-left: 7px;
+}
+
+/* ===================== SCROLL ANIMATIONS ===================== */
+
+html {
+  scroll-behavior: smooth;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-color);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #000000;
+}
+
+/* Fade-in-up keyframe fallback for non-JS animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Card hover effects - glassmorphism */
+.zubuz-iconbox-wrap {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  will-change: transform;
+}
+
+.zubuz-iconbox-wrap:hover {
+  transform: translateY(-5px);
+}
+
+.zubuz-testimonial-wrap {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.zubuz-blog-wrap {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  overflow: hidden;
+}
+
+.zubuz-blog-wrap:hover {
+  transform: translateY(-5px);
+}
+
+.zubuz-blog-thumb {
+  overflow: hidden;
+}
+
+.zubuz-blog-thumb img {
+  transition: transform 0.4s ease;
+}
+
+.zubuz-blog-wrap:hover .zubuz-blog-thumb img {
+  transform: scale(1.05);
+}
+
+/* Gradient text animation */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Smooth section transitions */
+.section {
+  transition: background-color 0.3s ease;
+}
+
+/* Enhanced sticky header */
+header.zubuz-header-section.sticky-menu {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.08);
+}
+
+/* Button animations */
+.zubuz-default-btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.zubuz-default-btn::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.zubuz-default-btn:active::after {
+  width: 300px;
+  height: 300px;
+}
+
+/* Parallax-like section backgrounds */
+[style*="background-image"] {
+  background-attachment: fixed;
+}
+
+@media (max-width: 768px) {
+  [style*="background-image"] {
+    background-attachment: scroll;
+  }
+}
+
+/* Loading animation for images */
+img {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+img[src] {
+  opacity: 1;
+}
+
+/* Marquee enhancements */
+.zubuz-brand-item {
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.zubuz-brand-item:hover {
+  transform: scale(1.05);
+  filter: brightness(1.2);
+}
+
+/* Smooth accordion transitions */
+.accordion-collapse {
+  transition: all 0.3s ease !important;
+}
+
+/* Portal/dialog popup enhancements */
+.popup-video.popup {
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+/* Video button pulse animation */
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.4); }
+  70% { box-shadow: 0 0 0 15px rgba(245, 166, 35, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); }
+}
+
+.video-init {
+  animation: pulse-ring 2s infinite;
+}
+
+/* Card float animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+.zubuz-hero-card {
+  animation: float 4s ease-in-out infinite;
+}
+
+.zubuz-hero-card.card2 {
+  animation-delay: 0.5s;
+}
+
+.zubuz-hero-card.card3 {
+  animation-delay: 1s;
+}
+
+.zubuz-hero-card.card4 {
+  animation-delay: 1.5s;
+}
+
+/* Thumb card animations */
+.zubuz-thumb-card {
+  animation: float 5s ease-in-out infinite;
+}
+
+.zubuz-thumb-card2 {
+  animation: float 5s ease-in-out infinite;
+  animation-delay: 1s;
+}
+
+/* CTA section pulse */
+.zubuz-cta-section {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shape animations */
+.zubuz-hero-shape img {
+  animation: float 3s ease-in-out infinite;
+}
+
+.zubuz-cta-shape img {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Page transition */
+main {
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ===================== TESTIMONIAL AUTO CAROUSEL ===================== */
+
+.zubuz-testimonial-carousel {
+  position: relative;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 0 20px;
+}
+
+.zubuz-testimonial-carousel-inner {
+  position: relative;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zubuz-testimonial-carousel-card {
+  width: 100%;
+  background: var(--white-bg);
+  border-radius: 20px;
+  padding: 40px 48px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.06);
+  text-align: center;
+}
+
+.zubuz-testimonial-carousel-content h3 {
+  font-size: 24px;
+  margin: 16px 0 12px;
+}
+
+.zubuz-testimonial-quote {
+  font-size: 18px;
+  line-height: 1.7;
+  color: #555;
+  font-style: italic;
+}
+
+.zubuz-testimonial-carousel-author {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.zubuz-testimonial-carousel-author .zubuz-testimonial-author-thumb img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.zubuz-testimonial-carousel-author .zubuz-testimonial-author-data span {
+  display: block;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--heading-color);
+}
+
+.zubuz-testimonial-carousel-author .zubuz-testimonial-author-data p {
+  font-size: 14px;
+  color: #777;
+  margin: 0;
+}
+
+.zubuz-testimonial-dots {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.zubuz-testimonial-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: none;
+  background: #ccc;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  padding: 0;
+}
+
+.zubuz-testimonial-dot.active {
+  background: var(--primary-color);
+  width: 28px;
+  border-radius: 5px;
+}
+
+.zubuz-testimonial-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid #e0e0e0;
+  background: var(--white-bg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  color: #333;
+  z-index: 2;
+}
+
+.zubuz-testimonial-arrow:hover {
+  background: var(--primary-color);
+  color: #fff;
+  border-color: var(--primary-color);
+  box-shadow: 0 4px 15px rgba(245, 166, 35, 0.25);
+}
+
+.zubuz-testimonial-arrow.left {
+  left: -60px;
+}
+
+.zubuz-testimonial-arrow.right {
+  right: -60px;
+}
+
+@media (max-width: 820px) {
+  .zubuz-testimonial-arrow {
+    display: none;
+  }
+  .zubuz-testimonial-carousel-card {
+    padding: 28px 24px;
+  }
+}
+
+@media (max-width: 576px) {
+  .zubuz-testimonial-carousel-card {
+    padding: 24px 16px;
+  }
+}
+
+.cta-gold-btn {
+  background: #F5A623 !important;
+  color: #000 !important;
+}
+.cta-gold-btn:hover {
+  background: #e0980a !important;
+}
+
+/* ─── Modern Rounded Header ─── */
+header.zubuz-header-section {
+  margin-top: 16px;
+  border-radius: 20px !important;
+  max-width: calc(100% - 32px);
+  left: 16px;
+  right: 16px;
+  width: auto !important;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.06);
+  transition: all 0.4s ease;
+}
+
+header.zubuz-header-section.sticky-menu {
+  border-radius: 16px !important;
+  margin-top: 8px;
+  max-width: calc(100% - 16px);
+  left: 8px;
+  right: 8px;
+}
+
+@media (max-width: 991px) {
+  header.zubuz-header-section {
+    margin-top: 0;
+    border-radius: 0 !important;
+    max-width: 100%;
+    left: 0;
+    right: 0;
+  }
+}
+
+/* ─── Store Badge Hover ─── */
+.zubuz-store-badge:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* ─── Rounded Elements Everywhere ─── */
+.zubuz-default-btn {
+  border-radius: 14px !important;
+}
+
+.zubuz-header-btn {
+  border-radius: 14px !important;
+}
+
+.zubuz-pricing-btn {
+  border-radius: 16px !important;
+}
+
+.zubuz-cta-wrap {
+  border-radius: 32px !important;
+}
+
+.zubuz-accordion-item {
+  border-radius: 16px !important;
+}
+
+.zubuz-team-thumb,
+.zubuz-team-data,
+.zubuz-team-details-thumb,
+.zubuz-portfolio-thumb,
+.zubuz-portfolio-thumb2,
+.zubuz-portfolio-details-thumb-item {
+  border-radius: 16px !important;
+}
+
+.zubuz-iconbox-wrap,
+.zubuz-iconbox-wrap2 {
+  border-radius: 20px !important;
+}
+
+.zubuz-pricing-wrap {
+  border-radius: 20px !important;
+}
+
+.zubuz-testimonial-wrap {
+  border-radius: 20px !important;
+}
+
+.zubuz-jobs-item {
+  border-radius: 20px !important;
+}
+
+.zubuz-form-wrap {
+  border-radius: 20px !important;
+}
+
+.zubuz-account-wrap {
+  border-radius: 20px !important;
+}
+
+.zubuz-hero-thumb3 {
+  border-radius: 24px !important;
+}
+
+.zubuz-v3-thumb img,
+.zubuz-v3-thumb2 img {
+  border-radius: 24px !important;
+}
+
+.zubuz-career-thumb {
+  border-radius: 24px !important;
+}
+
+.zubuz-v2-thumb img {
+  border-radius: 20px !important;
+}
+
+.zubuz-video-column,
+.zubuz-video-wrap {
+  border-radius: 24px !important;
+}
+
+button#zubuz-notified-btn,
+a.zubuz-connect-login {
+  border-radius: 14px !important;
+}
+
+.zubuz-countdown-item {
+  border-radius: 20px !important;
+}
+
+.zubuz-tools-item {
+  border-radius: 16px !important;
+}
+
+.zubuz-pricing-four-column .zubuz-pricing-wrap {
+  border-radius: 24px !important;
+}
+
+.zubuz-pricing-btn {
+  border-radius: 50px !important;
+}
+
+.zubuz-brand-logo-wrap {
+  border-radius: 0;
+}
+
+.zubuz-portfolio-menu ul li {
+  border-radius: 12px !important;
+}
+
+.zubuz-subscribe-one input,
+.zubuz-subscribe-two input,
+.zubuz-coming-newsletter input,
+.zubuz-account-field input {
+  border-radius: 14px !important;
+}
+
+.zubuz-pricing-four-column .zubuz-pricing-wrap.active {
+  border-radius: 24px !important;
+}
+
+/* Hero section store badges on mobile */
+@media (max-width: 767px) {
+  .zubuz-hero-app-badges {
+    flex-direction: column;
+    align-items: center;
+  }
+}

@@ -1,0 +1,56 @@
+[
+  {
+    "title": "Bike Delivery",
+    "icon": "/images/v3/icon1.png",
+    "description": "Fast and agile motorcycle delivery for small packages and documents across Benin City.",
+    "link": "single-service"
+  },
+  {
+    "title": "Courier Service",
+    "icon": "/images/v3/icon2.png",
+    "description": "Reliable courier service for parcels, documents, and business items of all sizes.",
+    "link": "single-service"
+  },
+  {
+    "title": "Same-Day Delivery",
+    "icon": "/images/v3/icon3.png",
+    "description": "Need it there today? Order in the morning and we deliver before evening.",
+    "link": "single-service"
+  },
+  {
+    "title": "Bulk Delivery",
+    "icon": "/images/v3/icon4.png",
+    "description": "Special rates and scheduling for businesses with regular bulk delivery needs.",
+    "link": "single-service"
+  },
+  {
+    "title": "Food Delivery",
+    "icon": "/images/v3/icon5.png",
+    "description": "Hot and fresh food delivery from your favourite restaurants across Benin City.",
+    "link": "single-service"
+  },
+  {
+    "title": "Package Tracking",
+    "icon": "/images/v3/icon6.png",
+    "description": "Real-time GPS tracking so you know exactly where your package is at all times.",
+    "link": "single-service"
+  },
+  {
+    "title": "Document Delivery",
+    "icon": "/images/v3/icon7.png",
+    "description": "Secure and confidential delivery of important documents and legal papers.",
+    "link": "single-service"
+  },
+  {
+    "title": "Gift Delivery",
+    "icon": "/images/v3/icon8.png",
+    "description": "Send gifts and surprises to loved ones anywhere in Benin City with same-day service.",
+    "link": "single-service"
+  },
+  {
+    "title": "Business Logistics",
+    "icon": "/images/v3/icon9.png",
+    "description": "End-to-end logistics solutions for businesses including inventory movement and supply chain support.",
+    "link": "single-service"
+  }
+]

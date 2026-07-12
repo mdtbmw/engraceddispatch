@@ -1,0 +1,176 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================
+    // HELPERS
+    // =========================================================
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuth() && (
+        request.auth.token.email.matches('.*@engraced\\.com$') ||
+        request.auth.token.email.matches('.*admin.*') ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin'
+      );
+    }
+
+    function isDispatcher() {
+      return isAdmin() || (isAuth() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dispatcher'
+      ));
+    }
+
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    // Validate contact/subscriber data to prevent abuse
+    function isValidContact() {
+      return request.resource.data.keys().hasAll(['name', 'email', 'message'])
+        && request.resource.data.name is string
+        && request.resource.data.email is string
+        && request.resource.data.message is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.email.size() > 0
+        && request.resource.data.message.size() > 0;
+    }
+
+    function isValidSubscriber() {
+      return request.resource.data.keys().hasAll(['email'])
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 0;
+    }
+
+    // =========================================================
+    // USER PROFILES
+    // =========================================================
+
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================
+    // DELIVERIES / SHIPMENTS
+    // =========================================================
+
+    match /deliveries/{deliveryId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isDispatcher();
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================
+    // PUBLIC-FACING CMS (read by anyone, written by admin)
+    // =========================================================
+
+    match /banners/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /promotions/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /appContent/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /site_content/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /system_config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =========================================================
+    // CMS COLLECTIONS (service cards, team, testimonials, blog, portfolio)
+    // =========================================================
+
+    match /cms_services/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /cms_team/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /cms_testimonials/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /cms_blog/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /cms_portfolio/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =========================================================
+    // REFERRALS
+    // =========================================================
+
+    match /referrals/{docId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================
+    // NOTIFICATIONS
+    // =========================================================
+
+    match /notifications/{docId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================
+    // AUDIT LOGS
+    // =========================================================
+
+    match /audit_logs/{docId} {
+      allow read: if isAdmin();
+      allow create: if isAuth();
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================
+    // PUBLIC FORM SUBMISSIONS (no auth required, validated)
+    // =========================================================
+
+    match /contacts/{docId} {
+      allow read: if isAdmin();
+      allow create: if isValidContact();
+      allow update, delete: if isAdmin();
+    }
+
+    match /subscribers/{docId} {
+      allow read: if isAdmin();
+      allow create: if isValidSubscriber();
+      allow update, delete: if isAdmin();
+    }
+  }
+}
