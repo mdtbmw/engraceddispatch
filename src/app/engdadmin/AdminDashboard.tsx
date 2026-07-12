@@ -811,6 +811,9 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
     const [search, setSearch] = useState("");
     const [editUser, setEditUser] = useState<UserProfile | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+    const [showNewUser, setShowNewUser] = useState(false);
+    const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", password: "", bikeNumber: "" });
+    const [creatingUser, setCreatingUser] = useState(false);
     const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "" });
     const [uPage, setUPage] = useState(0);
     const uPerPage = 20;
@@ -824,12 +827,47 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
       addLog("Update User", editUser.name + " -> " + (form.name || editUser.name)); setEditUser(null);
     };
     const deleteUser = async (id: string) => { await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() }); addLog("Delete User", "Soft-deleted " + id); setConfirmDelete(null); };
+    const createUser = async () => {
+      setCreatingUser(true);
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, newUserForm.email, newUserForm.password);
+        await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, name: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone, role: newUserForm.role, bikeNumber: newUserForm.bikeNumber, status: "offline", isOnline: false, rating: 0, deliveryCount: 0, walletBalance: 0, loyaltyPoints: 0, photoUrl: "", isDeleted: false, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+        addLog("Create User", newUserForm.name + " (" + newUserForm.email + ") as " + newUserForm.role); setShowNewUser(false); setNewUserForm({ name: "", email: "", phone: "", role: "customer", password: "", bikeNumber: "" });
+      } catch (e: any) { addLog("Error", "Create user failed: " + (e.message || "unknown")); }
+      setCreatingUser(false);
+    };
     return <div className="tab-content space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#FFC542]" /> Users</h1>
           <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} total (page {uPage + 1}/{uTotalPages})</p></div>
-        <SearchInput value={search} onChange={setSearch} placeholder="Search users..." />
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={() => setShowNewUser(true)} className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-[10px] font-black shadow-sm transition-all flex items-center gap-1"><UserPlus className="w-3 h-3" /> Add User</button>
+          <SearchInput value={search} onChange={setSearch} placeholder="Search users..." />
+        </div>
       </div>
+      {showNewUser && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowNewUser(false)}>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> New User</h3>
+          <div className="space-y-3">
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Name</label>
+              <input value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Email</label>
+              <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone</label>
+              <input value={newUserForm.phone} onChange={e => setNewUserForm(p => ({ ...p, phone: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Role</label>
+              <select value={newUserForm.role} onChange={e => setNewUserForm(p => ({ ...p, role: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="customer">Customer</option><option value="rider">Rider</option><option value="admin">Admin</option></select></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike Number</label>
+              <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(p => ({ ...p, bikeNumber: e.target.value }))} placeholder="For riders" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Password</label>
+              <input type="password" value={newUserForm.password} onChange={e => setNewUserForm(p => ({ ...p, password: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-black/10 dark:border-white/10">
+            <button onClick={() => setShowNewUser(false)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+            <SaveBtn onClick={createUser} loading={creatingUser} label="Create User" />
+          </div>
+        </div>
+      </div>}
       <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
@@ -880,6 +918,9 @@ function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Del
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [bulkStatus, setBulkStatus] = useState("");
     const [page, setPage] = useState(0);
+    const [showNew, setShowNew] = useState(false);
+    const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "" });
+    const [creating, setCreating] = useState(false);
     const perPage = 20;
     const filtered = deliveries.filter(d => { const q = (searchQuery || search).toLowerCase(); return d.receiverName.toLowerCase().includes(q) || d.senderName.toLowerCase().includes(q) || d.id.includes(q) || (d.itemName && d.itemName.toLowerCase().includes(q)); });
     const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
@@ -891,11 +932,21 @@ function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Del
       const batch = writeBatch(db); selected.forEach(id => batch.update(doc(db, "deliveries", id), { status: bulkStatus, updatedAt: Timestamp.now() })); await batch.commit();
       addLog("Bulk", selected.size + " deliveries -> " + bulkStatus); setBulkStatus(""); setSelected(new Set());
     };
+    const createDelivery = async () => {
+      setCreating(true);
+      try {
+        const ref = await addDoc(collection(db, "deliveries"), { ...newForm, quantity: Number(newForm.quantity), weight: Number(newForm.weight), price: Number(newForm.price), tipAmount: 0, userId: "", courierName: "", courierPhone: "", otpCode: Math.floor(1000 + Math.random() * 9000).toString(), dateString: new Date().toISOString().slice(0, 10), createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+        addLog("Create Delivery", ref.id + " — " + newForm.itemName); setShowNew(false); setNewForm({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "" });
+      } catch (e: any) { addLog("Error", "Create delivery failed"); }
+      setCreating(false);
+    };
     return <div className="tab-content space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Package className="w-5 h-5 text-[#FFC542]" /> Shipments</h1>
           <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} total (page {page + 1}/{totalPages})</p></div>
-        <div className="flex items-center gap-3 flex-wrap"><SearchInput value={search} onChange={setSearch} placeholder="Search..." />
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={() => setShowNew(true)} className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-[10px] font-black shadow-sm transition-all flex items-center gap-1"><Plus className="w-3 h-3" /> New Delivery</button>
+          <SearchInput value={search} onChange={setSearch} placeholder="Search..." />
           {selected.size > 0 && <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-black/40 dark:text-white/40">{selected.size} selected</span>
             <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white">
               <option value="">Bulk...</option>
@@ -906,6 +957,29 @@ function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Del
           </div>}
         </div>
       </div>
+      {showNew && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowNew(false)}>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-2xl shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Plus className="w-4 h-4 text-[#FFC542]" /> New Delivery</h3>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {[{ k: "receiverName", l: "Receiver Name" }, { k: "receiverPhone", l: "Receiver Phone" }, { k: "senderName", l: "Sender Name" }, { k: "senderPhone", l: "Sender Phone" }, { k: "itemName", l: "Item Name" }, { k: "pickupAddress", l: "Pickup Address" }, { k: "deliveryAddress", l: "Delivery Address" }].map(f => <div key={f.k}><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{f.l}</label>
+              <input value={(newForm as any)[f.k]} onChange={e => setNewForm(p => ({ ...p, [f.k]: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>)}
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Category</label>
+              <select value={newForm.category} onChange={e => setNewForm(p => ({ ...p, category: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="Standard">Standard</option><option value="Express">Express</option><option value="Economy">Economy</option><option value="Cold Chain">Cold Chain</option><option value="Batch">Batch</option><option value="Multi">Multi</option></select></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Status</label>
+              <select value={newForm.status} onChange={e => setNewForm(p => ({ ...p, status: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="PENDING">PENDING</option><option value="ASSIGNED">ASSIGNED</option><option value="TRANSIT">TRANSIT</option><option value="OUT_FOR_DELIVERY">OUT FOR DELIVERY</option></select></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Quantity</label>
+              <input type="number" min="1" value={newForm.quantity} onChange={e => setNewForm(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Weight (kg)</label>
+              <input type="number" step="0.1" min="0.1" value={newForm.weight} onChange={e => setNewForm(p => ({ ...p, weight: parseFloat(e.target.value) || 1 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Price (₦)</label>
+              <input type="number" min="0" value={newForm.price} onChange={e => setNewForm(p => ({ ...p, price: parseInt(e.target.value) || 0 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-black/10 dark:border-white/10">
+            <button onClick={() => setShowNew(false)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+            <SaveBtn onClick={createDelivery} loading={creating} label="Create Delivery" />
+          </div>
+        </div>
+      </div>}
       <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
