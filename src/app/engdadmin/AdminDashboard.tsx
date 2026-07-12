@@ -5,6 +5,8 @@ import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, si
 import { getFirestore, collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, writeBatch, addDoc, increment } from "firebase/firestore";
 import { Shield, Truck, Package, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun } from "lucide-react";
 import CMSTab from "./CMSTab";
+import dynamic from "next/dynamic";
+const LiveTrackingMap = dynamic(() => import("./LiveTrackingMap"), { ssr: false });
 const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "engraceddispatch-ffba4";
 const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyDa7J-JOfQIW4ZZo59jjEBiLUSRyvdK6uY", authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || `${projectId}.firebaseapp.com`, projectId, storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || `${projectId}.appspot.com`, messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_GCM_SENDER_ID || "858437923778", appId: process.env.NEXT_PUBLIC_FIREBASE_APPLICATION_ID || "1:858437923778:android:2d29558caf1a2f15955c5b" };
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
@@ -12,7 +14,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 type TabId = "dashboard" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
-interface Delivery { id: string; status: string; category?: string; receiverName: string; deliveryAddress: string; senderName: string; senderPhone: string; receiverPhone: string; price: number; riderId: string; courierName: string; courierPhone: string; itemName: string; pickupAddress: string; quantity: number; weight: number; dateString: string; tipAmount: number; userId: string; otpCode: string; }
+interface Delivery { id: string; status: string; category?: string; receiverName: string; deliveryAddress: string; senderName: string; senderPhone: string; receiverPhone: string; price: number; riderId: string; courierName: string; courierPhone: string; itemName: string; pickupAddress: string; quantity: number; weight: number; dateString: string; tipAmount: number; userId: string; otpCode: string; pickupLat?: number; pickupLng?: number; deliveryLat?: number; deliveryLng?: number; }
 interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
 interface Referral { id: string; referrerId: string; referrerName: string; referrerEmail: string; refereeId: string; refereeName: string; refereeEmail: string; rewardAmount: number; status: string; }
 interface Promotion { id: string; title: string; description: string; discountType: string; discountValue: number; discountDisplay: string; minOrderAmount: number; maxDiscount: number; code: string; usageLimit: number; usedCount: number; active: boolean; }
@@ -1289,8 +1291,9 @@ function LogsTab({ logs }: LogsTabProps) {
 
 
 
-function TrackingTab({ deliveries }: { deliveries: Delivery[] }) {
+function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers: UserProfile[] }) {
   const [trackSearch, setTrackSearch] = useState("");
+  const [tSelectedId, setTSelectedId] = useState<string | null>(null);
   const activeD = deliveries.filter(d => d.status !== "DELIVERED" && d.status !== "CANCELLED");
   const filtered = trackSearch ? activeD.filter(d => d.id.includes(trackSearch) || d.receiverName.toLowerCase().includes(trackSearch.toLowerCase()) || d.itemName?.toLowerCase().includes(trackSearch.toLowerCase())) : activeD;
   const [tPage, setTPage] = useState(0);
@@ -1300,17 +1303,21 @@ function TrackingTab({ deliveries }: { deliveries: Delivery[] }) {
   useEffect(() => { setTPage(0); }, [trackSearch]);
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><MapPin className="w-5 h-5 text-[#FFC542]" /> Live Tracking</h1><p className="text-xs text-black/40 dark:text-white/40 mt-1">{activeD.length} active deliveries</p></div>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><MapPin className="w-5 h-5 text-[#FFC542]" /> Live Tracking</h1><p className="text-xs text-black/40 dark:text-white/40 mt-1">{activeD.length} active deliveries, {drivers.filter(d => d.lat && d.lng).length} riders on map</p></div>
       <SearchInput value={trackSearch} onChange={setTrackSearch} placeholder="Search by ID, name, item..." />
+    </div>
+    <div className="h-[400px] rounded-3xl overflow-hidden border border-black/10 dark:border-white/10 shadow-sm">
+      <LiveTrackingMap deliveries={filtered} drivers={drivers} selectedId={tSelectedId} onSelect={setTSelectedId} />
     </div>
     <div className="grid gap-4">
       {pagedT.length === 0 && <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-8 text-center"><p className="text-sm text-black/40 dark:text-white/40">No active deliveries.</p></div>}
       {pagedT.map(d => {
         const step = sIdx[d.status] || 0;
-        return <div key={d.id} className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm animate-fade-in">
+        return <div key={d.id} onClick={() => setTSelectedId(tSelectedId === d.id ? null : d.id)} className={"bg-white dark:bg-[#1a1a1a] border rounded-3xl p-5 shadow-sm animate-fade-in cursor-pointer transition-all " + (tSelectedId === d.id ? "border-[#FFC542] ring-2 ring-[#FFC542]/30" : "border-black/10 dark:border-white/10 hover:border-[#FFC542]/50")}>
           <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
             <div><p className="font-bold text-[#111] dark:text-white">{d.itemName || "Parcel"}</p>
-              <p className="text-[10px] text-black/40 dark:text-white/40">#{idShort(d.id)} • {d.receiverName} → {d.deliveryAddress}</p></div>
+              <p className="text-[10px] text-black/40 dark:text-white/40">#{idShort(d.id)} • {d.receiverName} → {d.deliveryAddress}</p>
+              {d.courierName && <p className="text-[10px] text-[#FFC542] mt-0.5 font-medium">{d.courierName}</p>}</div>
             <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status.replace(/_/g, " ")}</span>
           </div>
           <div className="relative mt-4 mb-2">
@@ -1376,7 +1383,7 @@ function TrackingTab({ deliveries }: { deliveries: Delivery[] }) {
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} />}
-        {tab === "tracking" && <TrackingTab deliveries={deliveries} />}
+        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} />}
         {tab === "promotions" && <PromotionsTab promotions={promotions} db={db} addLog={addLog} addToast={addToast} />}
