@@ -12,8 +12,6 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuth() && (
-        request.auth.token.email.matches('.*@engraced\\.com$') ||
-        request.auth.token.email.matches('.*admin.*') ||
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin'
       );
@@ -50,10 +48,23 @@ service cloud.firestore {
     // USER PROFILES
     // =========================================================
 
+    function isAdminRole(role) {
+      return role == 'admin' || role == 'super_admin';
+    }
+
+    function notElevatingToAdmin() {
+      if (isAdmin()) return true;
+      let incoming = request.resource.data;
+      if (incoming.keys().hasAny(['role'])) {
+        return incoming.role != 'admin' && incoming.role != 'super_admin';
+      }
+      return true;
+    }
+
     match /users/{userId} {
       allow read: if isAuth();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && notElevatingToAdmin();
+      allow update: if (isOwner(userId) && notElevatingToAdmin()) || isAdmin();
       allow delete: if isAdmin();
     }
 

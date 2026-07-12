@@ -28,19 +28,19 @@ class DispatchApplication : Application() {
         if (!initializedWithDefault) {
             try {
                 // Load variables dynamically from BuildConfig if configured
-                val apiKey = try { com.example.BuildConfig.FIREBASE_API_KEY } catch (e: Throwable) { "AIzaSyFakeKeyPlaceholderForEngracedDispatch" }
-                val appId = try { com.example.BuildConfig.FIREBASE_APPLICATION_ID } catch (e: Throwable) { "1:1234567890:android:fakeid777" }
-                val projectId = try { com.example.BuildConfig.FIREBASE_PROJECT_ID } catch (e: Throwable) { "engraced-dispatch-preview" }
-                val databaseUrl = try { com.example.BuildConfig.FIREBASE_DATABASE_URL } catch (e: Throwable) { "https://engraced-dispatch-preview.firebaseio.com" }
-                val gcmSenderId = try { com.example.BuildConfig.FIREBASE_GCM_SENDER_ID } catch (e: Throwable) { "1234567890" }
+                val apiKey = try { com.example.BuildConfig.FIREBASE_API_KEY } catch (e: Throwable) { "AIzaSyDa7J-JOfQIW4ZZo59jjEBiLUSRyvdK6uY" }
+                val appId = try { com.example.BuildConfig.FIREBASE_APPLICATION_ID } catch (e: Throwable) { "1:858437923778:android:2d29558caf1a2f15955c5b" }
+                val projectId = try { com.example.BuildConfig.FIREBASE_PROJECT_ID } catch (e: Throwable) { "engraceddispatch-ffba4" }
+                val databaseUrl = try { com.example.BuildConfig.FIREBASE_DATABASE_URL } catch (e: Throwable) { "https://engraceddispatch-ffba4.firebaseio.com" }
+                val gcmSenderId = try { com.example.BuildConfig.FIREBASE_GCM_SENDER_ID } catch (e: Throwable) { "858437923778" }
 
                 // Programmatic options with robust fallbacks
                 val options = FirebaseOptions.Builder()
-                    .setApiKey(apiKey.ifBlank { "AIzaSyFakeKeyPlaceholderForEngracedDispatch" })
-                    .setApplicationId(appId.ifBlank { "1:1234567890:android:fakeid777" })
-                    .setProjectId(projectId.ifBlank { "engraced-dispatch-preview" })
-                    .setDatabaseUrl(databaseUrl.ifBlank { "https://engraced-dispatch-preview.firebaseio.com" })
-                    .setGcmSenderId(gcmSenderId.ifBlank { "1234567890" })
+                    .setApiKey(apiKey.ifBlank { "AIzaSyDa7J-JOfQIW4ZZo59jjEBiLUSRyvdK6uY" })
+                    .setApplicationId(appId.ifBlank { "1:858437923778:android:2d29558caf1a2f15955c5b" })
+                    .setProjectId(projectId.ifBlank { "engraceddispatch-ffba4" })
+                    .setDatabaseUrl(databaseUrl.ifBlank { "https://engraceddispatch-ffba4.firebaseio.com" })
+                    .setGcmSenderId(gcmSenderId.ifBlank { "858437923778" })
                     .build()
                 
                 // Clear any existing invalid default FirebaseApp instances if they got registered somehow

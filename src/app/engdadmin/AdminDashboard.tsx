@@ -569,19 +569,15 @@ function AdminDashboardPage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (u) {
-        const isAdmin = (u.email || "").endsWith("@engraced.com") || (u.email || "").includes("admin");
-        if (isAdmin) { setCurrentUser(u); setUserRole("super_admin"); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Lax"; }
-        else {
           try {
             await new Promise(r => setTimeout(r, 1500));
             const snap = await getDoc(doc(db, "users", u.uid));
-            if (!snap.exists()) { setCurrentUser(u); setUserRole("super_admin"); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Lax"; setLoading(false); return; }
+            if (!snap.exists()) { setAuthErr("Account not found. Contact an administrator."); document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null); setLoading(false); return; }
             const d = snap.data();
-            if (d?.role === "admin" || d?.role === "super_admin") { setCurrentUser(u); setUserRole(d.role); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Lax"; setLoading(false); return; }
-            if (d?.role === "dispatcher") { setCurrentUser(u); setUserRole("dispatcher"); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Lax"; setLoading(false); return; }
-            setAuthErr("Unauthorized"); document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Lax"; signOut(auth); setCurrentUser(null);
-          } catch { setCurrentUser(u); setUserRole("super_admin"); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Lax"; }
-        }
+            if (d?.role === "admin" || d?.role === "super_admin") { setCurrentUser(u); setUserRole(d.role); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Strict"; setLoading(false); return; }
+            if (d?.role === "dispatcher") { setCurrentUser(u); setUserRole("dispatcher"); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Strict"; setLoading(false); return; }
+            setAuthErr("Unauthorized"); document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null);
+          } catch { setAuthErr("Authentication error. Please try again."); document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null); }
       } else { setCurrentUser(null); setUserRole(""); setLoading(false); return; }
       setLoading(false);
     });
@@ -668,14 +664,17 @@ function AdminDashboardPage() {
       if (signingUp) {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
         await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split("@")[0], role: signupRole, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
-        document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Lax";
+        document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Strict";
         setAuthOk((signupRole === "dispatcher" ? "Dispatcher" : "Admin") + " account created.");
       } else {
         const cred = await signInWithEmailAndPassword(auth, email, password);
-        await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split("@")[0], role: "super_admin", updatedAt: Timestamp.now() }, { merge: true });
-        document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Lax";
+        const snap = await getDoc(doc(db, "users", cred.user.uid));
+        if (!snap.exists()) {
+          await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split("@")[0], role: "super_admin", updatedAt: Timestamp.now() });
+        }
+        setAuthOk("Signed in. Loading dashboard...");
       }
-    } catch (err: any) { setAuthErr(err.message); }
+    } catch (err: any) { setAuthErr("Operation failed. Please try again."); }
   };
 
   const updateSetting = async (key: string, val: any) => {

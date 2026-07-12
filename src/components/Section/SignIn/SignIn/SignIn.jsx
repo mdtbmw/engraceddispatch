@@ -21,8 +21,8 @@ const SignInForm = () => {
       const cred = await signInWithEmailAndPassword(auth, email, password);
       const snap = await getDoc(doc(db, "users", cred.user.uid));
       const role = snap.exists() ? snap.data().role : null;
-      if (role === "admin" || role === "super_admin") {
-        document.cookie = "admin_auth=true;path=/;max-age=86400;SameSite=Lax";
+      if (role === "admin" || role === "super_admin" || role === "dispatcher") {
+        document.cookie = "admin_auth=true;path=/;max-age=86400;SameSite=Strict";
         router.push("/engdadmin");
       } else {
         router.push("/");
@@ -33,7 +33,7 @@ const SignInForm = () => {
       } else if (err.code === "auth/too-many-requests") {
         setError("Too many attempts. Please try again later.");
       } else {
-        setError(err.message);
+        setError("Sign in failed. Please try again.");
       }
     } finally {
       setLoading(false);
