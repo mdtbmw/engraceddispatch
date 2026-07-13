@@ -62,7 +62,7 @@ fun AdminAuthGuard(
     var authError by remember { mutableStateOf<String?>(null) }
     var isVerifying by remember { mutableStateOf(false) }
 
-    val isAuthorized = isAdminVerified || userEmail.contains("admin", ignoreCase = true) || userEmail == "brandon.s@example.com" || userEmail.endsWith("@engraced.com")
+    val isAuthorized = isAdminVerified
 
     if (isAuthorized) {
         content()

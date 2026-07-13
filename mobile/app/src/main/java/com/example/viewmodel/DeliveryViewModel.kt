@@ -390,34 +390,35 @@ class DeliveryViewModel : ViewModel() {
 
     fun verifyAdminAccess(passcode: String, onComplete: (Boolean) -> Unit) {
         val email = _userEmail.value
-        val isValid = passcode == "engraced2026" || passcode == "admin123" || email.contains("admin", ignoreCase = true) || email == "brandon.s@example.com" || email.endsWith("@engraced.com")
-        if (isValid) {
-            _isAdminVerified.value = true
-            logAdminActivity("Admin Auth", "Successfully verified admin authorization for $email")
-            onComplete(true)
-        } else {
-            try {
-                val db = FirebaseManager.firestore
-                val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-                if (uid != null && db != null) {
-                    db.collection("users").document(uid).get().addOnSuccessListener { snap ->
-                        val role = snap.getString("role") ?: ""
-                        if (role == "admin" || role == "super_admin") {
-                            _isAdminVerified.value = true
-                            logAdminActivity("Admin Auth", "Successfully verified admin role from Firestore")
-                            onComplete(true)
-                        } else {
-                            onComplete(false)
-                        }
-                    }.addOnFailureListener {
+        // First check Firestore for admin role (most secure)
+        try {
+            val db = FirebaseManager.firestore
+            val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+            if (uid != null && db != null) {
+                db.collection("users").document(uid).get().addOnSuccessListener { snap ->
+                    val role = snap.getString("role") ?: ""
+                    if (role == "admin" || role == "super_admin") {
+                        _isAdminVerified.value = true
+                        logAdminActivity("Admin Auth", "Verified admin role from Firestore for $email")
+                        onComplete(true)
+                    } else {
                         onComplete(false)
                     }
-                } else {
+                }.addOnFailureListener {
                     onComplete(false)
                 }
-            } catch (e: Exception) {
+            } else if (passcode.isNotEmpty()) {
+                val isValid = passcode == "engraced2026"
+                if (isValid) {
+                    _isAdminVerified.value = true
+                    logAdminActivity("Admin Auth", "Verified via emergency passcode for offline access")
+                }
+                onComplete(isValid)
+            } else {
                 onComplete(false)
             }
+        } catch (e: Exception) {
+            onComplete(false)
         }
     }
 
@@ -1654,12 +1655,15 @@ class DeliveryViewModel : ViewModel() {
                                         val role = if (doc.exists()) doc.getString("role") ?: localRole else localRole
                                         val bikeNumber = if (doc.exists()) doc.getString("bikeNumber") ?: localBike else localBike
 
-                                        _userRole.value = role
-                                        _bikeNumber.value = bikeNumber
-                                        _activeViewMode.value = role
-                                        savePref("user_role", role)
-                                        savePref("active_view_mode", role)
-                                        savePref("bike_number", bikeNumber)
+                                _userRole.value = role
+                                _bikeNumber.value = bikeNumber
+                                _activeViewMode.value = role
+                                savePref("user_role", role)
+                                savePref("active_view_mode", role)
+                                savePref("bike_number", bikeNumber)
+                                if (role == "admin" || role == "super_admin") {
+                                    _isAdminVerified.value = true
+                                }
 
                                         updateProfile(name, localEmail, phone)
                                         syncUserParcelHistoryFromFirebase(user.uid)
@@ -2335,7 +2339,10 @@ class DeliveryViewModel : ViewModel() {
                                 savePref("user_role", role)
                                 savePref("active_view_mode", role)
                                 savePref("bike_number", bikeNumber)
-                                
+                                if (role == "admin" || role == "super_admin") {
+                                    _isAdminVerified.value = true
+                                }
+
                                 updateProfile(name, email, phone)
                                 setUserPin(pin)
                                 setLoginMode("pin")
@@ -2432,6 +2439,83 @@ class DeliveryViewModel : ViewModel() {
                     startShipmentsTriggerListener(user.uid)
                 } else {
                     onComplete(false, error ?: "Authentication failed. Please check your credentials or network connection.")
+                }
+            }
+        }
+    }
+
+    fun signInWithAdmin(
+        email: String,
+        password: String,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            com.example.data.FirebaseManager.signInWithAdminEmailPassword(email, password) { success, user, error ->
+                if (success && user != null) {
+                    _firebaseUserId.value = user.uid
+                    _firebaseConnected.value = true
+
+                    val db = com.example.data.FirebaseManager.firestore
+                    if (db != null) {
+                        db.collection("users").document(user.uid).get()
+                            .addOnSuccessListener { doc ->
+                                val name = if (doc.exists()) doc.getString("name") ?: "Admin" else "Admin"
+                                val phone = if (doc.exists()) doc.getString("phone") ?: "" else ""
+                                val role = if (doc.exists()) doc.getString("role") ?: "admin" else "admin"
+                                val bikeNumber = if (doc.exists()) doc.getString("bikeNumber") ?: "" else ""
+
+                                _userRole.value = role
+                                _bikeNumber.value = bikeNumber
+                                _activeViewMode.value = role
+                                savePref("user_role", role)
+                                savePref("active_view_mode", role)
+                                savePref("bike_number", bikeNumber)
+
+                                updateProfile(name, email, phone)
+                                setLoginMode("admin")
+
+                                appContext?.let { ctx ->
+                                    val prefs = ctx.getSharedPreferences("engraced_dispatch_prefs", android.content.Context.MODE_PRIVATE)
+                                    prefs.edit()
+                                        .putString("local_uid", user.uid)
+                                        .putString("local_name", name)
+                                        .putString("local_email", email)
+                                        .putString("local_phone", phone)
+                                        .putString("local_role", role)
+                                        .putString("local_bike_number", bikeNumber)
+                                        .apply()
+                                }
+
+                                // Auto-verify as admin since they logged in directly
+                                if (role == "admin" || role == "super_admin") {
+                                    _isAdminVerified.value = true
+                                }
+
+                                triggerWelcomeNotification(name)
+                                onComplete(true, null)
+                            }
+                            .addOnFailureListener {
+                                _userRole.value = "admin"
+                                _activeViewMode.value = "admin"
+                                updateProfile("Admin", email, "")
+                                setLoginMode("admin")
+                                _isAdminVerified.value = true
+                                triggerWelcomeNotification("Admin")
+                                onComplete(true, null)
+                            }
+                    } else {
+                        _userRole.value = "admin"
+                        _activeViewMode.value = "admin"
+                        updateProfile("Admin", email, "")
+                        setLoginMode("admin")
+                        _isAdminVerified.value = true
+                        onComplete(true, null)
+                    }
+
+                    syncUserParcelHistoryFromFirebase(user.uid)
+                    startShipmentsTriggerListener(user.uid)
+                } else {
+                    onComplete(false, error ?: "Admin login failed. Check your credentials.")
                 }
             }
         }

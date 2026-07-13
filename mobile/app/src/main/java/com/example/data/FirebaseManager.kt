@@ -183,6 +183,26 @@ object FirebaseManager {
     /**
      * Authenticate with Firebase using Google OAuth ID Token
      */
+    fun signInWithAdminEmailPassword(
+        email: String,
+        password: String,
+        onComplete: (Boolean, FirebaseUser?, String?) -> Unit
+    ) {
+        val authInstance = auth
+        if (authInstance == null) {
+            onComplete(false, null, "Firebase Authentication service not available.")
+            return
+        }
+        authInstance.signInWithEmailAndPassword(email, password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    onComplete(true, task.result?.user, null)
+                } else {
+                    onComplete(false, null, task.exception?.localizedMessage ?: "Invalid email or password.")
+                }
+            }
+    }
+
     fun signInWithGoogleIdToken(
         idToken: String,
         onComplete: (Boolean, FirebaseUser?, String?) -> Unit

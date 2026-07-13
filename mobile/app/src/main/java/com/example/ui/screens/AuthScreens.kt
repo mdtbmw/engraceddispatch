@@ -120,6 +120,10 @@ enum class LoginStep {
     EMAIL, PIN
 }
 
+enum class LoginMode {
+    USER, ADMIN
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
@@ -127,8 +131,10 @@ fun LoginScreen(
     onNavigate: (String) -> Unit
 ) {
     var step by remember { mutableStateOf(LoginStep.EMAIL) }
+    var loginMode by remember { mutableStateOf(LoginMode.USER) }
     var email by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var isPinError by remember { mutableStateOf(false) }
     var isValidatingPin by remember { mutableStateOf(false) }
     var showSupportDialog by remember { mutableStateOf(false) }
@@ -338,36 +344,65 @@ fun LoginScreen(
                                 Spacer(modifier = Modifier.height(32.dp))
 
                                 if (currentStep == LoginStep.PIN) {
-                                    // PIN STEP
-                                    PinInputField(
-                                        pin = pin,
-                                        onPinChange = {
-                                            pin = it
-                                            isPinError = false
-                                        },
-                                        isError = isPinError,
-                                        obscureText = true
-                                    )
+                                    if (loginMode == LoginMode.ADMIN) {
+                                        OutlinedTextField(
+                                            value = password,
+                                            onValueChange = { password = it },
+                                            label = { Text("Password", fontFamily = SpaceGrotesk, color = TextGray) },
+                                            placeholder = { Text("Enter admin password", fontFamily = SpaceGrotesk, color = TextGray.copy(alpha = 0.5f)) },
+                                            leadingIcon = { Icon(Icons.Filled.Lock, null, tint = TextGray) },
+                                            singleLine = true,
+                                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                            textStyle = androidx.compose.ui.text.TextStyle(color = AppOnSurface, fontWeight = FontWeight.SemiBold, fontSize = 15.sp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = if (isLight) Obsidian else Gold,
+                                                unfocusedBorderColor = fieldBorder,
+                                                disabledBorderColor = fieldBorder.copy(alpha = 0.5f),
+                                                focusedContainerColor = fieldBg,
+                                                unfocusedContainerColor = fieldBg,
+                                                disabledContainerColor = fieldBg.copy(alpha = 0.6f),
+                                                focusedTextColor = AppOnSurface,
+                                                unfocusedTextColor = AppOnSurface,
+                                                disabledTextColor = AppOnSurface.copy(alpha = 0.6f),
+                                                focusedPlaceholderColor = TextGray,
+                                                unfocusedPlaceholderColor = TextGray
+                                            ),
+                                            modifier = Modifier.fillMaxWidth().height(62.dp),
+                                            shape = RoundedCornerShape(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(24.dp))
+                                    } else {
+                                        // PIN STEP (user mode)
+                                        PinInputField(
+                                            pin = pin,
+                                            onPinChange = {
+                                                pin = it
+                                                isPinError = false
+                                            },
+                                            isError = isPinError,
+                                            obscureText = true
+                                        )
 
-                                    Spacer(modifier = Modifier.height(24.dp))
+                                        Spacer(modifier = Modifier.height(24.dp))
 
-                                    // Automatic validation effect
-                                    LaunchedEffect(pin) {
-                                        if (pin.length == 4) {
-                                            keyboardController?.hide()
-                                            focusManager.clearFocus()
-                                            isValidatingPin = true
-                                            delay(1000) // cool delay for validation animation!
-                                            viewModel.signInWithFirebase(email, pin) { success, errorText ->
-                                                if (success) {
-                                                    Toast.makeText(context, "Access Granted! Welcome Back.", Toast.LENGTH_SHORT).show()
-                                                    onNavigate("Preloader")
-                                                } else {
-                                                    isPinError = true
-                                                    Toast.makeText(context, errorText ?: "Invalid email or secure PIN.", Toast.LENGTH_SHORT).show()
-                                                    pin = ""
+                                        // Automatic validation effect (user PIN mode only)
+                                        LaunchedEffect(pin) {
+                                            if (pin.length == 4) {
+                                                keyboardController?.hide()
+                                                focusManager.clearFocus()
+                                                isValidatingPin = true
+                                                delay(1000)
+                                                viewModel.signInWithFirebase(email, pin) { success, errorText ->
+                                                    if (success) {
+                                                        Toast.makeText(context, "Access Granted! Welcome Back.", Toast.LENGTH_SHORT).show()
+                                                        onNavigate("Preloader")
+                                                    } else {
+                                                        isPinError = true
+                                                        Toast.makeText(context, errorText ?: "Invalid email or secure PIN.", Toast.LENGTH_SHORT).show()
+                                                        pin = ""
+                                                    }
+                                                    isValidatingPin = false
                                                 }
-                                                isValidatingPin = false
                                             }
                                         }
                                     }
@@ -449,21 +484,38 @@ fun LoginScreen(
                                     }
                                     step = LoginStep.PIN
                                 } else {
-                                    if (pin.length != 4) {
-                                        Toast.makeText(context, "PIN must be exactly 4 digits", Toast.LENGTH_SHORT).show()
-                                        return@Button
-                                    }
-                                    isValidatingPin = true
-                                    viewModel.signInWithFirebase(email, pin) { success, errorText ->
-                                        if (success) {
-                                            Toast.makeText(context, "Access Granted! Welcome Back.", Toast.LENGTH_SHORT).show()
-                                            onNavigate("Preloader")
-                                        } else {
-                                            isPinError = true
-                                            Toast.makeText(context, errorText ?: "Invalid email or secure PIN.", Toast.LENGTH_SHORT).show()
-                                            pin = ""
+                                    if (loginMode == LoginMode.ADMIN) {
+                                        if (password.isBlank()) {
+                                            Toast.makeText(context, "Please enter your password", Toast.LENGTH_SHORT).show()
+                                            return@Button
                                         }
-                                        isValidatingPin = false
+                                        isValidatingPin = true
+                                        viewModel.signInWithAdmin(email, password) { success, errorText ->
+                                            if (success) {
+                                                Toast.makeText(context, "Admin Access Granted!", Toast.LENGTH_SHORT).show()
+                                                onNavigate("Preloader")
+                                            } else {
+                                                Toast.makeText(context, errorText ?: "Invalid admin credentials.", Toast.LENGTH_SHORT).show()
+                                            }
+                                            isValidatingPin = false
+                                        }
+                                    } else {
+                                        if (pin.length != 4) {
+                                            Toast.makeText(context, "PIN must be exactly 4 digits", Toast.LENGTH_SHORT).show()
+                                            return@Button
+                                        }
+                                        isValidatingPin = true
+                                        viewModel.signInWithFirebase(email, pin) { success, errorText ->
+                                            if (success) {
+                                                Toast.makeText(context, "Access Granted! Welcome Back.", Toast.LENGTH_SHORT).show()
+                                                onNavigate("Preloader")
+                                            } else {
+                                                isPinError = true
+                                                Toast.makeText(context, errorText ?: "Invalid email or secure PIN.", Toast.LENGTH_SHORT).show()
+                                                pin = ""
+                                            }
+                                            isValidatingPin = false
+                                        }
                                     }
                                 }
                             },
@@ -479,7 +531,7 @@ fun LoginScreen(
                                 horizontalArrangement = Arrangement.Center
                             ) {
                                 Text(
-                                    text = if (step == LoginStep.EMAIL) "Continue" else "Verify & Login", 
+                                    text = if (step == LoginStep.EMAIL) "Continue" else if (loginMode == LoginMode.ADMIN) "Admin Login" else "Verify & Login", 
                                     fontSize = 16.sp, 
                                     fontWeight = FontWeight.ExtraBold, 
                                     color = if (isLight) Gold else Obsidian
@@ -551,6 +603,22 @@ fun LoginScreen(
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (loginMode == LoginMode.ADMIN) "Switch to User Login" else "Admin Login",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextGray.copy(alpha = 0.7f),
+                        modifier = Modifier
+                            .clickable {
+                                loginMode = if (loginMode == LoginMode.ADMIN) LoginMode.USER else LoginMode.ADMIN
+                                step = LoginStep.EMAIL
+                                pin = ""
+                                password = ""
+                                isPinError = false
+                            }
+                            .padding(vertical = 4.dp)
+                    )
                 }
             }
         }
