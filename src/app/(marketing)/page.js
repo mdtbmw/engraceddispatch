@@ -9,6 +9,7 @@ import HeroSection from "~/components/Section/Home-1/Hero/Hero";
 import NewsSection from "~/components/Section/Home-1/News/News";
 import TestimonialSection from "~/components/Section/Common/Testimonial/Testimonial";
 import Header from "~/components/Section/Common/Header/Header";
+import Newsletter from "~/components/Section/Common/Newsletter/Newsletter";
 
 export default function Home() {
   return (
@@ -23,6 +24,7 @@ export default function Home() {
         <Faq />
         <TestimonialSection />
         <NewsSection />
+        <Newsletter />
         <Cta />
       </main>
       <Footer />
