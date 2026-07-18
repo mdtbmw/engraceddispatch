@@ -77,6 +77,15 @@ data class PromoCode(
     val code: String,
     val isLimited: Boolean = true
 )
+data class BannerCard(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val subtitle: String,
+    val imageUrl: String,
+    val interval: Int = 5,
+    val order: Int = 0,
+    val active: Boolean = true
+)
 
 data class ParcelDraft(
     val id: String = UUID.randomUUID().toString().substring(0, 8).uppercase(),

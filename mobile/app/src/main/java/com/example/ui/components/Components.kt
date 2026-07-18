@@ -499,9 +499,9 @@ fun MapCanvas(
                 var courierMarker;
                 var routeLine;
                 
-                // Lagos coordinates
-                var startLat = 6.4281, startLng = 3.4219;
-                var endLat = 6.5244, endLng = 3.3792;
+                // Benin City coordinates
+                var startLat = 6.3350, startLng = 5.6037;
+                var endLat = 6.4020, endLng = 5.6174;
                 
                 function initMap() {
                     map = L.map('map', {
@@ -518,8 +518,8 @@ fun MapCanvas(
                     // Add Route Line
                     var pathPoints = [
                         [startLat, startLng],
-                        [6.4500, 3.4000],
-                        [6.4800, 3.3800],
+                        [startLat + (endLat - startLat) * 0.33, startLng + (endLng - startLng) * 0.33],
+                        [startLat + (endLat - startLat) * 0.66, startLng + (endLng - startLng) * 0.66],
                         [endLat, endLng]
                     ];
                     

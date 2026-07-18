@@ -138,18 +138,10 @@ object FirebaseManager {
             return
         }
         val cleanQueryPhone = phone.trim().replace("-", "").replace("+", "")
-        db.collection("users").get()
+        db.collection("users").whereEqualTo("phone", phone.trim())
+            .get()
             .addOnSuccessListener { querySnapshot ->
-                var found = false
-                for (doc in querySnapshot.documents) {
-                    val userPhone = doc.getString("phone") ?: ""
-                    val cleanUserPhone = userPhone.replace("-", "").replace("+", "").trim()
-                    if (cleanUserPhone == cleanQueryPhone && cleanQueryPhone.isNotEmpty()) {
-                        found = true
-                        break
-                    }
-                }
-                onComplete(found)
+                onComplete(querySnapshot.documents.isNotEmpty())
             }
             .addOnFailureListener {
                 onComplete(false)
@@ -267,8 +259,8 @@ object FirebaseManager {
         if (role == "rider") {
             userMap["isOnline"] = true
             userMap["status"] = "active"
-            userMap["latitude"] = 6.4281
-            userMap["longitude"] = 3.4219
+            userMap["latitude"] = 6.3350
+            userMap["longitude"] = 5.6037
             userMap["rating"] = 5.0
             userMap["currentWorkload"] = 0
             userMap["batteryLevel"] = 100
@@ -297,16 +289,21 @@ object FirebaseManager {
             "status" to (if (isOnline) "active" else "offline"),
             "updatedAt" to System.currentTimeMillis()
         )
-        // Update both in the users document and riders collection
         db.collection("users").document(userId)
             .set(statusMap, com.google.firebase.firestore.SetOptions.merge())
             .addOnSuccessListener {
                 Log.d(TAG, "Rider online status updated in users collection to: $isOnline")
             }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to update rider online status in users: ${e.message}")
+            }
         db.collection("riders").document(userId)
             .set(statusMap, com.google.firebase.firestore.SetOptions.merge())
             .addOnSuccessListener {
                 Log.d(TAG, "Rider online status updated in riders collection to: $isOnline")
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to update rider online status in riders: ${e.message}")
             }
     }
 
@@ -926,7 +923,7 @@ object FirebaseManager {
                 Log.d(TAG, "Wallet balance synced to Firestore.")
             }
             .addOnFailureListener { e ->
-                // If document doesn't exist yet, try to merge set
+                Log.w(TAG, "Wallet balance update failed, trying merge-set: ${e.message}")
                 db.collection("users").document(userId)
                     .set(hashMapOf("walletBalance" to balance), com.google.firebase.firestore.SetOptions.merge())
             }
@@ -945,6 +942,9 @@ object FirebaseManager {
             .set(map, com.google.firebase.firestore.SetOptions.merge())
             .addOnSuccessListener {
                 Log.d(TAG, "Loyalty and delivery stats synced to Firestore.")
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to sync loyalty stats to Firestore: ${e.message}")
             }
     }
 
@@ -986,7 +986,7 @@ object FirebaseManager {
                 Log.d(TAG, "FCM token updated for user $userId in Firestore.")
             }
             .addOnFailureListener { e ->
-                // Fallback: merge-set if doc doesn't exist yet
+                Log.w(TAG, "FCM token update failed, trying merge-set: ${e.message}")
                 db.collection("users").document(userId)
                     .set(hashMapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
             }
@@ -1375,8 +1375,7 @@ object FirebaseManager {
         docRef.get().addOnSuccessListener { snapshot ->
             if (snapshot.exists()) {
                 val realOtp = snapshot.getString("otpCode") ?: ""
-                // Match the cloud-synchronized OTP code exactly. If no OTP is registered on the cloud, fallback securely.
-                val isValid = if (realOtp.isNotEmpty()) realOtp == otpInput else (otpInput == "1234" || otpInput.isEmpty())
+                val isValid = realOtp.isNotEmpty() && realOtp == otpInput
                 
                 if (isValid) {
                     val parcelUserId = snapshot.getString("userId") ?: ""
@@ -1498,7 +1497,9 @@ object FirebaseManager {
             if (userId.isNotEmpty()) {
                 db.collection("users").document(userId).collection("deliveries").document(parcelId)
                     .update(mapOf("status" to "DELIVERED", "progress" to 1.0f))
-                    .addOnFailureListener { /* ignore */ }
+                    .addOnFailureListener { e ->
+                        Log.e(TAG, "Failed to update user delivery subcollection: ${e.message}")
+                    }
             }
             onComplete(true, null)
         }.addOnFailureListener { e ->
@@ -1637,8 +1638,8 @@ object FirebaseManager {
                                 RiderStatus.OFFLINE
                             }
                             
-                            val lat = doc.getDouble("latitude") ?: 6.4281
-                            val lng = doc.getDouble("longitude") ?: 3.4219
+                            val lat = doc.getDouble("latitude") ?: 6.3350
+                            val lng = doc.getDouble("longitude") ?: 5.6037
                             val workload = (doc.getLong("currentWorkload") ?: doc.getLong("activeDeliveriesCount") ?: 0L).toInt()
                             val battery = (doc.getLong("batteryLevel") ?: 90L).toInt()
                             val rating = doc.getDouble("rating") ?: 4.8

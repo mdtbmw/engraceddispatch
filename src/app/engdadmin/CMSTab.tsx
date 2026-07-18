@@ -28,10 +28,10 @@ const field = (label: string, value: string, onChange: (v: string) => void, opts
     <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{label}</label>
     {opts?.multiline ? (
       <textarea value={value} onChange={e => onChange(e.target.value)}
-        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40 min-h-[80px] resize-y" />
+        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#111]/40 dark:focus:ring-[#FFC542]/40 min-h-[80px] resize-y" />
     ) : (
       <input type={opts?.type || "text"} value={value} onChange={e => onChange(e.target.value)}
-        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#111]/40 dark:focus:ring-[#FFC542]/40" />
     )}
   </div>
 );
@@ -135,7 +135,7 @@ function CrudTable({ collectionName, label, icon, fields, items, onAdd, onUpdate
   return <div className="space-y-4">
     <div className="flex items-center justify-between">
       <p className="text-xs font-bold text-black/60 dark:text-white/60">{items.length} {label.toLowerCase()}</p>
-      <button onClick={startAdd} className="flex items-center gap-1 px-3 py-1.5 bg-[#FFC542] text-[#111] text-xs font-bold rounded-xl hover:bg-[#e6b13b] transition-colors">
+      <button onClick={startAdd} className="flex items-center gap-1.5 px-4 py-2.5 min-h-[38px] bg-[#FFC542] text-[#111] text-xs font-bold rounded-xl hover:bg-[#e6b13b] transition-colors">
         <Plus size={14} /> Add {label.slice(0, -1)}
       </button>
     </div>
@@ -170,17 +170,35 @@ function CrudTable({ collectionName, label, icon, fields, items, onAdd, onUpdate
               <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{f.label}</label>
               {f.key === "description" ? (
                 <textarea value={form[f.key] || ""} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40 min-h-[60px] resize-y" />
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#111]/40 dark:focus:ring-[#FFC542]/40 min-h-[60px] resize-y" />
+              ) : f.key === "image" ? (
+                <div className="flex items-center gap-2">
+                  <input value={form[f.key] || ""} placeholder="Or paste image URL..." onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                    className="flex-1 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2" />
+                  <div className="relative">
+                    <input type="file" accept="image/*" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setForm(p => ({ ...p, [f.key]: reader.result as string }));
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                    <button type="button" className="px-3 py-2.5 bg-gray-100 dark:bg-gray-800 text-[#111] dark:text-white rounded-xl text-xs font-bold border border-black/10 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-gray-700">Browse</button>
+                  </div>
+                </div>
               ) : (
                 <input type={f.type || "text"} value={form[f.key] || ""} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#111]/40 dark:focus:ring-[#FFC542]/40" />
               )}
             </div>
           ))}
         </div>
         <div className="flex items-center justify-end gap-3 pt-2">
-          <button onClick={() => { setAdding(false); setEditing(null); }} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
-          <button onClick={handleSave} disabled={loading} className="px-4 py-2 bg-[#FFC542] text-[#111] rounded-xl text-xs font-bold hover:bg-[#e6b13b] disabled:opacity-50 transition-colors">
+          <button onClick={() => { setAdding(false); setEditing(null); }} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+          <button onClick={handleSave} disabled={loading} className="px-4 py-2.5 min-h-[38px] bg-[#FFC542] text-[#111] rounded-xl text-xs font-bold hover:bg-[#e6b13b] disabled:opacity-50 transition-colors">
             {loading ? "Saving..." : "Save"}
           </button>
         </div>
@@ -313,7 +331,7 @@ export default function CMSTab({ db, addLog }: { db: any; addLog: any }) {
         <button onClick={handleSeed} disabled={seeding} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-black/60 dark:text-white/60 rounded-xl text-[10px] font-bold hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors">
           <RefreshCw size={12} className={seeding ? "animate-spin" : ""} /> {seeding ? "Seeding..." : "Seed from JSON"}
         </button>
-        <button onClick={saveContent} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-[#FFC542] text-[#111] rounded-xl text-xs font-bold hover:bg-[#e6b13b] disabled:opacity-50 transition-colors">
+        <button onClick={saveContent} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 min-h-[38px] bg-[#FFC542] text-[#111] rounded-xl text-xs font-bold hover:bg-[#e6b13b] disabled:opacity-50 transition-colors">
           <Save size={14} /> {saving ? "Saving..." : "Save All Changes"}
         </button>
       </div>

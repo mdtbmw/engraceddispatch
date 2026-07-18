@@ -54,10 +54,10 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
  * Cloud Function triggered when a shipment status updates in the 'shipments' collection.
  * Automatically sends a targeted FCM status push alert to the associated user's device.
  */
-export const onShipmentStatusUpdated = functions.firestore
-  .document('shipments/{shipmentId}')
+export const onDeliveryStatusUpdated = functions.firestore
+  .document('deliveries/{deliveryId}')
   .onUpdate(async (change, context) => {
-    const shipmentId = context.params.shipmentId;
+    const deliveryId = context.params.deliveryId;
     const beforeData = change.before.data();
     const afterData = change.after.data();
 
@@ -82,7 +82,7 @@ export const onShipmentStatusUpdated = functions.firestore
       return null;
     }
 
-    console.log(`[Shipment Trigger] Status updated for shipment ${shipmentId}: ${oldStatus} -> ${newStatus}`);
+    console.log(`[Delivery Trigger] Status updated for delivery ${deliveryId}: ${oldStatus} -> ${newStatus}`);
 
     try {
       // Fetch user's profile and notification settings
@@ -118,7 +118,19 @@ export const onShipmentStatusUpdated = functions.firestore
 
       const emoji = newStatus.toLowerCase() === 'delivered' ? '✅📦' : '🚚⚡';
       const title = `Shipment Status Updated! ${emoji}`;
-      const message = `Your shipment '${itemName}' (#${shipmentId}) is now ${newStatus}.`;
+      const message = `Your shipment '${itemName}' (#${deliveryId}) is now ${newStatus}.`;
+
+      let progress = 10;
+      const statusLower = newStatus.toLowerCase();
+      if (statusLower.includes('assign') || statusLower.includes('booked') || statusLower === 'pending') {
+        progress = 20;
+      } else if (statusLower.includes('transit') || statusLower === 'transit') {
+        progress = 60;
+      } else if (statusLower.includes('delivery') || statusLower.includes('out')) {
+        progress = 85;
+      } else if (statusLower.includes('delivered')) {
+        progress = 100;
+      }
 
       const payload = {
         notification: {
@@ -129,13 +141,14 @@ export const onShipmentStatusUpdated = functions.firestore
         data: {
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
           type: 'status_update',
-          parcelId: shipmentId,
-          status: newStatus
+          parcelId: deliveryId,
+          status: newStatus,
+          progress: progress.toString()
         }
       };
 
       await admin.messaging().sendToDevice(fcmToken, payload);
-      console.log(`[Shipment Trigger] Successfully sent status update push alert for shipment ${shipmentId} to user ${userId}`);
+      console.log(`[Delivery Trigger] Successfully sent status update push alert for delivery ${deliveryId} to user ${userId}`);
     } catch (error) {
       console.error('[Shipment Trigger Error] Failed to send status notification:', error);
     }
@@ -273,6 +286,142 @@ export const onRiderSubcollectionChanged = functions.firestore
       }
     } catch (err) {
       console.error(`[Rider Subcollection Sync Error]`, err);
+    }
+    return null;
+  });
+
+/**
+ * Cloud Function triggered when a document in the root 'users' collection is written.
+ * Automatically synchronizes the user's role and status to auth custom claims.
+ */
+export const onUserRoleUpdated = functions.firestore
+  .document('users/{userId}')
+  .onWrite(async (change, context) => {
+    const userId = context.params.userId;
+    const afterData = change.after.data();
+
+    if (!change.after.exists || !afterData) {
+      console.log(`[User Role Claims Sync] User document ${userId} deleted. Skipping.`);
+      return null;
+    }
+
+    const role = afterData.role || 'customer';
+    console.log(`[User Role Claims Sync] Syncing custom claims for user: ${userId} to role: ${role}`);
+
+    try {
+      await admin.auth().setCustomUserClaims(userId, {
+        role: role,
+        admin: role === 'admin' || role === 'super_admin',
+        dispatcher: role === 'dispatcher',
+        rider: role === 'rider'
+      });
+      console.log(`[User Role Claims Sync] Successfully synced claims for ${userId}`);
+    } catch (error) {
+      console.error(`[User Role Claims Sync Error] Failed to update custom claims for ${userId}:`, error);
+    }
+    return null;
+  });
+
+/**
+ * Cloud Function triggered when a document is created in '/pending_payments'.
+ * Verifies the transaction securely with Paystack API before updating the user's wallet.
+ */
+export const onPendingPaymentCreated = functions.firestore
+  .document('pending_payments/{paymentId}')
+  .onCreate(async (snap, context) => {
+    const paymentId = context.params.paymentId;
+    const data = snap.data();
+    if (!data) return null;
+
+    const { userId, amount, reference } = data;
+    console.log(`[Payment Verification] Processing pending payment ${paymentId} for User ${userId}. Ref: ${reference}`);
+
+    try {
+      // 1. Fetch Paystack Secret Key from settings or fallback to test key
+      const configDoc = await admin.firestore().collection('system_config').doc('paystack').get();
+      const secretKey = configDoc.data()?.secretKey || 'sk_test_4e7f3ee19be1e39bbf8789382f0c7cc89e8f6e80'; // fallback test key
+
+      // 2. Call Paystack Verification API
+      const url = `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${secretKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Paystack verification request failed with HTTP ${response.status}`);
+      }
+
+      const verifyData: any = await response.json();
+      if (verifyData?.status === true && verifyData?.data?.status === 'success') {
+        const paystackAmount = verifyData.data.amount / 100.0; // Paystack returns amount in kobo/cents
+        
+        // Match the verified amount
+        if (Math.abs(paystackAmount - amount) < 0.01 || paystackAmount >= amount) {
+          console.log(`[Payment Verification] Reference ${reference} verified successfully for ₦${paystackAmount}.`);
+
+          const userRef = admin.firestore().collection('users').doc(userId);
+          
+          await admin.firestore().runTransaction(async (transaction) => {
+            const userSnap = await transaction.get(userRef);
+            if (!userSnap.exists) {
+              throw new Error("User document does not exist");
+            }
+            const currentBalance = userSnap.data()?.walletBalance || 0.0;
+            const newBalance = currentBalance + paystackAmount;
+
+            // Optimistically update wallet Balance inside the transaction
+            transaction.update(userRef, {
+              walletBalance: newBalance,
+              updatedAt: new Date().toISOString()
+            });
+
+            // Write verified transaction history item
+            const txRef = admin.firestore().collection('users').doc(userId).collection('transactions').doc();
+            transaction.set(txRef, {
+              id: reference,
+              title: 'Wallet Top Up',
+              date: 'Today',
+              amount: paystackAmount,
+              isTopUp: true,
+              timestamp: Date.now()
+            });
+          });
+
+          // Mark pending payment as verified/success
+          await snap.ref.update({
+            status: 'success',
+            verifiedAmount: paystackAmount,
+            verifiedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          console.log(`[Payment Verification] Securely credited ₦${paystackAmount} to user ${userId}`);
+        } else {
+          console.warn(`[Payment Verification] Reference ${reference} amount mismatch: Paystack=${paystackAmount}, Client=${amount}`);
+          await snap.ref.update({
+            status: 'failed',
+            error: 'Amount mismatch',
+            verifiedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      } else {
+        console.warn(`[Payment Verification] Paystack returned failed status for reference: ${reference}`);
+        await snap.ref.update({
+          status: 'failed',
+          error: verifyData?.data?.gateway_response || 'Verification failed',
+          verifiedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    } catch (error: any) {
+      console.error(`[Payment Verification Error] Failed to verify payment for ID ${paymentId}:`, error);
+      await snap.ref.update({
+        status: 'failed',
+        error: error.message || 'Verification exception',
+        verifiedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
     }
     return null;
   });

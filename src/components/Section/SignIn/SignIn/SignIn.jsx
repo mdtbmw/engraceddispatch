@@ -22,7 +22,8 @@ const SignInForm = () => {
       const snap = await getDoc(doc(db, "users", cred.user.uid));
       const role = snap.exists() ? snap.data().role : null;
       if (role === "admin" || role === "super_admin" || role === "dispatcher") {
-        document.cookie = "admin_auth=true;path=/;max-age=86400;SameSite=Strict";
+        const token = await cred.user.getIdToken();
+        document.cookie = "admin_token=" + token + ";path=/;max-age=86400;SameSite=Strict";
         router.push("/engdadmin");
       } else {
         router.push("/");

@@ -5,8 +5,8 @@ export const metadata = {
 
 import Footer from "~/components/Section/Common/Footer";
 import PageHeader from "~/components/Section/Common/PageHeader";
-import ArticleSection from "~/components/Section/blogColumnTwo/Article/ArticleSection";
-import BlogSection from "~/components/Section/blogColumnTwo/Blog/BlogSection";
+import ArticleSection from "~/components/Section/blogColumnTwo/Article";
+import BlogSection from "~/components/Section/blogColumnTwo/Blog";
 import Header from "~/components/Section/Common/Header/Header";
 
 

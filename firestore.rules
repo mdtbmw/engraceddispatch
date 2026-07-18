@@ -12,14 +12,23 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuth() && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin'
+        request.auth.token.role == 'admin' ||
+        request.auth.token.role == 'super_admin' ||
+        request.auth.token.admin == true ||
+        (request.auth.token.role == null && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin'
+        ))
       );
     }
 
     function isDispatcher() {
       return isAdmin() || (isAuth() && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dispatcher'
+        request.auth.token.role == 'dispatcher' ||
+        request.auth.token.dispatcher == true ||
+        (request.auth.token.role == null && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dispatcher'
+        ))
       ));
     }
 
@@ -53,18 +62,20 @@ service cloud.firestore {
     }
 
     function notElevatingToAdmin() {
-      if (isAdmin()) return true;
-      let incoming = request.resource.data;
-      if (incoming.keys().hasAny(['role'])) {
-        return incoming.role != 'admin' && incoming.role != 'super_admin';
-      }
-      return true;
+      return isAdmin() || !request.resource.data.keys().hasAny(['role']) || (request.resource.data.role != 'admin' && request.resource.data.role != 'super_admin');
     }
 
     match /users/{userId} {
       allow read: if isAuth();
       allow create: if isOwner(userId) && notElevatingToAdmin();
-      allow update: if (isOwner(userId) && notElevatingToAdmin()) || isAdmin();
+      allow update: if (isOwner(userId) && notElevatingToAdmin() && (
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['walletBalance', 'loyaltyPoints']) || (
+          !('walletBalance' in resource.data) &&
+          request.resource.data.walletBalance == 500.0 &&
+          !('loyaltyPoints' in resource.data) &&
+          request.resource.data.loyaltyPoints == 10
+        )
+      )) || isAdmin();
       allow delete: if isAdmin();
 
       match /notifications/{notifId} {
@@ -82,7 +93,12 @@ service cloud.firestore {
     match /deliveries/{deliveryId} {
       allow read: if isAuth();
       allow create: if isAuth();
-      allow update: if isDispatcher();
+      allow update: if isDispatcher() || (isAuth() && (
+        resource.data.riderId == request.auth.uid ||
+        resource.data.courierId == request.auth.uid ||
+        request.resource.data.riderId == request.auth.uid ||
+        request.resource.data.courierId == request.auth.uid
+      ));
       allow delete: if isAdmin();
     }
 
@@ -155,12 +171,22 @@ service cloud.firestore {
     }
 
     // =========================================================
+    // PENDING PAYMENTS (Secure wallet verification)
+    // =========================================================
+
+    match /pending_payments/{paymentId} {
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================
     // NOTIFICATIONS
     // =========================================================
 
     match /notifications/{docId} {
       allow read: if isAuth();
-      allow create: if isAuth();
+      allow create: if isDispatcher();
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
@@ -171,7 +197,7 @@ service cloud.firestore {
 
     match /audit_logs/{docId} {
       allow read: if isAdmin();
-      allow create: if isAuth();
+      allow create: if isDispatcher();
       allow update, delete: if isAdmin();
     }
 

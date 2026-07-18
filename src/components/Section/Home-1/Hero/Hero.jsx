@@ -101,7 +101,7 @@ const HeroSection = () => {
                 transition: { duration: 4, repeat: Infinity, ease: "easeInOut" },
               }}
             >
-              <img src="/images/v1/shape.png" alt />
+              <img src="/images/v1/shape.png" alt="" />
             </motion.div>
           </motion.div>
           <div className="zubuz-hero-bottom">
@@ -111,7 +111,7 @@ const HeroSection = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
             >
-              <img src="/images/v1/hero-mocup1.png" alt />
+              <img src="/images/v1/hero-mocup1.png" alt="" />
             </motion.div>
             <motion.div
               className="zubuz-hero-card card1"
@@ -119,7 +119,7 @@ const HeroSection = () => {
               animate={{ opacity: 1, scale: 1, x: 0 }}
               transition={{ duration: 0.5, delay: 0.6, ease: "easeOut" }}
             >
-              <img src="/images/v1/h-card1.png" alt />
+              <img src="/images/v1/h-card1.png" alt="" />
             </motion.div>
             <motion.div
               className="zubuz-hero-card card2"
@@ -127,7 +127,7 @@ const HeroSection = () => {
               animate={{ opacity: 1, scale: 1, x: 0 }}
               transition={{ duration: 0.5, delay: 0.8, ease: "easeOut" }}
             >
-              <img src="/images/v1/h-card2.png" alt />
+              <img src="/images/v1/h-card2.png" alt="" />
             </motion.div>
             <motion.div
               className="zubuz-hero-card card3"
@@ -135,7 +135,7 @@ const HeroSection = () => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 1.0, ease: "easeOut" }}
             >
-              <img src="/images/v1/h-card4.png" alt />
+              <img src="/images/v1/h-card4.png" alt="" />
             </motion.div>
             <motion.div
               className="zubuz-hero-card card4"
@@ -143,7 +143,7 @@ const HeroSection = () => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 1.2, ease: "easeOut" }}
             >
-              <img src="/images/v1/h-card3.png" alt />
+              <img src="/images/v1/h-card3.png" alt="" />
             </motion.div>
           </div>
         </div>

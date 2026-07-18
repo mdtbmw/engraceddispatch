@@ -1336,25 +1336,19 @@ private fun geocodeAddressToLatLng(context: android.content.Context, address: St
         android.util.Log.e("RiderGeocoder", "System Geocoder failed: ${e.message}")
     }
     return when {
-        lower.contains("city mall") || lower.contains("ikeja city") -> Pair(6.6018, 3.3515)
-        lower.contains("airport") || lower.contains("murtala") -> Pair(6.5244, 3.3792)
-        lower.contains("conservation") || lower.contains("lcc") -> Pair(6.4281, 3.4219)
-        lower.contains("theatre") || lower.contains("iganmu") -> Pair(6.4633, 3.3672)
-        lower.contains("unilag") || lower.contains("university of lagos") || lower.contains("akoka") || lower.contains("yaba") -> Pair(6.5158, 3.3897)
-        lower.contains("lekki phase 1") || lower.contains("admiralty") || lower.contains("admirality") -> Pair(6.4265, 3.4300)
-        lower.contains("chevron") -> Pair(6.4446, 3.4912)
-        lower.contains("ikoyi club") || lower.contains("ikoyi") || lower.contains("kingsway") -> Pair(6.4549, 3.4244)
-        lower.contains("nike") || lower.contains("gallery") || lower.contains("elegushi") -> Pair(6.4474, 3.4735)
-        lower.contains("island") || lower.contains("marina") -> Pair(6.4501, 3.3958)
-        lower.contains("computer") || lower.contains("village") || lower.contains("isaac") -> Pair(6.6250, 3.3421)
-        lower.contains("ozumba") || lower.contains("mbadiwe") || lower.contains("victoria") || lower.contains("eko") -> Pair(6.4350, 3.4270)
-        lower.contains("surulere") || lower.contains("stadium") -> Pair(6.5000, 3.3500)
-        lower.contains("mainland") -> Pair(6.5244, 3.3792)
+        lower.contains("ring road") || lower.contains("oba market") -> Pair(6.3350, 5.6037)
+        lower.contains("uniben") || lower.contains("uhelu") || lower.contains("okada") -> Pair(6.4020, 5.6174)
+        lower.contains("ikpoba") || lower.contains("ramat") || lower.contains("aduwawa") -> Pair(6.3475, 5.6421)
+        lower.contains("airport") || lower.contains("oko") -> Pair(6.3176, 5.5992)
+        lower.contains("gra") || lower.contains("boundary") || lower.contains("sapele") -> Pair(6.3117, 5.6148)
+        lower.contains("ekoae") || lower.contains("bypass") || lower.contains("uhunmwonde") -> Pair(6.3812, 5.6698)
+        lower.contains("ogba") || lower.contains("zoo") -> Pair(6.2844, 5.5872)
+        lower.contains("eriaso") || lower.contains("ebor") || lower.contains("siluko") -> Pair(6.3530, 5.5780)
         else -> {
             val hash = address.hashCode().toLong()
             val latOffset = (Math.abs(hash) % 100) / 1000.0
             val lngOffset = (Math.abs(hash / 100) % 100) / 1000.0
-            Pair(6.5244 + latOffset - 0.05, 3.3792 + lngOffset - 0.05)
+            Pair(6.3350 + latOffset - 0.05, 5.6037 + lngOffset - 0.05)
         }
     }
 }
@@ -1454,9 +1448,8 @@ fun GpsMovementSimulator(
         Spacer(modifier = Modifier.height(8.dp))
 
         if (isSimulating) {
-            val progressPercentage = (currentStep * 100) / totalSteps
             Text(
-                text = "Simulating delivery dispatch run... $progressPercentage% Completed",
+                text = "📡 Real-time GPS location transmitter is active.",
                 fontSize = 11.sp,
                 color = TextGray,
                 fontWeight = FontWeight.Medium
@@ -1464,8 +1457,8 @@ fun GpsMovementSimulator(
             Spacer(modifier = Modifier.height(10.dp))
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = Gold.copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, Gold),
+                color = SuccessGreen.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, SuccessGreen),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -1474,13 +1467,13 @@ fun GpsMovementSimulator(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Info,
-                        contentDescription = "Simulation Mode",
-                        tint = Gold,
+                        contentDescription = "Live Mode",
+                        tint = SuccessGreen,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Safety Simulation Mode: Interactive testing dispatch paths are currently emulated.",
+                        text = "Production Tracking Mode: Coordinates are being updated continuously in the background.",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isDark) Color.White else Obsidian,
@@ -1490,7 +1483,7 @@ fun GpsMovementSimulator(
             }
         } else {
             Text(
-                text = "Update real-time GPS coordinates along dispatch path to allow customer tracking.",
+                text = "Activate real-time GPS tracking service to broadcast active location updates to customer.",
                 fontSize = 10.sp,
                 color = TextGray,
                 textAlign = TextAlign.Center
@@ -1501,56 +1494,29 @@ fun GpsMovementSimulator(
 
         Button(
             onClick = {
-                if (isSimulating) return@Button
-                isSimulating = true
-                currentStep = 0
-                scope.launch {
-                    // Subscribe to real high-precision GPS coordinate transmitter if permitted
+                if (isSimulating) {
+                    viewModel.stopRealTimeGpsTracking(parcelId)
+                    isSimulating = false
+                    Toast.makeText(context, "GPS Tracking Stopped.", Toast.LENGTH_SHORT).show()
+                } else {
                     val hasLocationPermission = androidx.core.content.PermissionChecker.checkSelfPermission(
                         context,
                         android.Manifest.permission.ACCESS_FINE_LOCATION
                     ) == androidx.core.content.PermissionChecker.PERMISSION_GRANTED
                     
                     if (hasLocationPermission) {
+                        isSimulating = true
                         viewModel.startRealTimeGpsTracking(parcelId) { lat, lng ->
                             android.util.Log.d("GpsMovementSimulator", "Live high-precision hardware GPS tick: Lat $lat, Lng $lng")
-                            val dist = calculateDistanceMeters(lat, lng, deliveryLat, deliveryLng)
+                            val dist = calculateDistanceMeters(lat, lng, deliveryCoords.first, deliveryCoords.second)
                             if (dist <= 50.0) {
                                 showArrivedDialog = true
                             }
                         }
+                        Toast.makeText(context, "Real-time background GPS tracking started!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Location permission required for real GPS tracking!", Toast.LENGTH_LONG).show()
                     }
-
-                    // Telemetry simulation progress loop to propagate real-time coordinates to Firestore
-                    for (step in 1..totalSteps) {
-                        currentStep = step
-                        val fraction = step.toFloat() / totalSteps
-                        val lat = pickupLat + fraction * (deliveryLat - pickupLat)
-                        val lng = pickupLng + fraction * (deliveryLng - pickupLng)
-
-                        // Update in Firebase so tracking screen can reflect changes in real time
-                        viewModel.updateCourierLocationByRider(parcelId, lat, lng) { success, _ ->
-                            if (!success) {
-                                android.util.Log.e("RiderScreens", "Failed to update simulated GPS location")
-                            }
-                        }
-                        
-                        // Check client-side telemetry proximity to destination coordinates (within 50 meters)
-                        val distance = calculateDistanceMeters(lat, lng, deliveryLat, deliveryLng)
-                        if (distance <= 50.0) {
-                            showArrivedDialog = true
-                        }
-
-                        // Also update parcel progress incrementally to simulate dynamic moving timeline
-                        val parcelProgress = 0.35f + fraction * 0.4f
-                        viewModel.updateParcelStatusByRider(parcelId, if (step < totalSteps) ParcelStatus.TRANSIT else ParcelStatus.OUT_FOR_DELIVERY, parcelProgress) { _, _ -> }
-                        
-                        kotlinx.coroutines.delay(2000)
-                    }
-                    
-                    viewModel.stopRealTimeGpsTracking(parcelId)
-                    isSimulating = false
-                    Toast.makeText(context, "GPS Route Simulation completed! Recipient notified. 🏁", Toast.LENGTH_SHORT).show()
                 }
             },
             modifier = Modifier.fillMaxWidth(),
@@ -1558,11 +1524,10 @@ fun GpsMovementSimulator(
                 containerColor = if (isSimulating) TextGray else Gold,
                 contentColor = Obsidian
             ),
-            shape = RoundedCornerShape(10.dp),
-            enabled = !isSimulating
+            shape = RoundedCornerShape(10.dp)
         ) {
             Text(
-                text = if (isSimulating) "SIMULATING DISPATCH ROAD..." else "SIMULATE REAL-TIME GPS RUN",
+                text = if (isSimulating) "STOP REAL GPS TRANSMISSION 📡" else "START REAL-TIME GPS TRANSIT",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
             )

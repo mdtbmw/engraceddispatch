@@ -1681,7 +1681,347 @@ fun AdminSystemControlCard(
 
             // Bulk Action Delivery Management View
             BulkDeliveryManagementSection(viewModel = viewModel, isLight = isLight, textHighlight = textHighlight, labelColor = labelColor)
+
+            Spacer(modifier = Modifier.height(18.dp))
+            HorizontalDivider(color = labelColor.copy(alpha = 0.2f), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // User Wallet & Points Management
+            UserWalletPointsManagement(viewModel = viewModel, isLight = isLight, textHighlight = textHighlight, labelColor = labelColor)
+
+            Spacer(modifier = Modifier.height(18.dp))
+            HorizontalDivider(color = labelColor.copy(alpha = 0.2f), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Broadcast Notification Section
+            BroadcastNotificationSection(viewModel = viewModel, isLight = isLight, textHighlight = textHighlight, labelColor = labelColor)
+
+            Spacer(modifier = Modifier.height(18.dp))
+            HorizontalDivider(color = labelColor.copy(alpha = 0.2f), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Service Area Management Section
+            ServiceAreaManagementSection(viewModel = viewModel, isLight = isLight, textHighlight = textHighlight, labelColor = labelColor)
         }
+    }
+}
+
+@Composable
+fun UserWalletPointsManagement(
+    viewModel: DeliveryViewModel,
+    isLight: Boolean,
+    textHighlight: Color,
+    labelColor: Color
+) {
+    var userSearch by remember { mutableStateOf("") }
+    var foundUserId by remember { mutableStateOf("") }
+    var foundUserName by remember { mutableStateOf("") }
+    var fundAmount by remember { mutableStateOf("") }
+    var pointsAmount by remember { mutableStateOf("") }
+    var statusMsg by remember { mutableStateOf("") }
+    var isSearching by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("User Wallet & Points", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textHighlight)
+            Text("Search by email/UID, credit wallet or set points", fontSize = 9.sp, color = labelColor)
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedTextField(
+            value = userSearch,
+            onValueChange = { userSearch = it; statusMsg = "" },
+            label = { Text("Search User (email/UID)", fontSize = 10.sp) },
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(10.dp),
+            textStyle = TextStyle(fontSize = 12.sp, color = AppTextColor),
+            singleLine = true
+        )
+        Button(
+            onClick = {
+                if (userSearch.isBlank()) return@Button
+                isSearching = true
+                statusMsg = ""
+                val db = com.example.data.FirebaseManager.firestore
+                if (db == null) { statusMsg = "Firestore unavailable"; isSearching = false; return@Button }
+                db.collection("users")
+                    .whereGreaterThanOrEqualTo("email", userSearch.lowercase())
+                    .whereLessThanOrEqualTo("email", userSearch.lowercase() + "\uf8ff")
+                    .get()
+                    .addOnSuccessListener { snap ->
+                        if (snap.documents.isNotEmpty()) {
+                            val doc = snap.documents[0]
+                            foundUserId = doc.id
+                            foundUserName = doc.getString("name") ?: doc.getString("email") ?: "User"
+                            statusMsg = "Found: ${foundUserName}"
+                        } else {
+                            // Try direct UID lookup
+                            db.collection("users").document(userSearch).get()
+                                .addOnSuccessListener { doc ->
+                                    if (doc.exists()) {
+                                        foundUserId = doc.id
+                                        foundUserName = doc.getString("name") ?: doc.getString("email") ?: "User"
+                                        statusMsg = "Found: ${foundUserName}"
+                                    } else {
+                                        foundUserId = ""
+                                        foundUserName = ""
+                                        statusMsg = "User not found"
+                                    }
+                                }
+                                .addOnFailureListener { statusMsg = "Lookup failed" }
+                        }
+                        isSearching = false
+                    }
+                    .addOnFailureListener { statusMsg = "Search failed"; isSearching = false }
+            },
+            enabled = userSearch.isNotBlank() && !isSearching,
+            colors = ButtonDefaults.buttonColors(containerColor = textHighlight, contentColor = if (isLight) Color.White else Obsidian),
+            shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            Text(if (isSearching) "..." else "FIND", fontSize = 10.sp, fontWeight = FontWeight.Black)
+        }
+    }
+
+    if (statusMsg.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(statusMsg, fontSize = 10.sp, color = if (statusMsg.startsWith("Found")) Gold else Color.Red.copy(alpha = 0.8f))
+    }
+
+    if (foundUserId.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = Obsidian.copy(alpha = 0.3f),
+            border = BorderStroke(1.dp, labelColor.copy(alpha = 0.2f))
+        ) {
+            Column(modifier = Modifier.padding(10.dp)) {
+                Text("User: $foundUserName", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                Text("UID: $foundUserId", fontSize = 8.sp, color = labelColor)
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = fundAmount,
+                        onValueChange = { fundAmount = it },
+                        label = { Text("Wallet Amount (₦)", fontSize = 9.sp) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        textStyle = TextStyle(fontSize = 12.sp, color = AppTextColor),
+                        singleLine = true
+                    )
+                    Button(
+                        onClick = {
+                            val amt = fundAmount.toDoubleOrNull() ?: return@Button
+                            viewModel.adminFundUserWallet(foundUserId, foundUserName, amt) { ok, msg ->
+                                statusMsg = if (ok) "✅ $msg" else "❌ $msg"
+                                fundAmount = ""
+                            }
+                        },
+                        enabled = fundAmount.toDoubleOrNull() != null && (fundAmount.toDoubleOrNull() ?: 0.0) > 0,
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text("CREDIT", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = pointsAmount,
+                        onValueChange = { pointsAmount = it },
+                        label = { Text("Loyalty Points", fontSize = 9.sp) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        textStyle = TextStyle(fontSize = 12.sp, color = AppTextColor),
+                        singleLine = true
+                    )
+                    Button(
+                        onClick = {
+                            val pts = pointsAmount.toIntOrNull() ?: return@Button
+                            viewModel.adminSetUserPoints(foundUserId, foundUserName, pts) { ok, msg ->
+                                statusMsg = if (ok) "✅ $msg" else "❌ $msg"
+                                pointsAmount = ""
+                            }
+                        },
+                        enabled = pointsAmount.toIntOrNull() != null,
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text("SET", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BroadcastNotificationSection(
+    viewModel: DeliveryViewModel,
+    isLight: Boolean,
+    textHighlight: Color,
+    labelColor: Color
+) {
+    var notifTitle by remember { mutableStateOf("") }
+    var notifBody by remember { mutableStateOf("") }
+    var statusMsg by remember { mutableStateOf("") }
+    var isSending by remember { mutableStateOf(false) }
+
+    Text("Send Broadcast Notification", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textHighlight)
+    Spacer(modifier = Modifier.height(4.dp))
+    Text("Push notification to all registered users", fontSize = 9.sp, color = labelColor)
+    Spacer(modifier = Modifier.height(8.dp))
+
+    OutlinedTextField(
+        value = notifTitle,
+        onValueChange = { notifTitle = it; statusMsg = "" },
+        label = { Text("Notification Title", fontSize = 10.sp) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        textStyle = TextStyle(fontSize = 12.sp, color = AppTextColor),
+        singleLine = true
+    )
+    Spacer(modifier = Modifier.height(6.dp))
+    OutlinedTextField(
+        value = notifBody,
+        onValueChange = { notifBody = it; statusMsg = "" },
+        label = { Text("Notification Message", fontSize = 10.sp) },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp),
+        shape = RoundedCornerShape(10.dp),
+        textStyle = TextStyle(fontSize = 12.sp, color = AppTextColor),
+        maxLines = 3
+    )
+    Spacer(modifier = Modifier.height(6.dp))
+    Button(
+        onClick = {
+            if (notifTitle.isBlank() || notifBody.isBlank()) return@Button
+            isSending = true
+            statusMsg = ""
+            viewModel.adminSendBroadcastNotification(notifTitle, notifBody) { ok, msg ->
+                statusMsg = if (ok) "✅ $msg" else "❌ $msg"
+                if (ok) { notifTitle = ""; notifBody = "" }
+                isSending = false
+            }
+        },
+        enabled = notifTitle.isNotBlank() && notifBody.isNotBlank() && !isSending,
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(containerColor = textHighlight, contentColor = if (isLight) Color.White else Obsidian),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Text(
+            if (isSending) "SENDING..." else "SEND TO ALL USERS",
+            fontSize = 10.sp, fontWeight = FontWeight.Black
+        )
+    }
+    if (statusMsg.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(statusMsg, fontSize = 10.sp, color = if (statusMsg.startsWith("✅")) Gold else Color.Red.copy(alpha = 0.8f))
+    }
+}
+
+@Composable
+fun ServiceAreaManagementSection(
+    viewModel: DeliveryViewModel,
+    isLight: Boolean,
+    textHighlight: Color,
+    labelColor: Color
+) {
+    val serviceAreas by viewModel.serviceAreas.collectAsState()
+    var newAreaName by remember { mutableStateOf("") }
+    var statusMsg by remember { mutableStateOf("") }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Service Areas", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textHighlight)
+            Text("Manage supported delivery zones", fontSize = 9.sp, color = labelColor)
+        }
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+
+    serviceAreas.forEach { area ->
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+            shape = RoundedCornerShape(8.dp),
+            color = Obsidian.copy(alpha = 0.3f),
+            border = BorderStroke(1.dp, labelColor.copy(alpha = 0.15f))
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(area, fontSize = 11.sp, color = AppTextColor)
+                IconButton(
+                    onClick = { viewModel.removeServiceArea(area) },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.Red.copy(alpha = 0.6f), modifier = Modifier.size(14.dp))
+                }
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedTextField(
+            value = newAreaName,
+            onValueChange = { newAreaName = it; statusMsg = "" },
+            label = { Text("Add service area (city/district)", fontSize = 10.sp) },
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(10.dp),
+            textStyle = TextStyle(fontSize = 12.sp, color = AppTextColor),
+            singleLine = true
+        )
+        Button(
+            onClick = {
+                if (newAreaName.isBlank()) return@Button
+                viewModel.addServiceArea(newAreaName.trim())
+                statusMsg = "Added: ${newAreaName.trim()}"
+                newAreaName = ""
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = textHighlight, contentColor = if (isLight) Color.White else Obsidian),
+            shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            Text("ADD", fontSize = 10.sp, fontWeight = FontWeight.Black)
+        }
+    }
+    if (statusMsg.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(statusMsg, fontSize = 9.sp, color = labelColor)
     }
 }
 

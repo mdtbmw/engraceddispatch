@@ -1,6 +1,10 @@
 import React from "react";
 import type { Metadata } from "next";
 import "./globals.css";
+import "~/assets/css/bootstrap.min.css";
+import "~/assets/css/app.css";
+import "~/assets/css/main.css";
+import "~/assets/css/react-adjustment.css";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +13,9 @@ export const metadata: Metadata = {
   description: "Premium Logistics & Dispatch Operations Management",
   icons: {
     icon: [
-      { url: "https://engraceddispatch-ffba4.web.app/favicon.svg", type: "image/svg+xml" },
-      { url: "https://engraceddispatch-ffba4.web.app/favicon.ico", sizes: "32x32" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
     ],
-    apple: "https://engraceddispatch-ffba4.web.app/apple-touch-icon.png",
+    apple: "/favicon.svg",
   },
 };
 

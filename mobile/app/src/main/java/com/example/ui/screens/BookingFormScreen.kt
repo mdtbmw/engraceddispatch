@@ -136,6 +136,10 @@ fun BookingFormScreen(
 
     var dropdownExpanded by remember { mutableStateOf(false) }
     var showPinDropForField by remember { mutableStateOf<String?>(null) }
+    
+    val appliedPromo by viewModel.appliedPromoCode.collectAsState()
+    val discountPercent by viewModel.promoDiscountPercent.collectAsState()
+    var promoInput by remember { mutableStateOf("") }
 
     var apiSuggestions by remember { mutableStateOf<List<String>>(emptyList()) }
     var isSearchingSuggestions by remember { mutableStateOf(false) }
@@ -152,6 +156,7 @@ fun BookingFormScreen(
         }
     }
 
+    var activeAutoDetectField by remember { mutableStateOf("pickup") }
     val coroutineScope = rememberCoroutineScope()
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -159,30 +164,50 @@ fun BookingFormScreen(
     ) { permissions ->
         val granted = permissions.values.any { it }
         coroutineScope.launch {
-            Toast.makeText(context, "🎯 Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "🎯 Auto-detecting location...", Toast.LENGTH_SHORT).show()
             val detected = withContext(Dispatchers.IO) {
                 detectUserLocation(context)
             }
-            pickup = detected
-            if (granted) {
-                Toast.makeText(context, "Location updated: $detected", Toast.LENGTH_SHORT).show()
+            if (detected.isNotBlank()) {
+                when {
+                    activeAutoDetectField == "pickup" -> pickup = detected
+                    activeAutoDetectField == "delivery" -> delivery = detected
+                    activeAutoDetectField.startsWith("stop_") -> {
+                        val idx = activeAutoDetectField.removePrefix("stop_").toIntOrNull() ?: 0
+                        val newList = additionalStops.toMutableList()
+                        if (idx < newList.size) {
+                            newList[idx] = detected
+                            additionalStops = newList
+                        }
+                    }
+                }
+                if (granted) {
+                    Toast.makeText(context, "Location Auto-Detected: $detected", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "GPS permission denied. Estimated: $detected", Toast.LENGTH_SHORT).show()
+                }
             } else {
-                Toast.makeText(context, "GPS permission denied. Estimated location: $detected", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Could not detect location. Please type manually.", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     val addressDatabase = remember {
         listOf(
-            "The Palms Shopping Mall, Bisway Road, Lekki, Lagos",
-            "Eko Hotels & Suites, Plot 1415 Adetokunbo Ademola Street, Victoria Island, Lagos",
-            "Civic Centre, Ozumba Mbadiwe Avenue, Victoria Island, Lagos",
-            "Murtala Muhammed International Airport (LOS), Airport Road, Ikeja, Lagos",
-            "Central Business District, Abuja",
-            "Lekki Conservation Centre, Lekki-Epe Expressway, Lagos",
-            "Ikeja City Mall, Obafemi Awolowo Way, Ikeja, Lagos",
-            "National Theatre, Iganmu, Surulere, Lagos",
-            "University of Lagos, Akoka, Yaba, Lagos"
+            "King's Square (Ring Road), Benin City, Edo State",
+            "University of Benin (UNIBEN), Ugbowo Campus, Benin City",
+            "University of Benin Teaching Hospital (UBTH), Benin City",
+            "Benin Airport, Airport Road, Benin City",
+            "Ramat Park, Ikpoba Hill, Benin City",
+            "Kada Plaza, Sapele Road, Benin City",
+            "Edo State Government House, GRA, Benin City",
+            "National Museum Benin City, Ring Road, Benin City",
+            "UNIBEN Ekehuan Campus, Ekehuan Road, Benin City",
+            "Oba of Benin Palace, Ring Road, Benin City",
+            "Uselu Market, Benin-Lagos Expressway, Benin City",
+            "Ogba Zoo and Nature Park, Airport Road, Benin City",
+            "Stella Obasanjo Hospital, Sapele Road, Benin City",
+            "Aduwawa Motor Park, Benin City"
         )
     }
 
@@ -207,19 +232,19 @@ fun BookingFormScreen(
         if (query.isBlank()) {
             val predictiveList = mutableListOf<String>()
             val home = viewModel.homeAddress.value
-            if (home.isNotBlank() && home != "No. 12 Joel Ogunnaike Street, Ikeja GRA, Lagos") {
+            if (home.isNotBlank() && home != "No. 1 Ring Road, Benin City") {
                 predictiveList.add("🏠 Home: $home")
             }
             val work = viewModel.workAddress.value
-            if (work.isNotBlank() && work != "Plot 14, Kingsway Road, Ikoyi, Lagos") {
+            if (work.isNotBlank() && work != "University of Benin, Ugbowo Campus, Benin City") {
                 predictiveList.add("💼 Work: $work")
             }
             predictiveList.addAll(listOf(
-                "Murtala Muhammed International Airport (LOS), Airport Road, Ikeja, Lagos",
-                "Ikeja City Mall, Obafemi Awolowo Way, Ikeja, Lagos",
-                "Lekki Conservation Centre, Lekki-Epe Expressway, Lagos",
-                "Central Business District, Abuja",
-                "University of Lagos, Akoka, Yaba, Lagos"
+                "King's Square (Ring Road), Benin City, Edo State",
+                "University of Benin (UNIBEN), Ugbowo Campus, Benin City",
+                "Benin Airport, Airport Road, Benin City",
+                "Kada Plaza, Sapele Road, Benin City",
+                "Ramat Park, Ikpoba Hill, Benin City"
             ))
             return predictiveList.distinct()
         }
@@ -301,20 +326,26 @@ fun BookingFormScreen(
         
         withContext(Dispatchers.IO) {
             try {
+                val token = try { com.example.BuildConfig.MAPBOX_ACCESS_TOKEN } catch (e: Throwable) { "" }
+                if (token.isBlank() || token == "mapbox_access_token_placeholder") {
+                    throw Exception("Mapbox token not configured")
+                }
                 val encodedQuery = java.net.URLEncoder.encode(activeQuery, "UTF-8")
-                val url = java.net.URL("https://nominatim.openstreetmap.org/search?format=json&q=$encodedQuery&addressdetails=1&limit=5")
+                val url = java.net.URL("https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&country=ng&limit=5&proximity=6.3350,5.6037")
                 val urlConnection = url.openConnection() as java.net.HttpURLConnection
-                urlConnection.setRequestProperty("User-Agent", "EngracedDispatchAndroidApp/1.0 (reachheytek@gmail.com)")
                 urlConnection.connectTimeout = 3000
                 urlConnection.readTimeout = 3000
                 val response = urlConnection.inputStream.bufferedReader().use { it.readText() }
-                val jsonArray = org.json.JSONArray(response)
+                val jsonObject = org.json.JSONObject(response)
+                val features = jsonObject.optJSONArray("features")
                 val results = mutableListOf<String>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    val displayName = obj.optString("display_name")
-                    if (!displayName.isNullOrBlank()) {
-                        results.add(displayName)
+                if (features != null) {
+                    for (i in 0 until features.length()) {
+                        val feat = features.getJSONObject(i)
+                        val placeName = feat.optString("place_name")
+                        if (!placeName.isNullOrBlank()) {
+                            results.add(placeName)
+                        }
                     }
                 }
                 withContext(Dispatchers.Main) {
@@ -322,10 +353,34 @@ fun BookingFormScreen(
                     isSearchingSuggestions = false
                 }
             } catch (e: Exception) {
-                android.util.Log.e("AddressSearch", "API search failed: ${e.message}")
-                withContext(Dispatchers.Main) {
-                    apiSuggestions = findAddressMatches(activeQuery)
-                    isSearchingSuggestions = false
+                android.util.Log.e("AddressSearch", "Mapbox search failed: ${e.message}. Trying OSM Nominatim...")
+                try {
+                    val encodedQuery = java.net.URLEncoder.encode(activeQuery, "UTF-8")
+                    val url = java.net.URL("https://nominatim.openstreetmap.org/search?format=json&q=$encodedQuery&addressdetails=1&limit=5&countrycodes=ng")
+                    val urlConnection = url.openConnection() as java.net.HttpURLConnection
+                    urlConnection.setRequestProperty("User-Agent", "EngracedDispatchAndroidApp/1.0 (reachheytek@gmail.com)")
+                    urlConnection.connectTimeout = 3000
+                    urlConnection.readTimeout = 3000
+                    val response = urlConnection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonArray = org.json.JSONArray(response)
+                    val results = mutableListOf<String>()
+                    for (i in 0 until jsonArray.length()) {
+                        val obj = jsonArray.getJSONObject(i)
+                        val displayName = obj.optString("display_name")
+                        if (!displayName.isNullOrBlank()) {
+                            results.add(displayName)
+                        }
+                    }
+                    withContext(Dispatchers.Main) {
+                        apiSuggestions = results
+                        isSearchingSuggestions = false
+                    }
+                } catch (err: Exception) {
+                    android.util.Log.e("AddressSearch", "OSM Nominatim failed: ${err.message}")
+                    withContext(Dispatchers.Main) {
+                        apiSuggestions = findAddressMatches(activeQuery)
+                        isSearchingSuggestions = false
+                    }
                 }
             }
         }
@@ -398,7 +453,7 @@ fun BookingFormScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 24.dp, vertical = 24.dp)
+                        .padding(horizontal = 14.dp, vertical = 24.dp)
                         .padding(bottom = 120.dp)
                 ) {
                     // --- Book Again suggestions using delivery history ---
@@ -430,7 +485,7 @@ fun BookingFormScreen(
                         ) {
                             bookAgainList.forEach { (addr, name, phone) ->
                                 Card(
-                                    shape = RoundedCornerShape(16.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     colors = CardDefaults.cardColors(containerColor = Charcoal),
                                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.15f)),
                                     modifier = Modifier
@@ -485,7 +540,7 @@ fun BookingFormScreen(
                      *    displaying matching results relative to the user's current GPS location.
                      * 5. When selected, update the fields and geocode the exact lat/lng into the selectedParcel coordinate system.
                      */
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = "Pickup & Delivery Details",
                             fontSize = 14.sp,
@@ -512,10 +567,23 @@ fun BookingFormScreen(
                                         Icon(Icons.Filled.Place, null, tint = accentIconColor, modifier = Modifier.size(22.dp))
                                     },
                                     trailingIcon = {
-                                        IconButton(onClick = {
-                                            showPinDropForField = "pickup"
-                                        }) {
-                                            Icon(Icons.Filled.Map, null, tint = Gold, modifier = Modifier.size(20.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(onClick = {
+                                                activeAutoDetectField = "pickup"
+                                                permissionLauncher.launch(
+                                                    arrayOf(
+                                                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                                        android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                                    )
+                                                )
+                                            }) {
+                                                Icon(Icons.Filled.MyLocation, "Auto-detect location", tint = Gold, modifier = Modifier.size(20.dp))
+                                            }
+                                            IconButton(onClick = {
+                                                showPinDropForField = "pickup"
+                                            }) {
+                                                Icon(Icons.Filled.Map, "Choose on map", tint = Gold, modifier = Modifier.size(20.dp))
+                                            }
                                         }
                                     },
                                     textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
@@ -620,10 +688,28 @@ fun BookingFormScreen(
                                             Icon(Icons.Filled.AddLocation, null, tint = Gold, modifier = Modifier.size(20.dp))
                                         },
                                         trailingIcon = {
-                                            IconButton(onClick = {
-                                                additionalStops = additionalStops.toMutableList().apply { removeAt(index) }
-                                            }) {
-                                                Icon(Icons.Filled.Close, null, tint = Color.Red, modifier = Modifier.size(18.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                IconButton(onClick = {
+                                                    activeAutoDetectField = "stop_$index"
+                                                    permissionLauncher.launch(
+                                                        arrayOf(
+                                                            android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                                        )
+                                                    )
+                                                }) {
+                                                    Icon(Icons.Filled.MyLocation, "Auto-detect location", tint = Gold, modifier = Modifier.size(20.dp))
+                                                }
+                                                IconButton(onClick = {
+                                                    showPinDropForField = "stop_$index"
+                                                }) {
+                                                    Icon(Icons.Filled.Map, "Choose on map", tint = Gold, modifier = Modifier.size(18.dp))
+                                                }
+                                                IconButton(onClick = {
+                                                    additionalStops = additionalStops.toMutableList().apply { removeAt(index) }
+                                                }) {
+                                                    Icon(Icons.Filled.Close, "Remove stop", tint = Color.Red, modifier = Modifier.size(18.dp))
+                                                }
                                             }
                                         },
                                         textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
@@ -657,10 +743,23 @@ fun BookingFormScreen(
                                     Icon(Icons.Filled.Navigation, null, tint = accentIconColor, modifier = Modifier.size(22.dp))
                                 },
                                 trailingIcon = {
-                                    IconButton(onClick = {
-                                        showPinDropForField = "delivery"
-                                    }) {
-                                        Icon(Icons.Filled.Map, null, tint = Gold, modifier = Modifier.size(20.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = {
+                                            activeAutoDetectField = "delivery"
+                                            permissionLauncher.launch(
+                                                arrayOf(
+                                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                                )
+                                            )
+                                        }) {
+                                            Icon(Icons.Filled.MyLocation, "Auto-detect location", tint = Gold, modifier = Modifier.size(20.dp))
+                                        }
+                                        IconButton(onClick = {
+                                            showPinDropForField = "delivery"
+                                        }) {
+                                            Icon(Icons.Filled.Map, "Choose on map", tint = Gold, modifier = Modifier.size(20.dp))
+                                        }
                                     }
                                 },
                                 textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
@@ -710,19 +809,31 @@ fun BookingFormScreen(
                             }
                             if (suggestions.isNotEmpty() || isSearchingSuggestions) {
                                 Card(
-                                    shape = RoundedCornerShape(16.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     colors = CardDefaults.cardColors(containerColor = if (isDark) MapStandardBg else GoldenWhite),
                                     border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.25f) else Slate),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(8.dp)) {
-                                        Text(
-                                            if (isSearchingSuggestions) "🔍 Searching locations..." else "💡 AI Suggestion Matches:",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isDark) Gold else Obsidian,
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
                                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                        )
+                                        ) {
+                                            Text(
+                                                if (isSearchingSuggestions) "🔍 Searching locations..." else "💡 AI Suggestion Matches:",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDark) Gold else Obsidian
+                                            )
+                                            if (isSearchingSuggestions) {
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                CircularProgressIndicator(
+                                                    color = if (isDark) Gold else Obsidian,
+                                                    modifier = Modifier.size(10.dp),
+                                                    strokeWidth = 1.5.dp
+                                                )
+                                            }
+                                        }
                                         suggestions.take(5).forEach { rawMatch ->
                                             val isHome = rawMatch.startsWith("🏠 Home: ")
                                             val isWork = rawMatch.startsWith("💼 Work: ")
@@ -778,7 +889,7 @@ fun BookingFormScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = "Parcel Specifications",
                             fontSize = 14.sp,
@@ -906,7 +1017,7 @@ fun BookingFormScreen(
 
                         Surface(
                             color = if (isDark) Gold.copy(alpha = 0.08f) else GoldLight.copy(alpha = 0.4f),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.2f) else Slate),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -957,7 +1068,7 @@ fun BookingFormScreen(
                     shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = "Delivery Insurance Protection",
                             fontSize = 14.sp,
@@ -978,7 +1089,7 @@ fun BookingFormScreen(
                                     width = if (isSelected) 1.5.dp else 1.dp,
                                     color = if (isSelected) Gold else fieldBorderColor
                                 ),
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { selectedInsurance = type }
@@ -1027,7 +1138,7 @@ fun BookingFormScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text("Sender Contact Details", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = accentTextColor)
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -1130,7 +1241,7 @@ fun BookingFormScreen(
                     shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1240,6 +1351,108 @@ fun BookingFormScreen(
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = Charcoal,
+                            border = BorderStroke(1.2.dp, Gold.copy(alpha = 0.2f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = Gold,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Apply Promo Voucher",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 14.sp,
+                                        color = Color.White
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                if (appliedPromo != null) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Gold.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "CODE: $appliedPromo",
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 13.sp,
+                                                color = Gold
+                                            )
+                                            Text(
+                                                text = "$discountPercent% Discount Applied Successfully!",
+                                                fontSize = 11.sp,
+                                                color = Color.Green
+                                            )
+                                        }
+                                        IconButton(onClick = { viewModel.clearAppliedPromo() }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Remove Promo",
+                                                tint = Color.Red
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        OutlinedTextField(
+                                            value = promoInput,
+                                            onValueChange = { promoInput = it },
+                                            placeholder = { Text("Enter Promo Code", color = TextGray) },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Gold,
+                                                unfocusedBorderColor = Gold.copy(alpha = 0.3f),
+                                                focusedContainerColor = Obsidian,
+                                                unfocusedContainerColor = Obsidian,
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White
+                                            ),
+                                            singleLine = true
+                                        )
+                                        Button(
+                                            onClick = {
+                                                if (promoInput.isNotBlank()) {
+                                                    viewModel.applyPromoCode(promoInput) { success, msg ->
+                                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                        if (success) {
+                                                            promoInput = ""
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Gold,
+                                                contentColor = Obsidian
+                                            ),
+                                            modifier = Modifier.height(56.dp)
+                                        ) {
+                                            Text("Apply", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1253,7 +1466,7 @@ fun BookingFormScreen(
                 .fillMaxWidth(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
-            tonalElevation = 8.dp
+            tonalElevation = 0.dp
         ) {
             Box(
                 modifier = Modifier
@@ -1564,7 +1777,7 @@ fun BookingDetails(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 24.dp, vertical = 24.dp)
+                        .padding(horizontal = 14.dp, vertical = 24.dp)
                         .padding(bottom = 120.dp)
                 ) {
                 if (parcel == null) {
@@ -1584,7 +1797,7 @@ fun BookingDetails(
                         modifier = Modifier
                             .fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1660,7 +1873,7 @@ fun BookingDetails(
                         modifier = Modifier
                             .fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Text(
                                 text = "Route Information",
                                 fontWeight = FontWeight.ExtraBold,
@@ -1702,7 +1915,7 @@ fun BookingDetails(
                         modifier = Modifier
                             .fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Text(
                                 text = "Contact Persons",
                                 fontWeight = FontWeight.ExtraBold,
@@ -1768,7 +1981,7 @@ fun BookingDetails(
                 .fillMaxWidth(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
-            tonalElevation = 8.dp
+            tonalElevation = 0.dp
         ) {
             Box(
                 modifier = Modifier

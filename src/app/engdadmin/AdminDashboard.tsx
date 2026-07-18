@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, writeBatch, addDoc, increment } from "firebase/firestore";
+import { getFirestore, collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, writeBatch, addDoc, increment, runTransaction } from "firebase/firestore";
 import { Shield, Truck, Package, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun } from "lucide-react";
 import CMSTab from "./CMSTab";
 import dynamic from "next/dynamic";
@@ -12,8 +12,8 @@ const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AI
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
 const db = getFirestore(app);
-type TabId = "dashboard" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking";
-interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
+type TabId = "dashboard" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking" | "fleet" | "expenses";
+interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; permissions?: { viewReports?: boolean; manageContent?: boolean; manageShipments?: boolean; editSettings?: boolean }; }
 interface Delivery { id: string; status: string; category?: string; receiverName: string; deliveryAddress: string; senderName: string; senderPhone: string; receiverPhone: string; price: number; riderId: string; courierName: string; courierPhone: string; itemName: string; pickupAddress: string; quantity: number; weight: number; dateString: string; tipAmount: number; userId: string; otpCode: string; pickupLat?: number; pickupLng?: number; deliveryLat?: number; deliveryLng?: number; }
 interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
 interface Referral { id: string; referrerId: string; referrerName: string; referrerEmail: string; refereeId: string; refereeName: string; refereeEmail: string; rewardAmount: number; status: string; }
@@ -21,12 +21,18 @@ interface Promotion { id: string; title: string; description: string; discountTy
 interface AuditEntry { id: string; time: string; action: string; details: string; admin: string; timestamp: number; }
 interface AppContent { id: string; key: string; title: string; description: string; imageUrl: string; ctaText: string; ctaLink: string; order: number; active: boolean; }
 interface Toast { id: number; type: "success" | "error" | "info"; message: string; }
+interface ShiftAttendance { id: string; riderId: string; status: string; clockInTime: string; clockOutTime: string; totalHours: number; dateString: string; }
+interface VehicleInspection { id: string; riderId: string; dateString: string; tiresOk: boolean; brakesOk: boolean; headlightsOk: boolean; hornOk: boolean; fuelBatteryLevelOk: boolean; safetyVestHelmetOk: boolean; notes: string; passed: boolean; }
+interface ShiftRoster { id: string; riderId: string; riderName?: string; shiftDate: string; startTime: string; endTime: string; roleOrArea: string; isLeave: boolean; leaveReason: string; leaveStatus: string; }
+interface ExpenseClaim { id: string; riderId: string; riderName?: string; title: string; category: string; amount: number; receiptNote: string; status: string; dateString: string; }
 interface BannersTabProps { banners: Banner[]; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; }
-interface ReferralsTabProps { referrals: Referral[]; completedReferrals: Referral[]; searchQuery: string; }
-interface PromotionsTabProps { promotions: Promotion[]; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; }
+interface ReferralsTabProps { referrals: Referral[]; completedReferrals: Referral[]; searchQuery: string; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; }
+interface PromotionsTabProps { promotions: Promotion[]; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; seedPromos: () => Promise<void>; seeding: string; }
 interface AppCardsTabProps { appContent: AppContent[]; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; }
-interface SettingsTabProps { db: any; addLog: (a: string, d: string) => Promise<void> | void; }
+interface SettingsTabProps { db: any; addLog: (a: string, d: string) => Promise<void> | void; createNotification: (title: string, message: string, type?: string) => Promise<any>; }
 interface LogsTabProps { logs: AuditEntry[]; }
+interface FleetTabProps { attendances: ShiftAttendance[]; inspections: VehicleInspection[]; rosters: ShiftRoster[]; users: UserProfile[]; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; }
+interface ExpensesTabProps { expenses: ExpenseClaim[]; users: UserProfile[]; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; }
 
 function EdLogoSvg({ size = 36, className = "", dark = false }: { size?: number; className?: string; dark?: boolean }) {
   const s = size;
@@ -74,17 +80,17 @@ function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: s
   return <div className="animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300">
     <div className="flex items-center justify-between"><span className="text-xs font-bold text-black/40 dark:text-white/40">{label}</span>{icon}</div>
     <h2 className="text-3xl font-black text-[#111] dark:text-white mt-2">{value}</h2>
-    <p className="text-[10px] text-[#FFC542] font-bold mt-1">{sub}</p>
+    <p className="text-[10px] text-gray-500 dark:text-[#FFC542] font-bold mt-1">{sub}</p>
   </div>;
 }
 function QuickBtn({ label, desc, onClick, loading = false }: { label: string; desc: string; onClick: () => void; loading?: boolean }) {
   return <button onClick={onClick} disabled={loading} className={"p-4 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 hover:border-[#FFC542]/50 hover:bg-[#FFC542]/10 rounded-2xl text-left transition-all " + (loading ? "opacity-50 cursor-not-allowed" : "")}>
-    <p className="text-xs font-bold text-[#FFC542]">{loading ? "SEEDING..." : label}</p><p className="text-[10px] text-black/40 dark:text-white/40 mt-1">{desc}</p>
+    <p className="text-xs font-bold text-[#111] dark:text-[#FFC542]">{loading ? "SEEDING..." : label}</p><p className="text-[10px] text-black/40 dark:text-white/40 mt-1">{desc}</p>
   </button>;
 }
 function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return <div className={"bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm " + (className || "")}>
-    <h3 className="text-xs font-bold text-[#FFC542] tracking-wider uppercase flex items-center gap-2">{title}</h3>
+    <h3 className="text-xs font-bold text-[#111] dark:text-[#FFC542] tracking-wider uppercase flex items-center gap-2">{title}</h3>
     <div className="mt-4">{children}</div>
   </div>;
 }
@@ -112,7 +118,7 @@ function SearchInput({ value, onChange, placeholder = "Search..." }: { value: st
   return <div className="relative">
     <Search className="absolute left-3 top-2.5 w-4 h-4 text-black/40 dark:text-white/40" />
     <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      className="pl-10 pr-4 py-2 bg-white dark:bg-[#222] border border-black/20 dark:border-white/20 rounded-xl text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40 focus:border-[#FFC542] w-full transition-all" />
+      className="pl-10 pr-4 py-2 bg-white dark:bg-[#222] border border-black/20 dark:border-white/20 rounded-xl text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#111]/40 dark:focus:ring-[#FFC542]/40 focus:border-[#FFC542] w-full transition-all" />
   </div>;
 }
 function SaveBtn({ onClick, label = "Save", loading = false, size = "sm" }: { onClick: () => void; label?: string; loading?: boolean; size?: "sm" | "md" }) {
@@ -156,14 +162,14 @@ async function seedDeliveries(db: any, addLog: any, addToast: any, createNotific
     const now = new Date();
     const ds = (d: number) => new Date(now.getTime() + d * 86400000).toISOString().slice(0, 10);
     const deliveries = [
-      { receiverName: "Alice Johnson", deliveryAddress: "Victoria Island, Lagos", senderName: "Shopify Store", senderPhone: "08011122233", receiverPhone: "08044455566", price: 2500, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Laptop", pickupAddress: "Ikeja, Lagos", quantity: 1, weight: 1.5, dateString: ds(-1), tipAmount: 500, userId: "seed_u2", otpCode: "1234", status: "DELIVERED", category: "Express" },
-      { receiverName: "Bob Brown", deliveryAddress: "Lekki Phase 1, Lagos", senderName: "Amazon Hub", senderPhone: "08099988877", receiverPhone: "08077766655", price: 1500, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Books", pickupAddress: "Surulere, Lagos", quantity: 2, weight: 0.8, dateString: ds(0), tipAmount: 200, userId: "seed_u2", otpCode: "5678", status: "TRANSIT", category: "Standard" },
-      { receiverName: "Charlie Davis", deliveryAddress: "Ajah, Lagos", senderName: "Fresh Foods", senderPhone: "08022233344", receiverPhone: "08055566677", price: 3000, riderId: "seed_u1", courierName: couriers[2], courierPhone: "08066677788", itemName: "Groceries", pickupAddress: "Yaba, Lagos", quantity: 5, weight: 4.2, dateString: ds(0), tipAmount: 0, userId: "seed_u2", otpCode: "9012", status: "PENDING", category: "Cold Chain" },
-      { receiverName: "Diana Okonkwo", deliveryAddress: "GRA, Port Harcourt", senderName: "Jumia Foods", senderPhone: "08033344455", receiverPhone: "08088899900", price: 1800, riderId: "seed_u3", courierName: couriers[3], courierPhone: "08011122200", itemName: "Documents", pickupAddress: "Trans Amadi, PH", quantity: 1, weight: 0.3, dateString: ds(1), tipAmount: 100, userId: "seed_u2", otpCode: "3456", status: "DELIVERED", category: "Economy" },
-      { receiverName: "Efe Martins", deliveryAddress: "Warri, Delta", senderName: "PharmaCo", senderPhone: "08055566688", receiverPhone: "08099900011", price: 4200, riderId: "", courierName: couriers[4], courierPhone: "08022233300", itemName: "Medical Supplies", pickupAddress: "Benin City", quantity: 3, weight: 6.0, dateString: ds(2), tipAmount: 0, userId: "seed_u2", otpCode: "7890", status: "ASSIGNED", category: "Express" },
-      { receiverName: "Fatima Yusuf", deliveryAddress: "Kano City Mall, Kano", senderName: "MegaMart", senderPhone: "08077788899", receiverPhone: "08011122255", price: 3500, riderId: "", courierName: couriers[5], courierPhone: "08044455500", itemName: "Home Appliances", pickupAddress: "Kano Market", quantity: 2, weight: 8.0, dateString: ds(1), tipAmount: 300, userId: "seed_u2", otpCode: "2345", status: "TRANSIT", category: "Batch" },
-      { receiverName: "Gloria Adebayo", deliveryAddress: "Bodija, Ibadan", senderName: "PrintHub", senderPhone: "08033322211", receiverPhone: "08066655544", price: 2200, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Print Materials", pickupAddress: "Dugbe, Ibadan", quantity: 4, weight: 2.5, dateString: ds(3), tipAmount: 150, userId: "seed_u2", otpCode: "6789", status: "PENDING", category: "Multi" },
-      { receiverName: "Henry Okafor", deliveryAddress: "Enugu Urban, Enugu", senderName: "TechWorld", senderPhone: "08044455566", receiverPhone: "08077788822", price: 2800, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Smartphone", pickupAddress: "Awka, Anambra", quantity: 1, weight: 0.6, dateString: ds(4), tipAmount: 250, userId: "seed_u2", otpCode: "1111", status: "PENDING", category: "Standard" },
+      { receiverName: "Alice Johnson", deliveryAddress: "University of Benin, Ugbowo Campus, Benin City", senderName: "Shopify Store", senderPhone: "08011122233", receiverPhone: "08044455566", price: 2500, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Laptop", pickupAddress: "King's Square (Ring Road), Benin City", quantity: 1, weight: 1.5, dateString: ds(-1), tipAmount: 500, userId: "seed_u2", otpCode: "1234", status: "DELIVERED", category: "Express" },
+      { receiverName: "Bob Brown", deliveryAddress: "Kada Plaza, Sapele Road, Benin City", senderName: "Amazon Hub", senderPhone: "08099988877", receiverPhone: "08077766655", price: 1500, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Books", pickupAddress: "Benin Airport, Benin City", quantity: 2, weight: 0.8, dateString: ds(0), tipAmount: 200, userId: "seed_u2", otpCode: "5678", status: "TRANSIT", category: "Standard" },
+      { receiverName: "Charlie Davis", deliveryAddress: "Edo State Government House, GRA, Benin City", senderName: "Fresh Foods", senderPhone: "08022233344", receiverPhone: "08055566677", price: 3000, riderId: "seed_u1", courierName: couriers[2], courierPhone: "08066677788", itemName: "Groceries", pickupAddress: "Uselu Market, Benin City", quantity: 5, weight: 4.2, dateString: ds(0), tipAmount: 0, userId: "seed_u2", otpCode: "9012", status: "PENDING", category: "Cold Chain" },
+      { receiverName: "Diana Okonkwo", deliveryAddress: "Stella Obasanjo Hospital, Benin City", senderName: "Jumia Foods", senderPhone: "08033344455", receiverPhone: "08088899900", price: 1800, riderId: "seed_u3", courierName: couriers[3], courierPhone: "08011122200", itemName: "Documents", pickupAddress: "National Museum Benin City", quantity: 1, weight: 0.3, dateString: ds(1), tipAmount: 100, userId: "seed_u2", otpCode: "3456", status: "DELIVERED", category: "Economy" },
+      { receiverName: "Efe Martins", deliveryAddress: "UNIBEN Ekehuan Campus, Benin City", senderName: "PharmaCo", senderPhone: "08055566688", receiverPhone: "08099900011", price: 4200, riderId: "", courierName: couriers[4], courierPhone: "08022233300", itemName: "Medical Supplies", pickupAddress: "Ramat Park, Ikpoba Hill, Benin City", quantity: 3, weight: 6.0, dateString: ds(2), tipAmount: 0, userId: "seed_u2", otpCode: "7890", status: "ASSIGNED", category: "Express" },
+      { receiverName: "Fatima Yusuf", deliveryAddress: "Ogba Zoo, Benin City", senderName: "MegaMart", senderPhone: "08077788899", receiverPhone: "08011122255", price: 3500, riderId: "", courierName: couriers[5], courierPhone: "08044455500", itemName: "Home Appliances", pickupAddress: "University of Benin Teaching Hospital (UBTH), Benin City", quantity: 2, weight: 8.0, dateString: ds(1), tipAmount: 300, userId: "seed_u2", otpCode: "2345", status: "TRANSIT", category: "Batch" },
+      { receiverName: "Gloria Adebayo", deliveryAddress: "Oba of Benin Palace, Benin City", senderName: "PrintHub", senderPhone: "08033322211", receiverPhone: "08066655544", price: 2200, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Print Materials", pickupAddress: "Aduwawa Motor Park, Benin City", quantity: 4, weight: 2.5, dateString: ds(3), tipAmount: 150, userId: "seed_u2", otpCode: "6789", status: "PENDING", category: "Multi" },
+      { receiverName: "Henry Okafor", deliveryAddress: "Ekenwan Road, Benin City", senderName: "TechWorld", senderPhone: "08044455566", receiverPhone: "08077788822", price: 2800, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Smartphone", pickupAddress: "Siluko Road, Benin City", quantity: 1, weight: 0.6, dateString: ds(4), tipAmount: 250, userId: "seed_u2", otpCode: "1111", status: "PENDING", category: "Standard" },
     ];
     deliveries.forEach(d => batch.set(doc(collection(db, "deliveries")), d));
     await batch.commit();
@@ -231,10 +237,10 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
   );
   return <div className="tab-content space-y-8">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="stagger-1"><StatCard icon={<Users className="w-4 h-4 text-[#FFC542]" />} label="TOTAL USERS" value={activeUsers.length.toString()} sub={customers.length + " customers · " + drivers.length + " drivers"} /></div>
-        <div className="stagger-2"><StatCard icon={<Package className="w-4 h-4 text-[#FFC542]" />} label="SHIPMENTS" value={deliveries.length.toString()} sub={pendingDeliveries.length + " pending · " + delivered.length + " delivered"} /></div>
-        <div className="stagger-3"><StatCard icon={<DollarSign className="w-4 h-4 text-[#FFC542]" />} label="REVENUE" value={fmt(totalRevenue)} sub={fmt(totalTips) + " in tips · " + referrals.length + " referrals"} /></div>
-        <div className="stagger-4"><StatCard icon={<Activity className="w-4 h-4 text-[#FFC542]" />} label="ONLINE" value={(activeUsers.filter((u: any) => u.isOnline).length).toString()} sub={drivers.filter((d: any) => d.isOnline).length + " drivers · " + (activeUsers.filter((u: any) => u.role === "customer" && u.isOnline).length) + " customers"} /></div>
+        <div className="stagger-1"><StatCard icon={<Users className="w-4 h-4 text-[#111] dark:text-[#FFC542]" />} label="TOTAL USERS" value={activeUsers.length.toString()} sub={customers.length + " customers · " + drivers.length + " drivers"} /></div>
+        <div className="stagger-2"><StatCard icon={<Package className="w-4 h-4 text-[#111] dark:text-[#FFC542]" />} label="SHIPMENTS" value={deliveries.length.toString()} sub={pendingDeliveries.length + " pending · " + delivered.length + " delivered"} /></div>
+        <div className="stagger-3"><StatCard icon={<DollarSign className="w-4 h-4 text-[#111] dark:text-[#FFC542]" />} label="REVENUE" value={fmt(totalRevenue)} sub={fmt(totalTips) + " in tips · " + referrals.length + " referrals"} /></div>
+        <div className="stagger-4"><StatCard icon={<Activity className="w-4 h-4 text-[#111] dark:text-[#FFC542]" />} label="ONLINE" value={(activeUsers.filter((u: any) => u.isOnline).length).toString()} sub={drivers.filter((d: any) => d.isOnline).length + " drivers · " + (activeUsers.filter((u: any) => u.role === "customer" && u.isOnline).length) + " customers"} /></div>
       </div>
       <section>
         <div className="flex justify-between items-end mb-6 flex-wrap gap-4">
@@ -296,7 +302,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
         <div className="lg:col-span-3 border border-black/10 dark:border-white/10 rounded-3xl p-7 flex flex-col bg-white dark:bg-[#1a1a1a]">
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-[22px] font-extrabold tracking-tight text-[#111] dark:text-white">Next scheduled drops</h2>
-            <button onClick={() => setTab("shipments")} className="text-[#FFC542] font-bold text-sm hover:underline">View all deliveries</button>
+            <button onClick={() => setTab("shipments")} className="text-gray-600 dark:text-[#FFC542] font-bold text-sm hover:underline">View all deliveries</button>
           </div>
           {recentDeliveries.length === 0 && <div className="text-center py-10 text-black/40 dark:text-white/40 text-sm">No scheduled drops yet.</div>}
           {recentDeliveries.length > 0 && <>
@@ -381,7 +387,7 @@ function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSid
           </div>
         )}
       </div>
-      <nav className="flex flex-col gap-1 w-full px-3 flex-1">
+      <nav className="flex flex-col gap-1 w-full px-3 flex-1 overflow-y-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
         {navItems.map(n => (
           <button key={n.id} onClick={() => { setTab(n.id); setMobileSidebar(false); }}
             className={"flex items-center gap-3 p-3 rounded-3xl transition-all " + (tab === n.id ? "bg-[#FFC542] text-[#111] shadow-lg" : "text-white/50 hover:text-white hover:bg-white/5")}>
@@ -412,59 +418,77 @@ interface HeaderProps {
 }
 
 function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showNotifs, setShowUserMenu, showUserMenu, currentUser, userRole, toggleDark, dark, setMobileSidebar, notifications, markNotifRead }: HeaderProps) {
+  const primaryText = "text-[#111]";
+  const secondaryText = "text-[#111]/60";
+  const borderCol = "border-[#111]/15";
+  const bellBg = "hover:bg-[#111]/10";
+  const avatarBg = "bg-[#111]/10 border-[#111]/10";
+  const badgeBorder = dark ? "border-[#FFC542]" : "border-white";
+  const badgeBg = dark ? "bg-[#111111]" : "bg-[#FFC542]";
+
   return (
-    <header className="flex justify-between items-center px-4 sm:px-8 lg:px-12 pt-6 lg:pt-10 pb-0 shrink-0 gap-4">
-      <div className="flex items-center gap-3">
-        <button className="lg:hidden p-2 text-[#111] dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition-colors" onClick={() => setMobileSidebar(true)}>
-          <Menu size={22} />
+    <header className={`flex justify-between items-center px-4 sm:px-6 lg:px-8 py-3 shrink-0 gap-4 transition-colors duration-300 rounded-b-2xl border-b border-black/5 ${dark ? "bg-[#FFC542]" : "bg-white"}`}>
+      <div className="flex items-center gap-3 w-[200px] shrink-0">
+        <button className={`lg:hidden p-1.5 rounded-xl transition-colors ${bellBg} ${primaryText}`} onClick={() => setMobileSidebar(true)}>
+          <Menu size={20} />
         </button>
-        <div className="text-sm sm:text-base text-black/60 dark:text-white/60">
-          Welcome to<br /><span className="font-extrabold text-[#111] dark:text-white text-lg sm:text-xl tracking-tight">Engraced <span className="text-[#FFC542]">Dispatch</span></span>
+        <div className={`text-[10px] sm:text-xs ${secondaryText} leading-tight truncate`}>
+          Welcome to <span className={`font-black text-xs sm:text-sm tracking-tight ${primaryText}`}>Engraced Dispatch</span>
         </div>
       </div>
-      <div className="flex items-center gap-2 sm:gap-5">
-        <div className="hidden sm:flex items-center border border-black/20 dark:border-white/20 rounded-full pl-5 pr-1.5 py-1.5 w-[200px] lg:w-[280px] shadow-sm">
-          <input type="text" placeholder="Search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="outline-none flex-1 text-sm bg-transparent font-medium text-[#111] dark:text-white" />
-          <button className="bg-[#FFC542] text-[#111] p-2 rounded-xl hover:bg-[#FFC542]/90 transition-colors"><Search size={18} strokeWidth={2.5} /></button>
+
+      <div className="flex-1 flex justify-center max-w-[320px] mx-2">
+        <div className="flex items-center w-full relative">
+          <Search size={14} className="absolute left-3 text-[#111]/45" />
+          <input 
+            type="text" 
+            placeholder="Search..." 
+            value={searchQuery} 
+            onChange={e => setSearchQuery(e.target.value)} 
+            className={`w-full pl-9 pr-4 py-1.5 rounded-xl text-xs font-semibold bg-black/5 dark:bg-black/10 border border-black/5 focus:outline-none focus:bg-black/10 focus:border-black/10 transition-all ${primaryText} placeholder-[#111]/45`} 
+          />
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 sm:gap-4 w-[200px] justify-end shrink-0">
         <div className="relative">
-          <button onClick={(e) => { e.stopPropagation(); setShowNotifs(!showNotifs); setShowUserMenu(false); }} className="relative p-2.5 border border-black/10 dark:border-white/10 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
-            <Bell size={20} className="text-[#111] dark:text-white" />
-            {unreadCount > 0 && <div className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-[#FFC542] rounded-full border-2 border-white dark:border-[#1a1a1a] animate-pulse-ring"></div>}
+          <button onClick={(e) => { e.stopPropagation(); setShowNotifs(!showNotifs); setShowUserMenu(false); }} className={`relative w-8 h-8 border rounded-full flex items-center justify-center cursor-pointer shadow-sm transition-colors ${borderCol} ${bellBg}`}>
+            <Bell size={16} className={primaryText} />
+            {unreadCount > 0 && <div className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full border-2 animate-pulse-ring ${badgeBg} ${badgeBorder}`}></div>}
           </button>
           {showNotifs && <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-2xl overflow-hidden z-50">
-            <div className="p-4 border-b border-black/10 dark:border-white/10"><p className="text-xs font-bold text-[#FFC542]">NOTIFICATIONS</p></div>
+            <div className="p-4 border-b border-black/10 dark:border-white/10"><p className="text-xs font-bold text-gray-500 dark:text-[#FFC542]">NOTIFICATIONS</p></div>
             <div className="max-h-72 overflow-y-auto">
               {notifications.length === 0 && <div className="p-6 text-center text-[10px] text-black/40 dark:text-white/40 font-bold">No notifications yet.</div>}
-              {notifications.map((n: any) => <div key={n.id} onClick={() => markNotifRead(n.id)} className={"p-4 border-b border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer " + (n.read ? "" : "bg-[#FFC542]/5")}>
+              {notifications.map((n: any) => <div key={n.id} onClick={() => markNotifRead(n.id)} className={"p-4 border-b border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer " + (n.read ? "" : "bg-black/5 dark:bg-[#FFC542]/5")}>
                 <div className="flex items-start gap-3">
                   <div className={"w-2 h-2 mt-1.5 rounded-full shrink-0 " + (n.read ? "bg-transparent" : "bg-[#FFC542]")}></div>
                   <div><p className="text-xs font-bold text-[#111] dark:text-white">{n.title}</p><p className="text-[10px] text-black/50 dark:text-white/50 mt-0.5">{n.description}</p><p className="text-[9px] text-black/30 dark:text-white/30 mt-1">{n.time || "Just now"}</p></div>
                 </div>
               </div>)}
             </div>
-            <div className="p-3 text-center border-t border-black/10 dark:border-white/10"><button className="text-[10px] text-[#FFC542] font-bold hover:underline">View all notifications</button></div>
+            <div className="p-3 text-center border-t border-black/10 dark:border-white/10"><button className="text-[10px] text-gray-500 dark:text-[#FFC542] font-bold hover:underline">View all notifications</button></div>
           </div>}
         </div>
         <div className="relative">
-          <div className="flex items-center gap-3 ml-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); setShowNotifs(false); }}>
-            <div className="w-11 h-11 rounded-full bg-[#FFC542]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-[#111] dark:text-white font-black text-sm"><EdLogoSvg size={20} /></div>
-            <div className="text-sm hidden sm:block">
-              <div className="font-extrabold text-[#111] dark:text-white">{currentUser?.email?.split("@")[0] || "Admin"}</div>
-              <div className="text-black/50 dark:text-white/50 font-medium text-xs mt-0.5">{(userRole || "admin").replace("_", " ").toUpperCase()}</div>
+          <div className="flex items-center gap-2 cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); setShowNotifs(false); }}>
+            <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-black ${avatarBg} ${primaryText}`}><EdLogoSvg size={16} dark={true} /></div>
+            <div className="text-xs hidden sm:block text-left truncate max-w-[110px]">
+              <div className={`font-extrabold truncate ${primaryText}`}>{currentUser?.email?.split("@")[0] || "Admin"}</div>
+              <div className={`${secondaryText} font-medium text-[10px] truncate`}>{(userRole || "admin").replace("_", " ").toUpperCase()}</div>
             </div>
           </div>
           {showUserMenu && <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-2xl overflow-hidden z-50">
-            <div className="p-4 border-b border-black/10 dark:border-white/10">
-              <p className="text-xs font-bold text-[#111] dark:text-white">{currentUser?.email}</p>
+            <div className="p-4 border-b border-black/10 dark:border-white/10 text-left">
+              <p className="text-xs font-bold text-[#111] dark:text-white truncate">{currentUser?.email}</p>
               <p className="text-[10px] text-black/40 dark:text-white/40 mt-0.5">{(userRole || "Admin").replace("_", " ").toUpperCase()}</p>
             </div>
             <div className="p-2">
               <button onClick={toggleDark} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-xs font-bold text-[#111] dark:text-white">
-                {dark ? <Sun className="w-4 h-4 text-[#FFC542]" /> : <Moon className="w-4 h-4 text-[#FFC542]" />}
+                {dark ? <Sun className="w-4 h-4 text-[#FFC542]" /> : <Moon className="w-4 h-4 text-gray-500 dark:text-[#FFC542]" />}
                 {dark ? "Light Mode" : "Dark Mode"}
               </button>
-              <button onClick={() => { document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs font-bold text-red-500 mt-1">
+              <button onClick={() => { document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs font-bold text-red-500 mt-1">
                 <LogOut className="w-4 h-4" /> Sign Out
               </button>
             </div>
@@ -481,9 +505,12 @@ function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showN
 function AdminDashboardPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>("");
+  const [userPermissions, setUserPermissions] = useState<any>(null);
+  const hasPerm = useCallback((key: string) => {
+    if (userRole === "super_admin") return true;
+    return !!userPermissions?.[key];
+  }, [userRole, userPermissions]);
   const [loading, setLoading] = useState(true);
-  const [signingUp, setSigningUp] = useState(false);
-  const [signupRole, setSignupRole] = useState("super_admin");
   const [email, setEmail] = useState("admin@engraced.com");
   const [password, setPassword] = useState("");
   const [authErr, setAuthErr] = useState("");
@@ -546,6 +573,10 @@ function AdminDashboardPage() {
   const [connected, setConnected] = useState(false);
   const [refreshT, setRefreshT] = useState("");
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [attendances, setAttendances] = useState<ShiftAttendance[]>([]);
+  const [inspections, setInspections] = useState<VehicleInspection[]>([]);
+  const [rosters, setRosters] = useState<ShiftRoster[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseClaim[]>([]);
 
   const unreadCount = notifications.filter((n: any) => !n.read).length;
 
@@ -583,15 +614,38 @@ function AdminDashboardPage() {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (u) {
           try {
-            await new Promise(r => setTimeout(r, 1500));
             const snap = await getDoc(doc(db, "users", u.uid));
-            if (!snap.exists()) { setAuthErr("Account not found. Contact an administrator."); document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null); setLoading(false); return; }
+            if (!snap.exists()) {
+              setAuthErr("Account not found. Contact an administrator.");
+              document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict";
+              signOut(auth); setCurrentUser(null); setUserPermissions(null); setLoading(false); return;
+            }
             const d = snap.data();
-            if (d?.role === "admin" || d?.role === "super_admin") { setCurrentUser(u); setUserRole(d.role); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Strict"; setLoading(false); return; }
-            if (d?.role === "dispatcher") { setCurrentUser(u); setUserRole("dispatcher"); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Strict"; setLoading(false); return; }
-            setAuthErr("Unauthorized"); document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null);
-          } catch { setAuthErr("Authentication error. Please try again."); document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null); }
-      } else { setCurrentUser(null); setUserRole(""); setLoading(false); return; }
+            const token = await u.getIdToken();
+            if (d?.role === "admin" || d?.role === "super_admin" || d?.role === "dispatcher") {
+              setCurrentUser(u);
+              setUserRole(d?.role || "dispatcher");
+              setUserPermissions(d?.permissions || null);
+              document.cookie = "admin_token=" + token + "; path=/; max-age=3600; SameSite=Strict";
+              setLoading(false);
+              return;
+            }
+            setAuthErr("Unauthorized");
+            document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict";
+            signOut(auth); setCurrentUser(null); setUserPermissions(null);
+          } catch {
+            setAuthErr("Authentication error. Please try again.");
+            document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict";
+            signOut(auth); setCurrentUser(null); setUserPermissions(null);
+          }
+      } else {
+        setCurrentUser(null);
+        setUserRole("");
+        setUserPermissions(null);
+        document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict";
+        setLoading(false);
+        return;
+      }
       setLoading(false);
     });
     return () => unsub();
@@ -666,6 +720,26 @@ function AdminDashboardPage() {
       snap.forEach(d => { const x = d.data(); list.push({ id: d.id, ...x }); });
       setNotifications(list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
     }));
+    unsubs.push(onSnapshot(collection(db, "shift_attendance"), snap => {
+      const list: ShiftAttendance[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({ id: d.id, riderId: x.riderId || "", status: x.status || "", clockInTime: x.clockInTime || "", clockOutTime: x.clockOutTime || "", totalHours: Number(x.totalHours || 0), dateString: x.dateString || "" }); });
+      setAttendances(list);
+    }));
+    unsubs.push(onSnapshot(collection(db, "vehicle_inspections"), snap => {
+      const list: VehicleInspection[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({ id: d.id, riderId: x.riderId || "", dateString: x.dateString || "", tiresOk: !!x.tiresOk, brakesOk: !!x.brakesOk, headlightsOk: !!x.headlightsOk, hornOk: !!x.hornOk, fuelBatteryLevelOk: !!x.fuelBatteryLevelOk, safetyVestHelmetOk: !!x.safetyVestHelmetOk, notes: x.notes || "", passed: !!x.passed }); });
+      setInspections(list);
+    }));
+    unsubs.push(onSnapshot(collection(db, "shift_rosters"), snap => {
+      const list: ShiftRoster[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({ id: d.id, riderId: x.riderId || "", riderName: x.riderName || "", shiftDate: x.shiftDate || "", startTime: x.startTime || "08:00", endTime: x.endTime || "17:00", roleOrArea: x.roleOrArea || "", isLeave: !!x.isLeave, leaveReason: x.leaveReason || "", leaveStatus: x.leaveStatus || "NONE" }); });
+      setRosters(list);
+    }));
+    unsubs.push(onSnapshot(collection(db, "expense_claims"), snap => {
+      const list: ExpenseClaim[] = [];
+      snap.forEach(d => { const x = d.data(); list.push({ id: d.id, riderId: x.riderId || "", riderName: x.riderName || "", title: x.title || "", category: x.category || "", amount: Number(x.amount || 0), receiptNote: x.receiptNote || x.description || "", status: x.status || "PENDING", dateString: x.dateString || "" }); });
+      setExpenses(list);
+    }));
     getDoc(doc(db, "system_config", "global_settings")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => {});
     getDoc(doc(db, "system_config", "pricing")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => {});
     return () => unsubs.forEach(f => f());
@@ -674,19 +748,14 @@ function AdminDashboardPage() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault(); setAuthErr(""); setAuthOk("");
     try {
-      if (signingUp) {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split("@")[0], role: signupRole, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
-        document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Strict";
-        setAuthOk((signupRole === "dispatcher" ? "Dispatcher" : "Admin") + " account created.");
-      } else {
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        const snap = await getDoc(doc(db, "users", cred.user.uid));
-        if (!snap.exists()) {
-          await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split("@")[0], role: "super_admin", updatedAt: Timestamp.now() });
-        }
-        setAuthOk("Signed in. Loading dashboard...");
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const snap = await getDoc(doc(db, "users", cred.user.uid));
+      if (!snap.exists()) {
+        await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split("@")[0], role: "super_admin", updatedAt: Timestamp.now() });
       }
+      const token = await cred.user.getIdToken();
+      document.cookie = "admin_token=" + token + "; path=/; max-age=3600; SameSite=Strict";
+      setAuthOk("Signed in. Loading dashboard...");
     } catch (err: any) { setAuthErr("Operation failed. Please try again."); }
   };
 
@@ -739,19 +808,13 @@ function AdminDashboardPage() {
           <form onSubmit={handleAuth} className="space-y-4">
             <div><label className="block text-xs font-semibold text-black/40 dark:text-white/40 mb-1">Admin Email</label>
               <div className="relative"><Mail className="absolute left-3 top-3 w-4 h-4 text-black/40 dark:text-white/40" />
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-10 py-2.5 text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" required /></div></div>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-10 py-2.5 text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#111]/40 dark:focus:ring-[#FFC542]/40" required /></div></div>
             <div><label className="block text-xs font-semibold text-black/40 dark:text-white/40 mb-1">Password</label>
               <div className="relative"><Key className="absolute left-3 top-3 w-4 h-4 text-black/40 dark:text-white/40" />
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-10 py-2.5 text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" required /></div></div>
-            {signingUp && <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ROLE</label>
-              <select value={signupRole} onChange={e => setSignupRole(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="super_admin">Super Admin (full access)</option><option value="admin">Admin (restricted)</option><option value="dispatcher">Dispatcher (orders only)</option></select></div>}
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-10 py-2.5 text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#111]/40 dark:focus:ring-[#FFC542]/40" required /></div></div>
             <button type="submit" className="w-full bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] font-black py-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-sm tracking-wider">
-              <Lock className="w-4 h-4" /> {signingUp ? "CREATE ADMIN" : "SIGN IN"}</button>
+              <Lock className="w-4 h-4" /> SIGN IN</button>
           </form>
-          <div className="mt-6 text-center">
-            <button type="button" onClick={() => setSigningUp(!signingUp)} className="text-xs text-[#FFC542] hover:underline font-semibold">
-              {signingUp ? "Already have an account? Sign In" : "Create an admin account"}</button>
-          </div>
         </div>
     </div>
     );
@@ -786,6 +849,8 @@ function AdminDashboardPage() {
     { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "tracking", label: "Live Tracking", icon: <MapPin size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "users", label: "Users", icon: <Users size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
+    { id: "fleet", label: "Fleet Ops", icon: <Activity size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
+    { id: "expenses", label: "Expense Claims", icon: <DollarSign size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "banners", label: "Hero Slides", icon: <ImageIcon size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "referrals", label: "Referrals", icon: <Gift size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "promotions", label: "Promotions", icon: <Percent size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
@@ -794,7 +859,16 @@ function AdminDashboardPage() {
     { id: "cms", label: "Site Content", icon: <FileText size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "logs", label: "Audit Log", icon: <Headphones size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
   ];
-  const navItems = allNavItems.filter(n => n.roles.includes(userRole || "super_admin"));
+  const navItems = allNavItems.filter(n => {
+    if (!n.roles.includes(userRole || "super_admin")) return false;
+    if (userRole === "super_admin") return true;
+    if (n.id === "users") return false;
+    if (n.id === "shipments" || n.id === "tracking" || n.id === "fleet") return hasPerm("manageShipments");
+    if (n.id === "banners" || n.id === "promotions" || n.id === "appcards" || n.id === "cms") return hasPerm("manageContent");
+    if (n.id === "settings") return hasPerm("editSettings");
+    if (n.id === "referrals" || n.id === "logs" || n.id === "expenses") return hasPerm("viewReports");
+    return true;
+  });
 
 
 
@@ -814,8 +888,38 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
     const [showNewUser, setShowNewUser] = useState(false);
     const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", password: "", bikeNumber: "" });
     const [creatingUser, setCreatingUser] = useState(false);
-    const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "" });
+    const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "", viewReports: false, manageContent: false, manageShipments: false, editSettings: false });
     const [uPage, setUPage] = useState(0);
+    const [fundAmount, setFundAmount] = useState("");
+    const [fundingUser, setFundingUser] = useState(false);
+    const adjustWallet = async () => {
+      if (!editUser || !fundAmount) return;
+      setFundingUser(true);
+      try {
+        const amountVal = parseFloat(fundAmount) || 0;
+        const newBalance = (editUser.walletBalance || 0) + amountVal;
+        await updateDoc(doc(db, "users", editUser.id), {
+          walletBalance: newBalance,
+          updatedAt: Timestamp.now()
+        });
+        const txId = "TX-MANUAL-" + Math.floor(Math.random() * 1000000);
+        await setDoc(doc(db, "users", editUser.id, "transactions", txId), {
+          id: txId,
+          title: amountVal >= 0 ? "Admin Wallet Credit 🪙" : "Admin Wallet Deduction 💸",
+          date: "Today",
+          amount: Math.abs(amountVal),
+          isTopUp: amountVal >= 0,
+          createdAt: Timestamp.now()
+        });
+        addLog("Fund Wallet", `${editUser.name} balance adjusted by ₦${amountVal}. New balance: ₦${newBalance}`);
+        setEditUser(prev => prev ? { ...prev, walletBalance: newBalance } : null);
+        setFundAmount("");
+        alert("Wallet balance adjusted successfully!");
+      } catch (e: any) {
+        alert("Error adjusting wallet: " + e.message);
+      }
+      setFundingUser(false);
+    };
     const uPerPage = 20;
     const filtered = activeUsers.filter(u => { const q = (searchQuery || search).toLowerCase(); return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.phone.includes(q); });
     const uTotalPages = Math.max(1, Math.ceil(filtered.length / uPerPage));
@@ -823,7 +927,20 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
     useEffect(() => { setUPage(0); }, [search, searchQuery]);
     const saveUser = async () => {
       if (!editUser) return;
-      await updateDoc(doc(db, "users", editUser.id), { name: form.name || editUser.name, role: form.role || editUser.role, phone: form.phone || editUser.phone, bikeNumber: form.bikeNumber || editUser.bikeNumber, status: form.status || editUser.status, updatedAt: Timestamp.now() });
+      await updateDoc(doc(db, "users", editUser.id), {
+        name: form.name || editUser.name,
+        role: form.role || editUser.role,
+        phone: form.phone || editUser.phone,
+        bikeNumber: form.bikeNumber || editUser.bikeNumber,
+        status: form.status || editUser.status,
+        permissions: {
+          viewReports: !!form.viewReports,
+          manageContent: !!form.manageContent,
+          manageShipments: !!form.manageShipments,
+          editSettings: !!form.editSettings
+        },
+        updatedAt: Timestamp.now()
+      });
       addLog("Update User", editUser.name + " -> " + (form.name || editUser.name)); setEditUser(null);
     };
     const deleteUser = async (id: string) => { await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() }); addLog("Delete User", "Soft-deleted " + id); setConfirmDelete(null); };
@@ -838,29 +955,60 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
     };
     return <div className="tab-content space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#FFC542]" /> Users</h1>
+        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> Users</h1>
           <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} total (page {uPage + 1}/{uTotalPages})</p></div>
         <div className="flex items-center gap-3 flex-wrap">
           <button onClick={() => setShowNewUser(true)} className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-[10px] font-black shadow-sm transition-all flex items-center gap-1"><UserPlus className="w-3 h-3" /> Add User</button>
-          <SearchInput value={search} onChange={setSearch} placeholder="Search users..." />
         </div>
       </div>
       {showNewUser && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowNewUser(false)}>
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> New User</h3>
-          <div className="space-y-3">
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Name</label>
-              <input value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Email</label>
-              <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone</label>
-              <input value={newUserForm.phone} onChange={e => setNewUserForm(p => ({ ...p, phone: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Role</label>
-              <select value={newUserForm.role} onChange={e => setNewUserForm(p => ({ ...p, role: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="customer">Customer</option><option value="rider">Rider</option><option value="admin">Admin</option></select></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike Number</label>
-              <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(p => ({ ...p, bikeNumber: e.target.value }))} placeholder="For riders" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Password</label>
-              <input type="password" value={newUserForm.password} onChange={e => setNewUserForm(p => ({ ...p, password: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#111] dark:text-[#FFC542]" /> New User</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Full Name</label>
+              <input value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Email Address</label>
+                <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))}
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Phone Number</label>
+                <input value={newUserForm.phone} onChange={e => setNewUserForm(p => ({ ...p, phone: e.target.value }))}
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Role</label>
+                <select value={newUserForm.role} onChange={e => setNewUserForm(p => ({ ...p, role: e.target.value }))}
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40">
+                  <option value="customer">Customer</option>
+                  <option value="rider">Rider</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Password</label>
+                <input type="password" value={newUserForm.password} onChange={e => setNewUserForm(p => ({ ...p, password: e.target.value }))}
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+            </div>
+
+            {newUserForm.role === "rider" && (
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Bike Number</label>
+                <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(p => ({ ...p, bikeNumber: e.target.value }))}
+                  placeholder="e.g. ENG-4829"
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+            )}
           </div>
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-black/10 dark:border-white/10">
             <button onClick={() => setShowNewUser(false)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
@@ -883,7 +1031,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
               <td className="p-3 hidden md:table-cell"><span className="text-black/60 dark:text-white/60">{u.email}</span></td>
               <td className="p-3 hidden lg:table-cell"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + rBadge(u.role)}>{u.role.toUpperCase()}</span></td>
               <td className="p-3 text-right">
-                <button onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role, phone: u.phone, bikeNumber: u.bikeNumber || "", status: u.status }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role, phone: u.phone, bikeNumber: u.bikeNumber || "", status: u.status, viewReports: !!u.permissions?.viewReports, manageContent: !!u.permissions?.manageContent, manageShipments: !!u.permissions?.manageShipments, editSettings: !!u.permissions?.editSettings }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
                 <button onClick={() => setConfirmDelete(u.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button></td>
             </tr>)}
           </tbody></table>
@@ -897,11 +1045,81 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
       <ConfirmModal show={confirmDelete !== null} title="Delete User" message="Soft-delete this user?" confirmLabel="Delete" onConfirm={() => deleteUser(confirmDelete!)} onCancel={() => setConfirmDelete(null)} />
       {editUser && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-[#FFC542]" /> Edit User</h3>
-          <div className="space-y-3">
-            {["name","role","phone","bikeNumber","status"].map(k => <div key={k}><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{k.replace(/([A-Z])/g, ' $1').trim()}</label>
-              <input value={form[k as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>)}
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-[#111] dark:text-[#FFC542]" /> Edit User</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Full Name</label>
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Role</label>
+                <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40">
+                  <option value="customer">Customer</option>
+                  <option value="rider">Rider</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Status</label>
+                <select value={form.status || "offline"} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40">
+                  <option value="offline">Offline</option>
+                  <option value="online">Online</option>
+                  <option value="busy">Busy</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Phone Number</label>
+              <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+
+            {form.role === "rider" && (
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Bike Number</label>
+                <input value={form.bikeNumber} onChange={e => setForm(f => ({ ...f, bikeNumber: e.target.value }))}
+                  placeholder="e.g. ENG-2938"
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+            )}
+            {form.role === "admin" && (
+               <div className="pt-2 border-t border-black/10 dark:border-white/10 space-y-2">
+                 <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Sub-Admin Permissions</label>
+                 {[
+                   { key: "viewReports", label: "View Reports & Financials" },
+                   { key: "manageContent", label: "Manage Content (CMS)" },
+                   { key: "manageShipments", label: "Manage Shipments & Riders" },
+                   { key: "editSettings", label: "Edit System Settings" }
+                 ].map(p => (
+                   <label key={p.key} className="flex items-center gap-2 text-xs text-[#111] dark:text-white cursor-pointer select-none">
+                     <input type="checkbox" checked={!!form[p.key as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [p.key]: e.target.checked }))} className="rounded border-black/10 dark:border-white/10 text-[#FFC542] focus:ring-[#FFC542]" />
+                     {p.label}
+                   </label>
+                 ))}
+               </div>
+             )}
+            <div className="pt-3 border-t border-black/10 dark:border-white/10 space-y-2">
+              <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Manual Wallet Adjustment</label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2">
+                  <span className="text-[10px] block text-black/40 dark:text-white/40">CURRENT BALANCE</span>
+                  <span className="text-xs font-black text-[#111] dark:text-white">₦{(editUser.walletBalance || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex-1">
+                  <input type="number" placeholder="e.g. 5000 or -2000" value={fundAmount} onChange={e => setFundAmount(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none" />
+                </div>
+                <button onClick={adjustWallet} disabled={fundingUser} className="px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 disabled:opacity-50 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all">
+                  {fundingUser ? "Saving..." : "Adjust"}
+                </button>
+              </div>
+            </div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-2">
             <button onClick={() => setEditUser(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
@@ -913,10 +1131,11 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
   }
 
 
-function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Delivery[]; searchQuery: string; db: any; addLog: any }) {
+function ShipmentsTab({ deliveries, riders, searchQuery, db, addLog }: { deliveries: Delivery[]; riders: UserProfile[]; searchQuery: string; db: any; addLog: any }) {
     const [search, setSearch] = useState("");
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [bulkStatus, setBulkStatus] = useState("");
+    const [bulkRider, setBulkRider] = useState("");
     const [page, setPage] = useState(0);
     const [showNew, setShowNew] = useState(false);
     const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "" });
@@ -928,9 +1147,27 @@ function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Del
     useEffect(() => { setPage(0); }, [search, searchQuery]);
     const updateStatus = async (id: string, s: string) => { await updateDoc(doc(db, "deliveries", id), { status: s, updatedAt: Timestamp.now() }); addLog("Status", idShort(id) + " -> " + s); };
     const bulkUpdate = async () => {
-      if (!bulkStatus || selected.size === 0) return;
-      const batch = writeBatch(db); selected.forEach(id => batch.update(doc(db, "deliveries", id), { status: bulkStatus, updatedAt: Timestamp.now() })); await batch.commit();
-      addLog("Bulk", selected.size + " deliveries -> " + bulkStatus); setBulkStatus(""); setSelected(new Set());
+      if ((!bulkStatus && !bulkRider) || selected.size === 0) return;
+      const batch = writeBatch(db);
+      selected.forEach(id => {
+        const updateFields: any = { updatedAt: Timestamp.now() };
+        if (bulkStatus) updateFields.status = bulkStatus;
+        if (bulkRider) {
+          const rider = riders.find(r => r.uid === bulkRider);
+          updateFields.riderId = bulkRider;
+          updateFields.courierName = rider ? rider.name : "Driver";
+          updateFields.courierPhone = rider ? rider.phone : "";
+          if (rider?.bikeNumber) {
+            updateFields.riderBikeNumber = rider.bikeNumber;
+          }
+        }
+        batch.update(doc(db, "deliveries", id), updateFields);
+      });
+      await batch.commit();
+      addLog("Bulk", selected.size + " shipments (status: " + (bulkStatus || "n/a") + ", rider: " + (bulkRider || "n/a") + ")");
+      setBulkStatus("");
+      setBulkRider("");
+      setSelected(new Set());
     };
     const createDelivery = async () => {
       setCreating(true);
@@ -942,18 +1179,21 @@ function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Del
     };
     return <div className="tab-content space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Package className="w-5 h-5 text-[#FFC542]" /> Shipments</h1>
+        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Package className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> Shipments</h1>
           <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} total (page {page + 1}/{totalPages})</p></div>
         <div className="flex items-center gap-3 flex-wrap">
           <button onClick={() => setShowNew(true)} className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-[10px] font-black shadow-sm transition-all flex items-center gap-1"><Plus className="w-3 h-3" /> New Delivery</button>
-          <SearchInput value={search} onChange={setSearch} placeholder="Search..." />
           {selected.size > 0 && <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-black/40 dark:text-white/40">{selected.size} selected</span>
             <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white">
-              <option value="">Bulk...</option>
+              <option value="">Status...</option>
               <option value="ASSIGNED">Assign</option><option value="TRANSIT">Transit</option><option value="OUT_FOR_DELIVERY">Out for delivery</option><option value="DELIVERED">Deliver</option><option value="CANCELLED">Cancel</option>
             </select>
+            <select value={bulkRider} onChange={e => setBulkRider(e.target.value)} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white">
+              <option value="">Rider...</option>
+              {riders.map(r => <option key={r.uid} value={r.uid}>{r.name}</option>)}
+            </select>
             <SaveBtn onClick={bulkUpdate} label="Apply" />
-            <button onClick={() => setSelected(new Set())} className="text-[10px] text-black/40 dark:text-white/40 hover:text-red-500 font-semibold">Clear</button>
+            <button onClick={() => { setSelected(new Set()); setBulkStatus(""); setBulkRider(""); }} className="text-[10px] text-black/40 dark:text-white/40 hover:text-red-500 font-semibold">Clear</button>
           </div>}
         </div>
       </div>
@@ -961,18 +1201,80 @@ function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Del
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-2xl shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
           <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Plus className="w-4 h-4 text-[#FFC542]" /> New Delivery</h3>
           <div className="grid sm:grid-cols-2 gap-4">
-            {[{ k: "receiverName", l: "Receiver Name" }, { k: "receiverPhone", l: "Receiver Phone" }, { k: "senderName", l: "Sender Name" }, { k: "senderPhone", l: "Sender Phone" }, { k: "itemName", l: "Item Name" }, { k: "pickupAddress", l: "Pickup Address" }, { k: "deliveryAddress", l: "Delivery Address" }].map(f => <div key={f.k}><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{f.l}</label>
-              <input value={(newForm as any)[f.k]} onChange={e => setNewForm(p => ({ ...p, [f.k]: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>)}
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Category</label>
-              <select value={newForm.category} onChange={e => setNewForm(p => ({ ...p, category: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="Standard">Standard</option><option value="Express">Express</option><option value="Economy">Economy</option><option value="Cold Chain">Cold Chain</option><option value="Batch">Batch</option><option value="Multi">Multi</option></select></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Status</label>
-              <select value={newForm.status} onChange={e => setNewForm(p => ({ ...p, status: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="PENDING">PENDING</option><option value="ASSIGNED">ASSIGNED</option><option value="TRANSIT">TRANSIT</option><option value="OUT_FOR_DELIVERY">OUT FOR DELIVERY</option></select></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Quantity</label>
-              <input type="number" min="1" value={newForm.quantity} onChange={e => setNewForm(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Weight (kg)</label>
-              <input type="number" step="0.1" min="0.1" value={newForm.weight} onChange={e => setNewForm(p => ({ ...p, weight: parseFloat(e.target.value) || 1 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Price (₦)</label>
-              <input type="number" min="0" value={newForm.price} onChange={e => setNewForm(p => ({ ...p, price: parseInt(e.target.value) || 0 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Receiver Name</label>
+              <input value={newForm.receiverName} onChange={e => setNewForm(p => ({ ...p, receiverName: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Receiver Phone</label>
+              <input value={newForm.receiverPhone} onChange={e => setNewForm(p => ({ ...p, receiverPhone: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Sender Name</label>
+              <input value={newForm.senderName} onChange={e => setNewForm(p => ({ ...p, senderName: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Sender Phone</label>
+              <input value={newForm.senderPhone} onChange={e => setNewForm(p => ({ ...p, senderPhone: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Item Name</label>
+              <input value={newForm.itemName} onChange={e => setNewForm(p => ({ ...p, itemName: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Category</label>
+              <select value={newForm.category} onChange={e => setNewForm(p => ({ ...p, category: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40">
+                <option value="Standard">Standard</option>
+                <option value="Express">Express</option>
+                <option value="Economy">Economy</option>
+                <option value="Cold Chain">Cold Chain</option>
+                <option value="Batch">Batch</option>
+                <option value="Multi">Multi</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Pickup Address</label>
+              <input value={newForm.pickupAddress} onChange={e => setNewForm(p => ({ ...p, pickupAddress: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Delivery Address</label>
+              <input value={newForm.deliveryAddress} onChange={e => setNewForm(p => ({ ...p, deliveryAddress: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div className="grid grid-cols-3 gap-2 sm:col-span-2">
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Qty</label>
+                <input type="number" min="1" value={newForm.quantity} onChange={e => setNewForm(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))}
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Weight (kg)</label>
+                <input type="number" step="0.1" min="0.1" value={newForm.weight} onChange={e => setNewForm(p => ({ ...p, weight: parseFloat(e.target.value) || 1 }))}
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Price (₦)</label>
+                <input type="number" min="0" value={newForm.price} onChange={e => setNewForm(p => ({ ...p, price: parseInt(e.target.value) || 0 }))}
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-black/40 dark:text-white/40 mb-1 uppercase tracking-wider">Status</label>
+              <select value={newForm.status} onChange={e => setNewForm(p => ({ ...p, status: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40">
+                <option value="PENDING">PENDING</option>
+                <option value="ASSIGNED">ASSIGNED</option>
+                <option value="TRANSIT">TRANSIT</option>
+                <option value="OUT_FOR_DELIVERY">OUT FOR DELIVERY</option>
+              </select>
+            </div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-black/10 dark:border-white/10">
             <button onClick={() => setShowNew(false)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
@@ -1018,6 +1320,18 @@ function BannersTab({ banners, db, addLog, addToast }: BannersTabProps) {
   const [bForm, setBForm] = useState({ title: "", subtitle: "", imageUrl: "", interval: 5, order: 0, active: true });
   const [saving, setSaving] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
+
+  // Auto-play interval slider loop
+  useEffect(() => {
+    if (banners.length <= 1) return;
+    const activeBanner = banners[activeIdx];
+    const duration = (activeBanner?.interval || 5) * 1000;
+    const timer = setTimeout(() => {
+      setActiveIdx(prev => (prev + 1) % banners.length);
+    }, duration);
+    return () => clearTimeout(timer);
+  }, [activeIdx, banners]);
+
   const saveBanner = async (b?: Banner) => {
     setSaving(true);
     const data: any = { ...bForm, updatedAt: Timestamp.now() };
@@ -1030,23 +1344,36 @@ function BannersTab({ banners, db, addLog, addToast }: BannersTabProps) {
   const deleteBanner = async (id: string) => { try { await deleteDoc(doc(db, "banners", id)); addLog("Delete Banner", id); addToast("success", "Banner deleted"); } catch (e: any) { addToast("error", e.message); } };
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-5 h-5 text-[#FFC542]" /> Hero Slides</h1>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> Hero Slides</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">{banners.length} slides</p></div>
       <button onClick={() => { setEditBanner({ id: "", title: "", subtitle: "", imageUrl: "", interval: 5, order: banners.length, active: true }); setBForm({ title: "", subtitle: "", imageUrl: "", interval: 5, order: banners.length, active: true }); }}
         className="px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Slide</button>
     </div>
-    <div className="relative w-full h-40 lg:h-56 rounded-3xl overflow-hidden bg-gray-200 dark:bg-gray-800 shadow-sm">
+    <div className="relative w-full h-40 lg:h-56 rounded-3xl overflow-hidden bg-gray-200 dark:bg-gray-800 shadow-sm border border-black/5 dark:border-white/5">
       {banners.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-black/40 dark:text-white/40 text-xs font-bold">No slides yet.</div>}
       {banners.length > 0 && <>
-        <div className="absolute inset-0 transition-all duration-500" style={{ backgroundImage: "url(" + banners[activeIdx]?.imageUrl + ")", backgroundSize: "cover", backgroundPosition: "center" }} />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-4 lg:p-6">
-          <span className="inline-block bg-[#FFC542] text-[#111] text-[10px] font-black px-2 py-0.5 rounded-sm mb-2">ENGRACED</span>
-          <h2 className="text-white font-black text-sm lg:text-lg leading-tight drop-shadow-lg">{banners[activeIdx]?.title}</h2>
-          <p className="text-white/80 text-[10px] lg:text-xs mt-1 line-clamp-1">{banners[activeIdx]?.subtitle}</p>
-        </div>
-        <div className="absolute top-3 right-3 flex gap-1">
-          {banners.map((_, i) => <button key={i} onClick={() => setActiveIdx(i)} className={"w-2 h-2 rounded-full transition-all " + (i === activeIdx ? "bg-[#FFC542] w-4" : "bg-white/50 hover:bg-white/80")} />)}
+        {banners.map((b, i) => (
+          <div 
+            key={b.id} 
+            className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${i === activeIdx ? "opacity-100 z-10" : "opacity-0 z-0"}`}
+          >
+            <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${b.imageUrl})` }} />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 p-4 lg:p-6 text-left">
+              <span className="inline-block bg-[#FFC542] text-[#111] text-[10px] font-black px-2 py-0.5 rounded-sm mb-2">ENGRACED</span>
+              <h2 className="text-white font-black text-sm lg:text-lg leading-tight drop-shadow-lg">{b.title}</h2>
+              <p className="text-white/80 text-[10px] lg:text-xs mt-1 line-clamp-1">{b.subtitle}</p>
+            </div>
+          </div>
+        ))}
+        <div className="absolute top-3 right-3 flex gap-1 z-20">
+          {banners.map((_, i) => (
+            <button 
+              key={i} 
+              onClick={() => setActiveIdx(i)} 
+              className={`w-2 h-2 rounded-full transition-all ${i === activeIdx ? "bg-[#FFC542] w-4" : "bg-white/50 hover:bg-white/80"}`} 
+            />
+          ))}
         </div>
       </>}
     </div>
@@ -1064,7 +1391,7 @@ function BannersTab({ banners, db, addLog, addToast }: BannersTabProps) {
     </div>
     {editBanner && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditBanner(null)}>
       <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#FFC542]" /> {editBanner.id ? "Edit" : "New"} Slide</h3>
+        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#111] dark:text-[#FFC542]" /> {editBanner.id ? "Edit" : "New"} Slide</h3>
         <div className="relative w-full h-32 rounded-2xl overflow-hidden bg-gray-200 dark:bg-gray-800">
           {bForm.imageUrl && <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url(" + bForm.imageUrl + ")" }} />}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
@@ -1075,11 +1402,27 @@ function BannersTab({ banners, db, addLog, addToast }: BannersTabProps) {
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 30)</label>
-            <input value={bForm.title} maxLength={30} onChange={e => setBForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <input value={bForm.title} maxLength={30} onChange={e => setBForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#111]/40 dark:focus:ring-[#FFC542]/40" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SUBTITLE (max 80)</label>
             <input value={bForm.subtitle} maxLength={80} onChange={e => setBForm(f => ({ ...f, subtitle: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-          <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">IMAGE URL</label>
-            <input value={bForm.imageUrl} onChange={e => setBForm(f => ({ ...f, imageUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">IMAGE SOURCE</label>
+            <div className="flex items-center gap-2">
+              <input value={bForm.imageUrl} placeholder="Or paste image URL..." onChange={e => setBForm(f => ({ ...f, imageUrl: e.target.value }))} className="flex-1 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" />
+              <div className="relative">
+                <input type="file" accept="image/*" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setBForm(f => ({ ...f, imageUrl: reader.result as string }));
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                <button type="button" className="px-3 py-2 bg-gray-100 dark:bg-gray-800 text-[#111] dark:text-white rounded-xl text-xs font-bold border border-black/10 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-gray-700">Browse</button>
+              </div>
+            </div>
+          </div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ORDER</label>
             <input type="number" value={bForm.order} onChange={e => setBForm(f => ({ ...f, order: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">INTERVAL (sec)</label>
@@ -1095,14 +1438,39 @@ function BannersTab({ banners, db, addLog, addToast }: BannersTabProps) {
   </div>;
 }
 
-function ReferralsTab({ referrals, completedReferrals, searchQuery }: ReferralsTabProps) {
+function ReferralsTab({ referrals, completedReferrals, searchQuery, db, addLog, addToast }: ReferralsTabProps) {
   const [search, setSearch] = useState("");
+  const [paying, setPaying] = useState<string | null>(null);
   const filtered = referrals.filter(r => { const q = (searchQuery || search).toLowerCase(); return r.referrerName.toLowerCase().includes(q) || r.refereeName.toLowerCase().includes(q); });
+  const handlePayout = async (r: Referral) => {
+    setPaying(r.id);
+    try {
+      const userRef = doc(db, "users", r.referrerId);
+      await runTransaction(db, async (transaction) => {
+        const userSnap = await transaction.get(userRef);
+        if (!userSnap.exists()) throw new Error("Referrer account not found");
+        const currentBalance = Number(userSnap.data().walletBalance || 0);
+        transaction.update(userRef, {
+          walletBalance: currentBalance + r.rewardAmount,
+          updatedAt: Timestamp.now()
+        });
+        transaction.update(doc(db, "referrals", r.id), {
+          status: "paid",
+          updatedAt: Timestamp.now()
+        });
+      });
+      addLog("Payout Referral", "Credited " + fmt(r.rewardAmount) + " to " + r.referrerName + " (" + r.referrerEmail + ")");
+      addToast("success", "Paid " + fmt(r.rewardAmount) + " reward successfully!");
+    } catch (e: any) {
+      addToast("error", e.message || "Payout failed");
+    } finally {
+      setPaying(null);
+    }
+  };
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Gift className="w-5 h-5 text-[#FFC542]" /> Referrals</h1>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Gift className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> Referrals</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">{referrals.length} total | {completedReferrals.length} completed | {fmt(referrals.reduce((s, r) => s + r.rewardAmount, 0))} total rewards</p></div>
-      <SearchInput value={search} onChange={setSearch} placeholder="Search..." />
     </div>
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
@@ -1116,7 +1484,14 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery }: ReferralsT
             <td className="p-3"><p className="font-bold text-[#111] dark:text-white">{r.referrerName}</p><span className="text-[10px] text-black/40 dark:text-white/40">{r.referrerEmail}</span></td>
             <td className="p-3 hidden md:table-cell"><p className="font-bold text-[#111] dark:text-white">{r.refereeName}</p><span className="text-[10px] text-black/40 dark:text-white/40">{r.refereeEmail}</span></td>
             <td className="p-3 hidden lg:table-cell"><span className="font-bold text-[#111] dark:text-white">{fmt(r.rewardAmount)}</span></td>
-            <td className="p-3"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (r.status === "completed" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300")}>{r.status.toUpperCase()}</span></td>
+            <td className="p-3">
+              <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (r.status === "paid" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : r.status === "completed" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300")}>{r.status.toUpperCase()}</span>
+              {r.status === "completed" && (
+                <button disabled={paying === r.id} onClick={() => handlePayout(r)} className="ml-2 px-2 py-1 bg-green-500 hover:bg-green-600 text-white rounded-lg text-[9px] font-bold transition-all disabled:opacity-50">
+                  {paying === r.id ? "Paying..." : "Pay Referrer"}
+                </button>
+              )}
+            </td>
           </tr>)}
         </tbody></table>
       </div>
@@ -1124,7 +1499,7 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery }: ReferralsT
   </div>;
 }
 
-function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps) {
+function PromotionsTab({ promotions, db, addLog, addToast, seedPromos, seeding }: PromotionsTabProps) {
   const [editPromo, setEditPromo] = useState<Promotion | null>(null);
   const [pForm, setPForm] = useState({ title: "", description: "", discountType: "percentage", discountValue: 0, discountDisplay: "", code: "", usageLimit: 0, minOrderAmount: 0, maxDiscount: 0, active: true });
   const [saving, setSaving] = useState(false);
@@ -1140,13 +1515,25 @@ function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps)
   const deletePromo = async (id: string) => { try { await deleteDoc(doc(db, "promotions", id)); addLog("Delete Promo", id); addToast("success", "Promotion deleted"); } catch (e: any) { addToast("error", e.message); } };
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-5 h-5 text-[#FFC542]" /> Promotions</h1>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> Promotions</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">{promotions.length} active</p></div>
       <button onClick={() => { setEditPromo({ id: "", title: "", description: "", discountType: "percentage", discountValue: 0, discountDisplay: "", code: "", usageLimit: 0, usedCount: 0, minOrderAmount: 0, maxDiscount: 0, active: true }); setPForm({ title: "", description: "", discountType: "percentage", discountValue: 0, discountDisplay: "", code: "", usageLimit: 0, minOrderAmount: 0, maxDiscount: 0, active: true }); }}
         className="px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Promo</button>
     </div>
     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {promotions.length === 0 && <div className="sm:col-span-3 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-8 text-center"><p className="text-sm text-black/40 dark:text-white/40">No promotions yet.</p></div>}
+      {promotions.length === 0 && (
+        <div className="sm:col-span-3 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-12 text-center space-y-4 shadow-sm">
+          <p className="text-sm text-black/40 dark:text-white/40 font-semibold">No promotions found in the database.</p>
+          <button 
+            onClick={seedPromos} 
+            disabled={seeding === "promos"} 
+            className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] font-black rounded-xl text-xs shadow-md transition-all inline-flex items-center gap-2 disabled:opacity-50"
+          >
+            {seeding === "promos" ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Percent className="w-3.5 h-3.5" />}
+            Seed Sample Promotions
+          </button>
+        </div>
+      )}
       {promotions.map((p, i) => {
         const dd = p.discountDisplay || (p.discountType === "percentage" ? p.discountValue + "% OFF" : "\u20A6" + p.discountValue.toLocaleString() + " OFF");
         return <div key={p.id} className={"animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300 group " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6"][i] || "")}>
@@ -1176,7 +1563,7 @@ function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps)
     </div>
     {editPromo && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditPromo(null)}>
       <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-4 h-4 text-[#FFC542]" /> {editPromo.id ? "Edit" : "New"} Promo</h3>
+        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-4 h-4 text-[#111] dark:text-[#FFC542]" /> {editPromo.id ? "Edit" : "New"} Promo</h3>
         <div className="relative h-24 bg-gradient-to-br from-[#FFC542]/20 to-white dark:to-[#222] rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 p-3 flex items-end">
           <div className="absolute top-2 right-2"><div className="relative"><div className="w-10 h-8 bg-[#FFC542]/80 rounded-md transform rotate-12" />
             <div className="w-8 h-6 bg-[#FFC542] rounded-md absolute -top-1 -left-1 transform -rotate-6 border border-[#FFC542]/50" /></div></div>
@@ -1187,7 +1574,7 @@ function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps)
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 25)</label>
-            <input value={pForm.title} maxLength={25} onChange={e => setPForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <input value={pForm.title} maxLength={25} onChange={e => setPForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#111]/40 dark:focus:ring-[#FFC542]/40" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DESCRIPTION (max 60)</label>
             <input value={pForm.description} maxLength={60} onChange={e => setPForm(f => ({ ...f, description: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DISCOUNT DISPLAY</label>
@@ -1231,7 +1618,7 @@ function AppCardsTab({ appContent, db, addLog, addToast }: AppCardsTabProps) {
   const deleteCard = async (id: string) => { try { await deleteDoc(doc(db, "appContent", id)); addLog("Delete Card", id); addToast("success", "Card deleted"); } catch (e: any) { addToast("error", e.message); } };
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-[#FFC542]" /> App Cards</h1>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> App Cards</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">{appContent.length} cards</p></div>
       <button onClick={() => { setEditCard({ id: "", key: "", title: "", description: "", imageUrl: "", ctaText: "", ctaLink: "", order: appContent.length, active: true }); setCForm({ key: "", title: "", description: "", imageUrl: "", ctaText: "", ctaLink: "", order: appContent.length, active: true }); }}
         className="px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Card</button>
@@ -1259,7 +1646,7 @@ function AppCardsTab({ appContent, db, addLog, addToast }: AppCardsTabProps) {
     </div>
     {editCard && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditCard(null)}>
       <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-4 h-4 text-[#FFC542]" /> {editCard.id ? "Edit" : "New"} Card</h3>
+        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-4 h-4 text-[#111] dark:text-[#FFC542]" /> {editCard.id ? "Edit" : "New"} Card</h3>
         <div className="relative h-24 rounded-2xl overflow-hidden bg-gray-200 dark:bg-gray-800 border border-black/10 dark:border-white/10">
           {cForm.imageUrl && <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url(" + cForm.imageUrl + ")" }} />}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
@@ -1268,15 +1655,31 @@ function AppCardsTab({ appContent, db, addLog, addToast }: AppCardsTabProps) {
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">KEY (max 20)</label>
-            <input value={cForm.key} maxLength={20} onChange={e => setCForm(f => ({ ...f, key: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <input value={cForm.key} maxLength={20} onChange={e => setCForm(f => ({ ...f, key: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#111]/40 dark:focus:ring-[#FFC542]/40" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ORDER</label>
             <input type="number" value={cForm.order} onChange={e => setCForm(f => ({ ...f, order: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 30)</label>
             <input value={cForm.title} maxLength={30} onChange={e => setCForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DESCRIPTION (max 80)</label>
             <input value={cForm.description} maxLength={80} onChange={e => setCForm(f => ({ ...f, description: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-          <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">IMAGE URL</label>
-            <input value={cForm.imageUrl} onChange={e => setCForm(f => ({ ...f, imageUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">IMAGE SOURCE</label>
+            <div className="flex items-center gap-2">
+              <input value={cForm.imageUrl} placeholder="Or paste image URL..." onChange={e => setCForm(f => ({ ...f, imageUrl: e.target.value }))} className="flex-1 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" />
+              <div className="relative">
+                <input type="file" accept="image/*" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setCForm(f => ({ ...f, imageUrl: reader.result as string }));
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                <button type="button" className="px-3 py-2 bg-gray-100 dark:bg-gray-800 text-[#111] dark:text-white rounded-xl text-xs font-bold border border-black/10 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-gray-700">Browse</button>
+              </div>
+            </div>
+          </div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CTA TEXT</label>
             <input value={cForm.ctaText} onChange={e => setCForm(f => ({ ...f, ctaText: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CTA LINK</label>
@@ -1299,16 +1702,18 @@ function Toggle({ label, desc, checked, onChange }: { label: string; desc?: stri
       <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFC542]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#FFC542]"></div></label></div>;
 }
 
-function SettingsTab({ db, addLog }: SettingsTabProps) {
+function SettingsTab({ db, addLog, createNotification }: SettingsTabProps) {
   const [sForm, setSForm] = useState<any>({});
   const [fcmKey, setFcmKey] = useState("");
   const [showFcm, setShowFcm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [prevSettings, setPrevSettings] = useState<any>({});
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "system_config", "global_settings"), snap => {
       if (snap.exists()) {
         const d = snap.data();
         setSForm(d);
+        setPrevSettings(d);
         if (d.fcmServerKey) setFcmKey(d.fcmServerKey);
       }
     });
@@ -1320,16 +1725,41 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
     const payload = { ...sForm, updatedAt: Timestamp.now() };
     if (fcmKey) payload.fcmServerKey = fcmKey;
     await setDoc(doc(db, "system_config", "global_settings"), payload, { merge: true });
+    
+    if (section === "Pricing") {
+      const pricingPayload = {
+        baseFare: parseFloat(sForm.baseFare) || 0,
+        perKgRate: parseFloat(sForm.perKgRate) || 0,
+        expressSurcharge: parseFloat(sForm.expressSurcharge) || 0,
+        surgeMultiplier: parseFloat(sForm.surgeMultiplier) || 1,
+        expressFactor: parseFloat(sForm.expressFactor) || 1.5,
+        economyFactor: parseFloat(sForm.economyFactor) || 0.7,
+        batchFactor: parseFloat(sForm.batchFactor) || 0.9,
+        multiFactor: parseFloat(sForm.multiFactor) || 1.8,
+        updatedAt: Timestamp.now()
+      };
+      await setDoc(doc(db, "system_config", "pricing"), pricingPayload, { merge: true });
+      await setDoc(doc(db, "pricingConfig", "globalPricing"), pricingPayload, { merge: true });
+    }
+    
     addLog("Update Settings", section || "General");
+    if (section === "Master Overrides") {
+      if (sForm.broadcastSurge && !prevSettings.broadcastSurge) {
+        await createNotification("Surge Pricing Active", "Surge multiplier " + (sForm.surgeMultiplier || 1.5) + "x enabled globally.", "surge");
+      }
+      if (sForm.fleetSync && !prevSettings.fleetSync) {
+        await createNotification("Fleet Sync Active", "Force synchronization signal broadcasted to all active drivers.", "fleet");
+      }
+    }
     setSaving(false);
   };
   return <div className="tab-content space-y-6">
-    <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Settings2 className="w-5 h-5 text-[#FFC542]" /> Settings</h1>
+    <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Settings2 className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> Settings</h1>
       <p className="text-xs text-black/40 dark:text-white/40 mt-1">System preferences</p></div>
 
     {/* Section 1 — System Controls */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Shield className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">System Controls</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Shield className="w-4 h-4 text-[#111] dark:text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">System Controls</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
         <Toggle label="Allow Signups" desc="Enable new user registration" checked={!!sForm.allowSignups} onChange={v => upd("allowSignups", v)} />
         <Toggle label="Require Approval" desc="Admin must approve new accounts" checked={!!sForm.requireApproval} onChange={v => upd("requireApproval", v)} />
@@ -1342,7 +1772,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
 
     {/* Section 2 — Feature Toggles */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Zap className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Feature Toggles</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Zap className="w-4 h-4 text-[#111] dark:text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Feature Toggles</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
         <Toggle label="Points & Loyalty" desc="Bronze/Silver/Gold/Platinum tier system" checked={!!sForm.pointsAndLoyalty} onChange={v => upd("pointsAndLoyalty", v)} />
         <Toggle label="Driver Tips" desc="Customers can add tips on delivery" checked={!!sForm.driverTipsEnabled} onChange={v => upd("driverTipsEnabled", v)} />
@@ -1354,23 +1784,51 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
 
     {/* Section 3 — Pricing */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><DollarSign className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Pricing</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><DollarSign className="w-4 h-4 text-[#111] dark:text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Pricing Configuration</span></div>
+      
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">BASE FARE (₦)</label>
           <input type="number" value={sForm.baseFare ?? ""} onChange={e => upd("baseFare", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">PER KG RATE (₦)</label>
           <input type="number" step="0.1" value={sForm.perKgRate ?? ""} onChange={e => upd("perKgRate", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">EXPRESS SURCHARGE (₦)</label>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">INSTANT SPEED SURCHARGE (₦)</label>
           <input type="number" value={sForm.expressSurcharge ?? ""} onChange={e => upd("expressSurcharge", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SURGE MULTIPLIER (×)</label>
           <input type="number" step="0.1" min="1" value={sForm.surgeMultiplier ?? ""} onChange={e => upd("surgeMultiplier", parseFloat(e.target.value) || 1)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
       </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">EXPRESS MULTIPLIER (×)</label>
+          <input type="number" step="0.1" value={sForm.expressFactor ?? 1.5} onChange={e => upd("expressFactor", parseFloat(e.target.value) || 1.5)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ECONOMY MULTIPLIER (×)</label>
+          <input type="number" step="0.1" value={sForm.economyFactor ?? 0.7} onChange={e => upd("economyFactor", parseFloat(e.target.value) || 0.7)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">BATCH MULTIPLIER (×)</label>
+          <input type="number" step="0.1" value={sForm.batchFactor ?? 0.9} onChange={e => upd("batchFactor", parseFloat(e.target.value) || 0.9)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">MULTI-STOP MULTIPLIER (×)</label>
+          <input type="number" step="0.1" value={sForm.multiFactor ?? 1.8} onChange={e => upd("multiFactor", parseFloat(e.target.value) || 1.8)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+      </div>
+
+      <div className="pt-3 border-t border-black/5 dark:border-white/10 text-[11px] text-black/50 dark:text-white/40 space-y-2">
+        <p className="font-bold text-xs text-[#111] dark:text-white uppercase tracking-wide">Dynamic Pricing Calculation Logic</p>
+        <div className="bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-2xl p-4 font-mono text-[10px] leading-relaxed text-black/85 dark:text-white/80">
+          <p className="text-amber-500 font-bold">// Dynamic Base Formula per Order:</p>
+          <p>BaseRate = (BaseFare * ServiceMultiplier) + (Weight * PerKgRate) + SpeedSurcharge + (DistanceKm * DistanceRate)</p>
+          <p>Price = Math.round( (BaseRate + VolumeSurcharge + StopsSurcharge) * QuantityFactor + InsuranceFee )</p>
+          <span className="block mt-2 text-[9px] text-black/50 dark:text-white/45 font-sans leading-normal">
+            * SpeedSurcharge adds <b>Instant Speed Surcharge</b> if "Instant Speed" is selected, or ₦0 if "Standard Speed" is selected.<br/>
+            * DistanceRate is set to ₦150 for Express, ₦100 for Economy, ₦110 for Batch, and ₦180 for Multi-stop.<br/>
+            * VolumeSurcharge adds ₦50 per 1000 cm³ volume (Length × Width × Height).<br/>
+            * StopsSurcharge adds ₦1500 per additional address stop (Multi-stop bookings).
+          </span>
+        </div>
+      </div>
+
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Pricing")} loading={saving} /></div>
     </div>
 
     {/* Section 4 — Branding & Communication */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Globe className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Branding & Communication</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Globe className="w-4 h-4 text-[#111] dark:text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Branding & Communication</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP NAME</label>
           <input value={sForm.appName ?? "Engraced Dispatch"} onChange={e => upd("appName", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
@@ -1395,7 +1853,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
 
     {/* Section 5 — Master Overrides */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-2 border-[#FFC542]/30 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><AlertTriangle className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Master System Overrides</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><AlertTriangle className="w-4 h-4 text-[#111] dark:text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Master System Overrides</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
         <Toggle label="Broadcast Surge Pricing" desc="Push surge multiplier to all active pricing" checked={!!sForm.broadcastSurge} onChange={v => upd("broadcastSurge", v)} />
         <Toggle label="Fleet Sync" desc="Force synchronization across all drivers" checked={!!sForm.fleetSync} onChange={v => upd("fleetSync", v)} />
@@ -1415,7 +1873,7 @@ function LogsTab({ logs }: LogsTabProps) {
   useEffect(() => { setLPage(0); }, [typeFilter]);
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#FFC542]" /> Audit Log</h1>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> Audit Log</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} entries (page {lPage + 1}/{lTotalPages})</p></div>
       <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="all">All Actions</option><option value="Create">Create</option><option value="Update">Update</option><option value="Delete">Delete</option><option value="Toggle">Toggle</option><option value="Login">Login</option></select>
     </div>
@@ -1445,22 +1903,311 @@ function LogsTab({ logs }: LogsTabProps) {
   </div>;
 }
 
+function FleetTab({ attendances, inspections, rosters, users, db, addLog, addToast }: FleetTabProps) {
+  const [subTab, setSubTab] = useState<"attendance" | "inspections" | "rosters">("attendance");
+  const [acting, setActing] = useState<string | null>(null);
+  const getRiderName = (riderId: string) => {
+    return users.find(u => u.uid === riderId)?.name || riderId;
+  };
+  const handleRosterAction = async (id: string, status: "APPROVED" | "REJECTED") => {
+    setActing(id);
+    try {
+      await updateDoc(doc(db, "shift_rosters", id), { leaveStatus: status });
+      addLog("Update Leave Request", "Set leave status for " + id + " to " + status);
+      addToast("success", "Leave request " + status.toLowerCase() + " successfully!");
+    } catch (e: any) {
+      addToast("error", e.message || "Failed to update leave request");
+    } finally {
+      setActing(null);
+    }
+  };
+  return (
+    <div className="tab-content space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2">
+            <Activity className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> Fleet Operations
+          </h1>
+          <p className="text-xs text-black/40 dark:text-white/40 mt-1">Supervise shift logs, leave approvals, and safety checklists</p>
+        </div>
+        <div className="flex gap-2">
+          {["attendance", "inspections", "rosters"].map((t) => (
+            <button
+              key={t}
+              onClick={() => setSubTab(t as any)}
+              className={"px-3 py-1.5 rounded-xl text-xs font-bold transition-all " + (subTab === t ? "bg-[#FFC542] text-[#111] shadow-sm" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}
+            >
+              {t === "attendance" ? "Attendance" : t === "inspections" ? "Inspections" : "Leave & Rosters"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {subTab === "attendance" && (
+        <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Rider</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Date</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Clock In</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Clock Out</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Hours</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {attendances.length === 0 && (
+                  <tr><td colSpan={6} className="p-8 text-center text-black/40 dark:text-white/40">No attendance logs found.</td></tr>
+                )}
+                {attendances.map((a) => (
+                  <tr key={a.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    <td className="p-3 font-bold text-[#111] dark:text-white">{getRiderName(a.riderId)}</td>
+                    <td className="p-3 text-black/60 dark:text-white/60">{a.dateString}</td>
+                    <td className="p-3 text-black/60 dark:text-white/60">{a.clockInTime}</td>
+                    <td className="p-3 text-black/60 dark:text-white/60">{a.clockOutTime || "--"}</td>
+                    <td className="p-3 text-black/60 dark:text-white/60">{a.totalHours.toFixed(1)} hrs</td>
+                    <td className="p-3">
+                      <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (a.status === "ON_DUTY" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : a.status === "ON_BREAK" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300")}>
+                        {a.status.replace("_", " ")}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {subTab === "inspections" && (
+        <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Rider</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Date</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Compliance Checklist</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Pre-Trip Status</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {inspections.length === 0 && (
+                  <tr><td colSpan={5} className="p-8 text-center text-black/40 dark:text-white/40">No pre-trip inspection logs found.</td></tr>
+                )}
+                {inspections.map((i) => (
+                  <tr key={i.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    <td className="p-3 font-bold text-[#111] dark:text-white">{getRiderName(i.riderId)}</td>
+                    <td className="p-3 text-black/60 dark:text-white/60">{i.dateString}</td>
+                    <td className="p-3 space-y-1">
+                      <div className="flex gap-2">
+                        <span className={i.tiresOk ? "text-green-600 dark:text-green-400" : "text-red-500"}>Tires: {i.tiresOk ? "OK" : "NO"}</span>
+                        <span className={i.brakesOk ? "text-green-600 dark:text-green-400" : "text-red-500"}>Brakes: {i.brakesOk ? "OK" : "NO"}</span>
+                        <span className={i.headlightsOk ? "text-green-600 dark:text-green-400" : "text-red-500"}>Lights: {i.headlightsOk ? "OK" : "NO"}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className={i.hornOk ? "text-green-600 dark:text-green-400" : "text-red-500"}>Horn: {i.hornOk ? "OK" : "NO"}</span>
+                        <span className={i.fuelBatteryLevelOk ? "text-green-600 dark:text-green-400" : "text-red-500"}>Fuel: {i.fuelBatteryLevelOk ? "OK" : "NO"}</span>
+                        <span className={i.safetyVestHelmetOk ? "text-green-600 dark:text-green-400" : "text-red-500"}>Vest: {i.safetyVestHelmetOk ? "OK" : "NO"}</span>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (i.passed ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300")}>
+                        {i.passed ? "PASSED" : "FAILED"}
+                      </span>
+                    </td>
+                    <td className="p-3 text-black/60 dark:text-white/60">{i.notes || "--"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {subTab === "rosters" && (
+        <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Rider</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Shift Date</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Shift Time</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Type</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Reason</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {rosters.length === 0 && (
+                  <tr><td colSpan={6} className="p-8 text-center text-black/40 dark:text-white/40">No shift roster or leave records found.</td></tr>
+                )}
+                {rosters.map((r) => (
+                  <tr key={r.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    <td className="p-3 font-bold text-[#111] dark:text-white">{getRiderName(r.riderId)}</td>
+                    <td className="p-3 text-black/60 dark:text-white/60">{r.shiftDate}</td>
+                    <td className="p-3 text-black/60 dark:text-white/60">{r.startTime} - {r.endTime}</td>
+                    <td className="p-3 text-black/60 dark:text-white/60">{r.isLeave ? "Leave Request" : "Standard Shift"}</td>
+                    <td className="p-3 text-black/60 dark:text-white/60">{r.leaveReason || "--"}</td>
+                    <td className="p-3 text-black/60 dark:text-white/60">
+                      <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (r.leaveStatus === "APPROVED" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : r.leaveStatus === "REJECTED" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : r.leaveStatus === "PENDING" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300")}>
+                        {r.leaveStatus}
+                      </span>
+                      {r.isLeave && r.leaveStatus === "PENDING" && (
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            disabled={acting === r.id}
+                            onClick={() => handleRosterAction(r.id, "APPROVED")}
+                            className="px-2 py-1 bg-green-500 hover:bg-green-600 text-white rounded-lg text-[9px] font-bold transition-all disabled:opacity-50"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            disabled={acting === r.id}
+                            onClick={() => handleRosterAction(r.id, "REJECTED")}
+                            className="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-[9px] font-bold transition-all disabled:opacity-50"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExpensesTab({ expenses, users, db, addLog, addToast }: ExpensesTabProps) {
+  const [acting, setActing] = useState<string | null>(null);
+  const getRiderName = (riderId: string) => {
+    return users.find(u => u.uid === riderId)?.name || riderId;
+  };
+  const handleExpenseAction = async (claim: ExpenseClaim, status: "APPROVED" | "REJECTED") => {
+    setActing(claim.id);
+    try {
+      if (status === "APPROVED") {
+        const userRef = doc(db, "users", claim.riderId);
+        await runTransaction(db, async (transaction) => {
+          const userSnap = await transaction.get(userRef);
+          if (!userSnap.exists()) throw new Error("Rider account not found");
+          const currentBalance = Number(userSnap.data().walletBalance || 0);
+          transaction.update(userRef, {
+            walletBalance: currentBalance + claim.amount,
+            updatedAt: Timestamp.now()
+          });
+          transaction.update(doc(db, "expense_claims", claim.id), {
+            status: "APPROVED",
+            updatedAt: Timestamp.now()
+          });
+        });
+        addLog("Approve Expense Claim", "Approved " + fmt(claim.amount) + " and credited " + getRiderName(claim.riderId));
+        addToast("success", "Expense claim approved & credited successfully! 💸");
+      } else {
+        await updateDoc(doc(db, "expense_claims", claim.id), {
+          status: "REJECTED",
+          updatedAt: Timestamp.now()
+        });
+        addLog("Reject Expense Claim", "Rejected " + fmt(claim.amount) + " for " + getRiderName(claim.riderId));
+        addToast("success", "Expense claim rejected successfully.");
+      }
+    } catch (e: any) {
+      addToast("error", e.message || "Operation failed");
+    } finally {
+      setActing(null);
+    }
+  };
+  return (
+    <div className="tab-content space-y-6">
+      <div>
+        <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2">
+          <DollarSign className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> Expense Claims
+        </h1>
+        <p className="text-xs text-black/40 dark:text-white/40 mt-1">Review operational expense claims submitted by fleet riders</p>
+      </div>
+
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 dark:bg-[#222]">
+              <tr>
+                <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Rider</th>
+                <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Title</th>
+                <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Category</th>
+                <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Amount</th>
+                <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Date</th>
+                <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Receipt Note</th>
+                <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/5 dark:divide-white/10">
+              {expenses.length === 0 && (
+                <tr><td colSpan={7} className="p-8 text-center text-black/40 dark:text-white/40">No expense claims found.</td></tr>
+              )}
+              {expenses.map((e) => (
+                <tr key={e.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                  <td className="p-3 font-bold text-[#111] dark:text-white">{getRiderName(e.riderId)}</td>
+                  <td className="p-3 text-black/60 dark:text-white/60 font-semibold">{e.title}</td>
+                  <td className="p-3"><span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-black/60 dark:text-white/60 font-bold text-[9px]">{e.category}</span></td>
+                  <td className="p-3 font-bold text-[#111] dark:text-white">{fmt(e.amount)}</td>
+                  <td className="p-3 text-black/60 dark:text-white/60">{e.dateString}</td>
+                  <td className="p-3 text-black/60 dark:text-white/60 max-w-[200px] truncate">{e.receiptNote || "--"}</td>
+                  <td className="p-3">
+                    <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (e.status === "APPROVED" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : e.status === "REJECTED" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300")}>
+                      {e.status}
+                    </span>
+                    {e.status === "PENDING" && (
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          disabled={acting === e.id}
+                          onClick={() => handleExpenseAction(e, "APPROVED")}
+                          className="px-2 py-1 bg-green-500 hover:bg-green-600 text-white rounded-lg text-[9px] font-bold transition-all disabled:opacity-50"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          disabled={acting === e.id}
+                          onClick={() => handleExpenseAction(e, "REJECTED")}
+                          className="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-[9px] font-bold transition-all disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 
-function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers: UserProfile[] }) {
-  const [trackSearch, setTrackSearch] = useState("");
+
+function TrackingTab({ deliveries, drivers, searchQuery }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string }) {
   const [tSelectedId, setTSelectedId] = useState<string | null>(null);
   const activeD = deliveries.filter(d => d.status !== "DELIVERED" && d.status !== "CANCELLED");
-  const filtered = trackSearch ? activeD.filter(d => d.id.includes(trackSearch) || d.receiverName.toLowerCase().includes(trackSearch.toLowerCase()) || d.itemName?.toLowerCase().includes(trackSearch.toLowerCase())) : activeD;
+  const filtered = searchQuery ? activeD.filter(d => d.id.includes(searchQuery) || d.receiverName.toLowerCase().includes(searchQuery.toLowerCase()) || d.itemName?.toLowerCase().includes(searchQuery.toLowerCase())) : activeD;
   const [tPage, setTPage] = useState(0);
   const tPerPage = 10;
   const tTotalPages = Math.max(1, Math.ceil(filtered.length / tPerPage));
   const pagedT = filtered.slice(tPage * tPerPage, (tPage + 1) * tPerPage);
-  useEffect(() => { setTPage(0); }, [trackSearch]);
+  useEffect(() => { setTPage(0); }, [searchQuery]);
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><MapPin className="w-5 h-5 text-[#FFC542]" /> Live Tracking</h1><p className="text-xs text-black/40 dark:text-white/40 mt-1">{activeD.length} active deliveries, {drivers.filter(d => d.lat && d.lng).length} riders on map</p></div>
-      <SearchInput value={trackSearch} onChange={setTrackSearch} placeholder="Search by ID, name, item..." />
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><MapPin className="w-5 h-5 text-[#111] dark:text-[#FFC542]" /> Live Tracking</h1><p className="text-xs text-black/40 dark:text-white/40 mt-1">{activeD.length} active deliveries, {drivers.filter(d => d.lat && d.lng).length} riders on map</p></div>
     </div>
     <div className="h-[400px] rounded-3xl overflow-hidden border border-black/10 dark:border-white/10 shadow-sm">
       <LiveTrackingMap deliveries={filtered} drivers={drivers} selectedId={tSelectedId} onSelect={setTSelectedId} />
@@ -1473,7 +2220,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
           <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
             <div><p className="font-bold text-[#111] dark:text-white">{d.itemName || "Parcel"}</p>
               <p className="text-[10px] text-black/40 dark:text-white/40">#{idShort(d.id)} • {d.receiverName} → {d.deliveryAddress}</p>
-              {d.courierName && <p className="text-[10px] text-[#FFC542] mt-0.5 font-medium">{d.courierName}</p>}</div>
+              {d.courierName && <p className="text-[10px] text-gray-600 dark:text-[#FFC542] mt-0.5 font-medium">{d.courierName}</p>}</div>
             <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status.replace(/_/g, " ")}</span>
           </div>
           <div className="relative mt-4 mb-2">
@@ -1538,15 +2285,17 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
             setTab={setTab}
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} />}
-        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} />}
-        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
+        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} riders={users.filter(u => u.role === "rider")} searchQuery={searchQuery} db={db} addLog={addLog} />}
+        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
-        {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} />}
-        {tab === "promotions" && <PromotionsTab promotions={promotions} db={db} addLog={addLog} addToast={addToast} />}
+        {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} />}
+        {tab === "promotions" && <PromotionsTab promotions={promotions} db={db} addLog={addLog} addToast={addToast} seedPromos={seedPromosWrapper} seeding={seeding} />}
         {tab === "appcards" && <AppCardsTab appContent={appContent} db={db} addLog={addLog} addToast={addToast} />}
-        {tab === "settings" && <SettingsTab db={db} addLog={addLog} />}
+        {tab === "settings" && <SettingsTab db={db} addLog={addLog} createNotification={createNotification} />}
         {tab === "cms" && <CMSTab db={db} addLog={addLog} />}
         {tab === "logs" && <LogsTab logs={logs} />}
+        {tab === "fleet" && <FleetTab attendances={attendances} inspections={inspections} rosters={rosters} users={users} db={db} addLog={addLog} addToast={addToast} />}
+        {tab === "expenses" && <ExpensesTab expenses={expenses} users={users} db={db} addLog={addLog} addToast={addToast} />}
       </div>
     </main>
     </div>;

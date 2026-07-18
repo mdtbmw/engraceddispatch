@@ -158,7 +158,7 @@ fun SendParcelScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 24.dp, vertical = 24.dp)
+                        .padding(horizontal = 14.dp, vertical = 24.dp)
                         .padding(bottom = 120.dp) // space for bottom CTA button
                 ) {
                 // 1. Smart "Book Again" from History Row
@@ -188,7 +188,7 @@ fun SendParcelScreen(
                         ) {
                             items(allParcels.take(5)) { p ->
                                 Surface(
-                                    shape = RoundedCornerShape(16.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     color = Charcoal,
                                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.3f)),
                                     modifier = Modifier
@@ -238,7 +238,7 @@ fun SendParcelScreen(
                     tonalElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -460,7 +460,7 @@ fun SendParcelScreen(
                     tonalElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         // Sender Info
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -627,7 +627,7 @@ fun SendParcelScreen(
                 .fillMaxWidth(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
-            tonalElevation = 8.dp
+            tonalElevation = 0.dp
         ) {
             Box(
                 modifier = Modifier
@@ -718,8 +718,13 @@ fun BookingSelectionScreen(
     onNavigate: (String) -> Unit
 ) {
     val draft by viewModel.parcelDraft.collectAsState()
+    val context = LocalContext.current
     val walletBalance by viewModel.walletBalance.collectAsState()
     var selectedTab by remember { mutableStateOf(draft.selectedService) }
+    
+    val appliedPromo by viewModel.appliedPromoCode.collectAsState()
+    val discountPercent by viewModel.promoDiscountPercent.collectAsState()
+    var promoInput by remember { mutableStateOf("") }
 
     val wt = draft.weight.takeIf { it > 0.0 } ?: 1.0
 
@@ -739,8 +744,8 @@ fun BookingSelectionScreen(
 
     // Dynamic price quotes calculated from validated coordinates
     val quoteExpressSameDay = remember(pickupCoords, deliveryCoords, wt) {
-        val p = pickupCoords ?: Pair(6.5244, 3.3792)
-        val d = deliveryCoords ?: Pair(6.4281, 3.4219)
+        val p = pickupCoords ?: Pair(6.3350, 5.6037)
+        val d = deliveryCoords ?: Pair(6.4020, 5.6174)
         viewModel.calculateDynamicQuote(
             originLat = p.first, originLng = p.second,
             destLat = d.first, destLng = d.second,
@@ -750,8 +755,8 @@ fun BookingSelectionScreen(
     val priceExpressSameDay = (quoteExpressSameDay as? PendingQuote.Success)?.price ?: 4500.0
 
     val quoteExpressNextDay = remember(pickupCoords, deliveryCoords, wt) {
-        val p = pickupCoords ?: Pair(6.5244, 3.3792)
-        val d = deliveryCoords ?: Pair(6.4281, 3.4219)
+        val p = pickupCoords ?: Pair(6.3350, 5.6037)
+        val d = deliveryCoords ?: Pair(6.4020, 5.6174)
         viewModel.calculateDynamicQuote(
             originLat = p.first, originLng = p.second,
             destLat = d.first, destLng = d.second,
@@ -761,8 +766,8 @@ fun BookingSelectionScreen(
     val priceExpressNextDay = ((quoteExpressNextDay as? PendingQuote.Success)?.price ?: 3500.0) * 0.8
 
     val quoteEconomy = remember(pickupCoords, deliveryCoords, wt) {
-        val p = pickupCoords ?: Pair(6.5244, 3.3792)
-        val d = deliveryCoords ?: Pair(6.4281, 3.4219)
+        val p = pickupCoords ?: Pair(6.3350, 5.6037)
+        val d = deliveryCoords ?: Pair(6.4020, 5.6174)
         viewModel.calculateDynamicQuote(
             originLat = p.first, originLng = p.second,
             destLat = d.first, destLng = d.second,
@@ -772,8 +777,8 @@ fun BookingSelectionScreen(
     val priceEconomy = (quoteEconomy as? PendingQuote.Success)?.price ?: 3000.0
 
     val quoteBatch = remember(pickupCoords, deliveryCoords, wt) {
-        val p = pickupCoords ?: Pair(6.5244, 3.3792)
-        val d = deliveryCoords ?: Pair(6.4281, 3.4219)
+        val p = pickupCoords ?: Pair(6.3350, 5.6037)
+        val d = deliveryCoords ?: Pair(6.4020, 5.6174)
         viewModel.calculateDynamicQuote(
             originLat = p.first, originLng = p.second,
             destLat = d.first, destLng = d.second,
@@ -783,8 +788,8 @@ fun BookingSelectionScreen(
     val priceBatch = (quoteBatch as? PendingQuote.Success)?.price ?: 5000.0
 
     val quoteMulti = remember(pickupCoords, deliveryCoords, wt) {
-        val p = pickupCoords ?: Pair(6.5244, 3.3792)
-        val d = deliveryCoords ?: Pair(6.4281, 3.4219)
+        val p = pickupCoords ?: Pair(6.3350, 5.6037)
+        val d = deliveryCoords ?: Pair(6.4020, 5.6174)
         viewModel.calculateDynamicQuote(
             originLat = p.first, originLng = p.second,
             destLat = d.first, destLng = d.second,
@@ -842,7 +847,7 @@ fun BookingSelectionScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 24.dp, vertical = 24.dp)
+                        .padding(horizontal = 14.dp, vertical = 24.dp)
                         .padding(bottom = 120.dp) // space for bottom checkout bar
                 ) {
                 // Tabs Picker Row
@@ -915,7 +920,7 @@ fun BookingSelectionScreen(
                                         )
                             }
 
-                            Column(modifier = Modifier.padding(20.dp)) {
+                            Column(modifier = Modifier.padding(14.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -972,7 +977,7 @@ fun BookingSelectionScreen(
                             showCheckoutSheet = true
                         },
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1004,7 +1009,7 @@ fun BookingSelectionScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1036,7 +1041,7 @@ fun BookingSelectionScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1070,7 +1075,7 @@ fun BookingSelectionScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1088,92 +1093,7 @@ fun BookingSelectionScreen(
                     }
                 }
 
-                // Traffic & Weather Delivery Conditions Alert Block
                 Spacer(modifier = Modifier.height(20.dp))
-
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Charcoal,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Text(
-                            text = "Live Dispatch Conditions",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = accentTextColor,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-
-                        // Weather Warning Row
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(if (isDark) Color(0xFF1B1B1B) else GoldenWhite, RoundedCornerShape(16.dp))
-                                .border(1.dp, if (isDark) Color.Yellow.copy(alpha = 0.2f) else Slate, RoundedCornerShape(16.dp))
-                                .padding(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Cloud,
-                                contentDescription = null,
-                                tint = Color.Yellow,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Wet Road Weather Alert",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isDark) Color.White else Obsidian
-                                )
-                                Text(
-                                    text = "Overcast with heavy showers in Ikeja. Dispatch times adjusted with a +15 mins safety delay.",
-                                    fontSize = 11.sp,
-                                    color = TextGray
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Traffic Congestion Row
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(if (isDark) Color(0xFF1B1B1B) else GoldenWhite, RoundedCornerShape(16.dp))
-                                .border(1.dp, if (isDark) Color.Red.copy(alpha = 0.2f) else Slate, RoundedCornerShape(16.dp))
-                                .padding(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Traffic,
-                                contentDescription = null,
-                                tint = Color.Red,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Live Congestion ETA Update",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isDark) Color.White else Obsidian
-                                )
-                                Text(
-                                    text = "Heavy traffic along Lagos-Ikorodu expressway. Average speed is 18 km/h. Live route ETA: 52 mins.",
-                                    fontSize = 11.sp,
-                                    color = TextGray
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(32.dp))
 
                 // Payment Card Selector
                 Surface(
@@ -1184,7 +1104,7 @@ fun BookingSelectionScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text("Payment Method", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = accentTextColor)
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -1231,6 +1151,108 @@ fun BookingSelectionScreen(
                             fontWeight = FontWeight.Medium,
                             lineHeight = 16.sp
                         )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = Charcoal,
+                            border = BorderStroke(1.2.dp, Gold.copy(alpha = 0.2f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = Gold,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Apply Promo Voucher",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 14.sp,
+                                        color = Color.White
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                if (appliedPromo != null) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Gold.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "CODE: $appliedPromo",
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 13.sp,
+                                                color = Gold
+                                            )
+                                            Text(
+                                                text = "$discountPercent% Discount Applied Successfully!",
+                                                fontSize = 11.sp,
+                                                color = Color.Green
+                                            )
+                                        }
+                                        IconButton(onClick = { viewModel.clearAppliedPromo() }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Remove Promo",
+                                                tint = Color.Red
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        OutlinedTextField(
+                                            value = promoInput,
+                                            onValueChange = { promoInput = it },
+                                            placeholder = { Text("Enter Promo Code", color = TextGray) },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Gold,
+                                                unfocusedBorderColor = Gold.copy(alpha = 0.3f),
+                                                focusedContainerColor = Obsidian,
+                                                unfocusedContainerColor = Obsidian,
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White
+                                            ),
+                                            singleLine = true
+                                        )
+                                        Button(
+                                            onClick = {
+                                                if (promoInput.isNotBlank()) {
+                                                    viewModel.applyPromoCode(promoInput) { success, msg ->
+                                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                        if (success) {
+                                                            promoInput = ""
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Gold,
+                                                contentColor = Obsidian
+                                            ),
+                                            modifier = Modifier.height(56.dp)
+                                        ) {
+                                            Text("Apply", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1244,7 +1266,7 @@ fun BookingSelectionScreen(
                 .fillMaxWidth(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
-            tonalElevation = 8.dp
+            tonalElevation = 0.dp
         ) {
             Row(
                 modifier = Modifier
@@ -1414,7 +1436,7 @@ fun PaymentSuccessScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
-                            modifier = Modifier.padding(20.dp),
+                            modifier = Modifier.padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             // Header
@@ -1582,7 +1604,7 @@ fun PaymentSuccessScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(52.dp),
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Charcoal else GoldenWhite),
                                 border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
                             ) {
@@ -1602,7 +1624,7 @@ fun PaymentSuccessScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(52.dp),
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 border = BorderStroke(1.5.dp, Color(0xFF333333)),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Gold)
                             ) {
@@ -1658,7 +1680,7 @@ fun ServiceSelectionScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 24.dp, vertical = 24.dp)
+                        .padding(horizontal = 14.dp, vertical = 24.dp)
                         .padding(bottom = 120.dp)
                 ) {
                 Text(
@@ -1812,7 +1834,7 @@ fun ServiceSelectionScreen(
                 .fillMaxWidth(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
-            tonalElevation = 8.dp
+            tonalElevation = 0.dp
         ) {
             Box(
                 modifier = Modifier

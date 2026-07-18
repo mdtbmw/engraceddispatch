@@ -50,3 +50,16 @@
 -dontwarn kotlinx.coroutines.**
 -keep class kotlinx.coroutines.** { *; }
 
+# Tink Cryptography / Missing Optional Dependencies
+-dontwarn com.google.crypto.tink.util.KeysDownloader
+-dontwarn com.google.api.client.http.**
+-dontwarn org.joda.time.**
+
+# Keep all classes, interfaces, and members in our project to prevent reflection/serialization crashes in release minification
+-keep class com.example.** { *; }
+-keep interface com.example.** { *; }
+-keepclassmembers class com.example.** { *; }
+-keepattributes Signature, *Annotation*, InnerClasses, EnclosingMethod
+
+
+

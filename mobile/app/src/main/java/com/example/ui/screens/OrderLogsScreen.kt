@@ -46,6 +46,8 @@ fun OrderLogsScreen(
     onNavigate: (String) -> Unit
 ) {
     val parcels by viewModel.parcels.collectAsState()
+    val loadingParcels by viewModel.loadingParcels.collectAsState()
+    val networkOnline by viewModel.networkOnline.collectAsState()
     var activeFilter by remember { mutableStateOf("All") }
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
 
@@ -143,7 +145,13 @@ fun OrderLogsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-                    if (paginatedParcels.isEmpty()) {
+                    if (paginatedParcels.isEmpty() && loadingParcels) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = Gold, modifier = Modifier.size(40.dp))
+                            }
+                        }
+                    } else if (paginatedParcels.isEmpty()) {
                         item {
                             Column(
                                 modifier = Modifier

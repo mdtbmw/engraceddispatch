@@ -163,10 +163,10 @@ fun LoginScreen(
                 isValidatingPin = true
                 viewModel.signInWithGoogle(idToken, name, googleEmail) { success, errorText ->
                     if (success) {
-                        val isProfileIncomplete = viewModel.userPhone.value == "+1 555-GOOG-GEN" || viewModel.userPin.value == "1111" || viewModel.userPhone.value.isBlank() || viewModel.userPin.value.isBlank()
+                        val isProfileIncomplete = viewModel.userPhone.value.isBlank() || viewModel.userPin.value.isBlank()
                         if (isProfileIncomplete) {
                             viewModel.setGoogleAuthInProgress(true)
-                            Toast.makeText(context, "Google authenticated! Let's complete your profile.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Google authenticated! Let's complete your registration details.", Toast.LENGTH_LONG).show()
                             onNavigate("SignUp")
                         } else {
                             viewModel.setGoogleAuthInProgress(false)
@@ -186,32 +186,16 @@ fun LoginScreen(
             val isCancelled = e.statusCode == 12501 || e.statusCode == 12502 || e.statusCode == 16 || e.statusCode == 4
             if (isCancelled) {
                 Toast.makeText(context, "Google Sign-In cancelled.", Toast.LENGTH_SHORT).show()
-                isValidatingPin = false
             } else {
-                android.util.Log.w("GoogleSignIn", "Encountered non-cancellation error. Fallback to developer testing session.")
-                isValidatingPin = true
-                viewModel.signInWithGoogle(
-                    idToken = "google_session_token",
-                    name = "Google User",
-                    email = "reachnotonly@gmail.com"
-                ) { success, errorText ->
-                    if (success) {
-                        val isProfileIncomplete = viewModel.userPhone.value == "+1 555-GOOG-GEN" || viewModel.userPin.value == "1111" || viewModel.userPhone.value.isBlank() || viewModel.userPin.value.isBlank()
-                        if (isProfileIncomplete) {
-                            viewModel.setGoogleAuthInProgress(true)
-                            Toast.makeText(context, "Google authenticated! Let's complete your profile.", Toast.LENGTH_LONG).show()
-                            onNavigate("SignUp")
-                        } else {
-                            viewModel.setGoogleAuthInProgress(false)
-                            Toast.makeText(context, "Welcome Back, Google User!", Toast.LENGTH_LONG).show()
-                            onNavigate("Preloader")
-                        }
-                    } else {
-                        Toast.makeText(context, errorText ?: "Google sign-in failed.", Toast.LENGTH_SHORT).show()
-                    }
-                    isValidatingPin = false
+                val msg = when (e.statusCode) {
+                    7 -> "Network error. Check your connection."
+                    10 -> "Developer configuration issue: SHA-1 fingerprint mismatch in Firebase console (error 10)."
+                    12500 -> "Google Sign-In configuration error."
+                    else -> "Google Sign-In failed (code: ${e.statusCode}). Please try again."
                 }
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             }
+            isValidatingPin = false
         }
     }
 
@@ -603,22 +587,6 @@ fun LoginScreen(
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = if (loginMode == LoginMode.ADMIN) "Switch to User Login" else "Admin Login",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = TextGray.copy(alpha = 0.7f),
-                        modifier = Modifier
-                            .clickable {
-                                loginMode = if (loginMode == LoginMode.ADMIN) LoginMode.USER else LoginMode.ADMIN
-                                step = LoginStep.EMAIL
-                                pin = ""
-                                password = ""
-                                isPinError = false
-                            }
-                            .padding(vertical = 4.dp)
-                    )
                 }
             }
         }
@@ -699,32 +667,35 @@ fun LoginScreen(
     }
 
     if (showBiometricEnroll) {
-        FingerprintRegisterDialog(
-            isDark = isDark,
-            correctPin = registeredPin.ifEmpty { "1234" },
-            onDismiss = { showBiometricEnroll = false },
-            onRegistered = { verifiedPin ->
-                showBiometricEnroll = false
-                val registeredEmail = if (email.isNotEmpty()) email else viewModel.userEmail.value
-                viewModel.saveBiometricCredentials(registeredEmail, verifiedPin)
-                Toast.makeText(context, "Biometric Credentials Enrolled & Linked Successfully!", Toast.LENGTH_SHORT).show()
-            }
-        )
+        if (registeredPin.isNotEmpty()) {
+            FingerprintRegisterDialog(
+                isDark = isDark,
+                correctPin = registeredPin,
+                onDismiss = { showBiometricEnroll = false },
+                onRegistered = { verifiedPin ->
+                    showBiometricEnroll = false
+                    val registeredEmail = if (email.isNotEmpty()) email else viewModel.userEmail.value
+                    viewModel.saveBiometricCredentials(registeredEmail, verifiedPin)
+                    Toast.makeText(context, "Biometric Credentials Enrolled & Linked Successfully!", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
     }
 
     if (showBiometricAuth) {
         val creds = viewModel.getBiometricCredentials()
         val authEmail = creds?.first ?: email.ifEmpty { viewModel.userEmail.value }
-        FingerprintAuthDialog(
-            isDark = isDark,
-            email = authEmail,
-            correctPin = creds?.second ?: registeredPin.ifEmpty { "1234" },
-            onDismiss = { showBiometricAuth = false },
-            onSuccess = {
-                showBiometricAuth = false
-                if (creds != null) {
+        val biometricPin = creds?.second
+        if (biometricPin != null) {
+            FingerprintAuthDialog(
+                isDark = isDark,
+                email = authEmail,
+                correctPin = biometricPin,
+                onDismiss = { showBiometricAuth = false },
+                onSuccess = {
+                    showBiometricAuth = false
                     isValidatingPin = true
-                    viewModel.signInWithFirebase(creds.first, creds.second) { success, errorText ->
+                    viewModel.signInWithFirebase(authEmail, biometricPin) { success, errorText ->
                         if (success) {
                             Toast.makeText(context, "Biometrics Verified! Welcome Back.", Toast.LENGTH_SHORT).show()
                             onNavigate("Preloader")
@@ -733,24 +704,24 @@ fun LoginScreen(
                         }
                         isValidatingPin = false
                     }
-                } else {
-                    if (registeredPin.isNotEmpty() && authEmail.isNotEmpty()) {
-                        isValidatingPin = true
-                        viewModel.signInWithFirebase(authEmail, registeredPin) { success, errorText ->
-                            if (success) {
-                                Toast.makeText(context, "Biometrics Verified! Welcome Back.", Toast.LENGTH_SHORT).show()
-                                onNavigate("Preloader")
-                            } else {
-                                Toast.makeText(context, errorText ?: "Invalid PIN for $authEmail.", Toast.LENGTH_SHORT).show()
-                            }
-                            isValidatingPin = false
-                        }
-                    } else {
-                        Toast.makeText(context, "Please enroll biometrics first.", Toast.LENGTH_LONG).show()
-                    }
                 }
+            )
+        } else {
+            if (registeredPin.isNotEmpty() && authEmail.isNotEmpty()) {
+                isValidatingPin = true
+                viewModel.signInWithFirebase(authEmail, registeredPin) { success, errorText ->
+                    if (success) {
+                        Toast.makeText(context, "Biometrics Verified! Welcome Back.", Toast.LENGTH_SHORT).show()
+                        onNavigate("Preloader")
+                    } else {
+                        Toast.makeText(context, errorText ?: "Invalid PIN for $authEmail.", Toast.LENGTH_SHORT).show()
+                    }
+                    isValidatingPin = false
+                }
+            } else {
+                Toast.makeText(context, "Please enroll biometrics first.", Toast.LENGTH_LONG).show()
             }
-        )
+        }
     }
 }
 
@@ -843,7 +814,7 @@ fun SignUpScreen(
                 
                 isRegistering = true
                 val finalName = if (firstName.isNotBlank()) "$firstName $lastName".trim() else name
-                val finalEmail = if (email.isNotBlank()) email.trim() else googleEmail
+                val finalEmail = googleEmail
                 val finalPhone = if (phone.isNotBlank()) phone.trim() else null
                 val finalPin = if (pin.isNotBlank()) pin.trim() else null
                 
@@ -855,10 +826,11 @@ fun SignUpScreen(
                     customPin = finalPin
                 ) { success, errorText ->
                     if (success) {
-                        val isProfileIncomplete = viewModel.userPhone.value == "+1 555-GOOG-GEN" || viewModel.userPin.value == "1111" || viewModel.userPhone.value.isBlank() || viewModel.userPin.value.isBlank()
+                        val isProfileIncomplete = viewModel.userPhone.value.isBlank() || viewModel.userPin.value.isBlank()
                         if (isProfileIncomplete) {
                             viewModel.setGoogleAuthInProgress(true)
-                            Toast.makeText(context, "Google authenticated! Please complete your registration below.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Google authenticated! Let's complete your profile details below.", Toast.LENGTH_LONG).show()
+                            // Stay on SignUpScreen. The LaunchedEffect will handle copying the Google profile details and advancing the step.
                         } else {
                             viewModel.setGoogleAuthInProgress(false)
                             Toast.makeText(context, "Welcome Back, $finalName!", Toast.LENGTH_LONG).show()
@@ -877,39 +849,16 @@ fun SignUpScreen(
             val isCancelled = e.statusCode == 12501 || e.statusCode == 12502 || e.statusCode == 16 || e.statusCode == 4
             if (isCancelled) {
                 Toast.makeText(context, "Google Sign-In cancelled.", Toast.LENGTH_SHORT).show()
-                isRegistering = false
             } else {
-                android.util.Log.w("GoogleSignIn", "Encountered non-cancellation error. Fallback to developer testing session.")
-                isRegistering = true
-                
-                val finalName = if (firstName.isNotBlank()) "$firstName $lastName".trim() else "Google User"
-                val finalEmail = if (email.isNotBlank()) email.trim() else "reachnotonly@gmail.com"
-                val finalPhone = if (phone.isNotBlank()) phone.trim() else "+1 555-GOOG-GEN"
-                val finalPin = if (pin.isNotBlank()) pin.trim() else "1111"
-                
-                viewModel.signInWithGoogle(
-                    idToken = "google_session_token",
-                    name = finalName,
-                    email = finalEmail,
-                    customPhone = finalPhone,
-                    customPin = finalPin
-                ) { success, errorText ->
-                    if (success) {
-                        val isProfileIncomplete = viewModel.userPhone.value == "+1 555-GOOG-GEN" || viewModel.userPin.value == "1111" || viewModel.userPhone.value.isBlank() || viewModel.userPin.value.isBlank()
-                        if (isProfileIncomplete) {
-                            viewModel.setGoogleAuthInProgress(true)
-                            Toast.makeText(context, "Google authenticated! Please complete your registration below.", Toast.LENGTH_LONG).show()
-                        } else {
-                            viewModel.setGoogleAuthInProgress(false)
-                            Toast.makeText(context, "Welcome Back, $finalName!", Toast.LENGTH_LONG).show()
-                            onNavigate("Preloader")
-                        }
-                    } else {
-                        Toast.makeText(context, errorText ?: "Google registration failed.", Toast.LENGTH_SHORT).show()
-                    }
-                    isRegistering = false
+                val msg = when (e.statusCode) {
+                    7 -> "Network error. Check your connection."
+                    10 -> "Developer configuration issue: SHA-1 fingerprint mismatch in Firebase console (error 10)."
+                    12500 -> "Google Sign-In configuration error."
+                    else -> "Google Sign-In failed (code: ${e.statusCode}). Please try again."
                 }
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             }
+            isRegistering = false
         }
     }
 
@@ -1015,7 +964,19 @@ fun SignUpScreen(
                         )
 
                         // Multi-step animated content block
-                        if (signUpStep == SignUpStep.NAME_SETUP) {
+                        AnimatedContent(
+                            targetState = signUpStep,
+                            transitionSpec = {
+                                (fadeIn(animationSpec = tween(450, easing = EaseInOutQuart)) + scaleIn(initialScale = 0.96f, animationSpec = tween(450)))
+                                    .togetherWith(fadeOut(animationSpec = tween(350, easing = EaseInOutQuart)) + scaleOut(targetScale = 0.96f, animationSpec = tween(350)))
+                            },
+                            label = "signUpStepAnimation"
+                        ) { currentStep ->
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                if (currentStep == SignUpStep.NAME_SETUP) {
                             // STEP 1: Name Details (First and Second Name)
                             Text(
                                 text = "Your Name",
@@ -1632,6 +1593,8 @@ fun SignUpScreen(
                                     .padding(vertical = 8.dp)
                             )
                         }
+                    }
+                }
 
                         Spacer(modifier = Modifier.height(24.dp))
 
@@ -1675,9 +1638,11 @@ fun SignUpScreen(
                             signUpStep = SignUpStep.CONTACT_INFO
                         }
                         SignUpStep.CONTACT_INFO -> {
+                            viewModel.setGoogleAuthInProgress(false)
                             signUpStep = SignUpStep.NAME_SETUP
                         }
                         SignUpStep.NAME_SETUP -> {
+                            viewModel.setGoogleAuthInProgress(false)
                             onNavigate("Login")
                         }
                     }

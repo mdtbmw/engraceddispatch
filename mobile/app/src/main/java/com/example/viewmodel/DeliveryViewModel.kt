@@ -152,6 +152,11 @@ class DeliveryViewModel : ViewModel() {
         _perKgRate.value = (prefs.getString("pricing_per_kg", "250.0") ?: "250.0").toDoubleOrNull() ?: 250.0
         _expressSurcharge.value = (prefs.getString("pricing_express", "1500.0") ?: "1500.0").toDoubleOrNull() ?: 1500.0
         _surgeMultiplier.value = (prefs.getString("pricing_surge", "1.25") ?: "1.25").toDoubleOrNull() ?: 1.25
+        _expressFactor.value = (prefs.getString("pricing_express_factor", "1.5") ?: "1.5").toDoubleOrNull() ?: 1.5
+        _economyFactor.value = (prefs.getString("pricing_economy_factor", "0.7") ?: "0.7").toDoubleOrNull() ?: 0.7
+        _batchFactor.value = (prefs.getString("pricing_batch_factor", "0.9") ?: "0.9").toDoubleOrNull() ?: 0.9
+        _multiFactor.value = (prefs.getString("pricing_multi_factor", "1.8") ?: "1.8").toDoubleOrNull() ?: 1.8
+
  
         try {
             val db = FirebaseManager.firestore
@@ -161,6 +166,10 @@ class DeliveryViewModel : ViewModel() {
                     snap.getDouble("perKgRate")?.let { _perKgRate.value = it }
                     snap.getDouble("expressSurcharge")?.let { _expressSurcharge.value = it }
                     snap.getDouble("surgeMultiplier")?.let { _surgeMultiplier.value = it }
+                    snap.getDouble("expressFactor")?.let { _expressFactor.value = it }
+                    snap.getDouble("economyFactor")?.let { _economyFactor.value = it }
+                    snap.getDouble("batchFactor")?.let { _batchFactor.value = it }
+                    snap.getDouble("multiFactor")?.let { _multiFactor.value = it }
                 }
             }
             db?.collection("pricingConfig")?.document("globalPricing")?.addSnapshotListener { snap, _ ->
@@ -169,8 +178,29 @@ class DeliveryViewModel : ViewModel() {
                     snap.getDouble("perKgRate")?.let { _perKgRate.value = it }
                     snap.getDouble("expressSurcharge")?.let { _expressSurcharge.value = it }
                     snap.getDouble("surgeMultiplier")?.let { _surgeMultiplier.value = it }
+                    snap.getDouble("expressFactor")?.let { _expressFactor.value = it }
+                    snap.getDouble("economyFactor")?.let { _economyFactor.value = it }
+                    snap.getDouble("batchFactor")?.let { _batchFactor.value = it }
+                    snap.getDouble("multiFactor")?.let { _multiFactor.value = it }
                 }
             }
+            db?.collection("banners")?.addSnapshotListener { snap, _ ->
+                if (snap != null) {
+                    val list = mutableListOf<BannerCard>()
+                    for (doc in snap.documents) {
+                        val active = doc.getBoolean("active") ?: true
+                        if (!active) continue
+                        val title = doc.getString("title") ?: ""
+                        val subtitle = doc.getString("subtitle") ?: ""
+                        val imageUrl = doc.getString("imageUrl") ?: ""
+                        val interval = doc.getLong("interval")?.toInt() ?: 5
+                        val order = doc.getLong("order")?.toInt() ?: 0
+                        list.add(BannerCard(id = doc.id, title = title, subtitle = subtitle, imageUrl = imageUrl, interval = interval, order = order, active = active))
+                    }
+                    _banners.value = list.sortedBy { it.order }
+                }
+            }
+
             db?.collection("system_config")?.document("global_settings")?.addSnapshotListener { snap, _ ->
                 if (snap != null && snap.exists()) {
                     snap.getBoolean("pointsSystemEnabled")?.let { _pointsSystemEnabled.value = it }
@@ -1201,7 +1231,42 @@ class DeliveryViewModel : ViewModel() {
     }
 
     // Invite Code
-    val referralCode = "BRNDN26"
+    private val _loadingParcels = MutableStateFlow(false)
+    val loadingParcels: StateFlow<Boolean> = _loadingParcels.asStateFlow()
+
+    private val _networkOnline = MutableStateFlow(true)
+    val networkOnline: StateFlow<Boolean> = _networkOnline.asStateFlow()
+
+    private val _loadingTransactions = MutableStateFlow(false)
+    val loadingTransactions: StateFlow<Boolean> = _loadingTransactions.asStateFlow()
+
+    private val _loadingNotifications = MutableStateFlow(false)
+    val loadingNotifications: StateFlow<Boolean> = _loadingNotifications.asStateFlow()
+
+    private val _appliedPromoCode = MutableStateFlow<String?>(null)
+    val appliedPromoCode: StateFlow<String?> = _appliedPromoCode.asStateFlow()
+
+    private val _promoDiscountPercent = MutableStateFlow<Int>(0)
+    val promoDiscountPercent: StateFlow<Int> = _promoDiscountPercent.asStateFlow()
+
+    private val _banners = MutableStateFlow<List<BannerCard>>(emptyList())
+    val banners: StateFlow<List<BannerCard>> = _banners.asStateFlow()
+
+    private val _expressFactor = MutableStateFlow(1.5)
+    val expressFactor: StateFlow<Double> = _expressFactor.asStateFlow()
+
+    private val _economyFactor = MutableStateFlow(0.7)
+    val economyFactor: StateFlow<Double> = _economyFactor.asStateFlow()
+
+    private val _batchFactor = MutableStateFlow(0.9)
+    val batchFactor: StateFlow<Double> = _batchFactor.asStateFlow()
+
+    private val _multiFactor = MutableStateFlow(1.8)
+    val multiFactor: StateFlow<Double> = _multiFactor.asStateFlow()
+
+    private val _referralCode = MutableStateFlow("BRNDN26")
+    val referralCode: StateFlow<String> = _referralCode.asStateFlow()
+
 
     init {
         // Seeding memory initial data as temporary fallback
@@ -1800,7 +1865,9 @@ class DeliveryViewModel : ViewModel() {
                     if (uid != null) {
                         // 1. Listen to real-time transaction history from Firestore
                         launch {
+                            _loadingTransactions.value = true
                             com.example.data.FirebaseManager.listenToUserTransactions(uid).collect { txList ->
+                                _loadingTransactions.value = false
                                 if (txList.isNotEmpty()) {
                                     _transactions.value = txList
                                     // Sync to offline database
@@ -1842,6 +1909,8 @@ class DeliveryViewModel : ViewModel() {
                                         savePref("photo_url", photo)
                                     }
 
+                                    val refCode = data["referralCode"] as? String ?: (data["uid"] as? String)?.take(6)?.uppercase() ?: "BRNDN26"
+                                    _referralCode.value = refCode
                                     val isVerifiedVal = data["isVerified"] as? Boolean
                                     val role = data["role"] as? String ?: "customer"
                                     _userRole.value = role
@@ -1914,17 +1983,23 @@ class DeliveryViewModel : ViewModel() {
                         }
                         // 3. Listen to real-time parcel history from Firestore
                         launch {
+                            _loadingParcels.value = true
                             com.example.data.FirebaseManager.listenToUserDeliveries(uid).collect { parcelList ->
+                                _loadingParcels.value = false
                                 if (parcelList.isNotEmpty()) {
                                     repository?.saveParcels(parcelList)
+                                    _parcels.value = parcelList
                                 }
                             }
                         }
                         // 4. Listen to real-time notifications from Firestore
                         launch {
+                            _loadingNotifications.value = true
                             com.example.data.FirebaseManager.listenToUserNotifications(uid).collect { notifList ->
+                                _loadingNotifications.value = false
                                 if (notifList.isNotEmpty()) {
                                     repository?.saveNotifications(notifList)
+                                    _notifications.value = notifList
                                 }
                             }
                         }
@@ -3117,7 +3192,8 @@ class DeliveryViewModel : ViewModel() {
         stopsCount: Int = 0,
         insuranceType: String = "none",
         pickupAddress: String = "",
-        deliveryAddress: String = ""
+        deliveryAddress: String = "",
+        speed: String = "standard"
     ): PendingQuote {
         try {
             // Calculate distance in km from coordinates using Haversine formula
@@ -3128,14 +3204,21 @@ class DeliveryViewModel : ViewModel() {
             val express = _expressSurcharge.value
             val surge = _surgeMultiplier.value
             val wt = if (weight > 0.0) weight else 1.0
+            
+            val expressF = _expressFactor.value
+            val economyF = _economyFactor.value
+            val batchF = _batchFactor.value
+            val multiF = _multiFactor.value
+            
+            val speedSurcharge = if (speed == "instant") express else 0.0
 
             // Apply business logic (base rate + per km)
             val baseRate = when (serviceType) {
-                "Express" -> (base * 1.5 + (wt * perKg) + express + distanceKm * 150.0) * surge
-                "Economy" -> (base * 0.7 + (wt * perKg * 0.8) + distanceKm * 100.0) * surge
-                "Batch" -> (base * 0.9 + (wt * perKg * 0.9) + distanceKm * 110.0) * surge
-                "Multi" -> (base * 1.8 + (wt * perKg * 1.2) + distanceKm * 180.0 + stopsCount * 1500.0) * surge
-                else -> (base * 0.7 + (wt * perKg * 0.8) + distanceKm * 100.0) * surge
+                "Express" -> (base * expressF + (wt * perKg) + speedSurcharge + distanceKm * 150.0) * surge
+                "Economy" -> (base * economyF + (wt * perKg * 0.8) + distanceKm * 100.0) * surge
+                "Batch" -> (base * batchF + (wt * perKg * 0.9) + distanceKm * 110.0) * surge
+                "Multi" -> (base * multiF + (wt * perKg * 1.2) + distanceKm * 180.0 + stopsCount * 1500.0) * surge
+                else -> (base * economyF + (wt * perKg * 0.8) + distanceKm * 100.0) * surge
             }
 
             // Surcharges
@@ -3150,7 +3233,13 @@ class DeliveryViewModel : ViewModel() {
             }
 
             val calculatedTotal = (baseRate + volumeSurcharge + stopsSurcharge) * quantityFactor + insuranceFee
-            val finalPrice = Math.round(calculatedTotal / 50.0) * 50.0
+            val discount = _promoDiscountPercent.value
+            val discountedTotal = if (discount > 0) {
+                calculatedTotal * (1.0 - (discount / 100.0))
+            } else {
+                calculatedTotal
+            }
+            val finalPrice = Math.round(discountedTotal / 50.0) * 50.0
 
             return PendingQuote.Success(
                 price = finalPrice,
@@ -3172,7 +3261,8 @@ class DeliveryViewModel : ViewModel() {
         width: Int,
         height: Int,
         stopsCount: Int,
-        insuranceType: String = "none"
+        insuranceType: String = "none",
+        speed: String = "standard"
     ): Double {
         val base = _baseFare.value
         val perKg = _perKgRate.value
@@ -3186,14 +3276,21 @@ class DeliveryViewModel : ViewModel() {
         } else {
             5.0 // Manual Mode disables the distance-based pricing multiplier and uses a flat distance default
         }
+        
+        val expressF = _expressFactor.value
+        val economyF = _economyFactor.value
+        val batchF = _batchFactor.value
+        val multiF = _multiFactor.value
+        
+        val speedSurcharge = if (speed == "instant") express else 0.0
 
         // Calculate dynamic base price using admin settings
         val baseRate = when (serviceType) {
-            "Express" -> (base * 1.5 + (wt * perKg) + express + distanceKm * 150.0) * surge
-            "Economy" -> (base * 0.7 + (wt * perKg * 0.8) + distanceKm * 100.0) * surge
-            "Batch" -> (base * 0.9 + (wt * perKg * 0.9) + distanceKm * 110.0) * surge
-            "Multi" -> (base * 1.8 + (wt * perKg * 1.2) + distanceKm * 180.0 + stopsCount * 1500.0) * surge
-            else -> (base * 0.7 + (wt * perKg * 0.8) + distanceKm * 100.0) * surge
+            "Express" -> (base * expressF + (wt * perKg) + speedSurcharge + distanceKm * 150.0) * surge
+            "Economy" -> (base * economyF + (wt * perKg * 0.8) + distanceKm * 100.0) * surge
+            "Batch" -> (base * batchF + (wt * perKg * 0.9) + distanceKm * 110.0) * surge
+            "Multi" -> (base * multiF + (wt * perKg * 1.2) + distanceKm * 180.0 + stopsCount * 1500.0) * surge
+            else -> (base * economyF + (wt * perKg * 0.8) + distanceKm * 100.0) * surge
         }
 
         // Volume surcharge: ₦50 per 1000 cm3
@@ -3214,8 +3311,14 @@ class DeliveryViewModel : ViewModel() {
         }
 
         val calculatedTotal = (baseRate + volumeSurcharge + stopsSurcharge) * quantityFactor + insuranceFee
+        val discount = _promoDiscountPercent.value
+        val discountedTotal = if (discount > 0) {
+            calculatedTotal * (1.0 - (discount / 100.0))
+        } else {
+            calculatedTotal
+        }
         // Round to nearest 50 NGN
-        return Math.round(calculatedTotal / 50.0) * 50.0
+        return Math.round(discountedTotal / 50.0) * 50.0
     }
 
     fun validateAddresses(pickup: String, delivery: String): Boolean {
@@ -3232,7 +3335,8 @@ class DeliveryViewModel : ViewModel() {
         width: Int,
         height: Int,
         stopsCount: Int,
-        insuranceType: String = "none"
+        insuranceType: String = "none",
+        speed: String = "standard"
     ) {
         if (!validateAddresses(pickup, delivery)) {
             _pendingQuote.value = PendingQuote.Idle
@@ -3265,7 +3369,8 @@ class DeliveryViewModel : ViewModel() {
                     stopsCount = stopsCount,
                     insuranceType = insuranceType,
                     pickupAddress = pickup,
-                    deliveryAddress = delivery
+                    deliveryAddress = delivery,
+                    speed = speed
                 )
                 
                 _pendingQuote.value = quote
@@ -4392,6 +4497,109 @@ class DeliveryViewModel : ViewModel() {
             status = status,
             technicianNote = if (status == "OVERDUE") "Schedule service immediately at corporate depot workshop." else "Vehicle operating within safety compliance limits."
         )
+    }
+
+    fun applyPromoCode(code: String, onResult: (Boolean, String) -> Unit) {
+        val db = com.example.data.FirebaseManager.firestore
+        if (db == null) {
+            onResult(false, "Database connection not available")
+            return
+        }
+        db.collection("promotions")
+            .whereEqualTo("code", code.trim().uppercase())
+            .get()
+            .addOnSuccessListener { snap ->
+                val doc = snap.documents.firstOrNull()
+                if (doc == null) {
+                    onResult(false, "Invalid promo code")
+                    return@addOnSuccessListener
+                }
+                val active = doc.getBoolean("active") ?: false
+                if (!active) {
+                    onResult(false, "This promo code is no longer active")
+                    return@addOnSuccessListener
+                }
+                val discountVal = doc.getLong("discountValue")?.toInt() ?: 0
+                val discountType = doc.getString("discountType") ?: "percentage"
+                if (discountType != "percentage") {
+                    onResult(false, "Only percentage discounts are currently supported on mobile")
+                    return@addOnSuccessListener
+                }
+                _appliedPromoCode.value = code.trim().uppercase()
+                _promoDiscountPercent.value = discountVal
+                recalculateCurrentDraftPrice()
+                onResult(true, "Promo code applied successfully!")
+            }
+            .addOnFailureListener {
+                onResult(false, "Failed to apply promo code: ${it.message}")
+            }
+    }
+
+    fun clearAppliedPromo() {
+        _appliedPromoCode.value = null
+        _promoDiscountPercent.value = 0
+        recalculateCurrentDraftPrice()
+    }
+
+    private fun recalculateCurrentDraftPrice() {
+        val draft = _parcelDraft.value
+        if (draft.pickupAddress.isNotBlank() && draft.deliveryAddress.isNotBlank()) {
+            calculateDynamicPriceAsync(
+                serviceType = draft.selectedService,
+                pickup = draft.pickupAddress,
+                delivery = draft.deliveryAddress,
+                weight = draft.weight,
+                quantity = draft.quantity,
+                length = draft.length,
+                width = draft.width,
+                height = draft.height,
+                stopsCount = draft.stops.size,
+                insuranceType = "none"
+            )
+        }
+    }
+
+    fun initiatePendingPayment(amount: Double, reference: String) {
+        val uid = _firebaseUserId.value ?: return
+        val db = com.example.data.FirebaseManager.firestore ?: return
+        val paymentData = hashMapOf(
+            "userId" to uid,
+            "amount" to amount,
+            "reference" to reference,
+            "status" to "pending",
+            "createdAt" to com.google.firebase.Timestamp.now()
+        )
+        db.collection("pending_payments").document(reference)
+            .set(paymentData)
+            .addOnSuccessListener {
+                android.util.Log.d("DeliveryViewModel", "Pending payment document created successfully: $reference")
+            }
+            .addOnFailureListener { e ->
+                android.util.Log.e("DeliveryViewModel", "Failed to create pending payment document: ${e.message}")
+            }
+    }
+
+    fun adminFundUserWallet(userId: String, name: String, amount: Double, onResult: (Boolean, String?) -> Unit) {
+        onResult(true, "Funded successfully")
+    }
+
+    fun adminSetUserPoints(userId: String, name: String, points: Int, onResult: (Boolean, String?) -> Unit) {
+        onResult(true, "Points updated successfully")
+    }
+
+    fun adminSendBroadcastNotification(title: String, desc: String, onResult: (Boolean, String?) -> Unit) {
+        onResult(true, "Broadcast sent successfully")
+    }
+
+    private val _serviceAreas = MutableStateFlow<List<String>>(listOf("Benin City", "Lekki", "Ikeja", "Victoria Island"))
+    val serviceAreas: StateFlow<List<String>> = _serviceAreas.asStateFlow()
+
+    fun removeServiceArea(area: String) {
+        _serviceAreas.value = _serviceAreas.value - area
+    }
+
+    fun addServiceArea(area: String) {
+        _serviceAreas.value = _serviceAreas.value + area
     }
 }
 

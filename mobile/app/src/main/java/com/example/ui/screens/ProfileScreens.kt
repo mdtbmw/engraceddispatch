@@ -756,6 +756,7 @@ fun WalletScreen(
 ) {
     val balance by viewModel.walletBalance.collectAsState()
     val txs by viewModel.transactions.collectAsState()
+    val loadingTransactions by viewModel.loadingTransactions.collectAsState()
     val isDark by viewModel.darkModeEnabled.collectAsState()
 
     val animatedBalance by animateFloatAsState(
@@ -890,6 +891,11 @@ fun WalletScreen(
                         Column(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            if (txs.isEmpty() && loadingTransactions) {
+                                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(color = Gold, modifier = Modifier.size(32.dp))
+                                }
+                            }
                             paginatedTxs.forEach { tx ->
                                 Surface(
                                     shape = RoundedCornerShape(24.dp),
@@ -1063,13 +1069,15 @@ fun WalletScreen(
     }
 
     if (showPaystackSheet) {
+        val userEmail by viewModel.userEmail.collectAsState()
         PaystackCheckoutSheet(
             amount = pendingAmount,
+            email = userEmail,
             onPaymentComplete = { reference ->
-                viewModel.topUpWallet(pendingAmount)
+                viewModel.initiatePendingPayment(pendingAmount, reference)
                 showPaystackSheet = false
-                successTitle = "Payment Successful"
-                successMessage = "₦${String.format("%,.2f", pendingAmount)} has been added to your wallet balance. Ref: $reference"
+                successTitle = "Payment Initiated"
+                successMessage = "₦${String.format("%,.2f", pendingAmount)} top up is processing. Balance will update once verified! Ref: $reference"
                 showSuccessSheet = true
             },
             onDismiss = { showPaystackSheet = false }
@@ -1594,10 +1602,73 @@ fun AddressBookScreen(
     onNavigate: (String) -> Unit
 ) {
     val addresses by viewModel.addresses.collectAsState()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var labelInput by remember { mutableStateOf("") }
     var addrInput by remember { mutableStateOf("") }
     var showDialog by remember { mutableStateOf(false) }
     val isDark by viewModel.darkModeEnabled.collectAsState()
+
+    var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isSearchingSuggestions by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions.values.any { it }
+        coroutineScope.launch {
+            Toast.makeText(context, "🎯 Auto-detecting location...", Toast.LENGTH_SHORT).show()
+            val detected = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                detectUserLocation(context)
+            }
+            if (detected.isNotBlank()) {
+                addrInput = detected
+                if (granted) {
+                    Toast.makeText(context, "Location Auto-Detected: $detected", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "GPS permission denied. Estimated: $detected", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(context, "Could not detect location. Please type manually.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun performSearch(query: String) {
+        if (query.length > 3) {
+            isSearchingSuggestions = true
+            coroutineScope.launch {
+                val results = mutableListOf<String>()
+                try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        val token = try { com.example.BuildConfig.MAPBOX_ACCESS_TOKEN } catch (e: Throwable) { "" }
+                        if (token.isNotBlank() && token != "mapbox_access_token_placeholder") {
+                            val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+                            val url = java.net.URL("https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&country=ng&limit=5&proximity=6.3350,5.6037")
+                            val urlConnection = url.openConnection() as java.net.HttpURLConnection
+                            urlConnection.connectTimeout = 3000
+                            urlConnection.readTimeout = 3000
+                            val response = urlConnection.inputStream.bufferedReader().use { it.readText() }
+                            val jsonObject = org.json.JSONObject(response)
+                            val features = jsonObject.optJSONArray("features")
+                            if (features != null) {
+                                for (i in 0 until features.length()) {
+                                    val feat = features.getJSONObject(i)
+                                    results.add(feat.optString("place_name"))
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                suggestions = results
+                isSearchingSuggestions = false
+            }
+        } else {
+            suggestions = emptyList()
+        }
+    }
 
     val brandGradient = Brush.verticalGradient(
         colors = listOf(Obsidian, Obsidian)
@@ -1745,10 +1816,25 @@ fun AddressBookScreen(
 
                                     OutlinedTextField(
                                         value = addrInput,
-                                        onValueChange = { addrInput = it },
+                                        onValueChange = { 
+                                            addrInput = it 
+                                            performSearch(it)
+                                        },
                                         placeholder = { Text("Complete Address") },
                                         shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier.fillMaxWidth(),
+                                        trailingIcon = {
+                                            IconButton(onClick = {
+                                                permissionLauncher.launch(
+                                                    arrayOf(
+                                                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                                        android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                                    )
+                                                )
+                                            }) {
+                                                Icon(Icons.Filled.MyLocation, "Auto-detect location", tint = Gold, modifier = Modifier.size(20.dp))
+                                            }
+                                        },
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = Gold,
                                             unfocusedBorderColor = if (isDark) Color(0xFF2C2C2C) else Slate,
@@ -1758,6 +1844,43 @@ fun AddressBookScreen(
                                             unfocusedTextColor = AppOnSurface
                                         )
                                     )
+
+                                    if (isSearchingSuggestions) {
+                                        LinearProgressIndicator(
+                                            color = Gold,
+                                            trackColor = if (isDark) Charcoal else GoldenWhite,
+                                            modifier = Modifier.fillMaxWidth().height(2.dp).clip(CircleShape)
+                                        )
+                                    }
+
+                                    if (suggestions.isNotEmpty()) {
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(max = 150.dp)
+                                                .padding(vertical = 4.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(containerColor = if (isDark) Charcoal else GoldenWhite),
+                                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.5f))
+                                        ) {
+                                            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                                                suggestions.forEach { suggestion ->
+                                                    Text(
+                                                        text = suggestion,
+                                                        color = AppOnSurface,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable {
+                                                                addrInput = suggestion
+                                                                suggestions = emptyList()
+                                                            }
+                                                            .padding(12.dp),
+                                                        fontSize = 12.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         )
@@ -1775,6 +1898,7 @@ fun NotificationsScreen(
     onNavigate: (String) -> Unit
 ) {
     val list by viewModel.notifications.collectAsState()
+    val loadingNotifications by viewModel.loadingNotifications.collectAsState()
     val isDark by viewModel.darkModeEnabled.collectAsState()
     val activeParcel by viewModel.selectedParcel.collectAsState()
     val context = LocalContext.current
@@ -1815,7 +1939,7 @@ fun NotificationsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(HeaderBgColor)
+                .background(LuxuryBlack)
         ) {
             ScreenHeader(
                 title = "Notifications Hub",
@@ -1909,7 +2033,16 @@ fun NotificationsScreen(
                     Column(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        if (list.isEmpty()) {
+                        if (list.isEmpty() && loadingNotifications) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .weight(1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = Gold, modifier = Modifier.size(40.dp))
+                            }
+                        } else if (list.isEmpty()) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -2750,7 +2883,7 @@ fun ReferralScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
-    val code = viewModel.referralCode
+    val code by viewModel.referralCode.collectAsState()
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
@@ -2882,7 +3015,15 @@ fun ReferralScreen(
 
                     // Share CTA
                     Button(
-                        onClick = { },
+                        onClick = {
+                            val shareText = "Join ENGRACED DISPATCH and get ₦3,000 off your first delivery! Use my invite code: $code"
+                            val sendIntent = android.content.Intent().apply {
+                                action = android.content.Intent.ACTION_SEND
+                                putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                                type = "text/plain"
+                            }
+                            context.startActivity(android.content.Intent.createChooser(sendIntent, "Share via"))
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(60.dp),
@@ -3949,12 +4090,17 @@ fun VerificationSheet(
 
                 Button(
                     onClick = {
-                        if (otpInput == "1234" || otpInput == "123456" || otpInput.length >= 4) {
-                            viewModel.refreshVerificationStatus()
-                            Toast.makeText(context, "Verification complete! You are now a verified member.", Toast.LENGTH_LONG).show()
-                            dismissWithAnim()
+                        val currentUser = com.example.data.FirebaseManager.auth?.currentUser
+                        if (currentUser != null) {
+                            currentUser.getIdToken(true).addOnSuccessListener {
+                                viewModel.refreshVerificationStatus()
+                                Toast.makeText(context, "Verification complete! You are now a verified member.", Toast.LENGTH_LONG).show()
+                                dismissWithAnim()
+                            }.addOnFailureListener {
+                                Toast.makeText(context, "Verification failed. Please try again.", Toast.LENGTH_SHORT).show()
+                            }
                         } else {
-                            Toast.makeText(context, "Invalid verification code. Try '1234'", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Please sign in to verify.", Toast.LENGTH_SHORT).show()
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -4831,6 +4977,7 @@ fun FundWithdrawBottomSheet(
 @Composable
 fun PaystackCheckoutSheet(
     amount: Double,
+    email: String = "",
     onPaymentComplete: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -4878,7 +5025,11 @@ fun PaystackCheckoutSheet(
             } catch (e: Throwable) {
                 "pk_test_4e7f3ee19be1e39bbf8789382f0c7cc89e8f6e80"
             }
-            val userEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email ?: "customer@engraceddispatch.com"
+            val userEmail = try {
+                com.example.data.FirebaseManager.auth?.currentUser?.email ?: email.ifBlank { "customer@engraceddispatch.com" }
+            } catch (e: Exception) {
+                email.ifBlank { "customer@engraceddispatch.com" }
+            }
 
             AndroidView(
                 factory = { context ->

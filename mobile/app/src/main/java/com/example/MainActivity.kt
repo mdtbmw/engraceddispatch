@@ -64,7 +64,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Color
-
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.ExistingPeriodicWorkPolicy
+import com.example.data.TelemetrySyncWorker
+import java.util.concurrent.TimeUnit
 class MainActivity : ComponentActivity() {
     private lateinit var viewModel: DeliveryViewModel
 
@@ -85,6 +91,24 @@ class MainActivity : ComponentActivity() {
         if (shortcutRoute != null) {
             viewModel.setPendingShortcutRoute(shortcutRoute)
         }
+        val parcelId = intent?.getStringExtra("parcelId")
+        if (parcelId != null) {
+            viewModel.selectParcelForTracking(parcelId)
+            viewModel.setPendingShortcutRoute("ActiveTracking")
+        }
+
+        // Schedule WorkManager background sync
+        val syncConstraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val syncWorkRequest = PeriodicWorkRequestBuilder<TelemetrySyncWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(syncConstraints)
+            .build()
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            "TelemetrySyncWork",
+            ExistingPeriodicWorkPolicy.KEEP,
+            syncWorkRequest
+        )
 
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             val permission = android.Manifest.permission.POST_NOTIFICATIONS
@@ -423,6 +447,11 @@ class MainActivity : ComponentActivity() {
         val shortcutRoute = intent.getStringExtra("shortcut_route")
         if (shortcutRoute != null) {
             viewModel.setPendingShortcutRoute(shortcutRoute)
+        }
+        val parcelId = intent.getStringExtra("parcelId")
+        if (parcelId != null) {
+            viewModel.selectParcelForTracking(parcelId)
+            viewModel.setPendingShortcutRoute("ActiveTracking")
         }
     }
 

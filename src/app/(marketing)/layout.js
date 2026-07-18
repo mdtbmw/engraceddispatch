@@ -1,8 +1,4 @@
 import { Inter, Raleway, Outfit } from "next/font/google";
-import "~/assets/css/bootstrap.min.css";
-import "~/assets/css/app.css";
-import "~/assets/css/main.css";
-import "~/assets/css/react-adjustment.css";
 import { SmoothScroll } from "~/components/Animations";
 
 const inter = Inter({

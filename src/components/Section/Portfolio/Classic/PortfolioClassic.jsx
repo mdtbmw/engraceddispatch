@@ -1,12 +1,8 @@
 "use client";
 import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import PortfolioFilterNav from "../Components/PortfolioFilterNav";
 import { usePortfolioItems } from "~/lib/useCmsData";
-const Isotope = dynamic(() => import("isotope-layout"), {
-  ssr: false,
-});
 
 const PortfolioClassic = () => {
   const { items: portfolioItems } = usePortfolioItems();

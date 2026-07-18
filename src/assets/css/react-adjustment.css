@@ -257,22 +257,38 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Modern thin scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
+  height: 6px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--primary-color);
+  background: transparent;
   border-radius: 10px;
 }
-
-::-webkit-scrollbar-thumb:hover {
-  background: #000000;
+::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.12);
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Custom select — replaced by JS Select component */
 
 /* Fade-in-up keyframe fallback for non-JS animations */
 @keyframes fadeInUp {

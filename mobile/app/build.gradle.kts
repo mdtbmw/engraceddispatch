@@ -28,11 +28,20 @@ android {
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      val keystorePath = System.getenv("KEYSTORE_PATH")
+      val storePass = System.getenv("STORE_PASSWORD")
+      val keyPass = System.getenv("KEY_PASSWORD")
+      if (keystorePath != null && storePass != null && keyPass != null) {
+        storeFile = file(keystorePath)
+        storePassword = storePass
+        keyAlias = "upload"
+        keyPassword = keyPass
+      } else {
+        storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+      }
     }
     create("debugConfig") {
       storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
@@ -96,6 +105,7 @@ dependencies {
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.biometric)
+  implementation(libs.androidx.security.crypto)
   // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -105,20 +115,15 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
-  implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.messaging)
   implementation(libs.zxing)
+  implementation("androidx.work:work-runtime-ktx:2.9.0")
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
-  implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   implementation(libs.play.services.auth)
-  // implementation(libs.play.services.location)
-  implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

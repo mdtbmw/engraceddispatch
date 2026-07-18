@@ -20,3 +20,6 @@ Thumbs.db
 /build
 mobile/app/build/
 mobile/.gradle/
+
+# Duplicate standalone landing page app (deprecated)
+/landing page/

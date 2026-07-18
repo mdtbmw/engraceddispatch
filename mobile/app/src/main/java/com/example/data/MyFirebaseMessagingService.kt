@@ -32,8 +32,10 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val title = remoteMessage.data["title"] ?: "Engraced Dispatch Status Update"
             val message = remoteMessage.data["message"] ?: "Your parcel status has changed."
             val parcelId = remoteMessage.data["parcelId"]
+            val progressStr = remoteMessage.data["progress"]
+            val progress = progressStr?.toIntOrNull()
             
-            showNotification(applicationContext, title, message, parcelId)
+            showNotification(applicationContext, title, message, parcelId, progress)
             com.example.data.FirebaseManager.triggerFcmNotification(title, message)
         }
 
@@ -41,7 +43,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         remoteMessage.notification?.let {
             val title = it.title ?: "Engraced Dispatch Status Update"
             val body = it.body ?: "Your parcel status has changed."
-            showNotification(applicationContext, title, body, null)
+            showNotification(applicationContext, title, body, null, null)
             com.example.data.FirebaseManager.triggerFcmNotification(title, body)
         }
     }
@@ -51,7 +53,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         private const val CHANNEL_ID = "parcel_status_updates"
         private const val CHANNEL_NAME = "Parcel Status Updates"
 
-        fun showNotification(context: Context, title: String, message: String, parcelId: String? = null) {
+        fun showNotification(context: Context, title: String, message: String, parcelId: String? = null, progress: Int? = null) {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -94,7 +96,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
             // If it's a parcel delivery update, show the live progress bar on Lock Screen & Drawer (Points 16 & 17)
             if (parcelId != null && parcelId != "GIFT") {
-                builder.setProgress(100, 75, false) // Live 75% progress bar on notification layout
+                val progressVal = progress ?: 75
+                builder.setProgress(100, progressVal, false) // Live dynamic progress bar on notification layout
             }
 
             // Interactive Quick Action: Track Live 📍 (Point 18)

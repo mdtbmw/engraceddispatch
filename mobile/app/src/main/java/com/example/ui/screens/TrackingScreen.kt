@@ -309,8 +309,8 @@ fun ActiveTrackingScreen(
             courierName = "Richard Dheo",
             courierPhone = "+234 803 111 2222",
             progress = 0.45f,
-            courierLatitude = 6.5244,
-            courierLongitude = 3.3792
+            courierLatitude = 6.3350,
+            courierLongitude = 5.6037
         )
     }
 
@@ -401,8 +401,8 @@ fun ActiveTrackingScreen(
     )
 
     // Dynamic Weather state and AI Mode (Points 11 & 12)
-    var currentWeather by remember { mutableStateOf("Rainy 🌧️") }
-    var isAiEtaActive by remember { mutableStateOf(true) }
+    var currentWeather by remember { mutableStateOf("Sunny ☀️") }
+    var isAiEtaActive by remember { mutableStateOf(false) }
 
     fun calculateEta(prog: Float, weather: String, aiActive: Boolean): Int {
         val baseSeconds = ((1f - prog) * 1200).toInt().coerceAtLeast(10)
@@ -553,7 +553,7 @@ fun ActiveTrackingScreen(
                     color = if (isLight) Obsidian else Gold,
                     shape = RoundedCornerShape(16.dp),
                     border = BorderStroke(1.dp, if (isLight) Obsidian else BorderDark),
-                    shadowElevation = 4.dp,
+                    shadowElevation = 0.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { dismissedTrafficAlert = true }
@@ -702,57 +702,6 @@ fun ActiveTrackingScreen(
             }
         }
 
-        // 3. WEATHER & AI ETA CONTROLS (Floating Center-Left for thumb comfort and zero overlays)
-        androidx.compose.animation.AnimatedVisibility(
-            visible = drawerState != DrawerState.EXPANDED,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 16.dp)
-                .zIndex(5f)
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val weatherEmoji = when (currentWeather) {
-                    "Sunny ☀️" -> "☀️"
-                    "Rainy 🌧️" -> "🌧️"
-                    "Stormy ⛈️" -> "⛈️"
-                    else -> "☀️"
-                }
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(Obsidian.copy(alpha = 0.85f))
-                        .border(1.dp, BorderDark, CircleShape)
-                        .clickable {
-                            currentWeather = when (currentWeather) {
-                                "Sunny ☀️" -> "Rainy 🌧️"
-                                "Rainy 🌧️" -> "Stormy ⛈️"
-                                else -> "Sunny ☀️"
-                            }
-                            tickingSeconds = calculateEta(parcel.progress, currentWeather, isAiEtaActive)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = weatherEmoji,
-                        fontSize = 18.sp
-                    )
-                }
-
-                MapControlButton(
-                    icon = Icons.Filled.Schedule,
-                    description = "Toggle AI ETA Estimator",
-                    isActive = isAiEtaActive
-                ) {
-                    isAiEtaActive = !isAiEtaActive
-                    tickingSeconds = calculateEta(parcel.progress, currentWeather, isAiEtaActive)
-                }
-            }
-        }
 
         // 4. MAPBOX CONTROLS (Floating Center-Right for thumb comfort and zero overlays)
         androidx.compose.animation.AnimatedVisibility(
@@ -1843,25 +1792,19 @@ private fun geocodeAddressToLatLng(context: android.content.Context, address: St
         android.util.Log.e("Geocoder", "System Geocoder failed: ${e.message}")
     }
     return when {
-        lower.contains("city mall") || lower.contains("ikeja city") -> Pair(6.6018, 3.3515)
-        lower.contains("airport") || lower.contains("murtala") -> Pair(6.5244, 3.3792)
-        lower.contains("conservation") || lower.contains("lcc") -> Pair(6.4281, 3.4219)
-        lower.contains("theatre") || lower.contains("iganmu") -> Pair(6.4633, 3.3672)
-        lower.contains("unilag") || lower.contains("university of lagos") || lower.contains("akoka") || lower.contains("yaba") -> Pair(6.5158, 3.3897)
-        lower.contains("lekki phase 1") || lower.contains("admiralty") || lower.contains("admirality") -> Pair(6.4265, 3.4300)
-        lower.contains("chevron") -> Pair(6.4446, 3.4912)
-        lower.contains("ikoyi club") || lower.contains("ikoyi") || lower.contains("kingsway") -> Pair(6.4549, 3.4244)
-        lower.contains("nike") || lower.contains("gallery") || lower.contains("elegushi") -> Pair(6.4474, 3.4735)
-        lower.contains("island") || lower.contains("marina") -> Pair(6.4501, 3.3958)
-        lower.contains("computer") || lower.contains("village") || lower.contains("isaac") -> Pair(6.6250, 3.3421)
-        lower.contains("ozumba") || lower.contains("mbadiwe") || lower.contains("victoria") || lower.contains("eko") -> Pair(6.4350, 3.4270)
-        lower.contains("surulere") || lower.contains("stadium") -> Pair(6.5000, 3.3500)
-        lower.contains("mainland") -> Pair(6.5244, 3.3792)
+        lower.contains("ring road") || lower.contains("oba market") -> Pair(6.3350, 5.6037)
+        lower.contains("uniben") || lower.contains("uhelu") || lower.contains("okada") -> Pair(6.4020, 5.6174)
+        lower.contains("ikpoba") || lower.contains("ramat") || lower.contains("aduwawa") -> Pair(6.3475, 5.6421)
+        lower.contains("airport") || lower.contains("oko") -> Pair(6.3176, 5.5992)
+        lower.contains("gra") || lower.contains("boundary") || lower.contains("sapele") -> Pair(6.3117, 5.6148)
+        lower.contains("ekoae") || lower.contains("bypass") || lower.contains("uhunmwonde") -> Pair(6.3812, 5.6698)
+        lower.contains("ogba") || lower.contains("zoo") -> Pair(6.2844, 5.5872)
+        lower.contains("eriaso") || lower.contains("ebor") || lower.contains("siluko") -> Pair(6.3530, 5.5780)
         else -> {
             val hash = address.hashCode().toLong()
             val latOffset = (Math.abs(hash) % 100) / 1000.0
             val lngOffset = (Math.abs(hash / 100) % 100) / 1000.0
-            Pair(6.5244 + latOffset - 0.05, 3.3792 + lngOffset - 0.05)
+            Pair(6.3350 + latOffset - 0.05, 5.6037 + lngOffset - 0.05)
         }
     }
 }
@@ -1938,7 +1881,7 @@ fun LiveMapView(
                     handler: android.webkit.SslErrorHandler?,
                     error: android.net.http.SslError?
                 ) {
-                    handler?.proceed() // bypass SSL clock mismatches in virtual/emulator environments
+                    handler?.cancel() // Safely cancel on SSL errors to comply with Play Store policies
                 }
             }
 
@@ -1993,7 +1936,7 @@ fun LiveMapView(
      *    updateCourierProgress(progress) inside Leaflet automatically with fluid CSS animations.
      * ===================================================================================================
      */
-    val htmlContent = remember(pickupAddress, deliveryAddress, courierAvatar, routeColor, pickupCoords, deliveryCoords, userAvatar, hasNoBooking, userCoords) {
+    val htmlContent = remember(pickupAddress, deliveryAddress, courierAvatar, routeColor, pickupCoords, deliveryCoords, userAvatar, hasNoBooking) {
         """
         <!DOCTYPE html>
         <html>
@@ -2203,6 +2146,7 @@ fun LiveMapView(
                 var courierMarker = null;
                 var pickupMarker = null;
                 var deliveryMarker = null;
+                var userMarker = null;
                 var routeGeometryCoordinates = []; // stores [lat, lng] array for continuous interpolation
 
                 // Fallback tile layers for Leaflet
@@ -2359,7 +2303,7 @@ fun LiveMapView(
                                 <div class="user-pointer-dot"></div>
                             `;
                             
-                            new mapboxgl.Marker({
+                            userMarker = new mapboxgl.Marker({
                                 element: userPinEl,
                                 anchor: 'bottom'
                             }).setLngLat([userLoc[1], userLoc[0]]).addTo(map);
@@ -2394,6 +2338,9 @@ fun LiveMapView(
 
                 function fetchOSRMRoute() {
                     var dirUrl = 'https://router.project-osrm.org/route/v1/driving/' + pickupLoc[1] + ',' + pickupLoc[0] + ';' + deliveryLoc[1] + ',' + deliveryLoc[0] + '?geometries=geojson';
+                    if (isMapboxActive && mapboxToken && !mapboxToken.includes('placeholder')) {
+                        dirUrl = 'https://api.mapbox.com/directions/v5/mapbox/driving/' + pickupLoc[1] + ',' + pickupLoc[0] + ';' + deliveryLoc[1] + ',' + deliveryLoc[0] + '?geometries=geojson&access_token=' + mapboxToken;
+                    }
                     fetch(dirUrl)
                         .then(res => res.json())
                         .then(data => {
@@ -2404,28 +2351,36 @@ fun LiveMapView(
                                 });
 
                                 if (isMapboxActive) {
-                                    map.addSource('route', {
-                                        'type': 'geojson',
-                                        'data': {
+                                    if (map.getSource('route')) {
+                                        map.getSource('route').setData({
                                             'type': 'Feature',
                                             'properties': {},
                                             'geometry': geojson
-                                        }
-                                    });
-                                    map.addLayer({
-                                        'id': 'route',
-                                        'type': 'line',
-                                        'source': 'route',
-                                        'layout': {
-                                            'line-join': 'round',
-                                            'line-cap': 'round'
-                                        },
-                                        'paint': {
-                                            'line-color': '$routeColor',
-                                            'line-width': 6,
-                                            'line-opacity': 0.95
-                                        }
-                                    });
+                                        });
+                                    } else {
+                                        map.addSource('route', {
+                                            'type': 'geojson',
+                                            'data': {
+                                                'type': 'Feature',
+                                                'properties': {},
+                                                'geometry': geojson
+                                            }
+                                        });
+                                        map.addLayer({
+                                            'id': 'route',
+                                            'type': 'line',
+                                            'source': 'route',
+                                            'layout': {
+                                                'line-join': 'round',
+                                                'line-cap': 'round'
+                                            },
+                                            'paint': {
+                                                'line-color': '$routeColor',
+                                                'line-width': 6,
+                                                'line-opacity': 0.95
+                                            }
+                                        });
+                                    }
 
                                     var bounds = geojson.coordinates.reduce(function(bounds, coord) {
                                         return bounds.extend(coord);
@@ -2555,7 +2510,7 @@ fun LiveMapView(
                                 iconSize: [60, 75],
                                 iconAnchor: [30, 63]
                             });
-                            L.marker(userLoc, { icon: userPinIcon }).addTo(map);
+                            userMarker = L.marker(userLoc, { icon: userPinIcon }).addTo(map);
                         }
                     }
 
@@ -2662,8 +2617,8 @@ fun LiveMapView(
 
                     var hasRealCoords = ${courierLatitude != null && courierLongitude != null};
                     if (hasRealCoords) {
-                        lat = ${courierLatitude ?: 6.5244};
-                        lng = ${courierLongitude ?: 3.3792};
+                        lat = ${courierLatitude ?: 6.3350};
+                        lng = ${courierLongitude ?: 5.6037};
                     }
 
                     if (courierMarker) {
@@ -2689,6 +2644,50 @@ fun LiveMapView(
                         }
                         if (window.AndroidMap) {
                             window.AndroidMap.onTrackingUpdated(latVal, lngVal);
+                        }
+                    }
+                }
+
+                function updateUserCoordinates(latVal, lngVal) {
+                    userLoc = [latVal, lngVal];
+                    if (userMarker) {
+                        if (isMapboxActive) {
+                            userMarker.setLngLat([lngVal, latVal]);
+                        } else {
+                            userMarker.setLatLng([latVal, lngVal]);
+                        }
+                    } else {
+                        hasUserLoc = true;
+                        if (isMapboxActive) {
+                            var userPinEl = document.createElement('div');
+                            userPinEl.className = 'user-pointer-container';
+                            userPinEl.innerHTML = `
+                                <div class="user-pointer-pulse"></div>
+                                <div class="user-pointer-pin">
+                                    <div class="user-pointer-avatar" style="background-image: url('${userAvatar}');"></div>
+                                </div>
+                                <div class="user-pointer-dot"></div>
+                            `;
+                            userMarker = new mapboxgl.Marker({
+                                element: userPinEl,
+                                anchor: 'bottom'
+                            }).setLngLat([lngVal, latVal]).addTo(map);
+                        } else {
+                            var userPinIcon = L.divIcon({
+                                className: 'user-leaflet-pointer',
+                                html: `
+                                    <div class="user-pointer-container">
+                                        <div class="user-pointer-pulse"></div>
+                                        <div class="user-pointer-pin">
+                                            <div class="user-pointer-avatar" style="background-image: url('${userAvatar}');"></div>
+                                        </div>
+                                        <div class="user-pointer-dot"></div>
+                                    </div>
+                                `,
+                                iconSize: [60, 75],
+                                iconAnchor: [30, 63]
+                            });
+                            userMarker = L.marker([latVal, lngVal], { icon: userPinIcon }).addTo(map);
                         }
                     }
                 }
@@ -2733,6 +2732,12 @@ fun LiveMapView(
     LaunchedEffect(courierLatitude, courierLongitude, isPageLoaded) {
         if (isPageLoaded && courierLatitude != null && courierLongitude != null) {
             webView.evaluateJavascript("updateCourierCoordinates($courierLatitude, $courierLongitude)", null)
+        }
+    }
+
+    LaunchedEffect(userCoords, isPageLoaded) {
+        if (isPageLoaded && userCoords != null) {
+            webView.evaluateJavascript("updateUserCoordinates(${userCoords.first}, ${userCoords.second})", null)
         }
     }
 
@@ -3367,18 +3372,18 @@ fun reverseGeocodeAddress(context: android.content.Context, lat: Double, lng: Do
                 android.util.Log.e("TrackingGeocoder", "OSM Nominatim failed: ${e.message}")
             }
 
-            // Local Lagos Landmark geocoder fallback (highly robust)
+            // Local Benin City Landmark geocoder fallback (highly robust)
             val landmarks = listOf(
-                Triple(6.6018, 3.3515, "Ikeja City Mall, Obafemi Awolowo Way, Ikeja, Lagos"),
-                Triple(6.5244, 3.3792, "Murtala Muhammed International Airport (LOS), Airport Road, Ikeja, Lagos"),
-                Triple(6.4281, 3.4219, "Lekki Conservation Centre, Lekki-Epe Expressway, Lagos"),
-                Triple(6.4633, 3.3672, "National Theatre, Iganmu, Surulere, Lagos"),
-                Triple(6.5158, 3.3897, "University of Lagos, Akoka, Yaba, Lagos"),
-                Triple(6.4265, 3.4300, "Lekki Phase 1, Victoria Island, Lagos"),
-                Triple(6.4446, 3.4912, "Chevron Drive, Lekki, Lagos"),
-                Triple(6.4549, 3.4244, "Ikoyi Club 1938, Ikoyi, Lagos"),
-                Triple(6.4474, 3.4735, "Nike Art Gallery, Elegushi, Lekki, Lagos"),
-                Triple(6.4501, 3.3958, "Lagos Island, Marina, Lagos")
+                Triple(6.3350, 5.6037, "King's Square (Ring Road), Benin City, Edo State"),
+                Triple(6.4020, 5.6174, "University of Benin (UNIBEN), Ugbowo Campus, Benin City"),
+                Triple(6.3980, 5.6110, "University of Benin Teaching Hospital (UBTH), Benin City"),
+                Triple(6.3176, 5.5980, "Benin Airport, Airport Road, Benin City"),
+                Triple(6.3533, 5.6420, "Ramat Park, Ikpoba Hill, Benin City"),
+                Triple(6.3115, 5.6120, "Kada Plaza, Sapele Road, Benin City"),
+                Triple(6.3260, 5.6180, "Edo State Government House, GRA, Benin City"),
+                Triple(6.3365, 5.6042, "National Museum Benin City, Ring Road, Benin City"),
+                Triple(6.3140, 5.5780, "UNIBEN Ekehuan Campus, Ekehuan Road, Benin City"),
+                Triple(6.3340, 5.5990, "Oba of Benin Palace, Ring Road, Benin City")
             )
 
             val nearest = landmarks.minByOrNull { (lLat, lLng, _) ->
@@ -3956,7 +3961,7 @@ private suspend fun detectUserLocationCoords(context: android.content.Context): 
         android.util.Log.e("DetectLocationCoords", "GeoIP fallback failed: ${e.message}")
     }
 
-    return Pair(6.4281, 3.4219)
+    return Pair(6.3350, 5.6037)
 }
 
 
