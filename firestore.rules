@@ -16,8 +16,10 @@ service cloud.firestore {
         request.auth.token.role == 'super_admin' ||
         request.auth.token.admin == true ||
         (request.auth.token.role == null && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin'
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'super_admin'
+          )
         ))
       );
     }
@@ -27,7 +29,9 @@ service cloud.firestore {
         request.auth.token.role == 'dispatcher' ||
         request.auth.token.dispatcher == true ||
         (request.auth.token.role == null && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dispatcher'
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'dispatcher'
+          )
         ))
       ));
     }
@@ -94,10 +98,10 @@ service cloud.firestore {
       allow read: if isAuth();
       allow create: if isAuth();
       allow update: if isDispatcher() || (isAuth() && (
-        resource.data.riderId == request.auth.uid ||
-        resource.data.courierId == request.auth.uid ||
-        request.resource.data.riderId == request.auth.uid ||
-        request.resource.data.courierId == request.auth.uid
+        ('riderId' in resource.data && resource.data.riderId == request.auth.uid) ||
+        ('courierId' in resource.data && resource.data.courierId == request.auth.uid) ||
+        ('riderId' in request.resource.data && request.resource.data.riderId == request.auth.uid) ||
+        ('courierId' in request.resource.data && request.resource.data.courierId == request.auth.uid)
       ));
       allow delete: if isAdmin();
     }
@@ -175,8 +179,8 @@ service cloud.firestore {
     // =========================================================
 
     match /pending_payments/{paymentId} {
-      allow read: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuth() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'pending';
+      allow read: if isAuth() && (('userId' in resource.data && resource.data.userId == request.auth.uid) || isAdmin());
+      allow create: if isAuth() && 'userId' in request.resource.data && request.resource.data.userId == request.auth.uid && 'status' in request.resource.data && request.resource.data.status == 'pending';
       allow update, delete: if isAdmin();
     }
 
