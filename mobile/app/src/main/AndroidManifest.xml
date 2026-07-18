@@ -64,6 +64,20 @@
                 android:resource="@xml/tracking_widget_info" />
         </receiver>
 
+        <!-- Quick Actions App Widget Receiver -->
+        <receiver
+            android:name="com.example.data.QuickActionsAppWidget"
+            android:exported="false"
+            android:label="Engraced Quick Actions">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.ACTION_REFRESH_QUICK_WIDGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_actions_widget_info" />
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

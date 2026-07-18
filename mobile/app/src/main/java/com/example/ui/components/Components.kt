@@ -458,7 +458,7 @@ fun MapCanvas(
     val isDarkTheme = MaterialTheme.colorScheme.background == BackgroundDark
     val mapboxToken = BuildConfig.MAPBOX_ACCESS_TOKEN
 
-    val htmlContent = remember(isSatellite, showTraffic, zoom, progress, isDarkTheme) {
+    val htmlContent = remember(isSatellite, showTraffic, zoom, isDarkTheme) {
         """
         <!DOCTYPE html>
         <html>
@@ -503,6 +503,13 @@ fun MapCanvas(
                 var startLat = 6.3350, startLng = 5.6037;
                 var endLat = 6.4020, endLng = 5.6174;
                 
+                var pathPoints = [
+                    [startLat, startLng],
+                    [startLat + (endLat - startLat) * 0.33, startLng + (endLng - startLng) * 0.33],
+                    [startLat + (endLat - startLat) * 0.66, startLng + (endLng - startLng) * 0.66],
+                    [endLat, endLng]
+                ];
+                
                 function initMap() {
                     map = L.map('map', {
                         zoomControl: false,
@@ -516,13 +523,6 @@ fun MapCanvas(
                     }).addTo(map);
 
                     // Add Route Line
-                    var pathPoints = [
-                        [startLat, startLng],
-                        [startLat + (endLat - startLat) * 0.33, startLng + (endLng - startLng) * 0.33],
-                        [startLat + (endLat - startLat) * 0.66, startLng + (endLng - startLng) * 0.66],
-                        [endLat, endLng]
-                    ];
-                    
                     routeLine = L.polyline(pathPoints, {
                         color: '#D4AF37',
                         weight: 4,
@@ -547,8 +547,25 @@ fun MapCanvas(
                         weight: 3
                     }).addTo(map).bindPopup("Delivery Destination");
 
-                    // Interpolate courier location along path based on progress (0.0 to 1.0)
-                    var progressVal = $progress;
+                    // Courier icon
+                    var courierIcon = L.divIcon({
+                        className: 'pulsing-courier',
+                        html: '<div style="background-color: #D4AF37; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+
+                    courierMarker = L.marker([startLat, startLng], { icon: courierIcon }).addTo(map);
+                    
+                    // Fit bounds of path
+                    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+
+                    // Initial progress update
+                    updateCourierLocation($progress);
+                }
+
+                function updateCourierLocation(progressVal) {
+                    if (!map || !pathPoints || !courierMarker) return;
                     var segmentCount = pathPoints.length - 1;
                     var segmentIdx = Math.floor(progressVal * segmentCount);
                     if (segmentIdx >= segmentCount) { segmentIdx = segmentCount - 1; }
@@ -560,18 +577,7 @@ fun MapCanvas(
                     var courierLat = p1[0] + (p2[0] - p1[0]) * segmentProgress;
                     var courierLng = p1[1] + (p2[1] - p1[1]) * segmentProgress;
 
-                    // Courier icon
-                    var courierIcon = L.divIcon({
-                        className: 'pulsing-courier',
-                        html: '<div style="background-color: #D4AF37; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>',
-                        iconSize: [20, 20],
-                        iconAnchor: [10, 10]
-                    });
-
-                    courierMarker = L.marker([courierLat, courierLng], { icon: courierIcon }).addTo(map);
-                    
-                    // Fit bounds of path
-                    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+                    courierMarker.setLatLng([courierLat, courierLng]);
                 }
 
                 window.onload = initMap;
@@ -600,13 +606,7 @@ fun MapCanvas(
         },
         modifier = modifier.fillMaxSize(),
         update = { webView ->
-            webView.loadDataWithBaseURL(
-                "https://checkout.paystack.com",
-                htmlContent,
-                "text/html",
-                "UTF-8",
-                null
-            )
+            webView.evaluateJavascript("if (typeof updateCourierLocation === 'function') { updateCourierLocation($progress); }", null)
         }
     )
 }

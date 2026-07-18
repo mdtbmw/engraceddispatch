@@ -147,6 +147,7 @@ fun DashboardScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val activeViewMode by viewModel.activeViewMode.collectAsState()
     if (activeViewMode == "rider") {
         RiderDashboardScreen(viewModel = viewModel, onNavigate = onNavigate)
@@ -186,6 +187,9 @@ fun DashboardScreen(
         unarchivedParcels.filter { it.status == ParcelStatus.TRANSIT }
     }
     val walletBalance by viewModel.walletBalance.collectAsState()
+    LaunchedEffect(walletBalance) {
+        com.example.data.QuickActionsAppWidget.updateWidgetData(context, walletBalance.toFloat())
+    }
     val referralCode by viewModel.referralCode.collectAsState()
     val userRole by viewModel.userRole.collectAsState()
     val isDark by viewModel.darkModeEnabled.collectAsState()
@@ -237,7 +241,6 @@ fun DashboardScreen(
     val profileBorderColor = Gold
     val quiltedLineColor = Color.White.copy(alpha = 0.04f)
     
-    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
     // Infinite Auto-scroll state for Hero Carousel

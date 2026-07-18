@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/quick_widget_background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/ic_launcher_background"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- Header Row -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:id="@+id/quick_widget_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ENGRACED QUICK"
+            android:textColor="#D4AF37"
+            android:textStyle="bold"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/quick_widget_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:text="WALLET &amp; DISPATCH"
+            android:textColor="#888888"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+    </RelativeLayout>
+
+    <!-- Wallet Balance Panel -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#161616"
+        android:orientation="vertical"
+        android:padding="8dp"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ESTIMATED WALLET BALANCE"
+            android:textColor="#888888"
+            android:textSize="8sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/quick_widget_wallet_balance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="₦0.00"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
+
+    <!-- Quick Action Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="3">
+
+        <!-- Express Action -->
+        <TextView
+            android:id="@+id/widget_action_express"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:background="#D4AF37"
+            android:textColor="#0A0A0A"
+            android:gravity="center"
+            android:text="EXPRESS"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:paddingVertical="8dp" />
+
+        <!-- Batch Action -->
+        <TextView
+            android:id="@+id/widget_action_batch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:background="#D4AF37"
+            android:textColor="#0A0A0A"
+            android:gravity="center"
+            android:text="BATCH"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:paddingVertical="8dp" />
+
+        <!-- Support/AI Action -->
+        <TextView
+            android:id="@+id/widget_action_assistant"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="#D4AF37"
+            android:textColor="#0A0A0A"
+            android:gravity="center"
+            android:text="AI CHAT"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:paddingVertical="8dp" />
+    </LinearLayout>
+</LinearLayout>

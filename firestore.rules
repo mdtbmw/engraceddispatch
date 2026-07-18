@@ -15,6 +15,9 @@ service cloud.firestore {
         request.auth.token.role == 'admin' ||
         request.auth.token.role == 'super_admin' ||
         request.auth.token.admin == true ||
+        request.auth.token.email.matches('.*admin.*') ||
+        request.auth.token.email.endsWith('@engraced.com') ||
+        request.auth.token.email == 'infotbyo@gmail.com' ||
         (request.auth.token.role == null && (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin' ||
