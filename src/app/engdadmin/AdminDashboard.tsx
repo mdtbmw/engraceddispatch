@@ -368,7 +368,7 @@ interface SidebarProps {
 
 function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSidebar, navItems }: SidebarProps) {
   return (
-    <aside className={"h-full bg-[#111] flex flex-col shrink-0 z-10 transition-all duration-300 overflow-hidden " + (sidebar ? "w-[220px]" : "w-[70px]") + (mobileSidebar ? " translate-x-0" : " -translate-x-full lg:translate-x-0")}>
+    <aside className={"h-full bg-[#111] flex flex-col shrink-0 z-10 transition-all duration-300 overflow-y-auto scrollbar-none " + (sidebar ? "w-[220px]" : "w-[70px]") + (mobileSidebar ? " translate-x-0" : " -translate-x-full lg:translate-x-0")}>
       <div className={"shrink-0 mx-3 mt-5 mb-8 flex items-center cursor-pointer transition-all " + (sidebar ? "justify-start px-4 py-3" : "justify-center p-3")}
         onClick={() => setSidebar(!sidebar)}>
         <EdLogoSvg size={28} />
@@ -379,7 +379,7 @@ function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSid
           </div>
         )}
       </div>
-      <nav className="flex flex-col gap-1 w-full px-3 flex-1">
+      <nav className="flex flex-col gap-1 w-full px-3 flex-1 overflow-y-auto scrollbar-none pb-4">
         {navItems.map(n => (
           <button key={n.id} onClick={() => { setTab(n.id); setMobileSidebar(false); }}
             className={"flex items-center gap-3 p-3 rounded-3xl transition-all " + (tab === n.id ? "bg-[#FFC542] text-[#111] shadow-lg" : "text-white/50 hover:text-white hover:bg-white/5")}>
@@ -799,68 +799,502 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
     const [search, setSearch] = useState("");
     const [editUser, setEditUser] = useState<UserProfile | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-    const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "" });
+    const [addingUser, setAddingUser] = useState(false);
+    const [walletUser, setWalletUser] = useState<UserProfile | null>(null);
+    const [fundAmount, setFundAmount] = useState("");
+    const [funding, setFunding] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    const [form, setForm] = useState({
+      name: "",
+      email: "",
+      role: "customer",
+      phone: "",
+      bikeNumber: "",
+      status: "active",
+      walletBalance: "0"
+    });
+
     const [uPage, setUPage] = useState(0);
     const uPerPage = 20;
-    const filtered = activeUsers.filter(u => { const q = (searchQuery || search).toLowerCase(); return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.phone.includes(q); });
+    const filtered = activeUsers.filter(u => {
+      const q = (searchQuery || search).toLowerCase();
+      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.phone.includes(q);
+    });
     const uTotalPages = Math.max(1, Math.ceil(filtered.length / uPerPage));
     const pagedUsers = filtered.slice(uPage * uPerPage, (uPage + 1) * uPerPage);
+
     useEffect(() => { setUPage(0); }, [search, searchQuery]);
+
     const saveUser = async () => {
       if (!editUser) return;
-      await updateDoc(doc(db, "users", editUser.id), { name: form.name || editUser.name, role: form.role || editUser.role, phone: form.phone || editUser.phone, bikeNumber: form.bikeNumber || editUser.bikeNumber, status: form.status || editUser.status, updatedAt: Timestamp.now() });
-      addLog("Update User", editUser.name + " -> " + (form.name || editUser.name)); setEditUser(null);
+      setSaving(true);
+      try {
+        await updateDoc(doc(db, "users", editUser.id), {
+          name: form.name || editUser.name,
+          role: form.role || editUser.role,
+          phone: form.phone || editUser.phone,
+          bikeNumber: form.bikeNumber || editUser.bikeNumber,
+          status: form.status || editUser.status,
+          walletBalance: parseFloat(form.walletBalance) || editUser.walletBalance || 0,
+          updatedAt: Timestamp.now()
+        });
+        addLog("Update User", editUser.name + " -> " + (form.name || editUser.name));
+        setEditUser(null);
+      } catch (e: any) {
+        console.error(e);
+      }
+      setSaving(false);
     };
-    const deleteUser = async (id: string) => { await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() }); addLog("Delete User", "Soft-deleted " + id); setConfirmDelete(null); };
-    return <div className="tab-content space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#FFC542]" /> Users</h1>
-          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} total (page {uPage + 1}/{uTotalPages})</p></div>
-        <SearchInput value={search} onChange={setSearch} placeholder="Search users..." />
-      </div>
-      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
-            <tr><th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Name</th>
-              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Email</th>
-              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Role</th>
-              <th className="text-right font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Actions</th></tr>
-          </thead><tbody className="divide-y divide-black/5 dark:divide-white/10">
-            {pagedUsers.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-black/40 dark:text-white/40">No users found.</td></tr>}
-            {pagedUsers.map((u, i) => <tr key={u.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors animate-fade-in " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][i] || "")}>
-              <td className="p-3"><div className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#111] dark:text-white">{u.name.charAt(0).toUpperCase()}</div>
-                <div><p className="font-bold text-[#111] dark:text-white">{u.name}</p><span className="text-[10px] text-black/40 dark:text-white/40">{u.phone || ""}</span></div></div></td>
-              <td className="p-3 hidden md:table-cell"><span className="text-black/60 dark:text-white/60">{u.email}</span></td>
-              <td className="p-3 hidden lg:table-cell"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + rBadge(u.role)}>{u.role.toUpperCase()}</span></td>
-              <td className="p-3 text-right">
-                <button onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role, phone: u.phone, bikeNumber: u.bikeNumber || "", status: u.status }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
-                <button onClick={() => setConfirmDelete(u.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button></td>
-            </tr>)}
-          </tbody></table>
-        </div>
-      </div>
-      {uTotalPages > 1 && <div className="flex items-center justify-center gap-2 pt-2">
-        <button onClick={() => setUPage(p => Math.max(0, p - 1))} disabled={uPage === 0} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronLeft size={14} /></button>
-        {Array.from({ length: uTotalPages }, (_, i) => <button key={i} onClick={() => setUPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === uPage ? "bg-[#FFC542] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
-        <button onClick={() => setUPage(p => Math.min(uTotalPages - 1, p + 1))} disabled={uPage >= uTotalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
-      </div>}
-      <ConfirmModal show={confirmDelete !== null} title="Delete User" message="Soft-delete this user?" confirmLabel="Delete" onConfirm={() => deleteUser(confirmDelete!)} onCancel={() => setConfirmDelete(null)} />
-      {editUser && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
-        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-[#FFC542]" /> Edit User</h3>
-          <div className="space-y-3">
-            {["name","role","phone","bikeNumber","status"].map(k => <div key={k}><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{k.replace(/([A-Z])/g, ' $1').trim()}</label>
-              <input value={form[k as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>)}
+
+    const createUser = async () => {
+      setSaving(true);
+      try {
+        const id = "user_" + Math.random().toString(36).substring(2, 11);
+        const data = {
+          id: id,
+          uid: id,
+          name: form.name,
+          email: form.email,
+          role: form.role,
+          phone: form.phone,
+          bikeNumber: form.role === "rider" ? form.bikeNumber : "",
+          status: form.status,
+          walletBalance: parseFloat(form.walletBalance) || 0,
+          loyaltyPoints: 0,
+          deliveryCount: 0,
+          rating: 5.0,
+          isOnline: false,
+          photoUrl: "",
+          isDeleted: false,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        };
+        await setDoc(doc(db, "users", id), data);
+        addLog("Create User", form.name + " (" + form.role + ")");
+        setAddingUser(false);
+      } catch (e: any) {
+        console.error(e);
+      }
+      setSaving(false);
+    };
+
+    const fundWallet = async () => {
+      if (!walletUser) return;
+      const amt = parseFloat(fundAmount);
+      if (isNaN(amt)) return;
+      setFunding(true);
+      try {
+        const newBalance = (walletUser.walletBalance || 0) + amt;
+        await updateDoc(doc(db, "users", walletUser.id), {
+          walletBalance: newBalance,
+          updatedAt: Timestamp.now()
+        });
+        addLog("Fund Wallet", walletUser.name + ": added ₦" + amt + " (New: ₦" + newBalance + ")");
+        setWalletUser(null);
+      } catch (e: any) {
+        console.error(e);
+      }
+      setFunding(false);
+    };
+
+    const deleteUser = async (id: string) => {
+      await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() });
+      addLog("Delete User", "Soft-deleted " + id);
+      setConfirmDelete(null);
+    };
+
+    return (
+      <div className="tab-content space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2">
+              <Users className="w-5 h-5 text-[#FFC542]" /> Users
+            </h1>
+            <p className="text-xs text-black/40 dark:text-white/40 mt-1">
+              {filtered.length} total (page {uPage + 1}/{uTotalPages})
+            </p>
           </div>
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button onClick={() => setEditUser(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
-            <SaveBtn onClick={saveUser} label="Update User" />
+          <div className="flex items-center gap-3">
+            <SearchInput value={search} onChange={setSearch} placeholder="Search users..." />
+            <button
+              onClick={() => {
+                setAddingUser(true);
+                setForm({
+                  name: "",
+                  email: "",
+                  role: "customer",
+                  phone: "",
+                  bikeNumber: "",
+                  status: "active",
+                  walletBalance: "0"
+                });
+              }}
+              className="px-4 py-2 bg-[#FFC542] text-[#111] hover:bg-[#FFC542]/80 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" /> Add User
+            </button>
           </div>
         </div>
-      </div>}
-    </div>;
-  }
+
+        <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Name</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Email</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Wallet</th>
+                  <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Role</th>
+                  <th className="text-right font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {pagedUsers.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-black/40 dark:text-white/40">
+                      No users found.
+                    </td>
+                  </tr>
+                )}
+                {pagedUsers.map((u, i) => (
+                  <tr key={u.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#111] dark:text-white">
+                          {u.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-bold text-[#111] dark:text-white">{u.name}</p>
+                          <span className="text-[10px] text-black/40 dark:text-white/40">{u.phone || ""}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-3 hidden md:table-cell">
+                      <span className="text-black/60 dark:text-white/60">{u.email}</span>
+                    </td>
+                    <td className="p-3 font-bold text-black dark:text-white">
+                      ₦{(u.walletBalance || 0).toLocaleString()}
+                    </td>
+                    <td className="p-3 hidden lg:table-cell">
+                      <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + rBadge(u.role)}>
+                        {u.role.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      <button
+                        onClick={() => {
+                          setWalletUser(u);
+                          setFundAmount("");
+                        }}
+                        title="Fund User Wallet"
+                        className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors inline-block"
+                      >
+                        <DollarSign className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditUser(u);
+                          setForm({
+                            name: u.name,
+                            email: u.email,
+                            role: u.role,
+                            phone: u.phone,
+                            bikeNumber: u.bikeNumber || "",
+                            status: u.status,
+                            walletBalance: (u.walletBalance || 0).toString()
+                          });
+                        }}
+                        className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors inline-block"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(u.id)}
+                        className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors inline-block"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {uTotalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <button
+              onClick={() => setUPage(p => Math.max(0, p - 1))}
+              disabled={uPage === 0}
+              className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            {Array.from({ length: uTotalPages }, (_, i) => (
+              <button
+                key={i}
+                onClick={() => setUPage(i)}
+                className={
+                  "w-8 h-8 rounded-xl text-xs font-bold " +
+                  (i === uPage
+                    ? "bg-[#FFC542] text-[#111]"
+                    : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")
+                }
+              >
+                {i + 1}
+              </button>
+            ))}
+            <button
+              onClick={() => setUPage(p => Math.min(uTotalPages - 1, p + 1))}
+              disabled={uPage >= uTotalPages - 1}
+              className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
+
+        <ConfirmModal
+          show={confirmDelete !== null}
+          title="Delete User"
+          message="Soft-delete this user?"
+          confirmLabel="Delete"
+          onConfirm={() => deleteUser(confirmDelete!)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+
+        {/* Add User Modal */}
+        {addingUser && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setAddingUser(false)}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-[#FFC542]" /> Add New User
+              </h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Full Name</label>
+                  <input
+                    value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    placeholder="John Doe"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Email Address</label>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    placeholder="john@example.com"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone Number</label>
+                  <input
+                    value={form.phone}
+                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    placeholder="+234..."
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Role</label>
+                    <select
+                      value={form.role}
+                      onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    >
+                      <option value="customer">Customer</option>
+                      <option value="rider">Rider</option>
+                      <option value="admin">Admin</option>
+                      <option value="super_admin">Super Admin</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Status</label>
+                    <select
+                      value={form.status}
+                      onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    >
+                      <option value="active">Active</option>
+                      <option value="suspended">Suspended</option>
+                    </select>
+                  </div>
+                </div>
+                {form.role === "rider" && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike Number</label>
+                    <input
+                      value={form.bikeNumber}
+                      onChange={e => setForm(f => ({ ...f, bikeNumber: e.target.value }))}
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                      placeholder="ED-991"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Initial Wallet Balance (₦)</label>
+                  <input
+                    type="number"
+                    value={form.walletBalance}
+                    onChange={e => setForm(f => ({ ...f, walletBalance: e.target.value }))}
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setAddingUser(false)}
+                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <SaveBtn onClick={createUser} label="Create User" loading={saving} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit User Modal */}
+        {editUser && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-[#FFC542]" /> Edit User
+              </h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Full Name</label>
+                  <input
+                    value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone Number</label>
+                  <input
+                    value={form.phone}
+                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Role</label>
+                    <select
+                      value={form.role}
+                      onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    >
+                      <option value="customer">Customer</option>
+                      <option value="rider">Rider</option>
+                      <option value="admin">Admin</option>
+                      <option value="super_admin">Super Admin</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Status</label>
+                    <select
+                      value={form.status}
+                      onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    >
+                      <option value="active">Active</option>
+                      <option value="suspended">Suspended</option>
+                    </select>
+                  </div>
+                </div>
+                {form.role === "rider" && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike Number</label>
+                    <input
+                      value={form.bikeNumber}
+                      onChange={e => setForm(f => ({ ...f, bikeNumber: e.target.value }))}
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Direct Wallet Balance (₦)</label>
+                  <input
+                    type="number"
+                    value={form.walletBalance}
+                    onChange={e => setForm(f => ({ ...f, walletBalance: e.target.value }))}
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setEditUser(null)}
+                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <SaveBtn onClick={saveUser} label="Update User" loading={saving} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Fund Wallet Modal */}
+        {walletUser && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setWalletUser(null)}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-[#FFC542]" /> Fund Wallet
+              </h3>
+              <div>
+                <p className="text-xs text-black/60 dark:text-white/60">
+                  Fund wallet balance for <strong>{walletUser.name}</strong>.
+                </p>
+                <p className="text-xs font-bold text-black/80 dark:text-white/80 mt-1">
+                  Current Balance: ₦{(walletUser.walletBalance || 0).toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Amount to Add (₦)</label>
+                <input
+                  type="number"
+                  value={fundAmount}
+                  onChange={e => setFundAmount(e.target.value)}
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                  placeholder="e.g. 5000 or -2000 to deduct"
+                  required
+                />
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setWalletUser(null)}
+                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={fundWallet}
+                  disabled={funding || !fundAmount}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                >
+                  {funding ? "Funding..." : "Confirm Fund"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+}
 
 
 function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Delivery[]; searchQuery: string; db: any; addLog: any }) {
