@@ -9,8 +9,12 @@
     "deploy": "next build && next start -p 3000"
   },
   "dependencies": {
-    "firebase": "^10.8.0",
-    "framer-motion": "^12.42.2",
+    "@firebase/app": "^0.15.1",
+    "@firebase/auth": "^1.13.3",
+    "@firebase/firestore": "^4.16.0",
+    "firebase": "^10.14.1",
+    "firebase-admin": "^14.2.0",
+    "framer-motion": "^12.43.0",
     "isotope-layout": "^3.0.6",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.330.0",
@@ -21,10 +25,7 @@
     "react-dom": "^18.2.0",
     "react-fast-marquee": "^1.6.5",
     "react-icons": "^5.7.0",
-    "react-intersection-observer": "^10.1.0",
-    "react-player": "^3.4.0",
-    "react-slick": "^0.31.0",
-    "slick-carousel": "^1.8.1"
+    "react-intersection-observer": "^10.1.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

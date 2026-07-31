@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Engraced Dispatch"
+rootProject.name = "ESDispatch"
 
 include(":app")

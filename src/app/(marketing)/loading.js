@@ -1,25 +1,7 @@
 export default function Loading() {
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        minHeight: "100vh",
-        backgroundColor: "#fff",
-      }}
-    >
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          border: "4px solid #f3f3f3",
-          borderTop: "4px solid #F5A623",
-          borderRadius: "50%",
-          animation: "spin 1s linear infinite",
-        }}
-      />
-      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+    <div className="min-h-screen bg-white dark:bg-[#111] flex items-center justify-center">
+      <div className="w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-gold rounded-full animate-spin" />
     </div>
   );
 }

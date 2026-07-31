@@ -1,0 +1,15 @@
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:packageRelease'.
+> A failure occurred while executing com.android.build.gradle.tasks.PackageAndroidArtifact$IncrementalSplitterRunnable
+   > java.io.FileNotFoundException: D:\Eng App\mobile\app\build\intermediates\incremental\packageRelease\tmp\release\dex-renamer-state.txt (The system cannot find the path specified)
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 42m 9sTThe syntax of the command is incorrect.

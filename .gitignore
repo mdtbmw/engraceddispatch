@@ -20,3 +20,9 @@ Thumbs.db
 /build
 mobile/app/build/
 mobile/.gradle/
+
+# Duplicate standalone landing page app (deprecated)
+/landing page/
+
+# Firebase service account (private key - never commit)
+functions/service-account.json

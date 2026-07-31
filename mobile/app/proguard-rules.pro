@@ -17,11 +17,11 @@
 # Room Database Keep Rules
 -keep class * extends androidx.room.RoomDatabase
 -dontwarn androidx.room.paging.**
--keep class com.example.data.** { *; }
+-keep class com.esdispatch.data.** { *; }
 
 # Moshi Serialization & JSON Parsing Keep Rules
--keep class com.example.data.Models** { *; }
--keep class com.example.data.AIModels** { *; }
+-keep class com.esdispatch.data.Models** { *; }
+-keep class com.esdispatch.data.AIModels** { *; }
 -keep class * {
     @com.squareup.moshi.Json <fields>;
 }
@@ -35,7 +35,8 @@
 -keepattributes Signature, InnerClasses, EnclosingMethod
 -dontwarn okhttp3.**
 -dontwarn okio.**
--keepnames class okhttp3.** { *; }
+-keep class okhttp3.** { *; }
+-keep class okio.** { *; }
 
 # Firebase Keep Rules (Auth, Firestore, Messaging, AI)
 -dontwarn com.google.firebase.**
@@ -50,3 +51,15 @@
 -dontwarn kotlinx.coroutines.**
 -keep class kotlinx.coroutines.** { *; }
 
+# Google Crypto Tink & Security
+-dontwarn com.google.api.client.**
+-dontwarn com.google.crypto.tink.**
+-dontwarn org.joda.time.**
+-keep class androidx.security.crypto.** { *; }
+-keep class com.google.crypto.tink.** { *; }
+
+# Navigation
+-keep class androidx.navigation.** { *; }
+
+# Keep all app package classes to prevent R8 from stripping or breaking reflections/states
+-keep class com.esdispatch.** { *; }

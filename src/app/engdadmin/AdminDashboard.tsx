@@ -1,20 +1,41 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, writeBatch, addDoc, increment } from "firebase/firestore";
+
+async function firestoreRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 2000): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw lastError;
+}
+
+function useOnlineStatus() {
+  const [online, setOnline] = React.useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const go = () => setOnline(true);
+    const gl = () => setOnline(false);
+    window.addEventListener("online", go);
+    window.addEventListener("offline", gl);
+    return () => { window.removeEventListener("online", go); window.removeEventListener("offline", gl); };
+  }, []);
+  return online;
+}
+import { auth, db } from "@/lib/firebase";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, writeBatch, addDoc, increment } from "firebase/firestore";
 import { Shield, Truck, Package, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun } from "lucide-react";
 import CMSTab from "./CMSTab";
 import dynamic from "next/dynamic";
 const LiveTrackingMap = dynamic(() => import("./LiveTrackingMap"), { ssr: false });
-const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "engraceddispatch-ffba4";
-const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyDa7J-JOfQIW4ZZo59jjEBiLUSRyvdK6uY", authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || `${projectId}.firebaseapp.com`, projectId, storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || `${projectId}.appspot.com`, messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_GCM_SENDER_ID || "858437923778", appId: process.env.NEXT_PUBLIC_FIREBASE_APPLICATION_ID || "1:858437923778:android:2d29558caf1a2f15955c5b" };
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
-const auth = getAuth(app);
-const db = getFirestore(app);
 type TabId = "dashboard" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
-interface Delivery { id: string; status: string; category?: string; receiverName: string; deliveryAddress: string; senderName: string; senderPhone: string; receiverPhone: string; price: number; riderId: string; courierName: string; courierPhone: string; itemName: string; pickupAddress: string; quantity: number; weight: number; dateString: string; tipAmount: number; userId: string; otpCode: string; pickupLat?: number; pickupLng?: number; deliveryLat?: number; deliveryLng?: number; }
+interface Delivery { id: string; status: string; category?: string; receiverName: string; deliveryAddress: string; senderName: string; senderPhone: string; receiverPhone: string; price: number; riderId: string; courierName: string; courierPhone: string; courierLatitude?: number; courierLongitude?: number; itemName: string; pickupAddress: string; quantity: number; weight: number; dateString: string; tipAmount: number; userId: string; otpCode: string; riderBikeNumber?: string; pickupLat?: number; pickupLng?: number; deliveryLat?: number; deliveryLng?: number; driverId?: string; driverName?: string; }
 interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
 interface Referral { id: string; referrerId: string; referrerName: string; referrerEmail: string; refereeId: string; refereeName: string; refereeEmail: string; rewardAmount: number; status: string; }
 interface Promotion { id: string; title: string; description: string; discountType: string; discountValue: number; discountDisplay: string; minOrderAmount: number; maxDiscount: number; code: string; usageLimit: number; usedCount: number; active: boolean; }
@@ -97,30 +118,71 @@ function InlineEdit({ value, onSave, type = "text" }: { value: string; onSave: (
 }
 function ConfirmModal({ show, title, message, confirmLabel, onConfirm, onCancel }: { show: boolean; title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void }) {
   if (!show) return null;
-  return <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-    <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+  return <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50">
+    <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-md shadow-2xl ring-1 ring-black/5 dark:ring-white/10 space-y-4">
       <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-red-500" /> {title}</h3>
       <p className="text-sm text-black/60 dark:text-white/60">{message}</p>
       <div className="flex items-center justify-end gap-3 pt-2">
-        <button onClick={onCancel} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Cancel</button>
-        <button onClick={onConfirm} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition-colors">{confirmLabel || "Confirm"}</button>
+        <button onClick={onCancel} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-colors">Cancel</button>
+        <button onClick={onConfirm} className="px-4 py-2.5 min-h-[38px] bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition-colors">{confirmLabel || "Confirm"}</button>
       </div>
     </div>
   </div>;
 }
 function SearchInput({ value, onChange, placeholder = "Search..." }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
-  return <div className="relative">
-    <Search className="absolute left-3 top-2.5 w-4 h-4 text-black/40 dark:text-white/40" />
+  return <div className="relative group">
+    <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-black/30 dark:text-white/30 group-focus-within:text-[#FFC542] transition-colors" />
     <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      className="pl-10 pr-4 py-2 bg-white dark:bg-[#222] border border-black/20 dark:border-white/20 rounded-xl text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40 focus:border-[#FFC542] w-full transition-all" />
+      className="pl-9 pr-4 py-2.5 bg-white dark:bg-[#222] border border-black/15 dark:border-white/15 rounded-xl text-xs text-[#111] dark:text-white placeholder:text-black/30 dark:placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#FFC542]/30 focus:border-[#FFC542]/60 w-full transition-all" />
   </div>;
 }
 function SaveBtn({ onClick, label = "Save", loading = false, size = "sm" }: { onClick: () => void; label?: string; loading?: boolean; size?: "sm" | "md" }) {
-  const s = size === "md" ? "px-5 py-2.5 text-sm" : "px-3 py-1.5 text-[10px]";
+  const s = size === "md" ? "px-5 py-2.5 text-xs" : "px-4 py-2.5 text-xs";
   return <button onClick={onClick} disabled={loading}
-    className={"inline-flex items-center gap-1.5 " + s + " bg-[#FFC542] hover:bg-[#FFC542]/80 disabled:bg-[#FFC542]/40 text-[#111] rounded-xl font-black shadow-sm hover:shadow-md transition-all"}>
-    {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} {label}
+    className={"inline-flex items-center gap-1.5 " + s + " bg-[#FFC542] hover:bg-[#FFC542]/80 disabled:bg-[#FFC542]/40 text-[#111] rounded-xl font-black shadow-sm hover:shadow-md transition-all min-h-[38px]"}>
+    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {label}
   </button>;
+}
+
+function Select({ value, onChange, options, placeholder = "Select...", className = "", compact = false, renderOption }: {
+  value: string; onChange: (v: string) => void; options: { value: string; label: string; color?: string }[];
+  placeholder?: string; className?: string; compact?: boolean;
+  renderOption?: (opt: { value: string; label: string; color?: string }, selected: boolean) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+  const selected = options.find(o => o.value === value);
+  return <div className={"relative " + className}>
+    <button type="button" onClick={() => setOpen(true)}
+      className={"w-full flex items-center justify-between gap-1.5 bg-white dark:bg-[#1c1c1c] border border-black/10 dark:border-white/10 rounded-xl text-[#111] dark:text-white hover:border-black/20 dark:hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-[#FFC542]/30 focus:border-[#FFC542]/60 transition-all text-left " + (compact ? "px-2 py-1 text-[10px]" : "px-3 py-2.5 text-xs min-h-[38px]")}>
+      <span className={"truncate " + (selected ? "" : "text-black/30 dark:text-white/30")}>{selected ? selected.label : placeholder}</span>
+      <ChevronDown className={"w-3 h-3 shrink-0 text-black/40 dark:text-white/40"} />
+    </button>
+    {open && <div ref={panelRef} className="fixed z-50" style={{
+      top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+      width: "calc(100% - 32px)", maxWidth: "320px"
+    }}>
+      <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-2 shadow-2xl ring-1 ring-black/5 dark:ring-white/10 overflow-hidden">
+        <div className="max-h-72 overflow-y-auto py-1 space-y-0.5">
+          {options.map(o => (
+            <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}
+              className={"w-full text-left flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors " + (compact ? "text-[11px]" : "text-sm ") + (o.value === value ? "bg-[#FFC542]/10 text-[#111] dark:text-white font-bold" : "text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5")}>
+              {renderOption ? renderOption(o, o.value === value) : <span>{o.label}</span>}
+              {o.value === value && <Check className="w-4 h-4 ml-auto text-[#FFC542]" />}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>}
+  </div>;
 }
 
 function ToastContainer({ toasts }: { toasts: Toast[] }) {
@@ -212,7 +274,7 @@ async function seedAppContent(db: any, addLog: any, addToast: any, createNotific
 }
 
 function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, seedUsers, seedDeliveries, seedBanners, seedPromos, seedReferrals, seedAppContent, seeding, setTab }: any) {
-  const recentDeliveries = deliveries.slice(-10).reverse();
+  const recentDeliveries = deliveries.filter((d: any) => d.status !== "DELIVERED" && d.status !== "CANCELLED").slice(-10).reverse();
   const [filterCat, setFilterCat] = useState("all");
   const serviceIcon = (tag: string, cls: string) => {
     switch(tag) {
@@ -306,7 +368,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
               <div className="col-span-2 text-right">Est. Time</div>
             </div>
             <div className="flex-1 overflow-y-auto pr-2 mt-2 space-y-1">
-              {recentDeliveries.filter((d: any) => filterCat === "all" || d.category === filterCat).slice(0, 8).map((d: any, idx: number) => (
+              {recentDeliveries.filter((d: any) => d.status !== "DELIVERED" && d.status !== "CANCELLED" && (filterCat === "all" || d.category === filterCat)).slice(0, 8).map((d: any, idx: number) => (
                 <div key={d.id} className={"grid grid-cols-12 gap-4 py-3.5 border-b border-black/5 dark:border-white/5 items-center px-3 hover:bg-black/5 dark:hover:bg-white/5 transition-colors rounded-xl last:border-b-0 cursor-pointer animate-fade-in " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][idx] || "stagger-1")}>
                   <div className="col-span-6 flex flex-col justify-center">
                     <div className="font-extrabold text-[14px] text-[#111] dark:text-white leading-snug">{(idx + 1).toString().padStart(2,"0")}. {d.itemName || "Parcel"} — {d.receiverName}</div>
@@ -370,7 +432,7 @@ interface SidebarProps {
 
 function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSidebar, navItems }: SidebarProps) {
   return (
-    <aside className={"h-full bg-[#111] flex flex-col shrink-0 z-10 transition-all duration-300 overflow-hidden " + (sidebar ? "w-[220px]" : "w-[70px]") + (mobileSidebar ? " translate-x-0" : " -translate-x-full lg:translate-x-0")}>
+    <aside className={"h-full bg-[#111] flex flex-col shrink-0 z-10 transition-all duration-300 " + (sidebar ? "w-[220px]" : "w-[70px]") + (mobileSidebar ? " translate-x-0" : " -translate-x-full lg:translate-x-0")}>
       <div className={"shrink-0 mx-3 mt-5 mb-8 flex items-center cursor-pointer transition-all " + (sidebar ? "justify-start px-4 py-3" : "justify-center p-3")}
         onClick={() => setSidebar(!sidebar)}>
         <EdLogoSvg size={28} />
@@ -381,7 +443,7 @@ function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSid
           </div>
         )}
       </div>
-      <nav className="flex flex-col gap-1 w-full px-3 flex-1">
+      <nav className="flex flex-col gap-1 w-full px-3 flex-1 overflow-y-auto pb-4">
         {navItems.map(n => (
           <button key={n.id} onClick={() => { setTab(n.id); setMobileSidebar(false); }}
             className={"flex items-center gap-3 p-3 rounded-3xl transition-all " + (tab === n.id ? "bg-[#FFC542] text-[#111] shadow-lg" : "text-white/50 hover:text-white hover:bg-white/5")}>
@@ -427,7 +489,7 @@ function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showN
           <input type="text" placeholder="Search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="outline-none flex-1 text-sm bg-transparent font-medium text-[#111] dark:text-white" />
           <button className="bg-[#FFC542] text-[#111] p-2 rounded-xl hover:bg-[#FFC542]/90 transition-colors"><Search size={18} strokeWidth={2.5} /></button>
         </div>
-        <div className="relative">
+        <div className="relative" id="notif-area">
           <button onClick={(e) => { e.stopPropagation(); setShowNotifs(!showNotifs); setShowUserMenu(false); }} className="relative p-2.5 border border-black/10 dark:border-white/10 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
             <Bell size={20} className="text-[#111] dark:text-white" />
             {unreadCount > 0 && <div className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-[#FFC542] rounded-full border-2 border-white dark:border-[#1a1a1a] animate-pulse-ring"></div>}
@@ -446,7 +508,7 @@ function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showN
             <div className="p-3 text-center border-t border-black/10 dark:border-white/10"><button className="text-[10px] text-[#FFC542] font-bold hover:underline">View all notifications</button></div>
           </div>}
         </div>
-        <div className="relative">
+        <div className="relative" id="user-menu-area">
           <div className="flex items-center gap-3 ml-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); setShowNotifs(false); }}>
             <div className="w-11 h-11 rounded-full bg-[#FFC542]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-[#111] dark:text-white font-black text-sm"><EdLogoSvg size={20} /></div>
             <div className="text-sm hidden sm:block">
@@ -464,7 +526,7 @@ function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showN
                 {dark ? <Sun className="w-4 h-4 text-[#FFC542]" /> : <Moon className="w-4 h-4 text-[#FFC542]" />}
                 {dark ? "Light Mode" : "Dark Mode"}
               </button>
-              <button onClick={() => { document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs font-bold text-red-500 mt-1">
+              <button onClick={() => { document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs font-bold text-red-500 mt-1">
                 <LogOut className="w-4 h-4" /> Sign Out
               </button>
             </div>
@@ -522,7 +584,15 @@ function AdminDashboardPage() {
   }, [dark]);
 
   useEffect(() => {
-    const handler = () => { setShowNotifs(false); setShowUserMenu(false); };
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const notifArea = document.getElementById("notif-area");
+      const userArea = document.getElementById("user-menu-area");
+      if (notifArea && notifArea.contains(target)) return;
+      if (userArea && userArea.contains(target)) return;
+      setShowNotifs(false);
+      setShowUserMenu(false);
+    };
     window.addEventListener("click", handler);
     return () => window.removeEventListener("click", handler);
   }, []);
@@ -566,17 +636,23 @@ function AdminDashboardPage() {
         });
         await batch.commit();
       }
-    } catch {}
+    } catch (e: any) {
+      console.error("createNotification failed:", e);
+    }
   }, [users]);
 
   const markNotifRead = useCallback(async (id: string) => {
-    try { await updateDoc(doc(db, "notifications", id), { read: true }); } catch {}
+    try { await updateDoc(doc(db, "notifications", id), { read: true }); } catch (e: any) {
+      console.error("markNotifRead failed:", e);
+    }
   }, []);
 
   const addLog = useCallback(async (action: string, details: string) => {
-    const entry = { action, details, admin: currentUser?.email || "Admin", timestamp: Date.now() };
-    try { await addDoc(collection(db, "audit_logs"), entry); } catch {}
-    setLogs((prev: AuditEntry[]) => [{ id: Date.now().toString(), time: "Just now", ...entry }, ...prev]);
+    const entry = { action, details, admin: currentUser?.email || "Admin", timestamp: Timestamp.now() };
+    try { await addDoc(collection(db, "audit_logs"), entry); } catch (e: any) {
+      console.error("addLog failed:", e);
+    }
+    setLogs((prev: AuditEntry[]) => [{ id: Date.now().toString(), time: "Just now", ...entry, timestamp: Date.now() }, ...prev]);
   }, [currentUser]);
 
   useEffect(() => {
@@ -584,13 +660,14 @@ function AdminDashboardPage() {
       if (u) {
           try {
             await new Promise(r => setTimeout(r, 1500));
+            const token = await u.getIdToken();
             const snap = await getDoc(doc(db, "users", u.uid));
-            if (!snap.exists()) { setAuthErr("Account not found. Contact an administrator."); document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null); setLoading(false); return; }
+            if (!snap.exists()) { setAuthErr("Account not found. Contact an administrator."); document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null); setLoading(false); return; }
             const d = snap.data();
-            if (d?.role === "admin" || d?.role === "super_admin") { setCurrentUser(u); setUserRole(d.role); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Strict"; setLoading(false); return; }
-            if (d?.role === "dispatcher") { setCurrentUser(u); setUserRole("dispatcher"); document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Strict"; setLoading(false); return; }
-            setAuthErr("Unauthorized"); document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null);
-          } catch { setAuthErr("Authentication error. Please try again."); document.cookie = "admin_auth=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null); }
+            if (d?.role === "admin" || d?.role === "super_admin") { setCurrentUser(u); setUserRole(d.role); document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`; setLoading(false); return; }
+            if (d?.role === "dispatcher") { setCurrentUser(u); setUserRole("dispatcher"); document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`; setLoading(false); return; }
+            setAuthErr("Unauthorized"); document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null);
+          } catch { setAuthErr("Authentication error. Please try again."); document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null); }
       } else { setCurrentUser(null); setUserRole(""); setLoading(false); return; }
       setLoading(false);
     });
@@ -623,14 +700,23 @@ function AdminDashboardPage() {
         pickupAddress: x.pickupAddress || "", quantity: x.quantity || 1, weight: x.weight || 0,
         dateString: x.dateString || "", tipAmount: x.tipAmount || 0, userId: x.userId || "", otpCode: x.otpCode || "",
         category: x.category || "",
+        riderBikeNumber: x.riderBikeNumber || "",
+        driverId: x.driverId || "",
+        driverName: x.driverName || "",
+        courierLatitude: x.courierLatitude || null,
+        courierLongitude: x.courierLongitude || null,
+        pickupLat: x.pickupLat || x.pickupLatitude || null,
+        pickupLng: x.pickupLng || x.pickupLongitude || null,
+        deliveryLat: x.deliveryLat || x.deliveryLatitude || null,
+        deliveryLng: x.deliveryLng || x.deliveryLongitude || null,
       }); });
       setDeliveries(list);
-    }));
+    }, console.error));
     unsubs.push(onSnapshot(collection(db, "banners"), snap => {
       const list: Banner[] = [];
       snap.forEach(d => { const x = d.data(); list.push({ id: d.id, title: x.title || "", subtitle: x.subtitle || "", imageUrl: x.imageUrl || "", interval: x.interval || 5, order: x.order || 0, active: x.active !== false }); });
       setBanners(list.sort((a, b) => a.order - b.order));
-    }));
+    }, console.error));
     unsubs.push(onSnapshot(collection(db, "referrals"), snap => {
       const list: Referral[] = [];
       snap.forEach(d => { const x = d.data(); list.push({
@@ -640,7 +726,7 @@ function AdminDashboardPage() {
         rewardAmount: x.rewardAmount || 0, status: x.status || "pending",
       }); });
       setReferrals(list);
-    }));
+    }, console.error));
     unsubs.push(onSnapshot(collection(db, "promotions"), snap => {
       const list: Promotion[] = [];
       snap.forEach(d => { const x = d.data(); list.push({
@@ -651,7 +737,7 @@ function AdminDashboardPage() {
         usedCount: x.usedCount || 0, active: x.active !== false,
       }); });
       setPromotions(list);
-    }));
+    }, console.error));
     unsubs.push(onSnapshot(collection(db, "appContent"), snap => {
       const list: AppContent[] = [];
       snap.forEach(d => { const x = d.data(); list.push({
@@ -660,14 +746,14 @@ function AdminDashboardPage() {
         order: x.order || 0, active: x.active !== false,
       }); });
       setAppContent(list);
-    }));
+    }, console.error));
     unsubs.push(onSnapshot(collection(db, "notifications"), snap => {
       const list: any[] = [];
       snap.forEach(d => { const x = d.data(); list.push({ id: d.id, ...x }); });
       setNotifications(list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
-    }));
-    getDoc(doc(db, "system_config", "global_settings")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => {});
-    getDoc(doc(db, "system_config", "pricing")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => {});
+    }, console.error));
+    getDoc(doc(db, "system_config", "global_settings")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => { addToast("error", "Failed to load system settings. Using defaults."); });
+    getDoc(doc(db, "system_config", "pricing")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => { addToast("error", "Failed to load pricing config. Using defaults."); });
     return () => unsubs.forEach(f => f());
   }, [currentUser]);
 
@@ -677,17 +763,22 @@ function AdminDashboardPage() {
       if (signingUp) {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
         await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split("@")[0], role: signupRole, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
-        document.cookie = "admin_auth=true; path=/; max-age=86400; SameSite=Strict";
+        const token = await cred.user.getIdToken();
+        document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`;
         setAuthOk((signupRole === "dispatcher" ? "Dispatcher" : "Admin") + " account created.");
       } else {
         const cred = await signInWithEmailAndPassword(auth, email, password);
         const snap = await getDoc(doc(db, "users", cred.user.uid));
         if (!snap.exists()) {
-          await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split("@")[0], role: "super_admin", updatedAt: Timestamp.now() });
+          await signOut(auth);
+          setAuthErr("Account not found. This email is not registered as an admin. Contact your system administrator.");
+          return;
         }
+        const token = await cred.user.getIdToken();
+        document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`;
         setAuthOk("Signed in. Loading dashboard...");
       }
-    } catch (err: any) { setAuthErr("Operation failed. Please try again."); }
+    } catch (err: any) { setAuthErr(err?.message || "Operation failed. Please try again."); }
   };
 
   const updateSetting = async (key: string, val: any) => {
@@ -744,7 +835,7 @@ function AdminDashboardPage() {
               <div className="relative"><Key className="absolute left-3 top-3 w-4 h-4 text-black/40 dark:text-white/40" />
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-10 py-2.5 text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" required /></div></div>
             {signingUp && <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ROLE</label>
-              <select value={signupRole} onChange={e => setSignupRole(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="super_admin">Super Admin (full access)</option><option value="admin">Admin (restricted)</option><option value="dispatcher">Dispatcher (orders only)</option></select></div>}
+                  <Select value={signupRole} onChange={setSignupRole} options={[{value:"super_admin",label:"Super Admin (full access)"},{value:"admin",label:"Admin (restricted)"},{value:"dispatcher",label:"Dispatcher (orders only)"}]} className="w-full" /></div>}
             <button type="submit" className="w-full bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] font-black py-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-sm tracking-wider">
               <Lock className="w-4 h-4" /> {signingUp ? "CREATE ADMIN" : "SIGN IN"}</button>
           </form>
@@ -770,13 +861,16 @@ function AdminDashboardPage() {
       { tag: "Cold Chain", title: "Cold Chain Deliveries", progress: 0, total: 0, unit: "drops", theme: "black" as const },
     ];
     const activeDeliveriesData = categories.length > 0 ? categories.map((cat, idx) => {
-      const catDeliveries = deliveries.filter(d => d.category === cat);
+      const catActive = deliveries.filter(d => d.category === cat && d.status !== "DELIVERED" && d.status !== "CANCELLED");
+      const catDelivered = deliveries.filter(d => d.category === cat && d.status === "DELIVERED");
       return {
         tag: cat,
         title: cat + " Deliveries",
-        progress: catDeliveries.filter(d => d.status === "DELIVERED").length,
-        total: catDeliveries.length,
+        progress: catActive.filter(d => ["TRANSIT","OUT_FOR_DELIVERY"].includes(d.status)).length,
+        total: catActive.length + catDelivered.length,
         unit: "drops",
+        active: catActive.length,
+        delivered: catDelivered.length,
         theme: themes[idx % themes.length],
       };
     }) : defaultTiers;
@@ -807,12 +901,21 @@ function AdminDashboardPage() {
 
 
 
+function getDynamicPassword(email: string, pin: string): string {
+  const prefix = email.split("@")[0] || "";
+  let hash = 0;
+  for (let i = 0; i < prefix.length; i++) { hash = ((hash << 5) - hash) + prefix.charCodeAt(i); hash |= 0; }
+  const hashStr = Math.abs(hash).toString().slice(0, 6).padEnd(6, 's');
+  return `${pin}${pin}_${hashStr}`;
+}
+
 function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserProfile[]; searchQuery: string; db: any; addLog: any }) {
     const [search, setSearch] = useState("");
     const [editUser, setEditUser] = useState<UserProfile | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
     const [showNewUser, setShowNewUser] = useState(false);
-    const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", password: "", bikeNumber: "" });
+    const [newUserStep, setNewUserStep] = useState(1);
+    const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
     const [creatingUser, setCreatingUser] = useState(false);
     const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "" });
     const [uPage, setUPage] = useState(0);
@@ -828,11 +931,14 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
     };
     const deleteUser = async (id: string) => { await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() }); addLog("Delete User", "Soft-deleted " + id); setConfirmDelete(null); };
     const createUser = async () => {
+      if (newUserForm.pin !== newUserForm.confirmPin) { addLog("Error", "PIN mismatch"); return; }
+      if (newUserForm.pin.length < 4) { addLog("Error", "PIN must be at least 4 digits"); return; }
       setCreatingUser(true);
       try {
-        const cred = await createUserWithEmailAndPassword(auth, newUserForm.email, newUserForm.password);
-        await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, name: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone, role: newUserForm.role, bikeNumber: newUserForm.bikeNumber, status: "offline", isOnline: false, rating: 0, deliveryCount: 0, walletBalance: 0, loyaltyPoints: 0, photoUrl: "", isDeleted: false, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
-        addLog("Create User", newUserForm.name + " (" + newUserForm.email + ") as " + newUserForm.role); setShowNewUser(false); setNewUserForm({ name: "", email: "", phone: "", role: "customer", password: "", bikeNumber: "" });
+        const derivedPwd = getDynamicPassword(newUserForm.email, newUserForm.pin);
+        const cred = await createUserWithEmailAndPassword(auth, newUserForm.email, derivedPwd);
+        await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, name: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone, role: newUserForm.role, bikeNumber: newUserForm.bikeNumber, pin: newUserForm.pin, status: "offline", isOnline: false, rating: 0, deliveryCount: 0, walletBalance: 0, loyaltyPoints: 0, photoUrl: "", isDeleted: false, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+        addLog("Create User", newUserForm.name + " (" + newUserForm.email + ") as " + newUserForm.role); setShowNewUser(false); setNewUserStep(1); setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
       } catch (e: any) { addLog("Error", "Create user failed: " + (e.message || "unknown")); }
       setCreatingUser(false);
     };
@@ -840,32 +946,51 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#FFC542]" /> Users</h1>
           <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} total (page {uPage + 1}/{uTotalPages})</p></div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={() => setShowNewUser(true)} className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-[10px] font-black shadow-sm transition-all flex items-center gap-1"><UserPlus className="w-3 h-3" /> Add User</button>
-          <SearchInput value={search} onChange={setSearch} placeholder="Search users..." />
+        <div className="flex items-center gap-3 flex-wrap w-full sm:w-auto">
+          <button onClick={() => setShowNewUser(true)} className="flex-1 sm:flex-none px-4 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center justify-center gap-1.5"><UserPlus className="w-4 h-4" /> Add User</button>
+          <div className="flex-1 sm:flex-none"><SearchInput value={search} onChange={setSearch} placeholder="Search users..." /></div>
         </div>
       </div>
-      {showNewUser && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowNewUser(false)}>
+      {showNewUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setShowNewUser(false)}>
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> New User</h3>
-          <div className="space-y-3">
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Name</label>
-              <input value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Email</label>
-              <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone</label>
-              <input value={newUserForm.phone} onChange={e => setNewUserForm(p => ({ ...p, phone: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Role</label>
-              <select value={newUserForm.role} onChange={e => setNewUserForm(p => ({ ...p, role: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="customer">Customer</option><option value="rider">Rider</option><option value="admin">Admin</option></select></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike Number</label>
-              <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(p => ({ ...p, bikeNumber: e.target.value }))} placeholder="For riders" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Password</label>
-              <input type="password" value={newUserForm.password} onChange={e => setNewUserForm(p => ({ ...p, password: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> New User — Step {newUserStep}/2</h3>
+          {/* Step indicator */}
+          <div className="flex gap-2">
+            <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 1 ? "bg-[#FFC542]" : "bg-gray-200 dark:bg-gray-700")} />
+            <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 2 ? "bg-[#FFC542]" : "bg-gray-200 dark:bg-gray-700")} />
           </div>
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-black/10 dark:border-white/10">
-            <button onClick={() => setShowNewUser(false)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
-            <SaveBtn onClick={createUser} loading={creatingUser} label="Create User" />
-          </div>
+          {newUserStep === 1 ? (
+            <div className="space-y-3">
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Full Name</label>
+                <input value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Email</label>
+                <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone</label>
+                <input value={newUserForm.phone} onChange={e => setNewUserForm(p => ({ ...p, phone: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Role</label>
+                <Select value={newUserForm.role} onChange={v => { setNewUserForm(p => ({ ...p, role: v })); if (v !== "rider") setNewUserForm(p => ({ ...p, bikeNumber: "" })); }} options={[{value:"customer",label:"Customer"},{value:"rider",label:"Rider"},{value:"admin",label:"Admin"}]} className="w-full" /></div>
+              <div className="flex justify-end pt-2">
+                <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else addLog("Error", "Fill in name and email first"); }} className="px-6 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-all">Next →</button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20">
+                <p className="text-xs font-bold text-[#111] dark:text-white">{newUserForm.name}</p>
+                <p className="text-[10px] text-black/40 dark:text-white/40">{newUserForm.email} · {newUserForm.role}</p>
+              </div>
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">PIN (4+ digits — used for app login)</label>
+                <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(p => ({ ...p, pin: e.target.value.replace(/\D/g, '') }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" placeholder="Enter PIN" /></div>
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Confirm PIN</label>
+                <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(p => ({ ...p, confirmPin: e.target.value.replace(/\D/g, '') }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" placeholder="Confirm PIN" /></div>
+              {newUserForm.role === "rider" && <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike Number</label>
+                <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(p => ({ ...p, bikeNumber: e.target.value }))} placeholder="e.g. LASG-1234" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>}
+              <div className="flex items-center justify-between gap-3 pt-2 border-t border-black/10 dark:border-white/10">
+                <button onClick={() => setNewUserStep(1)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">← Back</button>
+                <SaveBtn onClick={createUser} loading={creatingUser} label="Create Account" />
+              </div>
+            </div>
+          )}
         </div>
       </div>}
       <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
@@ -895,16 +1020,16 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
         <button onClick={() => setUPage(p => Math.min(uTotalPages - 1, p + 1))} disabled={uPage >= uTotalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
       </div>}
       <ConfirmModal show={confirmDelete !== null} title="Delete User" message="Soft-delete this user?" confirmLabel="Delete" onConfirm={() => deleteUser(confirmDelete!)} onCancel={() => setConfirmDelete(null)} />
-      {editUser && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
+      {editUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
           <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-[#FFC542]" /> Edit User</h3>
           <div className="space-y-3">
             {["name","role","phone","bikeNumber","status"].map(k => <div key={k}><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{k.replace(/([A-Z])/g, ' $1').trim()}</label>
               <input value={form[k as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>)}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>)}
           </div>
           <div className="flex items-center justify-end gap-3 pt-2">
-            <button onClick={() => setEditUser(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+            <button onClick={() => setEditUser(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
             <SaveBtn onClick={saveUser} label="Update User" />
           </div>
         </div>
@@ -913,13 +1038,14 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
   }
 
 
-function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Delivery[]; searchQuery: string; db: any; addLog: any }) {
+function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string; db: any; addLog: any }) {
     const [search, setSearch] = useState("");
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [bulkStatus, setBulkStatus] = useState("");
     const [page, setPage] = useState(0);
     const [showNew, setShowNew] = useState(false);
-    const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "" });
+    const [assignModal, setAssignModal] = useState<{ delivery: Delivery; show: boolean }>({ delivery: null as any, show: false });
+    const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
     const [creating, setCreating] = useState(false);
     const perPage = 20;
     const filtered = deliveries.filter(d => { const q = (searchQuery || search).toLowerCase(); return d.receiverName.toLowerCase().includes(q) || d.senderName.toLowerCase().includes(q) || d.id.includes(q) || (d.itemName && d.itemName.toLowerCase().includes(q)); });
@@ -927,6 +1053,15 @@ function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Del
     const paged = filtered.slice(page * perPage, (page + 1) * perPage);
     useEffect(() => { setPage(0); }, [search, searchQuery]);
     const updateStatus = async (id: string, s: string) => { await updateDoc(doc(db, "deliveries", id), { status: s, updatedAt: Timestamp.now() }); addLog("Status", idShort(id) + " -> " + s); };
+    const assignRider = async (deliveryId: string, rider: UserProfile) => {
+      await updateDoc(doc(db, "deliveries", deliveryId), {
+        riderId: rider.id, driverId: rider.id, driverName: rider.name,
+        courierName: rider.name, courierPhone: rider.phone, riderBikeNumber: rider.bikeNumber || "",
+        status: "ASSIGNED", updatedAt: Timestamp.now()
+      });
+      addLog("Assign Rider", `${rider.name} → ${idShort(deliveryId)}`);
+      setAssignModal({ delivery: null as any, show: false });
+    };
     const bulkUpdate = async () => {
       if (!bulkStatus || selected.size === 0) return;
       const batch = writeBatch(db); selected.forEach(id => batch.update(doc(db, "deliveries", id), { status: bulkStatus, updatedAt: Timestamp.now() })); await batch.commit();
@@ -936,46 +1071,76 @@ function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Del
       setCreating(true);
       try {
         const ref = await addDoc(collection(db, "deliveries"), { ...newForm, quantity: Number(newForm.quantity), weight: Number(newForm.weight), price: Number(newForm.price), tipAmount: 0, userId: "", courierName: "", courierPhone: "", otpCode: Math.floor(1000 + Math.random() * 9000).toString(), dateString: new Date().toISOString().slice(0, 10), createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
-        addLog("Create Delivery", ref.id + " — " + newForm.itemName); setShowNew(false); setNewForm({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "" });
+        addLog("Create Delivery", ref.id + " — " + newForm.itemName); setShowNew(false); setNewForm({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
       } catch (e: any) { addLog("Error", "Create delivery failed"); }
       setCreating(false);
     };
+    const pendingOrders = deliveries.filter(d => d.status === "PENDING");
     return <div className="tab-content space-y-6">
+      {/* New Orders Alert Banner */}
+      {pendingOrders.length > 0 && (
+        <div className="bg-[#FFC542]/10 border-2 border-[#FFC542]/30 rounded-3xl p-5 animate-fade-in">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-[#FFC542] flex items-center justify-center"><Bell className="w-5 h-5 text-[#111]" /></div>
+            <div>
+              <h2 className="text-sm font-black text-[#111] dark:text-white">{pendingOrders.length} New Order{pendingOrders.length > 1 ? 's' : ''} Pending</h2>
+              <p className="text-[10px] text-black/40 dark:text-white/40">These shipments need a rider assigned</p>
+            </div>
+          </div>
+          <div className="grid gap-2">
+            {pendingOrders.slice(0, 5).map(d => {
+              const onlineRiders = drivers.filter(r => r.isOnline);
+              return <div key={d.id} className="bg-white dark:bg-[#1a1a1a] rounded-2xl p-3 border border-black/5 dark:border-white/10 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-[#111] dark:text-white truncate">{d.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-normal">#{idShort(d.id)}</span></p>
+                  <p className="text-[10px] text-black/40 dark:text-white/40 truncate">{d.pickupAddress} → {d.deliveryAddress}</p>
+                </div>
+                <button onClick={() => setAssignModal({ delivery: d, show: true })}
+                  className="shrink-0 px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-[10px] font-black transition-all flex items-center gap-1.5">
+                  <UserPlus className="w-3.5 h-3.5" /> Assign Rider
+                </button>
+              </div>;
+            })}
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Package className="w-5 h-5 text-[#FFC542]" /> Shipments</h1>
           <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} total (page {page + 1}/{totalPages})</p></div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={() => setShowNew(true)} className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-[10px] font-black shadow-sm transition-all flex items-center gap-1"><Plus className="w-3 h-3" /> New Delivery</button>
-          <SearchInput value={search} onChange={setSearch} placeholder="Search..." />
-          {selected.size > 0 && <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-black/40 dark:text-white/40">{selected.size} selected</span>
-            <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white">
-              <option value="">Bulk...</option>
-              <option value="ASSIGNED">Assign</option><option value="TRANSIT">Transit</option><option value="OUT_FOR_DELIVERY">Out for delivery</option><option value="DELIVERED">Deliver</option><option value="CANCELLED">Cancel</option>
-            </select>
+        <div className="flex items-center gap-3 flex-wrap w-full sm:w-auto">
+          <button onClick={() => setShowNew(true)} className="flex-1 sm:flex-none px-4 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center justify-center gap-1.5"><Plus className="w-4 h-4" /> New Delivery</button>
+          <div className="flex-1 sm:flex-none"><SearchInput value={search} onChange={setSearch} placeholder="Search..." /></div>
+          {selected.size > 0 && <div className="flex items-center gap-2 w-full sm:w-auto"><span className="text-[10px] font-bold text-black/40 dark:text-white/40">{selected.size} selected</span>
+             <Select value={bulkStatus} onChange={setBulkStatus} placeholder="Bulk..." options={[{value:"ASSIGNED",label:"Assign"},{value:"TRANSIT",label:"Transit"},{value:"OUT_FOR_DELIVERY",label:"Out for delivery"},{value:"DELIVERED",label:"Deliver"},{value:"CANCELLED",label:"Cancel"}]} className="w-36" />
             <SaveBtn onClick={bulkUpdate} label="Apply" />
             <button onClick={() => setSelected(new Set())} className="text-[10px] text-black/40 dark:text-white/40 hover:text-red-500 font-semibold">Clear</button>
           </div>}
         </div>
       </div>
-      {showNew && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowNew(false)}>
-        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-2xl shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      {showNew && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setShowNew(false)}>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-2xl shadow-2xl ring-1 ring-black/5 dark:ring-white/10 space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
           <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Plus className="w-4 h-4 text-[#FFC542]" /> New Delivery</h3>
           <div className="grid sm:grid-cols-2 gap-4">
             {[{ k: "receiverName", l: "Receiver Name" }, { k: "receiverPhone", l: "Receiver Phone" }, { k: "senderName", l: "Sender Name" }, { k: "senderPhone", l: "Sender Phone" }, { k: "itemName", l: "Item Name" }, { k: "pickupAddress", l: "Pickup Address" }, { k: "deliveryAddress", l: "Delivery Address" }].map(f => <div key={f.k}><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{f.l}</label>
-              <input value={(newForm as any)[f.k]} onChange={e => setNewForm(p => ({ ...p, [f.k]: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>)}
+              <input value={(newForm as any)[f.k]} onChange={e => setNewForm(p => ({ ...p, [f.k]: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>)}
             <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Category</label>
-              <select value={newForm.category} onChange={e => setNewForm(p => ({ ...p, category: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="Standard">Standard</option><option value="Express">Express</option><option value="Economy">Economy</option><option value="Cold Chain">Cold Chain</option><option value="Batch">Batch</option><option value="Multi">Multi</option></select></div>
+              <Select value={newForm.category} onChange={v => setNewForm(p => ({ ...p, category: v }))} options={[{value:"Standard",label:"Standard"},{value:"Express",label:"Express"},{value:"Economy",label:"Economy"},{value:"Cold Chain",label:"Cold Chain"},{value:"Batch",label:"Batch"},{value:"Multi",label:"Multi"}]} className="w-full" /></div>
             <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Status</label>
-              <select value={newForm.status} onChange={e => setNewForm(p => ({ ...p, status: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="PENDING">PENDING</option><option value="ASSIGNED">ASSIGNED</option><option value="TRANSIT">TRANSIT</option><option value="OUT_FOR_DELIVERY">OUT FOR DELIVERY</option></select></div>
+              <Select value={newForm.status} onChange={v => setNewForm(p => ({ ...p, status: v }))} options={[{value:"PENDING",label:"PENDING"},{value:"ASSIGNED",label:"ASSIGNED"},{value:"TRANSIT",label:"TRANSIT"},{value:"OUT_FOR_DELIVERY",label:"OUT FOR DELIVERY"}]} className="w-full" /></div>
             <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Quantity</label>
-              <input type="number" min="1" value={newForm.quantity} onChange={e => setNewForm(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+              <input type="number" min="1" value={newForm.quantity} onChange={e => setNewForm(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
             <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Weight (kg)</label>
-              <input type="number" step="0.1" min="0.1" value={newForm.weight} onChange={e => setNewForm(p => ({ ...p, weight: parseFloat(e.target.value) || 1 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+              <input type="number" step="0.1" min="0.1" value={newForm.weight} onChange={e => setNewForm(p => ({ ...p, weight: parseFloat(e.target.value) || 1 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Assign Driver</label>
+              <Select value={newForm.driverId || ""} onChange={v => setNewForm(p => ({ ...p, driverId: v, driverName: v ? (drivers.find((dr: any) => dr.id === v)?.name || "") : "" }))} placeholder="Unassigned" options={[
+                {value:"",label:"Unassigned"},
+                ...drivers.filter((dr: any) => dr.isOnline !== false).map((dr: any) => ({value:dr.id, label: dr.name || dr.email}))
+              ]} className="w-full" /></div>
             <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Price (₦)</label>
-              <input type="number" min="0" value={newForm.price} onChange={e => setNewForm(p => ({ ...p, price: parseInt(e.target.value) || 0 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+              <input type="number" min="0" value={newForm.price} onChange={e => setNewForm(p => ({ ...p, price: parseInt(e.target.value) || 0 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-black/10 dark:border-white/10">
-            <button onClick={() => setShowNew(false)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+            <button onClick={() => setShowNew(false)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
             <SaveBtn onClick={createDelivery} loading={creating} label="Create Delivery" />
           </div>
         </div>
@@ -987,18 +1152,31 @@ function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Del
               <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Item</th>
               <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Receiver</th>
               <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Status</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Driver</th>
               <th className="text-right font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Price</th></tr>
           </thead><tbody className="divide-y divide-black/5 dark:divide-white/10">
-            {paged.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-black/40 dark:text-white/40">No shipments.</td></tr>}
+            {paged.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-black/40 dark:text-white/40">No shipments.</td></tr>}
             {paged.map((d, i) => <tr key={d.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors animate-fade-in " + (selected.has(d.id) ? "bg-[#FFC542]/10" : "") + " " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][i] || "")}>
               <td className="p-3"><input type="checkbox" checked={selected.has(d.id)} onChange={() => { const s = new Set(selected); s.has(d.id) ? s.delete(d.id) : s.add(d.id); setSelected(s); }} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /></td>
               <td className="p-3"><p className="font-bold text-[#111] dark:text-white">{d.itemName || "Parcel"}</p><p className="text-[10px] text-black/40 dark:text-white/40">#{idShort(d.id)}</p></td>
               <td className="p-3 hidden md:table-cell"><span className="text-black/60 dark:text-white/60">{d.receiverName}</span></td>
               <td className="p-3">
-                <select value={d.status} onChange={e => updateStatus(d.id, e.target.value)} className={"text-[10px] font-bold px-1.5 py-0.5 rounded-full border-0 " + sStyle(d.status)}>
-                  <option value="PENDING">PENDING</option><option value="ASSIGNED">ASSIGNED</option><option value="TRANSIT">TRANSIT</option>
-                  <option value="OUT_FOR_DELIVERY">OUT FOR DELIVERY</option><option value="DELIVERED">DELIVERED</option><option value="CANCELLED">CANCELLED</option>
-                </select></td>
+                <Select value={d.status} onChange={v => updateStatus(d.id, v)} compact
+                  options={[{value:"PENDING",label:"PENDING"},{value:"ASSIGNED",label:"ASSIGNED"},{value:"TRANSIT",label:"TRANSIT"},{value:"OUT_FOR_DELIVERY",label:"OUT FOR DELIVERY"},{value:"DELIVERED",label:"DELIVERED"},{value:"CANCELLED",label:"CANCELLED"}]}
+                  renderOption={(o) => <span className={"px-2 py-0.5 rounded-full font-bold " + sStyle(o.value)}>{o.label}</span>} /></td>
+              <td className="p-3 hidden lg:table-cell">
+                {d.status === "PENDING" ? (
+                  <button onClick={() => setAssignModal({ delivery: d, show: true })}
+                    className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-lg text-[10px] font-black transition-all">Assign</button>
+                ) : ["ASSIGNED","TRANSIT","OUT_FOR_DELIVERY"].includes(d.status) ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-[9px] font-black text-[#111] dark:text-white shrink-0">{(d.courierName || d.driverName || "?").charAt(0)}</div>
+                    <span className="text-[10px] font-bold text-[#111] dark:text-white truncate max-w-[80px]">{d.courierName || d.driverName || "—"}</span>
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-black/40 dark:text-white/40">{d.courierName || d.driverName || "—"}</span>
+                )}
+              </td>
               <td className="p-3 text-right"><span className="font-bold text-[#111] dark:text-white">{fmt(d.price || 0)}</span>
                 {d.tipAmount > 0 && <p className="text-[10px] text-green-600 dark:text-green-400">+{fmt(d.tipAmount)} tip</p>}</td>
             </tr>)}
@@ -1009,6 +1187,35 @@ function ShipmentsTab({ deliveries, searchQuery, db, addLog }: { deliveries: Del
         <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronLeft size={14} /></button>
         {Array.from({ length: totalPages }, (_, i) => <button key={i} onClick={() => setPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === page ? "bg-[#FFC542] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
         <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
+      </div>}
+
+      {/* Assign Rider Modal */}
+      {assignModal.show && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setAssignModal({ delivery: null as any, show: false })}>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> Assign Rider</h3>
+          <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20 space-y-1">
+            <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-normal">#{idShort(assignModal.delivery.id)}</span></p>
+            <p className="text-[10px] text-black/40 dark:text-white/40">{assignModal.delivery.pickupAddress} → {assignModal.delivery.deliveryAddress}</p>
+          </div>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Available Riders</p>
+            {drivers.filter(r => r.isOnline).length === 0 && <p className="text-xs text-black/40 dark:text-white/40 text-center py-4">No online riders available. Check back later.</p>}
+            {drivers.filter(r => r.isOnline).map(rider => (
+              <button key={rider.id} onClick={() => assignRider(assignModal.delivery.id, rider)}
+                className="w-full flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#222] hover:bg-[#FFC542]/10 rounded-2xl transition-all text-left border border-transparent hover:border-[#FFC542]/30">
+                <div className="w-10 h-10 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#111] dark:text-white shrink-0">{rider.name.charAt(0)}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-[#111] dark:text-white">{rider.name}</p>
+                  <p className="text-[10px] text-black/40 dark:text-white/40">{rider.bikeNumber || "No bike"} · {rider.deliveryCount || 0} deliveries · ⭐ {(rider.rating || 0).toFixed(1)}</p>
+                </div>
+                <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="Online" />
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end pt-1">
+            <button onClick={() => setAssignModal({ delivery: null as any, show: false })} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+          </div>
+        </div>
       </div>}
     </div>;
   }
@@ -1062,7 +1269,7 @@ function BannersTab({ banners, db, addLog, addToast }: BannersTabProps) {
         </div>
       </div>)}
     </div>
-    {editBanner && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditBanner(null)}>
+    {editBanner && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditBanner(null)}>
       <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
         <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#FFC542]" /> {editBanner.id ? "Edit" : "New"} Slide</h3>
         <div className="relative w-full h-32 rounded-2xl overflow-hidden bg-gray-200 dark:bg-gray-800">
@@ -1075,19 +1282,19 @@ function BannersTab({ banners, db, addLog, addToast }: BannersTabProps) {
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 30)</label>
-            <input value={bForm.title} maxLength={30} onChange={e => setBForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <input value={bForm.title} maxLength={30} onChange={e => setBForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SUBTITLE (max 80)</label>
-            <input value={bForm.subtitle} maxLength={80} onChange={e => setBForm(f => ({ ...f, subtitle: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input value={bForm.subtitle} maxLength={80} onChange={e => setBForm(f => ({ ...f, subtitle: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">IMAGE URL</label>
-            <input value={bForm.imageUrl} onChange={e => setBForm(f => ({ ...f, imageUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input value={bForm.imageUrl} onChange={e => setBForm(f => ({ ...f, imageUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ORDER</label>
-            <input type="number" value={bForm.order} onChange={e => setBForm(f => ({ ...f, order: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input type="number" value={bForm.order} onChange={e => setBForm(f => ({ ...f, order: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">INTERVAL (sec)</label>
-            <input type="number" value={bForm.interval} onChange={e => setBForm(f => ({ ...f, interval: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input type="number" value={bForm.interval} onChange={e => setBForm(f => ({ ...f, interval: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={bForm.active} onChange={e => setBForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
         </div>
         <div className="flex items-center justify-end gap-3 pt-2">
-          <button onClick={() => setEditBanner(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+          <button onClick={() => setEditBanner(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
           <SaveBtn onClick={() => saveBanner(editBanner.id ? editBanner : undefined)} loading={saving} />
         </div>
       </div>
@@ -1174,7 +1381,7 @@ function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps)
         </div>;
       })}
     </div>
-    {editPromo && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditPromo(null)}>
+    {editPromo && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditPromo(null)}>
       <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-4 h-4 text-[#FFC542]" /> {editPromo.id ? "Edit" : "New"} Promo</h3>
         <div className="relative h-24 bg-gradient-to-br from-[#FFC542]/20 to-white dark:to-[#222] rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 p-3 flex items-end">
@@ -1187,27 +1394,27 @@ function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps)
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 25)</label>
-            <input value={pForm.title} maxLength={25} onChange={e => setPForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <input value={pForm.title} maxLength={25} onChange={e => setPForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DESCRIPTION (max 60)</label>
-            <input value={pForm.description} maxLength={60} onChange={e => setPForm(f => ({ ...f, description: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input value={pForm.description} maxLength={60} onChange={e => setPForm(f => ({ ...f, description: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DISCOUNT DISPLAY</label>
-            <input value={pForm.discountDisplay} maxLength={15} onChange={e => setPForm(f => ({ ...f, discountDisplay: e.target.value }))} placeholder="Auto-generated if empty" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input value={pForm.discountDisplay} maxLength={15} onChange={e => setPForm(f => ({ ...f, discountDisplay: e.target.value }))} placeholder="Auto-generated if empty" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TYPE</label>
-            <select value={pForm.discountType} onChange={e => setPForm(f => ({ ...f, discountType: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="percentage">Percentage</option><option value="fixed">Fixed</option></select></div>
+            <Select value={pForm.discountType} onChange={v => setPForm(f => ({ ...f, discountType: v }))} options={[{value:"percentage",label:"Percentage"},{value:"fixed",label:"Fixed"}]} className="w-full" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">VALUE</label>
-            <input type="number" value={pForm.discountValue || ""} onChange={e => setPForm(f => ({ ...f, discountValue: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input type="number" value={pForm.discountValue || ""} onChange={e => setPForm(f => ({ ...f, discountValue: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CODE (max 12)</label>
-            <input value={pForm.code} maxLength={12} onChange={e => setPForm(f => ({ ...f, code: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input value={pForm.code} maxLength={12} onChange={e => setPForm(f => ({ ...f, code: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">USAGE LIMIT</label>
-            <input type="number" value={pForm.usageLimit || ""} onChange={e => setPForm(f => ({ ...f, usageLimit: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input type="number" value={pForm.usageLimit || ""} onChange={e => setPForm(f => ({ ...f, usageLimit: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">MIN ORDER (\u20A6)</label>
-            <input type="number" value={pForm.minOrderAmount || ""} onChange={e => setPForm(f => ({ ...f, minOrderAmount: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input type="number" value={pForm.minOrderAmount || ""} onChange={e => setPForm(f => ({ ...f, minOrderAmount: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">MAX DISCOUNT (\u20A6)</label>
-            <input type="number" value={pForm.maxDiscount || ""} onChange={e => setPForm(f => ({ ...f, maxDiscount: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input type="number" value={pForm.maxDiscount || ""} onChange={e => setPForm(f => ({ ...f, maxDiscount: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={pForm.active} onChange={e => setPForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
         </div>
         <div className="flex items-center justify-end gap-3 pt-2">
-          <button onClick={() => setEditPromo(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+          <button onClick={() => setEditPromo(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
           <SaveBtn onClick={() => savePromo(editPromo.id ? editPromo : undefined)} loading={saving} />
         </div>
       </div>
@@ -1257,7 +1464,7 @@ function AppCardsTab({ appContent, db, addLog, addToast }: AppCardsTabProps) {
         </div>
       </div>)}
     </div>
-    {editCard && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setEditCard(null)}>
+    {editCard && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditCard(null)}>
       <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
         <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-4 h-4 text-[#FFC542]" /> {editCard.id ? "Edit" : "New"} Card</h3>
         <div className="relative h-24 rounded-2xl overflow-hidden bg-gray-200 dark:bg-gray-800 border border-black/10 dark:border-white/10">
@@ -1268,23 +1475,23 @@ function AppCardsTab({ appContent, db, addLog, addToast }: AppCardsTabProps) {
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">KEY (max 20)</label>
-            <input value={cForm.key} maxLength={20} onChange={e => setCForm(f => ({ ...f, key: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <input value={cForm.key} maxLength={20} onChange={e => setCForm(f => ({ ...f, key: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ORDER</label>
-            <input type="number" value={cForm.order} onChange={e => setCForm(f => ({ ...f, order: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input type="number" value={cForm.order} onChange={e => setCForm(f => ({ ...f, order: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 30)</label>
-            <input value={cForm.title} maxLength={30} onChange={e => setCForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input value={cForm.title} maxLength={30} onChange={e => setCForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DESCRIPTION (max 80)</label>
-            <input value={cForm.description} maxLength={80} onChange={e => setCForm(f => ({ ...f, description: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input value={cForm.description} maxLength={80} onChange={e => setCForm(f => ({ ...f, description: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">IMAGE URL</label>
-            <input value={cForm.imageUrl} onChange={e => setCForm(f => ({ ...f, imageUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input value={cForm.imageUrl} onChange={e => setCForm(f => ({ ...f, imageUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CTA TEXT</label>
-            <input value={cForm.ctaText} onChange={e => setCForm(f => ({ ...f, ctaText: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input value={cForm.ctaText} onChange={e => setCForm(f => ({ ...f, ctaText: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CTA LINK</label>
-            <input value={cForm.ctaLink} onChange={e => setCForm(f => ({ ...f, ctaLink: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <input value={cForm.ctaLink} onChange={e => setCForm(f => ({ ...f, ctaLink: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={cForm.active} onChange={e => setCForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
         </div>
         <div className="flex items-center justify-end gap-3 pt-2">
-          <button onClick={() => setEditCard(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+          <button onClick={() => setEditCard(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
           <SaveBtn onClick={() => saveCard(editCard.id ? editCard : undefined)} loading={saving} />
         </div>
       </div>
@@ -1335,7 +1542,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
         <Toggle label="Require Approval" desc="Admin must approve new accounts" checked={!!sForm.requireApproval} onChange={v => upd("requireApproval", v)} />
         <Toggle label="Maintenance Mode" desc="Disable app access for users" checked={!!sForm.maintenanceMode} onChange={v => upd("maintenanceMode", v)} />
         <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl"><div><p className="text-xs font-bold text-[#111] dark:text-white">Default Role</p></div>
-          <select value={sForm.defaultRole || "customer"} onChange={e => upd("defaultRole", e.target.value)} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-1.5 text-xs text-[#111] dark:text-white"><option value="customer">Customer</option><option value="rider">Rider</option><option value="admin">Admin</option></select></div>
+          <Select value={sForm.defaultRole || "customer"} onChange={v => upd("defaultRole", v)} options={[{value:"customer",label:"Customer"},{value:"rider",label:"Rider"},{value:"admin",label:"Admin"}]} className="w-36" /></div>
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("System Controls")} loading={saving} /></div>
     </div>
@@ -1352,49 +1559,181 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Feature Toggles")} loading={saving} /></div>
     </div>
 
-    {/* Section 3 — Pricing */}
+    {/* Section 3 — Delivery Types */}
+    <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Truck className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Delivery Types</span></div>
+      <p className="text-[10px] text-black/40 dark:text-white/40">Manage delivery categories — rename, enable/disable, set per-type pricing</p>
+      <div className="overflow-x-auto rounded-xl border border-black/10 dark:border-white/10">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 dark:bg-[#222]">
+            <tr>
+              <th className="p-2 text-left font-bold text-black/40 dark:text-white/40 w-10">On</th>
+              <th className="p-2 text-left font-bold text-black/40 dark:text-white/40">Name</th>
+              <th className="p-2 text-left font-bold text-black/40 dark:text-white/40 hidden md:table-cell">Desc</th>
+              <th className="p-2 text-right font-bold text-black/40 dark:text-white/40 w-20">Base (₦)</th>
+              <th className="p-2 text-right font-bold text-black/40 dark:text-white/40 w-16">/km</th>
+              <th className="p-2 text-right font-bold text-black/40 dark:text-white/40 w-16">/kg</th>
+              <th className="p-2 w-8"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-black/5 dark:divide-white/10">
+            {(() => {
+              const defaults = [
+                { id: "standard", name: "Standard", enabled: true, baseFare: 1000, perKm: 100, perKg: 50, description: "Regular delivery within 24hrs" },
+                { id: "express", name: "Express", enabled: true, baseFare: 2500, perKm: 200, perKg: 80, description: "Same-day priority delivery" },
+                { id: "economy", name: "Economy", enabled: true, baseFare: 700, perKm: 60, perKg: 30, description: "Budget-friendly 48hr delivery" },
+                { id: "coldchain", name: "Cold Chain", enabled: true, baseFare: 3000, perKm: 250, perKg: 100, description: "Temperature-controlled transport" },
+                { id: "batch", name: "Batch", enabled: true, baseFare: 5000, perKm: 150, perKg: 40, description: "Multiple packages same route" },
+                { id: "multi", name: "Multi-Stop", enabled: true, baseFare: 4000, perKm: 180, perKg: 60, description: "Multiple drop-off points" },
+              ];
+              const activeTypes = sForm.deliveryTypes || defaults;
+              if (!sForm.deliveryTypes) setTimeout(() => upd("deliveryTypes", defaults), 0);
+              return activeTypes.map((t: any, i: number) => (
+                <tr key={t.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors " + (t.enabled ? "" : "opacity-50")}>
+                  <td className="p-2">
+                    <button onClick={() => { const dts = [...activeTypes]; dts[i] = { ...dts[i], enabled: !dts[i].enabled }; upd("deliveryTypes", dts); }}
+                      className={"w-8 h-4 rounded-full transition-colors relative " + (t.enabled ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600")}>
+                      <span className={"absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform " + (t.enabled ? "translate-x-[18px]" : "translate-x-0.5")} />
+                    </button>
+                  </td>
+                  <td className="p-2">
+                    <input value={t.name} onChange={e => { const dts = [...activeTypes]; dts[i] = { ...dts[i], name: e.target.value }; upd("deliveryTypes", dts); }}
+                      className="w-full bg-transparent text-xs font-bold text-[#111] dark:text-white border-b border-dashed border-transparent focus:border-[#FFC542] focus:outline-none" />
+                  </td>
+                  <td className="p-2 hidden md:table-cell">
+                    <input value={t.description || ""} onChange={e => { const dts = [...activeTypes]; dts[i] = { ...dts[i], description: e.target.value }; upd("deliveryTypes", dts); }}
+                      className="w-full bg-transparent text-[10px] text-black/50 dark:text-white/50 border-b border-dashed border-transparent focus:border-black/20 dark:focus:border-white/20 focus:outline-none" placeholder="Description" />
+                  </td>
+                  <td className="p-2">
+                    <input type="number" value={t.baseFare ?? ""} onChange={e => { const dts = [...activeTypes]; dts[i] = { ...dts[i], baseFare: parseFloat(e.target.value) || 0 }; upd("deliveryTypes", dts); }}
+                      className="w-full text-right bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-lg px-1.5 py-1 text-[10px] text-[#111] dark:text-white" />
+                  </td>
+                  <td className="p-2">
+                    <input type="number" value={t.perKm ?? ""} onChange={e => { const dts = [...activeTypes]; dts[i] = { ...dts[i], perKm: parseFloat(e.target.value) || 0 }; upd("deliveryTypes", dts); }}
+                      className="w-full text-right bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-lg px-1.5 py-1 text-[10px] text-[#111] dark:text-white" />
+                  </td>
+                  <td className="p-2">
+                    <input type="number" value={t.perKg ?? ""} onChange={e => { const dts = [...activeTypes]; dts[i] = { ...dts[i], perKg: parseFloat(e.target.value) || 0 }; upd("deliveryTypes", dts); }}
+                      className="w-full text-right bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-lg px-1.5 py-1 text-[10px] text-[#111] dark:text-white" />
+                  </td>
+                  <td className="p-2">
+                    <button onClick={() => { const dts = [...activeTypes]; dts.splice(i, 1); upd("deliveryTypes", dts); }}
+                      className="text-red-400 hover:text-red-600 transition-colors p-1"><X className="w-3 h-3" /></button>
+                  </td>
+                </tr>
+              ));
+            })()}
+          </tbody>
+        </table>
+      </div>
+      <button onClick={() => {
+        const dts = [...(sForm.deliveryTypes || [])];
+        const newId = "custom" + (dts.length + 1);
+        dts.push({ id: newId, name: "New Type", enabled: true, baseFare: 1000, perKm: 100, perKg: 50, description: "" });
+        upd("deliveryTypes", dts);
+      }} className="text-[10px] font-bold text-[#FFC542] hover:text-[#e6b13b] flex items-center gap-1"><Plus className="w-3 h-3" /> Add Type</button>
+      <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Delivery Types")} loading={saving} /></div>
+    </div>
+
+    {/* Section 4 — Points & Rewards */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><DollarSign className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Pricing</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">BASE FARE (₦)</label>
-          <input type="number" value={sForm.baseFare ?? ""} onChange={e => upd("baseFare", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input type="number" value={sForm.baseFare ?? ""} onChange={e => upd("baseFare", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">PER KG RATE (₦)</label>
-          <input type="number" step="0.1" value={sForm.perKgRate ?? ""} onChange={e => upd("perKgRate", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input type="number" step="0.1" value={sForm.perKgRate ?? ""} onChange={e => upd("perKgRate", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">EXPRESS SURCHARGE (₦)</label>
-          <input type="number" value={sForm.expressSurcharge ?? ""} onChange={e => upd("expressSurcharge", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input type="number" value={sForm.expressSurcharge ?? ""} onChange={e => upd("expressSurcharge", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SURGE MULTIPLIER (×)</label>
-          <input type="number" step="0.1" min="1" value={sForm.surgeMultiplier ?? ""} onChange={e => upd("surgeMultiplier", parseFloat(e.target.value) || 1)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input type="number" step="0.1" min="1" value={sForm.surgeMultiplier ?? ""} onChange={e => upd("surgeMultiplier", parseFloat(e.target.value) || 1)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Pricing")} loading={saving} /></div>
     </div>
 
-    {/* Section 4 — Branding & Communication */}
+    {/* Section 4 — Points & Rewards Configuration */}
+    <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Award className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Points & Rewards</span></div>
+      <p className="text-[10px] text-black/40 dark:text-white/40">Configure loyalty tiers, welcome gift, and referral rewards</p>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Toggle label="Points System Active" desc="" checked={!!(sForm.appContent?.loyalty?.active ?? sForm.pointsAndLoyalty)} onChange={v => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), active: v } })} />
+        <Toggle label="Daily Bonus" desc="" checked={!!(sForm.appContent?.loyalty?.dailyBonusEnabled ?? true)} onChange={v => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), dailyBonusEnabled: v } })} />
+      </div>
+
+      <div className="text-xs font-bold text-[#111] dark:text-white pt-2">Loyalty Tier Thresholds (orders)</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Bronze</label>
+          <input type="number" value={sForm.appContent?.loyalty?.bronzeThreshold ?? 3} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), bronzeThreshold: parseInt(e.target.value) || 3 } })}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Silver</label>
+          <input type="number" value={sForm.appContent?.loyalty?.silverThreshold ?? 10} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), silverThreshold: parseInt(e.target.value) || 10 } })}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Gold</label>
+          <input type="number" value={sForm.appContent?.loyalty?.goldThreshold ?? 25} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), goldThreshold: parseInt(e.target.value) || 25 } })}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Platinum</label>
+          <input type="number" value={sForm.appContent?.loyalty?.platinumThreshold ?? 50} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), platinumThreshold: parseInt(e.target.value) || 50 } })}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+      </div>
+
+      <div className="text-xs font-bold text-[#111] dark:text-white pt-2">Orders Required Per Tier</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Bronze Req.</label>
+          <input type="number" value={sForm.appContent?.loyalty?.ordersForBronze ?? 1} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), ordersForBronze: parseInt(e.target.value) || 1 } })}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Silver Req.</label>
+          <input type="number" value={sForm.appContent?.loyalty?.ordersForSilver ?? 3} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), ordersForSilver: parseInt(e.target.value) || 3 } })}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Gold Req.</label>
+          <input type="number" value={sForm.appContent?.loyalty?.ordersForGold ?? 5} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), ordersForGold: parseInt(e.target.value) || 5 } })}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Platinum Req.</label>
+          <input type="number" value={sForm.appContent?.loyalty?.ordersForPlatinum ?? 10} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), ordersForPlatinum: parseInt(e.target.value) || 10 } })}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+      </div>
+
+      <div className="grid sm:grid-cols-3 gap-4 pt-2">
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Daily Bonus Points</label>
+          <input type="number" value={sForm.appContent?.loyalty?.dailyBonus ?? 10} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), dailyBonus: parseInt(e.target.value) || 10 } })}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Welcome Gift (₦)</label>
+          <input type="number" value={sForm.appContent?.welcomeGift?.credit ?? 2500} onChange={e => upd("appContent", { ...(sForm.appContent || {}), welcomeGift: { ...(sForm.appContent?.welcomeGift || {}), credit: parseFloat(e.target.value) || 0 } })}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Referral Reward (₦)</label>
+          <input type="number" value={sForm.referralReward ?? 500} onChange={e => upd("referralReward", parseFloat(e.target.value) || 0)}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+      </div>
+      <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Points & Rewards")} loading={saving} /></div>
+    </div>
+
+    {/* Section 5 — Branding & Communication */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Globe className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Branding & Communication</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP NAME</label>
-          <input value={sForm.appName ?? "Engraced Dispatch"} onChange={e => upd("appName", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input value={sForm.appName ?? "Engraced Dispatch"} onChange={e => upd("appName", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP SLOGAN</label>
-          <input value={sForm.appSlogan ?? ""} onChange={e => upd("appSlogan", e.target.value)} placeholder="Premium Logistics & Dispatch" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input value={sForm.appSlogan ?? ""} onChange={e => upd("appSlogan", e.target.value)} placeholder="Premium Logistics & Dispatch" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP VERSION</label>
-          <input value={sForm.appVersion ?? "1.0.0"} onChange={e => upd("appVersion", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input value={sForm.appVersion ?? "1.0.0"} onChange={e => upd("appVersion", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CONTACT EMAIL</label>
-          <input value={sForm.contactEmail ?? ""} onChange={e => upd("contactEmail", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input value={sForm.contactEmail ?? ""} onChange={e => upd("contactEmail", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SUPPORT PHONE</label>
-          <input value={sForm.supportPhone ?? ""} onChange={e => upd("supportPhone", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input value={sForm.supportPhone ?? ""} onChange={e => upd("supportPhone", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div className="relative"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">FCM SERVER KEY</label>
           <div className="relative"><input type={showFcm ? "text" : "password"} value={fcmKey} onChange={e => setFcmKey(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 pr-8 text-xs text-[#111] dark:text-white" placeholder="AAA..."/>
             <button onClick={() => setShowFcm(!showFcm)} className="absolute right-2 top-1/2 -translate-y-1/2 text-black/30 dark:text-white/30 hover:text-black/60 dark:hover:text-white/60"><Eye size={14} /></button></div></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">PLAY STORE URL</label>
-          <input value={sForm.playStoreUrl ?? ""} onChange={e => upd("playStoreUrl", e.target.value)} placeholder="https://play.google.com/store/apps/details?id=..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input value={sForm.playStoreUrl ?? ""} onChange={e => upd("playStoreUrl", e.target.value)} placeholder="https://play.google.com/store/apps/details?id=..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP STORE URL</label>
-          <input value={sForm.appStoreUrl ?? ""} onChange={e => upd("appStoreUrl", e.target.value)} placeholder="https://apps.apple.com/app/id..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          <input value={sForm.appStoreUrl ?? ""} onChange={e => upd("appStoreUrl", e.target.value)} placeholder="https://apps.apple.com/app/id..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Branding")} loading={saving} /></div>
     </div>
 
-    {/* Section 5 — Master Overrides */}
-    <div className="bg-white dark:bg-[#1a1a1a] border border-2 border-[#FFC542]/30 rounded-3xl p-5 shadow-sm space-y-4">
+    {/* Section 6 — Master System Overrides */}
+    <div className="bg-white dark:bg-[#1a1a1a] border-2 border-[#FFC542]/30 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><AlertTriangle className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Master System Overrides</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
         <Toggle label="Broadcast Surge Pricing" desc="Push surge multiplier to all active pricing" checked={!!sForm.broadcastSurge} onChange={v => upd("broadcastSurge", v)} />
@@ -1417,7 +1756,7 @@ function LogsTab({ logs }: LogsTabProps) {
     <div className="flex items-center justify-between flex-wrap gap-4">
       <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#FFC542]" /> Audit Log</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} entries (page {lPage + 1}/{lTotalPages})</p></div>
-      <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="bg-white dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white"><option value="all">All Actions</option><option value="Create">Create</option><option value="Update">Update</option><option value="Delete">Delete</option><option value="Toggle">Toggle</option><option value="Login">Login</option></select>
+      <Select value={typeFilter} onChange={setTypeFilter} options={[{value:"all",label:"All Actions"},{value:"Create",label:"Create"},{value:"Update",label:"Update"},{value:"Delete",label:"Delete"},{value:"Toggle",label:"Toggle"},{value:"Login",label:"Login"}]} className="w-36" />
     </div>
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
@@ -1538,7 +1877,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
             setTab={setTab}
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} />}
-        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} />}
+        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} />}
         {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} />}

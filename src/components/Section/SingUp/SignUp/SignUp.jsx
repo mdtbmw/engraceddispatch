@@ -3,8 +3,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { auth, db } from "~/lib/firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 const SignUpForm = () => {
   const router = useRouter();
@@ -13,6 +13,7 @@ const SignUpForm = () => {
   const [password, setPassword] = useState("");
   const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
@@ -33,7 +34,7 @@ const SignUpForm = () => {
         role: "customer",
         status: "active",
         isOnline: false,
-        rating: 0,
+        rating: 5.0,
         deliveryCount: 0,
         walletBalance: 0,
         loyaltyPoints: 0,
@@ -51,6 +52,61 @@ const SignUpForm = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    setError("");
+    setGoogleLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+      const userRef = doc(db, "users", result.user.uid);
+      const snap = await getDoc(userRef);
+
+      let userRole = "customer";
+
+      if (!snap.exists()) {
+        const newUserProfile = {
+          uid: result.user.uid,
+          name: result.user.displayName || "Customer",
+          email: result.user.email || "",
+          phone: result.user.phoneNumber || "",
+          role: "customer",
+          status: "active",
+          isOnline: false,
+          rating: 5.0,
+          deliveryCount: 0,
+          walletBalance: 0,
+          loyaltyPoints: 0,
+          photoUrl: result.user.photoURL || "",
+          createdAt: new Date().toISOString(),
+        };
+        await setDoc(userRef, newUserProfile);
+      } else {
+        userRole = snap.data().role || "customer";
+      }
+
+      if (userRole === "admin" || userRole === "super_admin" || userRole === "dispatcher") {
+        const token = await result.user.getIdToken();
+        document.cookie = `admin_token=${token};path=/;max-age=86400;SameSite=Strict;Secure`;
+        router.push("/engdadmin");
+      } else {
+        router.push("/");
+      }
+    } catch (err) {
+      if (err.code === "auth/popup-closed-by-user") {
+        setError("Sign up with Google was cancelled.");
+      } else if (err.code === "auth/popup-blocked") {
+        setError("Browser pop-up blocked. Please enable pop-ups for this site and try again.");
+      } else if (err.code === "auth/account-exists-with-different-credential") {
+        setError("An account already exists with this email address using a different sign-in method.");
+      } else {
+        setError(err.message || "Google sign up failed. Please try again.");
+      }
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -79,23 +135,29 @@ const SignUpForm = () => {
               <input type="checkbox" id="check" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
               <label htmlFor="check">I agree to the Terms of Service and Privacy Policy</label>
             </div>
-            <button id="zubuz-account-btn" type="submit" disabled={loading}>
+            <button id="zubuz-account-btn" type="submit" disabled={loading || googleLoading}>
               <span>{loading ? "Creating account..." : "Create account"}</span>
             </button>
             <div className="zubuz-or">
               <p>or</p>
             </div>
-            <Link href="#" className="zubuz-connect-login">
+            <button 
+              type="button" 
+              className="zubuz-connect-login" 
+              style={{ width: "100%", border: "none", background: "transparent", cursor: "pointer" }}
+              onClick={handleGoogleSignUp}
+              disabled={loading || googleLoading}
+            >
               <img src="/images/icon/google.svg" alt="" />
-              Sign up with Google
-            </Link>
+              <span>{googleLoading ? "Connecting to Google..." : "Sign up with Google"}</span>
+            </button>
             <Link href="#" className="zubuz-connect-login">
               <img src="/images/icon/facebook.svg" alt="" />
               Sign up with Facebook
             </Link>
             <div className="zubuz-account-bottom">
               <p>
-                Already have an account? <Link href="sign-in">Log in here</Link>
+                Already have an account? <Link href="/sign-in">Log in here</Link>
               </p>
             </div>
           </form>

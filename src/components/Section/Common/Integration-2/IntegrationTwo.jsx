@@ -5,7 +5,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { IoClose } from "react-icons/io5";
-import ReactPlayer from "react-player";
 
 const IntegrationSectionTwo = () => {
   const [popup, setPopup] = useState(false);

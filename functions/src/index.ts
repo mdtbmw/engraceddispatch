@@ -24,12 +24,12 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
       fcmToken = userDoc.data()?.fcmToken || '';
     }
 
-    const payload = {
+    const payloadBase = {
       notification: {
         title: 'Welcome to ENGRACED DISPATCH! 👑🚚',
         body: `Hello ${displayName}! Thank you for choosing Premium Logistics & Dispatch. Your logistics partner is active and ready to deliver excellence! 🌟✨`,
-        sound: 'default'
       },
+      android: { notification: { sound: 'default' } },
       data: {
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
         type: 'welcome_alert',
@@ -38,11 +38,12 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
     };
 
     if (fcmToken) {
-      await admin.messaging().sendToDevice(fcmToken, payload);
+      const message = { token: fcmToken, ...payloadBase };
+      await admin.messaging().send(message);
       console.log(`[Welcome Trigger] Personalized welcome push notification successfully sent to device token: ${fcmToken}`);
     } else {
       // Fallback: Broadcast to general topic
-      await admin.messaging().sendToTopic('all_users', payload);
+      await admin.messaging().send({ topic: 'all_users', ...payloadBase });
       console.log('[Welcome Trigger] Welcome broadcast successfully sent to "all_users" topic.');
     }
   } catch (error) {
@@ -54,10 +55,10 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
  * Cloud Function triggered when a shipment status updates in the 'shipments' collection.
  * Automatically sends a targeted FCM status push alert to the associated user's device.
  */
-export const onShipmentStatusUpdated = functions.firestore
-  .document('shipments/{shipmentId}')
+export const onDeliveryStatusUpdated = functions.firestore
+  .document('deliveries/{deliveryId}')
   .onUpdate(async (change, context) => {
-    const shipmentId = context.params.shipmentId;
+    const deliveryId = context.params.deliveryId;
     const beforeData = change.before.data();
     const afterData = change.after.data();
 
@@ -82,7 +83,7 @@ export const onShipmentStatusUpdated = functions.firestore
       return null;
     }
 
-    console.log(`[Shipment Trigger] Status updated for shipment ${shipmentId}: ${oldStatus} -> ${newStatus}`);
+    console.log(`[Delivery Trigger] Status updated for delivery ${deliveryId}: ${oldStatus} -> ${newStatus}`);
 
     try {
       // Fetch user's profile and notification settings
@@ -118,24 +119,22 @@ export const onShipmentStatusUpdated = functions.firestore
 
       const emoji = newStatus.toLowerCase() === 'delivered' ? '✅📦' : '🚚⚡';
       const title = `Shipment Status Updated! ${emoji}`;
-      const message = `Your shipment '${itemName}' (#${shipmentId}) is now ${newStatus}.`;
+      const body = `Your shipment '${itemName}' (#${deliveryId}) is now ${newStatus}.`;
 
-      const payload = {
-        notification: {
-          title: title,
-          body: message,
-          sound: 'default'
-        },
+      const payloadBase = {
+        notification: { title, body },
+        android: { notification: { sound: 'default' } },
         data: {
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
           type: 'status_update',
-          parcelId: shipmentId,
+          parcelId: deliveryId,
           status: newStatus
         }
       };
 
-      await admin.messaging().sendToDevice(fcmToken, payload);
-      console.log(`[Shipment Trigger] Successfully sent status update push alert for shipment ${shipmentId} to user ${userId}`);
+      const fcmMessage = { token: fcmToken, ...payloadBase };
+      await admin.messaging().send(fcmMessage);
+      console.log(`[Delivery Trigger] Successfully sent status update push alert for delivery ${deliveryId} to user ${userId}`);
     } catch (error) {
       console.error('[Shipment Trigger Error] Failed to send status notification:', error);
     }

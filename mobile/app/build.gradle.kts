@@ -2,6 +2,7 @@ import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesS
 
 plugins {
   alias(libs.plugins.android.application)
+  id("org.jetbrains.kotlin.android")
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
@@ -10,15 +11,15 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
-  compileSdk = 36
+  namespace = "com.esdispatch"
+  compileSdk = 35
 
   defaultConfig {
-    applicationId = "com.aistudio.engraceddispatch.kxmpzq"
+    applicationId = "com.esdispatch.app"
     minSdk = 24
-    targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    targetSdk = 34
+    versionCode = 2
+    versionName = "1.0.1"
     val envMapboxToken = System.getenv("MAPBOX_ACCESS_TOKEN") ?: ""
     val resolvedMapboxToken = if (envMapboxToken.isNotEmpty()) envMapboxToken else ""
     buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"$resolvedMapboxToken\"")
@@ -28,11 +29,18 @@ android {
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      val envPath = System.getenv("KEYSTORE_PATH")
+      val defaultPath = "${rootDir}/app/release-key.jks"
+      val keystorePath = if (!envPath.isNullOrBlank()) envPath else defaultPath
+      val keystoreFile = file(keystorePath)
+      if (keystoreFile.exists()) {
+        storeFile = keystoreFile
+        storePassword = System.getenv("STORE_PASSWORD") ?: "android123"
+        keyAlias = "upload"
+        keyPassword = System.getenv("KEY_PASSWORD") ?: "android123"
+      } else {
+        throw GradleException("Release keystore not found at $keystorePath. Set KEYSTORE_PATH or generate one: keytool -genkey -v -keystore app/release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload")
+      }
     }
     create("debugConfig") {
       storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
@@ -58,6 +66,11 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
+
+  kotlinOptions {
+    jvmTarget = "11"
+  }
+
   buildFeatures {
     compose = true
     buildConfig = true
@@ -88,6 +101,7 @@ dependencies {
   implementation(libs.androidx.camera.core)
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)
+  implementation("com.google.guava:guava:31.1-android")
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)
@@ -96,7 +110,7 @@ dependencies {
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.biometric)
-  // implementation(libs.androidx.datastore.preferences)
+  implementation(libs.androidx.security.crypto)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -105,20 +119,15 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
-  implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.messaging)
   implementation(libs.zxing)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
-  implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   implementation(libs.play.services.auth)
-  // implementation(libs.play.services.location)
-  implementation(libs.retrofit)
+  implementation(libs.play.services.location)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

@@ -10,7 +10,7 @@ export default function ResetPasswordPage() {
   return (
     <>
       <Header dark />
-      <ResetPasswordForm />;
+      <ResetPasswordForm />
     </>
   );
 }

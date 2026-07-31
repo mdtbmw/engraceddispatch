@@ -5,6 +5,7 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   compress: true,
+  transpilePackages: ["firebase", "@firebase/app", "@firebase/auth", "@firebase/firestore", "@firebase/component"],
   images: {
     formats: ["image/avif", "image/webp"],
     deviceSizes: [640, 750, 1080, 1200, 1920],
@@ -22,9 +23,12 @@ const nextConfig = {
   ],
   webpack: (config) => {
     config.resolve.alias = {
-      ...config.resolve.alias,
+      'firebase/app': '@firebase/app',
+      'firebase/auth': '@firebase/auth',
+      'firebase/firestore': '@firebase/firestore',
       '~': path.resolve(__dirname, 'src'),
-      undici: false,
+      '@': path.resolve(__dirname, 'src'),
+      ...config.resolve.alias,
     };
     return config;
   },

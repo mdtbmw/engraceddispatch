@@ -1,0 +1,112 @@
+﻿Starting a Gradle Daemon, 2 busy and 1 incompatible and 1 stopped Daemons could not be reused, use --status for details
+Calculating task graph as no cached configuration is available for tasks: :app:assembleRelease
+> Task :app:preBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:processReleaseGoogleServices FROM-CACHE
+> Task :app:buildKotlinToolingMetadata
+> Task :app:generateReleaseBuildConfig
+> Task :app:generateReleaseResValues FROM-CACHE
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractProguardFiles
+> Task :app:extractDeepLinksRelease FROM-CACHE
+> Task :app:generateReleaseResources
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:checkReleaseAarMetadata
+> Task :app:javaPreCompileRelease FROM-CACHE
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :app:processReleaseManifestForPackage
+> Task :app:mergeReleaseNativeLibs
+
+> Task :app:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libimage_processing_util_jni.so, libsurface_util_jni.so.
+
+> Task :app:packageReleaseResources
+> Task :app:parseReleaseLocalResources FROM-CACHE
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:mergeReleaseStartupProfile
+> Task :app:extractReleaseNativeSymbolTables
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseResources
+> Task :app:mergeReleaseArtProfile
+> Task :app:validateSigningRelease
+> Task :app:writeReleaseAppMetadata
+> Task :app:mergeReleaseAssets
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:collectReleaseDependencies
+> Task :app:sdkReleaseDependencyData
+> Task :app:compressReleaseAssets
+> Task :app:processReleaseResources
+> Task :app:convertLinkedResourcesToProtoRelease
+> Task :app:kspReleaseKotlin
+> Task :app:compileReleaseKotlin
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/data/FirebaseManager.kt:169:22 'fun fetchSignInMethodsForEmail(p0: String): Task<SignInMethodQueryResult!>' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/data/LocalDatabase.kt:229:18 'fun fallbackToDestructiveMigration(): RoomDatabase.Builder<AppDatabase>' is deprecated. Replace by overloaded version with parameter to indicate if all tables should be dropped or not.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/components/Components.kt:291:52 'val Icons.Filled.DirectionsBike: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.DirectionsBike.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/components/Components.kt:1425:45 'val Icons.Filled.Help: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Help.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AIDispatchManagerScreen.kt:646:55 'val Icons.Filled.DirectionsBike: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.DirectionsBike.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AIDispatchManagerScreen.kt:1055:62 'val Icons.Filled.TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.TrendingUp.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AIDispatchManagerScreen.kt:1206:77 'val Icons.Filled.StarHalf: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.StarHalf.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AIDispatchManagerScreen.kt:1258:76 'val Icons.Filled.EventNote: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.EventNote.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AuthScreens.kt:48:8 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AuthScreens.kt:49:8 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AuthScreens.kt:157:20 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AuthScreens.kt:442:50 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AuthScreens.kt:442:78 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AuthScreens.kt:449:58 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AuthScreens.kt:837:20 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AuthScreens.kt:1056:58 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AuthScreens.kt:1056:86 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/AuthScreens.kt:1063:66 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/BatchBookingScreen.kt:134:50 'fun getFromLocationName(p0: String, p1: Int): (Mutable)List<Address!>?' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/BookingFormScreen.kt:73:42 'fun getFromLocation(p0: Double, p1: Double, p2: Int): (Mutable)List<Address!>?' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/DashboardScreen.kt:1818:25 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/DashboardScreen.kt:2295:33 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/DashboardScreen.kt:3979:97 'val Icons.Filled.DirectionsBike: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.DirectionsBike.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/MultiBookingScreen.kt:116:50 'fun getFromLocationName(p0: String, p1: Int): (Mutable)List<Address!>?' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/ProfileScreens.kt:388:59 'val Icons.Filled.DirectionsBike: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.DirectionsBike.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/ProfileScreens.kt:560:49 'val Icons.Filled.DirectionsBike: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.DirectionsBike.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/ProfileScreens.kt:606:43 'val Icons.Filled.Logout: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Logout.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/ProfileScreens.kt:1306:43 'val Icons.Filled.Logout: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Logout.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/ProfileScreens.kt:1876:56 'val Icons.Filled.SendToMobile: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.SendToMobile.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/ProfileScreens.kt:3449:43 'val Icons.Filled.Chat: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Chat.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/ProfileScreens.kt:3608:39 'val Icons.Filled.Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/ProofOfDeliveryScreen.kt:48:26 'val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/RiderScreens.kt:430:68 'val Icons.Filled.DirectionsBike: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.DirectionsBike.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/RiderScreens.kt:701:65 'val Icons.Filled.DirectionsBike: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.DirectionsBike.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/RiderScreens.kt:828:57 'val Icons.Filled.DirectionsBike: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.DirectionsBike.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/RiderScreens.kt:1086:40 'val Icons.Filled.Chat: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Chat.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/RiderScreens.kt:2418:116 'val Icons.Filled.DirectionsBike: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.DirectionsBike.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/TrackingScreen.kt:680:56 'val Icons.Filled.DirectionsBike: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.DirectionsBike.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/TrackingScreen.kt:1502:94 'val Icons.Filled.ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/TrackingScreen.kt:1694:71 'val Icons.Filled.Chat: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Chat.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/TrackingScreen.kt:1837:38 'fun getFromLocationName(p0: String, p1: Int): (Mutable)List<Address!>?' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/TrackingScreen.kt:3195:52 'val Icons.Filled.ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ReceiptLong.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/TrackingScreen.kt:3391:42 'fun getFromLocation(p0: Double, p1: Double, p2: Int): (Mutable)List<Address!>?' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/TrackingScreen.kt:3465:5 'fun AlertDialog(onDismissRequest: () -> Unit, modifier: Modifier = ..., properties: DialogProperties = ..., content: @Composable() ComposableFunction0<Unit>): Unit' is deprecated. Use BasicAlertDialog instead.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/TrackingScreen.kt:3818:61 'val Icons.Filled.Chat: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Chat.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/ui/screens/dashboard/LoyaltyRewardsCard.kt:195:17 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/viewmodel/DeliveryViewModel.kt:1672:17 Condition is always 'true'.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/viewmodel/DeliveryViewModel.kt:1689:17 Condition is always 'true'.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/viewmodel/DeliveryViewModel.kt:2820:85 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/viewmodel/DeliveryViewModel.kt:2820:152 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/viewmodel/DeliveryViewModel.kt:2820:219 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/viewmodel/DeliveryViewModel.kt:2986:81 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/viewmodel/DeliveryViewModel.kt:2986:148 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+w: file:///D:/Eng%20App/mobile/app/src/main/java/com/esdispatch/viewmodel/DeliveryViewModel.kt:2986:215 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+
+> Task :app:processReleaseJavaRes
+> Task :app:compileReleaseJavaWithJavac
+> Task :app:mergeReleaseJavaResource
+> Task :app:expandReleaseArtProfileWildcards
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:mergeReleaseGeneratedProguardFiles
+> Task :app:minifyReleaseWithR8
+WARNING: C:\Users\USER\.gradle\caches\8.10.2\transforms\1dc0c885badb04766de3dcd48c02f239\transformed\play-services-location-21.3.0-runtime.jar: R8: The companion object Companion could not be found in class com.google.android.gms.internal.location.zze

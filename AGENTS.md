@@ -5,7 +5,7 @@ This document establishes the official user interface rules, color standards, st
 > [!CRITICAL]
 > **STRICT LOCK: BRANDING, LOGO & IDENTITY CONSTRAINTS**
 > Under NO circumstances should any developer (human or AI) modify, redesign, or alter the branding, logo, color schema, or visual flows of this application. This visual identity is locked and must not be touched:
-> 1. **Brand Name**: "ENGRACED DISPATCH" is the official brand name. Do not change it, rename it, or use any alternative spelling.
+> 1. **Brand Name**: "ESDispatch" (or "ESDISPATCH") is the official brand name.
 > 2. **Official Slogan**: "PREMIUM LOGISTICS & DISPATCH". Keep it fully capitalized and exactly as written.
 > 3. **The Brand Logo**:
 >    - The logo asset (`R.drawable.ic_logo`) is a custom-designed vector icon.
@@ -14,7 +14,7 @@ This document establishes the official user interface rules, color standards, st
 >    - **Second Preloader Screen**: Must **NOT** feature any circular/arc spinner indicator.
 >      - The layout features:
 >        - A top-edge horizontal loading progress bar (`progressAnim` filling the width of a slim 4dp track).
->        - A centered, scaled brand row: A Gold rounded square (`RoundedCornerShape(22.dp)`) acting as the logo container, containing the Obsidian-tinted logo, with the text "ENGRACE" (top line) and "DISPATCH" (bottom line) aligned vertically and positioned on its right.
+>        - A centered, scaled brand row: A Gold rounded square (`RoundedCornerShape(22.dp)`) acting as the logo container, containing the Obsidian-tinted logo, with the text "ES" (top line) and "DISPATCH" (bottom line) aligned vertically and positioned on its right.
 >        - A bottom section featuring the capitalized slogan "PREMIUM LOGISTICS & DISPATCH", followed by a smooth step-by-step progress status text.
 
 ## Dark Mode UI Rules
