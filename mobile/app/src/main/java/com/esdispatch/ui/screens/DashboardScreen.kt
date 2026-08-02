@@ -194,7 +194,7 @@ fun DashboardScreen(
     val userName by viewModel.userName.collectAsState()
     val firstName = remember(userName) { userName.trim().split(" ").firstOrNull() ?: userName }
     val firebaseConnected by viewModel.firebaseConnected.collectAsState()
-    val aiTrafficCongested by viewModel.aiTrafficCongested.collectAsState()
+
     val loyaltyPoints by viewModel.loyaltyPoints.collectAsState()
     val deliveryCount by viewModel.deliveryCount.collectAsState()
     val welcomeGiftClaimed by viewModel.welcomeGiftClaimed.collectAsState()
@@ -959,8 +959,7 @@ fun DashboardScreen(
                                                 Surface(
                                                     onClick = { onNavigate("SendParcel") },
                                                     shape = RoundedCornerShape(50.dp),
-                                                    color = Color.White.copy(alpha = 0.15f),
-                                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
+                                                    color = Color.White
                                                 ) {
                                                     Row(
                                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
@@ -971,12 +970,12 @@ fun DashboardScreen(
                                                             text = "Book Delivery Now",
                                                             fontSize = 12.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = Color.White
+                                                            color = Obsidian
                                                         )
                                                         Icon(
                                                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                                             contentDescription = null,
-                                                            tint = Color.White,
+                                                            tint = Obsidian,
                                                             modifier = Modifier.size(14.dp)
                                                         )
                                                     }
@@ -1083,230 +1082,91 @@ fun DashboardScreen(
                 }
             }
 
-            // OPERATIONAL WEATHER & TRAFFIC ALERT WATCH
-            item {
-                Spacer(modifier = Modifier.height(24.dp))
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    color = if (aiTrafficCongested) Color(0xFF2D1815) else Charcoal,
-                    border = BorderStroke(1.2.dp, if (aiTrafficCongested) Color(0xFFFF5252).copy(alpha = 0.5f) else (if (isDark) Gold.copy(alpha = 0.3f) else Obsidian.copy(alpha = 0.3f))),
-                    shadowElevation = 0.dp
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Icon(
-                                    imageVector = Icons.Filled.Notifications,
-                                    contentDescription = "Weather",
-                                    tint = if (aiTrafficCongested) Gold else (if (isDark) Gold else Obsidian)
-                                )
-                                Text(
-                                    text = "Live Dispatch & Weather Status",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (aiTrafficCongested) Color.White else AppTextColor
-                                )
-                            }
-                            // Pulse dot indicator
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(if (aiTrafficCongested) Color.Red else (if (isDark) Gold else Obsidian), CircleShape)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = if (aiTrafficCongested) {
-                                "⚠️ ALERT: Heavy thunderstorms & localized flooding reported. High traffic congestion. Standard motorcycle speeds may experience 15-20 min delays. Smart rerouting is active."
-                            } else {
-                                "☀️ OPTIMAL: Clear skies across our Lagos networks. Normal operational traffic. Safe premium delivery zones are 100% active. Deliveries are running ahead of schedule!"
-                            },
-                            fontSize = 11.sp,
-                            color = if (aiTrafficCongested) Color.White else AppTextColor,
-                            fontWeight = FontWeight.Medium,
-                            lineHeight = 16.sp
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        
-                        val delayBg = if (aiTrafficCongested) Color(0xFFFF8A80) else (if (isDark) Gold else Obsidian)
-                        val delayText = if (aiTrafficCongested || isDark) Obsidian else Color.White
-                        val delayLabel = if (aiTrafficCongested) "HIGH DELAY ⚠️" else "NO DELAYS ⚡"
-
-                        val efficiencyBg = if (aiTrafficCongested) Color(0xFFFFD54F) else (if (isDark) Gold else Obsidian)
-                        val efficiencyText = if (aiTrafficCongested || isDark) Obsidian else Color.White
-                        val efficiencyLabel = if (aiTrafficCongested) "EFFICIENCY: 84.0%" else "EFFICIENCY: 99.2%"
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = delayBg,
-                                border = BorderStroke(1.dp, if (aiTrafficCongested) Color.Transparent else (if (isDark) Gold.copy(alpha = 0.5f) else Color.Transparent))
-                            ) {
-                                Text(
-                                    text = delayLabel,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = delayText,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = efficiencyBg,
-                                border = BorderStroke(1.dp, if (aiTrafficCongested) Color.Transparent else (if (isDark) Gold.copy(alpha = 0.5f) else Color.Transparent))
-                            ) {
-                                Text(
-                                    text = efficiencyLabel,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = efficiencyText,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // CUSTOMER-CENTRIC AI SHIPPING ASSISTANT CARD (NO ADMIN JARGON)
+            // LOGISTICS MARKETPLACE CARD
             if (userRole != "rider") {
                 item {
                     Spacer(modifier = Modifier.height(24.dp))
                     Surface(
-                        onClick = { onNavigate("CustomerAssistant") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    color = Obsidian,
-                    border = BorderStroke(1.dp, if (isDark) BorderDark else Slate),
-                    shadowElevation = 0.dp
-                ) {
-                    Box(
+                        onClick = { onNavigate("Marketplace") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        Obsidian,
-                                        Gold.copy(alpha = 0.04f)
-                                    )
-                                )
-                            )
+                            .padding(horizontal = 24.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        color = Obsidian,
+                        border = BorderStroke(1.2.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate),
+                        shadowElevation = 0.dp
                     ) {
-                        Row(
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(140.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            Obsidian,
+                                            Gold.copy(alpha = 0.04f)
+                                        )
+                                    )
+                                )
                         ) {
-                            Column(
+                            Row(
                                 modifier = Modifier
-                                    .weight(1.1f)
-                                    .padding(start = 20.dp, top = 16.dp, bottom = 16.dp, end = 8.dp)
+                                    .fillMaxWidth()
+                                    .height(130.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "AI Shipping Assistant",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Track parcels, calculate ETAs, and get instant dispatch support.",
-                                    fontSize = 11.sp,
-                                    color = TextGray.copy(alpha = 0.75f),
-                                    lineHeight = 14.sp
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                // Custom tech tags (Customer Support friendly)
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .padding(start = 20.dp, top = 16.dp, bottom = 16.dp, end = 8.dp)
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(Gold.copy(alpha = 0.1f))
-                                            .border(0.5.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    Text(
+                                        text = "Logistics Marketplace",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Shop shipping boxes, bubble wraps, courier bags, and rider uniforms.",
+                                        fontSize = 11.sp,
+                                        color = TextGray.copy(alpha = 0.75f),
+                                        lineHeight = 14.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Gold,
                                     ) {
                                         Text(
-                                            text = "ONLINE SUPPORT",
-                                            fontSize = 8.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Gold
+                                            text = "SHOP MATERIALS",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Obsidian,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                         )
                                     }
                                 }
-                            }
 
-                            // Right Box with custom wavy clipped image and floating Virtual Assistant button
-                            Box(
-                                modifier = Modifier
-                                    .weight(0.9f)
-                                    .fillMaxHeight(),
-                                contentAlignment = Alignment.CenterEnd
-                            ) {
-                                // Wavy Left shape clipped image
-                                Image(
-                                    painter = painterResource(id = com.esdispatch.R.drawable.img_ai_dispatch),
-                                    contentDescription = "Holographic AI Assistant Radar",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .fillMaxHeight()
-                                        .clip(WavyLeftShape()),
-                                    contentScale = ContentScale.Crop
-                                )
-
-                                // Floating AI Support badge acting as direct AI Chat button
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(end = 12.dp, bottom = 12.dp),
-                                    contentAlignment = Alignment.BottomEnd
+                                        .weight(0.8f)
+                                        .fillMaxHeight(),
+                                    contentAlignment = Alignment.CenterEnd
                                 ) {
-                                    Surface(
-                                        onClick = { onNavigate("CustomerAssistant") },
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = Gold,
-                                        border = BorderStroke(1.dp, BorderDark),
-                                        shadowElevation = 0.dp
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.LocalShipping,
-                                                contentDescription = null,
-                                                tint = Obsidian,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                            Text(
-                                                text = "AI CHAT SUPPORT",
-                                                fontSize = 8.sp,
-                                                fontWeight = FontWeight.Black,
-                                                color = Obsidian // STRICT LOCK: NO WHITE ON GOLD
-                                            )
-                                        }
-                                    }
+                                    Image(
+                                        painter = rememberAsyncImagePainter("https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=400&q=80"),
+                                        contentDescription = "Logistics Shop Banner",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .fillMaxHeight()
+                                            .clip(WavyLeftShape()),
+                                        contentScale = ContentScale.Crop
+                                    )
                                 }
                             }
                         }
                     }
                 }
-            }
             }
 
             // 3. SPECIAL OFFERS CAROUSEL (WHITE CARDS ONLY, CENTER SNAP)
@@ -1924,11 +1784,12 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.height(24.dp))
                     val isSystemDark = MaterialTheme.colorScheme.background == BackgroundDark
                     val cardBorderColor = if (isSystemDark) Gold.copy(alpha = 0.3f) else Slate
-                    val iconBgColor = if (isSystemDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.1f)
-                    val iconTintColor = if (isSystemDark) Gold else Obsidian
-                    val codeRowBorderColor = if (isSystemDark) Gold.copy(alpha = 0.3f) else Slate
-                    val codeRowBgColor = if (isSystemDark) Charcoal else GoldenWhite
-                    val codeTextColor = if (isSystemDark) Gold else Obsidian
+                    // Use Gold color elements always on the Obsidian card to fix visibility!
+                    val iconBgColor = Gold.copy(alpha = 0.15f)
+                    val iconTintColor = Gold
+                    val codeRowBorderColor = if (isSystemDark) Gold.copy(alpha = 0.3f) else Slate.copy(alpha = 0.5f)
+                    val codeRowBgColor = if (isSystemDark) Charcoal else Color.White.copy(alpha = 0.05f)
+                    val codeTextColor = if (isSystemDark) Gold else Color.White
 
                 Surface(
                     modifier = Modifier
@@ -1986,30 +1847,39 @@ fun DashboardScreen(
                                         clipboardManager.setText(AnnotatedString(referralCode.value))
                                         Toast.makeText(context, "Referral code copied!", Toast.LENGTH_SHORT).show()
                                     }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = referralCode.value,
-                                    fontSize = 14.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Black,
                                     color = codeTextColor
                                 )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "Copy Code",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        Icons.Filled.ContentCopy,
-                                        contentDescription = null,
-                                        tint = iconTintColor,
-                                        modifier = Modifier.size(14.dp)
-                                    )
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Gold,
+                                    modifier = Modifier.padding(2.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Copy Code",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Obsidian
+                                        )
+                                        Icon(
+                                            Icons.Filled.ContentCopy,
+                                            contentDescription = null,
+                                            tint = Obsidian,
+                                            modifier = Modifier.size(10.dp)
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -441,7 +441,7 @@ fun BookingFormScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 24.dp, vertical = 24.dp)
+                        .padding(horizontal = 0.dp, vertical = 24.dp)
                         .padding(bottom = 120.dp)
                 ) {
                     // --- Book Again suggestions using delivery history ---
@@ -461,7 +461,7 @@ fun BookingFormScreen(
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.sp,
                             color = accentTextColor,
-                            modifier = Modifier.padding(bottom = 10.dp, top = 4.dp)
+                            modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 10.dp, top = 4.dp)
                         )
                         
                         Row(
@@ -471,6 +471,7 @@ fun BookingFormScreen(
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            Spacer(modifier = Modifier.width(14.dp))
                             bookAgainList.forEach { (addr, name, phone) ->
                                 Card(
                                     shape = RoundedCornerShape(16.dp),
@@ -502,12 +503,13 @@ fun BookingFormScreen(
                                     }
                                 }
                             }
+                            Spacer(modifier = Modifier.width(14.dp))
                         }
                     }
 
                     // Address Inputs Card
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = androidx.compose.ui.graphics.RectangleShape,
                     color = Charcoal,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -835,7 +837,7 @@ fun BookingFormScreen(
 
                 // Parcel Specs Card
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = androidx.compose.ui.graphics.RectangleShape,
                     color = Charcoal,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -1015,7 +1017,7 @@ fun BookingFormScreen(
 
                 // Insurance Selection Card
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = androidx.compose.ui.graphics.RectangleShape,
                     color = Charcoal,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -1084,7 +1086,7 @@ fun BookingFormScreen(
 
                 // Contacts Card
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = androidx.compose.ui.graphics.RectangleShape,
                     color = Charcoal,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -1213,7 +1215,7 @@ fun BookingFormScreen(
 
                 // Scheduled Deliveries & Smart Reminders Card
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = androidx.compose.ui.graphics.RectangleShape,
                     color = Charcoal,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,

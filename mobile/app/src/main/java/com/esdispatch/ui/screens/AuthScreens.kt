@@ -397,11 +397,10 @@ fun LoginScreen(
                                 val playAvailability = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context)
                                 if (playAvailability != ConnectionResult.SUCCESS) {
                                     if (GoogleApiAvailability.getInstance().isUserResolvableError(playAvailability)) {
-                                        Toast.makeText(context, "Google Play Services needs an update. Please update via Google Play Store.", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, "Google Play Services warning. Attempting sign-in...", Toast.LENGTH_SHORT).show()
                                     } else {
-                                        Toast.makeText(context, "Google Play Services is not available on this device.", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, "Google Play Services not detected. Attempting sign-in...", Toast.LENGTH_SHORT).show()
                                     }
-                                    return@Surface
                                 }
                                 val webClientId = try { com.esdispatch.BuildConfig.GOOGLE_WEB_CLIENT_ID } catch (e: Throwable) { "" }
                                 val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -978,11 +977,10 @@ fun SignUpScreen(
                                         val playAvailability = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context)
                                         if (playAvailability != ConnectionResult.SUCCESS) {
                                             if (GoogleApiAvailability.getInstance().isUserResolvableError(playAvailability)) {
-                                                Toast.makeText(context, "Google Play Services needs an update. Please update via Google Play Store.", Toast.LENGTH_LONG).show()
+                                                Toast.makeText(context, "Google Play Services warning. Attempting sign-in...", Toast.LENGTH_SHORT).show()
                                             } else {
-                                                Toast.makeText(context, "Google Play Services is not available on this device.", Toast.LENGTH_LONG).show()
+                                                Toast.makeText(context, "Google Play Services not detected. Attempting sign-in...", Toast.LENGTH_SHORT).show()
                                             }
-                                            return@Button
                                         }
                                         val webClientId = try { com.esdispatch.BuildConfig.GOOGLE_WEB_CLIENT_ID } catch (e: Throwable) { "" }
                                         val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)

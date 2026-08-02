@@ -331,6 +331,9 @@ class MainActivity : ComponentActivity() {
                     composable("Referral") {
                         ReferralScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
                     }
+                    composable("Marketplace") {
+                        MarketplaceScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                    }
                 }
 
                 // Foreground notification Toast banner UI

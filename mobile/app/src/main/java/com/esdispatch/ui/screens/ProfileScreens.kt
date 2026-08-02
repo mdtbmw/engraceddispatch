@@ -549,6 +549,13 @@ fun ProfileScreen(
                     )
 
                     ProfileMenuRow(
+                        icon = Icons.Filled.Store,
+                        title = "Logistics Marketplace",
+                        subtitle = "Shop packaging boxes, bags & rider uniforms",
+                        onClick = { onNavigate("Marketplace") }
+                    )
+
+                    ProfileMenuRow(
                         icon = Icons.Filled.HeadsetMic,
                         title = "Help & Support",
                         subtitle = "FAQ & live support",
