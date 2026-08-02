@@ -143,6 +143,7 @@ class DeliveryViewModel : ViewModel() {
         _pushAlertsCancelled.value = prefs.getBoolean("alerts_cancelled", true)
         _locationEnabled.value = prefs.getBoolean("location_enabled", true)
         _darkModeEnabled.value = prefs.getBoolean("dark_mode_enabled", false)
+        _dashboardVariant.value = prefs.getString("dashboard_variant", "full") ?: "full"
         _language.value = prefs.getString("language", "English") ?: "English"
         _defaultDeliveryType.value = prefs.getString("default_delivery_type", "Express") ?: "Express"
         
@@ -1314,6 +1315,15 @@ class DeliveryViewModel : ViewModel() {
     private val _darkModeEnabled = MutableStateFlow(false)
     val darkModeEnabled: StateFlow<Boolean> = _darkModeEnabled.asStateFlow()
 
+    private val _dashboardVariant = MutableStateFlow("full")
+    val dashboardVariant: StateFlow<String> = _dashboardVariant.asStateFlow()
+
+    fun setDashboardVariant(variant: String) {
+        if (variant != "v2" && variant != "full") return
+        _dashboardVariant.value = variant
+        savePref("dashboard_variant", variant)
+    }
+
     // Custom Toast Notification flow (Obsidian-Gold theme)
     private val _customToast = MutableStateFlow<String?>(null)
     val customToast: StateFlow<String?> = _customToast.asStateFlow()
@@ -1355,6 +1365,30 @@ class DeliveryViewModel : ViewModel() {
             if (stored.isNotEmpty()) stored else "ENGR-${(100000..999999).random()}"
         }
         refPrefs?.edit()?.putString("referral_code", _referralCode.value)?.apply()
+    }
+
+    fun redeemReferralCode(code: String) {
+        // Validate and redeem a friend's referral code
+        if (code.isBlank() || code == _referralCode.value) return
+        viewModelScope.launch {
+            try {
+                val db = com.esdispatch.data.FirebaseManager.firestore ?: return@launch
+                val uid = _firebaseUserId.value ?: return@launch
+                db.collection("referral_redemptions").add(
+                    hashMapOf(
+                        "redeemedBy" to uid,
+                        "code" to code.uppercase(),
+                        "redeemedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                    )
+                ).addOnSuccessListener {
+                    // Credit the user with referral bonus points
+                    addLoyaltyPoints(300)
+                    Log.d("DeliveryViewModel", "Referral code redeemed: $code")
+                }
+            } catch (e: Exception) {
+                Log.e("DeliveryViewModel", "Error redeeming referral code: ${e.message}")
+            }
+        }
     }
 
     init {

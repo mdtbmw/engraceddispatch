@@ -174,6 +174,7 @@ fun DashboardScreen(
     val filteredParcels = remember(unarchivedParcels, selectedFilter) {
         when (selectedFilter) {
             "In Transit" -> unarchivedParcels.filter { it.status == ParcelStatus.TRANSIT || it.status == ParcelStatus.OUT_FOR_DELIVERY }
+            "Delivered" -> unarchivedParcels.filter { it.status == ParcelStatus.DELIVERED }
             else -> unarchivedParcels.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED } // "All"
         }
     }
@@ -952,8 +953,34 @@ fun DashboardScreen(
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Medium,
                                                     color = TextGray.copy(alpha = 0.9f),
-                                                    modifier = Modifier.padding(top = 4.dp)
+                                                    modifier = Modifier.padding(top = 4.dp, bottom = 14.dp)
                                                 )
+                                                // Book Delivery Now CTA
+                                                Surface(
+                                                    onClick = { onNavigate("SendParcel") },
+                                                    shape = RoundedCornerShape(50.dp),
+                                                    color = Color.White.copy(alpha = 0.15f),
+                                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "Book Delivery Now",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White
+                                                        )
+                                                        Icon(
+                                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                                            contentDescription = null,
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     } else {
@@ -1986,6 +2013,59 @@ fun DashboardScreen(
                                 }
                             }
                         }
+
+                        // Enter friend's code + Redeem row
+                        Spacer(modifier = Modifier.height(14.dp))
+                        var friendCode by remember { mutableStateOf("") }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = friendCode,
+                                onValueChange = { friendCode = it },
+                                placeholder = {
+                                    Text(
+                                        text = "Enter friend's code",
+                                        fontSize = 13.sp,
+                                        color = TextGray
+                                    )
+                                },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Gold.copy(alpha = 0.6f),
+                                    unfocusedBorderColor = if (isDark) BorderDark else Slate,
+                                    focusedTextColor = if (isDark) Color.White else Obsidian,
+                                    unfocusedTextColor = if (isDark) Color.White else Obsidian,
+                                    cursorColor = Gold,
+                                    focusedContainerColor = if (isDark) Charcoal else GoldenWhite,
+                                    unfocusedContainerColor = if (isDark) Charcoal else GoldenWhite
+                                ),
+                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            )
+                            Surface(
+                                onClick = {
+                                    if (friendCode.isNotBlank()) {
+                                        viewModel.redeemReferralCode(friendCode.trim())
+                                        friendCode = ""
+                                        Toast.makeText(context, "Referral code submitted!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                color = Gold
+                            ) {
+                                Text(
+                                    text = "Redeem",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Obsidian,
+                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -2048,7 +2128,7 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val filters = listOf("All", "In Transit")
+                    val filters = listOf("All", "In Transit", "Delivered")
                     filters.forEach { filterOption ->
                         val isSelected = selectedFilter == filterOption
                         val tabBg = if (isSelected) {
