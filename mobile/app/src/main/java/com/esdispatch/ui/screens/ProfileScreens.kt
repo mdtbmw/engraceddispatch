@@ -3,6 +3,7 @@ package com.esdispatch.ui.screens
 import android.widget.Toast
 import android.content.Intent
 import android.net.Uri
+import com.esdispatch.data.CardInfo
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,8 +19,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.ui.res.painterResource
@@ -59,7 +60,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
 data class ChatMessage(val text: String, val isUser: Boolean)
-data class CardInfo(val type: String, val last4: String, val expiry: String)
 data class RiderInfo(val name: String, val rating: Double)
 
 // --- PROFILE HOME SCREEN ---
@@ -90,6 +90,7 @@ fun ProfileScreen(
     val memberSince by viewModel.memberSince.collectAsState()
     val isDark by viewModel.darkModeEnabled.collectAsState()
     val userRole by viewModel.userRole.collectAsState()
+    var showMarketplaceSheet by remember { mutableStateOf(false) }
     val activeViewMode by viewModel.activeViewMode.collectAsState()
     val bikeNumber by viewModel.bikeNumber.collectAsState()
 
@@ -685,7 +686,7 @@ fun ProfileScreen(
         ProfileEditSheet(viewModel) { showEditSheet = false }
     }
     if (showPaymentMethodsSheet) {
-        PaymentMethodsSheet { showPaymentMethodsSheet = false }
+        PaymentMethodsSheet(viewModel) { showPaymentMethodsSheet = false }
     }
     if (showHelpSupportSheet) {
         HelpSupportSheet(
@@ -708,6 +709,7 @@ fun ProfileScreen(
     if (showVerificationSheet) {
         VerificationSheet(viewModel) { showVerificationSheet = false }
     }
+
 }
 
 @Composable
@@ -972,7 +974,7 @@ fun WalletScreen(
                                     .border(1.dp, borderColor, CircleShape)
                             ) {
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    imageVector = Icons.Filled.ArrowBack,
                                     contentDescription = "Previous Page",
                                     tint = if (currentPage > 0) (if (isDark) Gold else Obsidian) else TextGray,
                                     modifier = Modifier.size(16.dp)
@@ -1016,7 +1018,7 @@ fun WalletScreen(
                                     .border(1.dp, borderColor, CircleShape)
                             ) {
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    imageVector = Icons.Filled.ArrowForward,
                                     contentDescription = "Next Page",
                                     tint = if (currentPage < totalPages - 1) (if (isDark) Gold else Obsidian) else TextGray,
                                     modifier = Modifier.size(16.dp)
@@ -2070,7 +2072,7 @@ fun NotificationsScreen(
                                         .border(1.dp, borderColor, CircleShape)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        imageVector = Icons.Filled.ArrowBack,
                                         contentDescription = "Previous Page",
                                         tint = if (currentPage > 0) (if (isDark) Gold else Obsidian) else TextGray,
                                         modifier = Modifier.size(16.dp)
@@ -2114,7 +2116,7 @@ fun NotificationsScreen(
                                         .border(1.dp, borderColor, CircleShape)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        imageVector = Icons.Filled.ArrowForward,
                                         contentDescription = "Next Page",
                                         tint = if (currentPage < totalPages - 1) (if (isDark) Gold else Obsidian) else TextGray,
                                         modifier = Modifier.size(16.dp)
@@ -2860,6 +2862,50 @@ fun ReferralScreen(
                             Icon(Icons.Filled.Share, null, tint = Obsidian, modifier = Modifier.size(20.dp))
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // REDEEM FRIEND'S CODE
+                    var friendCode by remember { mutableStateOf("") }
+                    Text("Redeem Friend's Code", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = friendCode,
+                            onValueChange = { friendCode = it.uppercase() },
+                            placeholder = { Text("Enter code (e.g. ES-JD-A1B2)") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Gold,
+                                unfocusedBorderColor = if (isDark) BorderDark else BorderLight,
+                                focusedTextColor = AppOnSurface,
+                                unfocusedTextColor = AppOnSurface
+                            )
+                        )
+                        Button(
+                            onClick = {
+                                if (friendCode.trim().isNotEmpty()) {
+                                    viewModel.redeemReferralCode(friendCode.trim()) { success, message ->
+                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                        if (success) {
+                                            friendCode = ""
+                                        }
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Charcoal, contentColor = Gold),
+                            modifier = Modifier.height(56.dp)
+                        ) {
+                            Text("Apply")
+                        }
+                    }
                 }
             }
         }
@@ -3103,6 +3149,7 @@ fun ProfileEditSheet(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PaymentMethodsSheet(
+    viewModel: com.esdispatch.viewmodel.DeliveryViewModel,
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -3118,14 +3165,7 @@ fun PaymentMethodsSheet(
     var cardTypeInput by remember { mutableStateOf("Visa") }
     var cardFieldError by remember { mutableStateOf("") }
 
-    var cardsList by remember {
-        mutableStateOf(
-            listOf(
-                CardInfo("Visa", "4321", "12/28"),
-                CardInfo("MasterCard", "8765", "08/29")
-            )
-        )
-    }
+    val cardsList by viewModel.paymentCards.collectAsState()
 
     LaunchedEffect(Unit) {
         delay(800)
@@ -3296,8 +3336,13 @@ fun PaymentMethodsSheet(
                                     }
                                     else -> {
                                         val last4 = cleanNum.takeLast(4)
-                                        cardsList = cardsList + CardInfo(cardTypeInput, last4, expiryInput)
-                                        Toast.makeText(context, "Card added successfully!", Toast.LENGTH_SHORT).show()
+                                        viewModel.addPaymentCard(CardInfo(cardTypeInput, last4, expiryInput)) { success ->
+                                            if (success) {
+                                                Toast.makeText(context, "Card added successfully!", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Failed to add card.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
                                         
                                         // Reset fields
                                         cardNumberInput = ""
@@ -3356,8 +3401,11 @@ fun PaymentMethodsSheet(
 
                                     IconButton(
                                         onClick = {
-                                            cardsList = cardsList.filter { it != card }
-                                            Toast.makeText(context, "Card removed", Toast.LENGTH_SHORT).show()
+                                            viewModel.removePaymentCard(card) { success ->
+                                                if (success) {
+                                                    Toast.makeText(context, "Card removed", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
                                         }
                                     ) {
                                         Icon(Icons.Filled.Delete, "Delete", tint = Color.Red, modifier = Modifier.size(20.dp))
@@ -3486,7 +3534,12 @@ fun HelpSupportSheet(
                 // FAQ only
                 Surface(
                     onClick = {
-                        Toast.makeText(context, "Opening Frequently Asked Questions", Toast.LENGTH_SHORT).show()
+                        try {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://esdispatch.app/support"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "No browser found.", Toast.LENGTH_SHORT).show()
+                        }
                         dismissWithAnim()
                     },
                     shape = RoundedCornerShape(16.dp),

@@ -21,6 +21,15 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         // Send token to backend / save locally if needed
         val prefs = getSharedPreferences("esdispatch_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("fcm_token", token).apply()
+        
+        // Push token to Firestore so backend can target this device
+        val uid = com.esdispatch.data.FirebaseManager.auth?.uid
+        if (uid != null) {
+            com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users").document(uid)
+                .update("fcmToken", token)
+                .addOnSuccessListener { Log.d(TAG, "FCM token synced to Firestore") }
+                .addOnFailureListener { e -> Log.e(TAG, "Failed to sync FCM token", e) }
+        }
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {

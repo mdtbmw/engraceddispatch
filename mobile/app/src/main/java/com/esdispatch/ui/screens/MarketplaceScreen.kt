@@ -2,19 +2,13 @@ package com.esdispatch.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -24,28 +18,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
-import com.esdispatch.ui.components.RoundedSheet
-import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
+import com.esdispatch.viewmodel.MarketplaceItem
+import com.esdispatch.ui.components.ScreenHeader
 
-data class MarketplaceItem(
-    val id: String,
-    val title: String,
-    val category: String,
-    val price: Double,
-    val rating: Double,
-    val reviewsCount: Int,
-    val imageUrl: String,
-    val description: String
-)
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,330 +43,186 @@ fun MarketplaceScreen(
     // State variables
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
-    var showCartDialog by remember { mutableStateOf<MarketplaceItem?>(null) }
+    var showItemDetails by remember { mutableStateOf<MarketplaceItem?>(null) }
+    val cartItems by viewModel.cartItems.collectAsState()
+    var showCheckoutSheet by remember { mutableStateOf(false) }
     
-    // Sample items list
-    val marketplaceItems = remember {
-        listOf(
-            MarketplaceItem(
-                id = "box_10",
-                title = "Premium Shipping Box (10x)",
-                category = "Packaging",
-                price = 4500.0,
-                rating = 4.8,
-                reviewsCount = 92,
-                imageUrl = "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&w=400&q=80",
-                description = "High-quality double-walled corrugated cardboard boxes. Ideal for shipping fragile items and heavy packages securely."
-            ),
-            MarketplaceItem(
-                id = "bubble_50",
-                title = "Bubble Wrap Roll (50m)",
-                category = "Packaging",
-                price = 3500.0,
-                rating = 4.9,
-                reviewsCount = 145,
-                imageUrl = "https://images.unsplash.com/photo-1521913626209-0fbf68f4c4b1?auto=format&fit=crop&w=400&q=80",
-                description = "Lightweight shock-absorbent cushioning wrap. Perfect for protecting glassware, electronics, and delicate logistics valuables."
-            ),
-            MarketplaceItem(
-                id = "tape_fragile",
-                title = "Fragile Warning Tape (3x)",
-                category = "Packaging",
-                price = 1800.0,
-                rating = 4.7,
-                reviewsCount = 74,
-                imageUrl = "https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=400&q=80",
-                description = "Heavy-duty adhesive packing tape printed with 'FRAGILE' text to alert handlers. Highly visible bright background."
-            ),
-            MarketplaceItem(
-                id = "rider_bag",
-                title = "Premium Dispatch Rider Bag",
-                category = "Merchandise",
-                price = 12500.0,
-                rating = 4.9,
-                reviewsCount = 205,
-                imageUrl = "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=400&q=80",
-                description = "Insulated, waterproof, heavy-duty backpack with security reflectors. Keeps hot orders warm and protects items from Lagos rain."
-            ),
-            MarketplaceItem(
-                id = "raincoat_shield",
-                title = "Waterproof Rider Raincoat",
-                category = "Security",
-                price = 6500.0,
-                rating = 4.6,
-                reviewsCount = 58,
-                imageUrl = "https://images.unsplash.com/photo-1548883354-7622d03aca27?auto=format&fit=crop&w=400&q=80",
-                description = "Heavy duty double-layered waterproof rainsuit with high-visibility reflective neon patches. Essential for all-season dispatch riders."
-            ),
-            MarketplaceItem(
-                id = "courier_pack_50",
-                title = "Waterproof Mailing Flyer (50x)",
-                category = "Packaging",
-                price = 2800.0,
-                rating = 4.7,
-                reviewsCount = 112,
-                imageUrl = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=400&q=80",
-                description = "Self-adhesive, tamper-proof courier flyer bags. Puncture resistant, moisture proof, and highly durable for shipping documents and clothes."
-            ),
-            MarketplaceItem(
-                id = "rider_jacket",
-                title = "ESDispatch Branded Vest",
-                category = "Merchandise",
-                price = 7500.0,
-                rating = 4.9,
-                reviewsCount = 310,
-                imageUrl = "https://images.unsplash.com/photo-1578587018452-892bacefd3f2?auto=format&fit=crop&w=400&q=80",
-                description = "Official premium branded reflective cargo utility vest. Features heavy-duty zippers, pocket compartments, and high-visibility branding."
-            )
-        )
+    val marketplaceItems by viewModel.marketplaceProducts.collectAsState()
+
+    val categories = listOf("All", "Packaging", "Merchandise", "Gear", "Accessories")
+    
+    val filteredItems = marketplaceItems.filter { item ->
+        val matchesCategory = selectedCategory == "All" || item.category == selectedCategory
+        val matchesSearch = item.title.contains(searchQuery, ignoreCase = true) || 
+                          item.description.contains(searchQuery, ignoreCase = true)
+        matchesCategory && matchesSearch
     }
     
-    // Filter logic
-    val filteredItems = remember(searchQuery, selectedCategory) {
-        marketplaceItems.filter { item ->
-            val matchesSearch = item.title.contains(searchQuery, ignoreCase = true) || 
-                                item.description.contains(searchQuery, ignoreCase = true)
-            val matchesCategory = selectedCategory == "All" || item.category == selectedCategory
-            matchesSearch && matchesCategory
-        }
-    }
-    
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LuxuryBlack)
+            .background(if (isSystemDark) BackgroundDark else BackgroundLight)
+            .padding(bottom = 80.dp) // Leave space for BottomNavigationBar
     ) {
-        Column(
+        ScreenHeader(
+            title = "Marketplace",
+            onBack = { onNavigate("Dashboard") },
+            backgroundColor = if (isSystemDark) BackgroundDark else BackgroundLight
+        )
+
+        // Search Bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
             modifier = Modifier
-                .fillMaxSize()
-                .background(HeaderBgColor)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            placeholder = { Text("Search products...", color = TextGray) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search", tint = TextGray) },
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Gold,
+                unfocusedBorderColor = if (isSystemDark) BorderDark else Slate,
+                focusedContainerColor = if (isSystemDark) Charcoal else GoldenWhite,
+                unfocusedContainerColor = if (isSystemDark) Charcoal else GoldenWhite
+            ),
+            singleLine = true
+        )
+        
+        // Categories
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            ScreenHeader(
-                title = "Logistics Marketplace",
-                onBack = { onNavigate("Dashboard") }
-            )
-            
-            RoundedSheet(
-                modifier = Modifier.weight(1f),
-                containerColor = if (isSystemDark) BackgroundDark else BackgroundLight
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 16.dp)
+            items(categories) { category ->
+                val isSelected = category == selectedCategory
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (isSelected) Gold else (if (isSystemDark) Charcoal else GoldenWhite),
+                    border = if (!isSelected) BorderStroke(1.dp, if (isSystemDark) BorderDark else Slate.copy(alpha = 0.5f)) else null,
+                    modifier = Modifier.clickable { selectedCategory = category }
                 ) {
-                    // Search Bar Section (Padded)
-                    Row(
+                    Text(
+                        text = category,
+                        color = if (isSelected) Obsidian else (if (isSystemDark) Color.White else Obsidian),
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Products Grid List
+        if (filteredItems.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Filled.Store,
+                        contentDescription = null,
+                        tint = TextGray.copy(alpha = 0.5f),
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "No items found",
+                        color = TextGray,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(filteredItems) { item ->
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (isSystemDark) Charcoal else GoldenWhite,
+                        border = BorderStroke(1.dp, if (isSystemDark) BorderDark else Slate.copy(alpha = 0.5f)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 16.dp)
-                            .height(56.dp)
-                            .background(
-                                if (isSystemDark) Charcoal else GoldenWhiteLight,
-                                shape = RoundedCornerShape(20.dp)
-                            )
-                            .border(
-                                1.dp,
-                                if (isSystemDark) Gold.copy(alpha = 0.3f) else Slate,
-                                RoundedCornerShape(20.dp)
-                            )
-                            .padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .clickable { showItemDetails = item }
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = "Search",
-                            tint = if (isSystemDark) Gold else Obsidian,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            textStyle = androidx.compose.ui.text.TextStyle(
-                                color = if (isSystemDark) Color.White else Obsidian,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            cursorBrush = SolidColor(if (isSystemDark) Gold else Obsidian),
-                            modifier = Modifier.weight(1f),
-                            decorationBox = { innerTextField ->
-                                Box(modifier = Modifier.fillMaxWidth()) {
-                                    if (searchQuery.isEmpty()) {
-                                        Text(
-                                            text = "Search packaging, gear...",
-                                            color = TextGray,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                    innerTextField()
-                                }
-                            }
-                        )
-                    }
-                    
-                    // Categories horizontal slider
-                    LazyRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        contentPadding = PaddingValues(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        val categories = listOf("All", "Packaging", "Merchandise", "Security")
-                        items(categories) { cat ->
-                            val isSelected = selectedCategory == cat
-                            val catBgColor = if (isSelected) Gold else (if (isSystemDark) Charcoal else GoldenWhite)
-                            val catTextColor = if (isSelected) Obsidian else (if (isSystemDark) Color.White else Obsidian)
-                            val catBorderColor = if (isSelected) Gold else (if (isSystemDark) BorderDark else Slate.copy(alpha = 0.5f))
-                            
-                            Box(
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Image(
+                                painter = rememberAsyncImagePainter(item.imageUrl),
+                                contentDescription = item.title,
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(catBgColor)
-                                    .border(1.dp, catBorderColor, RoundedCornerShape(12.dp))
-                                    .clickable { selectedCategory = cat }
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                contentAlignment = Alignment.Center
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(12.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            
+                            Spacer(modifier = Modifier.width(16.dp))
+                            
+                            Column(
+                                modifier = Modifier.weight(1f)
                             ) {
                                 Text(
-                                    text = cat,
-                                    color = catTextColor, // STRICT LOCK: Obsidian text on Gold background
-                                    fontSize = 12.sp,
+                                    text = item.title,
+                                    color = if (isSystemDark) Color.White else Obsidian,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                            }
-                        }
-                    }
-                    
-                    // Products Grid List
-                    if (filteredItems.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Filled.Store,
-                                    contentDescription = null,
-                                    tint = TextGray.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(64.dp)
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "No items found in this category",
+                                    text = item.description,
                                     color = TextGray,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium
+                                    fontSize = 11.sp,
+                                    maxLines = 2,
+                                    lineHeight = 14.sp
                                 )
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            items(filteredItems) { item ->
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = if (isSystemDark) Charcoal else GoldenWhite,
-                                    border = BorderStroke(1.dp, if (isSystemDark) BorderDark else Slate.copy(alpha = 0.5f)),
-                                    tonalElevation = 0.dp,
-                                    shadowElevation = 0.dp,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { showCartDialog = item }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Image(
-                                            painter = rememberAsyncImagePainter(item.imageUrl),
-                                            contentDescription = item.title,
-                                            modifier = Modifier
-                                                .size(80.dp)
-                                                .clip(RoundedCornerShape(12.dp)),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                        
-                                        Spacer(modifier = Modifier.width(16.dp))
-                                        
-                                        Column(
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text(
-                                                text = item.title,
-                                                color = if (isSystemDark) Color.White else Obsidian,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = item.description,
-                                                color = TextGray,
-                                                fontSize = 11.sp,
-                                                maxLines = 2,
-                                                lineHeight = 14.sp
-                                            )
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Star,
-                                                    contentDescription = null,
-                                                    tint = Gold,
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                                Text(
-                                                    text = "${item.rating} (${item.reviewsCount})",
-                                                    color = TextGray,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Medium
-                                                )
-                                            }
-                                        }
-                                        
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        
-                                        Column(
-                                            horizontalAlignment = Alignment.End,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(
-                                                text = "₦${String.format("%,.0f", item.price)}",
-                                                color = if (isSystemDark) Gold else Obsidian,
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.Black
-                                            )
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = Gold,
-                                                modifier = Modifier.clickable { showCartDialog = item }
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Add,
-                                                    contentDescription = "Buy Now",
-                                                    tint = Obsidian, // STRICT LOCK: Obsidian on Gold
-                                                    modifier = Modifier
-                                                        .size(28.dp)
-                                                        .padding(6.dp)
-                                                )
-                                            }
-                                        }
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Filled.Star,
+                                        contentDescription = null,
+                                        tint = Gold,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = "${item.rating} (${item.reviewsCount})",
+                                        color = TextGray,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
                                 }
+                            }
+                            
+                            Spacer(modifier = Modifier.width(8.dp))
+                            
+                            Column(
+                                horizontalAlignment = Alignment.End,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = "₦${String.format("%,.0f", item.price)}",
+                                    color = if (isSystemDark) Gold else Obsidian,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Black
+                                )
                             }
                         }
                     }
@@ -392,73 +232,193 @@ fun MarketplaceScreen(
     }
     
     // Purchase dialog / details sheets
-    showCartDialog?.let { item ->
-        AlertDialog(
-            onDismissRequest = { showCartDialog = null },
-            title = {
+    val item = showItemDetails
+    if (item != null) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showItemDetails = null },
+            sheetState = sheetState,
+            containerColor = if (isSystemDark) Charcoal else GoldenWhite,
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+            modifier = Modifier.fillMaxHeight(0.85f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.Top
+            ) {
+                Image(
+                    painter = rememberAsyncImagePainter(item.imageUrl),
+                    contentDescription = item.title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = item.title,
                     fontWeight = FontWeight.Black,
-                    fontSize = 18.sp,
+                    fontSize = 22.sp,
                     color = if (isSystemDark) Color.White else Obsidian
                 )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Image(
-                        painter = rememberAsyncImagePainter(item.imageUrl),
-                        contentDescription = item.title,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp)
-                            .clip(RoundedCornerShape(14.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                    Text(
-                        text = item.description,
-                        fontSize = 12.sp,
-                        color = if (isSystemDark) TextGray else Obsidian,
-                        lineHeight = 16.sp
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "PRICE:",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextGray
-                        )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(Icons.Filled.Star, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
+                    Text(text = "${item.rating} (${item.reviewsCount} reviews)", color = TextGray, fontSize = 13.sp)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = item.description,
+                    fontSize = 14.sp,
+                    color = if (isSystemDark) TextGray else Obsidian,
+                    lineHeight = 20.sp
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                
+                // Price & Actions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Total Price", fontSize = 12.sp, color = TextGray)
                         Text(
                             text = "₦${String.format("%,.2f", item.price)}",
-                            fontSize = 18.sp,
+                            fontSize = 24.sp,
                             fontWeight = FontWeight.Black,
                             color = if (isSystemDark) Gold else Obsidian
                         )
                     }
+                    Button(
+                        onClick = {
+                            viewModel.addToCart(item)
+                            Toast.makeText(context, "${item.title} added to cart", Toast.LENGTH_SHORT).show()
+                            showItemDetails = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.height(50.dp).padding(start = 16.dp)
+                    ) {
+                        Text("Add to Cart", fontWeight = FontWeight.Black)
+                    }
                 }
-            },
-            confirmButton = {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+    
+    if (cartItems.isNotEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.BottomEnd
+        ) {
+            FloatingActionButton(
+                onClick = { showCheckoutSheet = true },
+                containerColor = Gold,
+                contentColor = Obsidian,
+                modifier = Modifier
+                    .padding(end = 24.dp, bottom = 100.dp)
+                    .size(64.dp)
+            ) {
+                BadgedBox(
+                    badge = {
+                        Badge(
+                            containerColor = Color.Red,
+                            contentColor = Color.White
+                        ) {
+                            val count = cartItems.sumOf { it.quantity }
+                            Text(count.toString())
+                        }
+                    }
+                ) {
+                    Icon(Icons.Filled.ShoppingCart, contentDescription = "Cart", modifier = Modifier.size(32.dp))
+                }
+            }
+        }
+    }
+    
+    if (showCheckoutSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        var address by remember { mutableStateOf("") }
+        ModalBottomSheet(
+            onDismissRequest = { showCheckoutSheet = false },
+            sheetState = sheetState,
+            containerColor = if (isSystemDark) Charcoal else GoldenWhite,
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+            modifier = Modifier.fillMaxHeight(0.9f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp)
+            ) {
+                Text("Checkout", fontSize = 24.sp, fontWeight = FontWeight.Black, color = if (isSystemDark) Gold else Obsidian)
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(cartItems) { cartItem ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(cartItem.item.title, modifier = Modifier.weight(1f), color = if (isSystemDark) Color.White else Obsidian)
+                            Text("x${cartItem.quantity}", color = TextGray)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text("₦${String.format("%,.0f", cartItem.item.price * cartItem.quantity)}", fontWeight = FontWeight.Bold, color = if (isSystemDark) Gold else Obsidian)
+                        }
+                    }
+                }
+                
+                HorizontalDivider(color = if (isSystemDark) BorderDark else Slate)
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                val total = cartItems.sumOf { it.item.price * it.quantity }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Total", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextGray)
+                    Text("₦${String.format("%,.0f", total)}", fontSize = 22.sp, fontWeight = FontWeight.Black, color = if (isSystemDark) Gold else Obsidian)
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    label = { Text("Delivery Address") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = if (isSystemDark) BorderDark else Slate
+                    )
+                )
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
                 Button(
                     onClick = {
-                        Toast.makeText(context, "Order placed! Logistics center will deliver materials soon.", Toast.LENGTH_LONG).show()
-                        showCartDialog = null
+                        if (address.isBlank()) {
+                            Toast.makeText(context, "Please enter an address", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        viewModel.checkoutMarketplaceCart(address) { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            if (success) {
+                                showCheckoutSheet = false
+                            }
+                        }
                     },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Order Now", fontWeight = FontWeight.Bold)
+                    Text("Pay with Wallet", fontWeight = FontWeight.Black)
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCartDialog = null }) {
-                    Text("Cancel", color = if (isSystemDark) Color.White else Obsidian)
-                }
-            },
-            containerColor = if (isSystemDark) Charcoal else GoldenWhite,
-            shape = RoundedCornerShape(24.dp)
-        )
+            }
+        }
     }
 }

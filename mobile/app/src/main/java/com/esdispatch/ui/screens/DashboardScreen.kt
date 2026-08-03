@@ -56,8 +56,8 @@ import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Redeem
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -973,7 +973,7 @@ fun DashboardScreen(
                                                             color = Obsidian
                                                         )
                                                         Icon(
-                                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                                            imageVector = Icons.Filled.KeyboardArrowRight,
                                                             contentDescription = null,
                                                             tint = Obsidian,
                                                             modifier = Modifier.size(14.dp)
@@ -1702,7 +1702,7 @@ fun DashboardScreen(
                         }
 
                         Spacer(modifier = Modifier.height(18.dp))
-                        Divider(color = Color.White.copy(alpha = 0.08f))
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                         Spacer(modifier = Modifier.height(14.dp))
 
                         // Milestone Achievements
@@ -1844,8 +1844,12 @@ fun DashboardScreen(
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(codeRowBgColor)
                                     .clickable {
-                                        clipboardManager.setText(AnnotatedString(referralCode.value))
-                                        Toast.makeText(context, "Referral code copied!", Toast.LENGTH_SHORT).show()
+                                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(android.content.Intent.EXTRA_SUBJECT, "Join ESDispatch!")
+                                            putExtra(android.content.Intent.EXTRA_TEXT, "Use my referral code ${referralCode.value} to sign up for ESDispatch! https://esdispatch.app/refer?code=${referralCode.value}")
+                                        }
+                                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Referral Code"))
                                     }
                                     .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1919,9 +1923,12 @@ fun DashboardScreen(
                             Surface(
                                 onClick = {
                                     if (friendCode.isNotBlank()) {
-                                        viewModel.redeemReferralCode(friendCode.trim())
-                                        friendCode = ""
-                                        Toast.makeText(context, "Referral code submitted!", Toast.LENGTH_SHORT).show()
+                                        viewModel.redeemReferralCode(friendCode.trim()) { success, message ->
+                                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                            if (success) {
+                                                friendCode = ""
+                                            }
+                                        }
                                     }
                                 },
                                 shape = RoundedCornerShape(14.dp),
@@ -2242,7 +2249,7 @@ fun DashboardScreen(
                             }
 
                             if (userRole != "rider") {
-                                Divider(color = if (isDark) BorderDark else Slate.copy(alpha = 0.5f), thickness = 1.dp)
+                                HorizontalDivider(color = if (isDark) BorderDark else Slate.copy(alpha = 0.5f), thickness = 1.dp)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -2726,6 +2733,7 @@ fun DashboardScreen(
                     riderRating = riderRating
                 )
             }
+
         }
     }
 }
@@ -3248,7 +3256,7 @@ fun ParcelCard(
                     color = bottomActionColor
                 )
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    imageVector = Icons.Filled.KeyboardArrowRight,
                     contentDescription = null,
                     tint = bottomActionColor,
                     modifier = Modifier.size(16.dp)

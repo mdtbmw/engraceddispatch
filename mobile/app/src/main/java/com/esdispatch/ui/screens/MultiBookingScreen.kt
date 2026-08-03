@@ -113,7 +113,7 @@ fun MultiBookingScreen(
                 try {
                     withContext(Dispatchers.IO) {
                         val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
-                        val addresses = geocoder.getFromLocationName(query, 5)
+                        val addresses = com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, query, 5)
                         if (addresses != null) {
                             for (addr in addresses) {
                                 addr.getAddressLine(0)?.let { results.add(it) }

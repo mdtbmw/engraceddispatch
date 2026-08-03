@@ -185,7 +185,7 @@ fun HeroCarousel() {
                                 modifier = Modifier.align(Alignment.Start)
                             ) {
                                 Text(
-                                    text = "ENGRACED",
+                                    text = "ES",
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.Black,
                                     color = Obsidian,

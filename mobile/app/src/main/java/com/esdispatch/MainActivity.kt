@@ -71,8 +71,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Color
+import androidx.fragment.app.FragmentActivity
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private lateinit var viewModel: DeliveryViewModel
 
     override fun attachBaseContext(newBase: android.content.Context?) {
@@ -249,6 +250,11 @@ class MainActivity : ComponentActivity() {
                     composable("Dashboard") {
                         DashboardScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
                     }
+                    composable("Marketplace") {
+                        MarketplaceScreen(viewModel = viewModel, onNavigate = {
+                            if (it == "Dashboard") navController.popBackStack() else navController.navigate(it)
+                        })
+                    }
                     composable("OrderLogs") {
                         OrderLogsScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
                     }
@@ -331,9 +337,7 @@ class MainActivity : ComponentActivity() {
                     composable("Referral") {
                         ReferralScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
                     }
-                    composable("Marketplace") {
-                        MarketplaceScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
-                    }
+
                 }
 
                 // Foreground notification Toast banner UI

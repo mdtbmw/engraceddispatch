@@ -35,7 +35,10 @@ data class PromoMock(
 )
 
 @Composable
-fun PromoCarousel(promotions: List<com.esdispatch.data.PromoCode>) {
+fun PromoCarousel(
+    promotions: List<com.esdispatch.data.PromoCode>,
+    onApplyPromo: (String) -> Unit = {}
+) {
     if (promotions.isEmpty()) return
 
     val context = LocalContext.current
@@ -240,7 +243,7 @@ fun PromoCarousel(promotions: List<com.esdispatch.data.PromoCode>) {
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))
                                             .clickable {
-                                                Toast.makeText(context, "Promo code ${promo.code} applied successfully!", Toast.LENGTH_SHORT).show()
+                                                onApplyPromo(promo.code)
                                             }
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {

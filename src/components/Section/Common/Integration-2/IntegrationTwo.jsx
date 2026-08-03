@@ -1,30 +1,10 @@
-﻿/* eslint-disable react/no-unescaped-entities */
+/* eslint-disable react/no-unescaped-entities */
 
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { IoClose } from "react-icons/io5";
 
 const IntegrationSectionTwo = () => {
-  const [popup, setPopup] = useState(false);
-
-  const openPopup = () => {
-    setPopup(true);
-    const iframe = document.getElementById("youtube-video");
-    if (iframe) {
-      iframe.src =
-        "https://www.youtube.com/embed/SixdAQtWJQ8?si=TPxjQ04JgcZ5eEA9";
-    }
-  };
-
-  const closePopup = () => {
-    setPopup(false);
-    const iframe = document.getElementById("youtube-video");
-    if (iframe) {
-      iframe.src = "";
-    }
-  };
 
   return (
     <>
@@ -49,15 +29,6 @@ const IntegrationSectionTwo = () => {
               <div className="col-lg-6">
                 <div className="zubuz-video-wrap">
                   <img src="/images/v3/video-bg.png" alt="" />
-                  <button
-                    className="video-init zubuz-review-video"
-                    onClick={openPopup}
-                  >
-                    <img src="/images/v3/play-btn.svg" alt="" />
-                    <div className="waves wave-1"></div>
-                    <div className="waves wave-2"></div>
-                    <div className="waves wave-3"></div>
-                  </button>
                 </div>
               </div>
               <div className="col-lg-6 d-flex align-items-center">
@@ -98,52 +69,6 @@ const IntegrationSectionTwo = () => {
               </div>
             </div>
           </div>
-        </div>
-        <div
-          className={`popup-video ${popup ? "popup" : "popdown"}`}
-          onClick={() => setPopup(false)}
-        >
-          <div className="video-wrapper">
-            {/* <ReactPlayer
-            className="video"
-            url="https://www.youtube.com/watch?v=LXb3EKWsInQ"
-          ></ReactPlayer> */}
-            <iframe
-              width="100%"
-              height="100%"
-              className="video"
-              src="https://www.youtube.com/embed/SixdAQtWJQ8?si=iDeCVOUMxo5bqmy9"
-              title="YouTube video player"
-              frameborder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerpolicy="strict-origin-when-cross-origin"
-              allowfullscreen
-            ></iframe>
-            <button className="close-button">
-              <IoClose className="close-icon" />
-            </button>
-          </div>
-        </div>
-      </div>
-      <div
-        className={`popup-video ${popup ? "popup" : "popdown"}`}
-        onClick={closePopup}
-      >
-        <div className="video-wrapper">
-          <iframe
-            id="youtube-video"
-            className="video"
-            width="100%"
-            height="100%"
-            src="https://www.youtube.com/embed/SixdAQtWJQ8?si=TPxjQ04JgcZ5eEA9"
-            frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          ></iframe>
-
-          <button className="close-button" onClick={closePopup}>
-            <IoClose className="close-icon" />
-          </button>
         </div>
       </div>
     </>

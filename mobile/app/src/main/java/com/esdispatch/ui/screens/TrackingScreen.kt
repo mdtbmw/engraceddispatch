@@ -19,8 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.Navigation
@@ -298,29 +298,31 @@ fun ActiveTrackingScreen(
         it.status == ParcelStatus.OUT_FOR_DELIVERY 
     }
 
-    val dummyParcel = remember {
-        Parcel(
-            id = "",
-            itemName = "",
-            imageUrl = "",
-            status = ParcelStatus.PENDING,
-            pickupAddress = "",
-            deliveryAddress = "",
-            senderName = "",
-            senderPhone = "",
-            receiverName = "",
-            receiverPhone = "",
-            price = 0.0,
-            courierName = "",
-            courierPhone = "",
-            progress = 0f,
-            courierLatitude = null,
-            courierLongitude = null
-        )
+    val hasNoBooking = activeParcel == null
+
+    if (hasNoBooking || activeParcel == null) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (isDark) BackgroundDark else BackgroundLight),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Info,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = TextGray
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("No Active Delivery", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("You don't have any ongoing deliveries to track.", color = TextGray, fontSize = 14.sp)
+        }
+        return
     }
 
-    val hasNoBooking = activeParcel == null
-    val parcel = activeParcel ?: dummyParcel
+    val parcel = activeParcel
 
     LaunchedEffect(hasNoBooking, parcel.id, parcel.status, parcel.progress) {
         val statusText = when (parcel.status) {
@@ -433,11 +435,46 @@ fun ActiveTrackingScreen(
         }
     }
 
-    // 1-Mile Proximity Notification / Alert Simulation
+    // 1-Mile Proximity Notification (Distance-Based Real-Time Alert)
     var hasNotifiedWithinOneMile by remember { mutableStateOf(false) }
     var showInAppNotificationBanner by remember { mutableStateOf(false) }
+    val geocoder = remember { android.location.Geocoder(context, java.util.Locale.getDefault()) }
 
-    LaunchedEffect(parcel.progress) {
+    LaunchedEffect(parcel.courierLatitude, parcel.courierLongitude, parcel.progress, parcel.deliveryAddress) {
+        // Calculate real distance if GPS coordinates are available
+        if (parcel.courierLatitude != null && parcel.courierLongitude != null && parcel.deliveryAddress.isNotEmpty()) {
+            try {
+                // Geocode the delivery address in the background thread
+                val addresses = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, parcel.deliveryAddress, 1)
+                }
+                if (!addresses.isNullOrEmpty()) {
+                    val destLat = addresses[0].latitude
+                    val destLng = addresses[0].longitude
+                    val results = FloatArray(1)
+                    android.location.Location.distanceBetween(
+                        parcel.courierLatitude, parcel.courierLongitude,
+                        destLat, destLng,
+                        results
+                    )
+                    val distanceMeters = results[0]
+                    if (distanceMeters <= 1609.34f && !hasNotifiedWithinOneMile) { // 1 mile = 1609.34 meters
+                        hasNotifiedWithinOneMile = true
+                        showInAppNotificationBanner = true
+                        Toast.makeText(context, "🔔 Delivery Notice: Courier is within 1 mile of your location!", Toast.LENGTH_LONG).show()
+                    }
+                    if (distanceMeters > 1609.34f) {
+                        hasNotifiedWithinOneMile = false
+                        showInAppNotificationBanner = false
+                    }
+                    return@LaunchedEffect // Exit early if real coordinates are used
+                }
+            } catch (e: Exception) {
+                // Ignore geocoding errors and fallback to progress
+            }
+        }
+        
+        // Fallback to simulated progress if no real coordinates
         if (parcel.progress >= 0.85f && parcel.progress < 0.98f && !hasNotifiedWithinOneMile) {
             hasNotifiedWithinOneMile = true
             showInAppNotificationBanner = true
@@ -1131,7 +1168,7 @@ fun ActiveTrackingScreen(
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         QRCodeImage(
-                                                            text = selectedParcel?.id ?: "ESDISPATCH_MOCK_ID",
+                                                            text = selectedParcel?.id ?: "INVALID_ID",
                                                             sizeDp = 100.dp
                                                         )
                                                     }
@@ -1834,7 +1871,9 @@ private fun geocodeAddressToLatLng(context: android.content.Context, address: St
     try {
         if (android.location.Geocoder.isPresent()) {
             val geocoder = android.location.Geocoder(context)
-            val addresses = geocoder.getFromLocationName(address, 1)
+            val addresses = kotlinx.coroutines.runBlocking {
+                com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, address, 1)
+            }
             if (!addresses.isNullOrEmpty()) {
                 val addr = addresses[0]
                 return Pair(addr.latitude, addr.longitude)
@@ -2978,57 +3017,6 @@ fun AnimatedStatusBadge(
     }
 }
 
-fun authenticateBiometric(
-    activity: android.app.Activity,
-    title: String,
-    subtitle: String,
-    description: String,
-    onSuccess: () -> Unit,
-    onError: (String) -> Unit
-) {
-    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-        val executor = activity.mainExecutor
-        val biometricPrompt = android.hardware.biometrics.BiometricPrompt.Builder(activity)
-            .setTitle(title)
-            .setSubtitle(subtitle)
-            .setDescription(description)
-            .setNegativeButton("Cancel", executor, { _, _ ->
-                onError("Cancelled")
-            })
-            .build()
-
-        val cancellationSignal = android.os.CancellationSignal()
-        biometricPrompt.authenticate(
-            cancellationSignal,
-            executor,
-            object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?) {
-                    super.onAuthenticationSucceeded(result)
-                    activity.runOnUiThread {
-                        onSuccess()
-                    }
-                }
-
-                override fun onAuthenticationFailed() {
-                    super.onAuthenticationFailed()
-                    activity.runOnUiThread {
-                        onError("Failed")
-                    }
-                }
-
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
-                    super.onAuthenticationError(errorCode, errString)
-                    activity.runOnUiThread {
-                        onError(errString?.toString() ?: "Error")
-                    }
-                }
-            }
-        )
-    } else {
-        onSuccess()
-    }
-}
-
 @Composable
 fun ShippingJourneyProgressBar(
     status: ParcelStatus,
@@ -3388,7 +3376,7 @@ fun reverseGeocodeAddress(context: android.content.Context, lat: Double, lng: Do
         val addressText = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
-                val addresses = geocoder.getFromLocation(lat, lng, 1)
+                val addresses = com.esdispatch.utils.GeocoderUtils.getFromLocationCompat(geocoder, lat, lng, 1)
                 if (!addresses.isNullOrEmpty()) {
                     val addrLine = addresses[0].getAddressLine(0)
                     if (!addrLine.isNullOrBlank()) return@withContext addrLine
@@ -3462,7 +3450,8 @@ fun DeliveryFeedbackDialog(
         tipOptions.getOrElse(selectedTipIndex) { 0.0 }
     }
 
-    AlertDialog(
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+    androidx.compose.material3.BasicAlertDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier
@@ -3762,7 +3751,7 @@ fun ParcelChatDialog(
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            imageVector = Icons.Filled.ArrowBack,
                             contentDescription = "Back",
                             tint = headerContentColor
                         )
@@ -3946,7 +3935,7 @@ fun ParcelChatDialog(
                             enabled = messageInput.trim().isNotEmpty()
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                imageVector = Icons.Filled.Send,
                                 contentDescription = "Send",
                                 tint = if (messageInput.trim().isNotEmpty()) Obsidian else TextGray,
                                 modifier = Modifier.size(18.dp)

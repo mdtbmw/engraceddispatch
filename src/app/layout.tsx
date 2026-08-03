@@ -8,8 +8,8 @@ import "~/assets/css/react-adjustment.css";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Engraced Dispatch — Premium Logistics & Dispatch",
-  description: "Premium Logistics & Dispatch Operations Management",
+  title: "Primelink Energy Group — Premium Oil & Gas Trading",
+  description: "Global energy trading company specializing in unrefined crude oil and refined petroleum products.",
   icons: {
     icon: [
       { url: "https://engraceddispatch-ffba4.web.app/favicon.svg", type: "image/svg+xml" },

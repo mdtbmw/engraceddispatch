@@ -1,31 +1,12 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
-import { IoClose } from "react-icons/io5";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { ScrollReveal } from "~/components/Animations";
 import { PlayStoreBadge, AppStoreBadge } from "~/components/Ui/StoreBadge";
 import { useSiteContent } from "~/lib/useSiteContent";
 
 const HeroSection = () => {
   const { content } = useSiteContent();
-  const [popup, setPopup] = useState(false);
-
-  const openPopup = () => {
-    setPopup(true);
-    const iframe = document.getElementById("youtube-video");
-    if (iframe) {
-      iframe.src = "https://www.youtube.com/embed/SixdAQtWJQ8?si=TPxjQ04JgcZ5eEA9";
-    }
-  };
-
-  const closePopup = () => {
-    setPopup(false);
-    const iframe = document.getElementById("youtube-video");
-    if (iframe) {
-      iframe.src = "";
-    }
-  };
 
   const containerVariants = {
     hidden: {},
@@ -78,15 +59,6 @@ const HeroSection = () => {
               <Link className="zubuz-default-btn" href="contact-us">
                 <span>Send a Package</span>
               </Link>
-              <motion.button
-                className="zubuz-default-btn"
-                onClick={openPopup}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                style={{ background: "transparent", border: "2px solid #FFC542", color: "#FFC542" }}
-              >
-                <span>See How It Works</span>
-              </motion.button>
             </motion.div>
             <motion.div
               className="zubuz-hero-app-badges"
@@ -215,46 +187,6 @@ const HeroSection = () => {
           </motion.div>
         </motion.div>
       </div>
-      <AnimatePresence>
-        {popup && (
-          <motion.div
-            className="popup-video popup"
-            onClick={closePopup}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <motion.div
-              className="video-wrapper"
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <iframe
-                id="youtube-video"
-                className="video"
-                width="100%"
-                height="100%"
-                src="https://www.youtube.com/embed/SixdAQtWJQ8?si=TPxjQ04JgcZ5eEA9"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              ></iframe>
-              <motion.button
-                className="close-button"
-                onClick={closePopup}
-                whileHover={{ scale: 1.1, rotate: 90 }}
-                whileTap={{ scale: 0.9 }}
-              >
-                <IoClose className="close-icon" />
-              </motion.button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </>
   );
 };

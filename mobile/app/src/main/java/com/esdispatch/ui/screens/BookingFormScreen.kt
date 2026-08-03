@@ -70,7 +70,7 @@ suspend fun detectUserLocation(context: android.content.Context): String {
             }
             if (bestLocation != null) {
                 val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
-                val addresses = geocoder.getFromLocation(bestLocation.latitude, bestLocation.longitude, 1)
+                val addresses = com.esdispatch.utils.GeocoderUtils.getFromLocationCompat(geocoder, bestLocation.latitude, bestLocation.longitude, 1)
                 if (!addresses.isNullOrEmpty()) {
                     val addrLine = addresses[0].getAddressLine(0)
                     if (!addrLine.isNullOrBlank()) return addrLine
@@ -134,7 +134,7 @@ fun BookingFormScreen(
     var focusedField by remember { mutableStateOf<String?>(null) } // pickup, delivery, stop_X
 
     var isScheduled by remember { mutableStateOf(false) }
-    var scheduledDate by remember { mutableStateOf("Today, 4 PM") }
+    var scheduledDate by remember { mutableStateOf("Today") }
     var scheduledReminderEnabled by remember { mutableStateOf(true) }
 
     var dropdownExpanded by remember { mutableStateOf(false) }
@@ -339,7 +339,7 @@ fun BookingFormScreen(
             return@LaunchedEffect
         }
         
-        delay(400L)
+        delay(50L) // Almost instant address search per user request
         isSearchingSuggestions = true
         
         withContext(Dispatchers.IO) {
@@ -1262,23 +1262,42 @@ fun BookingFormScreen(
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
                             
+                            val calendar = remember { java.util.Calendar.getInstance() }
+                            val datePickerDialog = remember {
+                                android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, dayOfMonth ->
+                                        scheduledDate = "$dayOfMonth/${month + 1}/$year"
+                                    },
+                                    calendar.get(java.util.Calendar.YEAR),
+                                    calendar.get(java.util.Calendar.MONTH),
+                                    calendar.get(java.util.Calendar.DAY_OF_MONTH)
+                                )
+                            }
+                            
                             // Horizontal schedule slots
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                listOf("Today, 4 PM", "Tomorrow, 10 AM", "Tomorrow, 2 PM").forEach { slot ->
-                                    val isSelected = scheduledDate == slot
+                                listOf("Today", "Tomorrow", "Select Date").forEach { slot ->
+                                    val isSelected = scheduledDate == slot || (slot == "Select Date" && scheduledDate !in listOf("Today", "Tomorrow"))
                                     Surface(
                                         color = if (isSelected) Gold.copy(alpha = 0.15f) else Color.Transparent,
                                         shape = RoundedCornerShape(12.dp),
                                         border = BorderStroke(1.dp, if (isSelected) Gold else fieldBorderColor),
                                         modifier = Modifier
                                             .weight(1f)
-                                            .clickable { scheduledDate = slot }
+                                            .clickable { 
+                                                if (slot == "Select Date") {
+                                                    datePickerDialog.show()
+                                                } else {
+                                                    scheduledDate = slot 
+                                                }
+                                            }
                                     ) {
                                         Text(
-                                            text = slot,
+                                            text = if (slot == "Select Date" && scheduledDate !in listOf("Today", "Tomorrow", "Today, 4 PM")) scheduledDate else slot,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (isSelected) GoldLight else TextGray,

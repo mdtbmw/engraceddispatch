@@ -77,9 +77,9 @@ data class NotificationItem(
 
 data class PromoCode(
     val id: String = UUID.randomUUID().toString(),
-    val discountPercent: Int,
-    val description: String,
-    val code: String,
+    val discountPercent: Int = 0,
+    val description: String = "",
+    val code: String = "",
     val isLimited: Boolean = true
 )
 
@@ -213,3 +213,4 @@ data class VehicleMaintenanceSchedule(
 )
 
 
+data class CardInfo(val type: String, val last4: String, val expiry: String)

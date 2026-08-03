@@ -581,6 +581,67 @@ object FirebaseManager {
     }
 
     /**
+     * Fetch active promotions from Firestore
+     */
+    fun getPromotions(onComplete: (List<com.esdispatch.data.PromoCode>) -> Unit) {
+        val db = firestore
+        if (db == null) {
+            onComplete(emptyList())
+            return
+        }
+
+        db.collection("promotions").get()
+            .addOnSuccessListener { snapshot ->
+                val list = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        doc.toObject(com.esdispatch.data.PromoCode::class.java)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing promo document: ${e.message}")
+                        null
+                    }
+                }
+                onComplete(list)
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to fetch promotions: ${e.message}")
+                onComplete(emptyList())
+            }
+    }
+
+    /**
+     * Applies a promo code using a secure Firestore transaction.
+     */
+    fun applyPromoCode(code: String, onComplete: (Boolean, String) -> Unit) {
+        val db = firestore
+        val user = auth?.currentUser
+        if (db == null || user == null) {
+            onComplete(false, "Authentication required")
+            return
+        }
+
+        val userRef = db.collection("users").document(user.uid)
+        
+        db.runTransaction { transaction ->
+            val userSnapshot = transaction.get(userRef)
+            if (!userSnapshot.exists()) {
+                throw Exception("User not found")
+            }
+            
+            val applied = userSnapshot.get("appliedPromos") as? List<String> ?: emptyList()
+            if (applied.contains(code.uppercase())) {
+                throw Exception("Promo code already applied")
+            }
+            
+            val newApplied = applied + code.uppercase()
+            transaction.update(userRef, "appliedPromos", newApplied)
+        }.addOnSuccessListener {
+            onComplete(true, "Promo code applied successfully!")
+        }.addOnFailureListener { e ->
+            onComplete(false, e.message ?: "Failed to apply promo code")
+        }
+    }
+
+    /**
      * Push or update delivery real-time status in Firestore
      */
     fun syncParcelToFirestore(parcel: Parcel) {

@@ -941,70 +941,7 @@ fun ExpressBookingScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
 
-                // Delivery Speed Picker
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Charcoal,
-                    border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
-                    shadowElevation = 0.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Text(
-                            text = "Delivery Speed",
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 14.sp,
-                            color = accentColor,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isInstantSpeed = true }
-                                .padding(vertical = 8.dp)
-                        ) {
-                            RadioButton(
-                                selected = isInstantSpeed,
-                                onClick = { isInstantSpeed = true },
-                                colors = RadioButtonDefaults.colors(selectedColor = accentColor, unselectedColor = TextGray)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Instant Speed", fontWeight = FontWeight.Bold, color = AppTextColor)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Icon(Icons.Filled.Bolt, null, tint = accentIconColor, modifier = Modifier.size(16.dp))
-                                }
-                                Text("Delivery in 30-45 minutes (+₦${String.format("%,.2f", expressSurcharge)})", fontSize = 11.sp, color = TextGray)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isInstantSpeed = false }
-                                .padding(vertical = 8.dp)
-                        ) {
-                            RadioButton(
-                                selected = !isInstantSpeed,
-                                onClick = { isInstantSpeed = false },
-                                colors = RadioButtonDefaults.colors(selectedColor = accentColor, unselectedColor = TextGray)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text("Standard Speed", fontWeight = FontWeight.Bold, color = AppTextColor)
-                                Text("Delivery within 3-4 hours (Standard price)", fontSize = 11.sp, color = TextGray)
-                            }
-                        }
-                    }
-                }
             }
         }
     }

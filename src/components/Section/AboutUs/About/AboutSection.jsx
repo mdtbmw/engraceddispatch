@@ -12,7 +12,7 @@ const AboutSection = () => {
               <h2>{content.aboutTitle}</h2>
             </div>
             <div className="col-lg-5 d-flex align-items-center">
-              <p>{content.aboutDescription}</p>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{content.aboutDescription}</p>
             </div>
           </div>
         </div>

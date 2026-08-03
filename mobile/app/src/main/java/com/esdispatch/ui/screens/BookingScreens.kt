@@ -15,7 +15,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -148,11 +148,22 @@ fun SendParcelScreen(
     var pickupFocus by remember { mutableStateOf(false) }
     var deliveryFocus by remember { mutableStateOf(false) }
     
-    val pickupResults = remember(pickup, pickupFocus) {
-        if (pickupFocus && pickup.isNotBlank() && pickup != draft.pickupAddress) viewModel.searchAddressAutocomplete(pickup) else emptyList()
+    var pickupResults by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(pickup, pickupFocus) {
+        if (pickupFocus && pickup.isNotBlank() && pickup != draft.pickupAddress) {
+            pickupResults = viewModel.searchAddressAutocomplete(pickup)
+        } else {
+            pickupResults = emptyList()
+        }
     }
-    val deliveryResults = remember(delivery, deliveryFocus) {
-        if (deliveryFocus && delivery.isNotBlank() && delivery != draft.deliveryAddress) viewModel.searchAddressAutocomplete(delivery) else emptyList()
+    
+    var deliveryResults by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(delivery, deliveryFocus) {
+        if (deliveryFocus && delivery.isNotBlank() && delivery != draft.deliveryAddress) {
+            deliveryResults = viewModel.searchAddressAutocomplete(delivery)
+        } else {
+            deliveryResults = emptyList()
+        }
     }
 
     LaunchedEffect(currentUserName, currentUserPhone, draft) {

@@ -17,8 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -372,7 +372,7 @@ fun PaginationControls(
                 .border(1.dp, borderColor, CircleShape)
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                imageVector = Icons.Filled.ArrowBack,
                 contentDescription = "Previous Page",
                 tint = if (currentPage > 0) (if (isDark) Gold else Obsidian) else TextGray,
                 modifier = Modifier.size(16.dp)
@@ -416,7 +416,7 @@ fun PaginationControls(
                 .border(1.dp, borderColor, CircleShape)
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                imageVector = Icons.Filled.ArrowForward,
                 contentDescription = "Next Page",
                 tint = if (currentPage < totalPages - 1) (if (isDark) Gold else Obsidian) else TextGray,
                 modifier = Modifier.size(16.dp)

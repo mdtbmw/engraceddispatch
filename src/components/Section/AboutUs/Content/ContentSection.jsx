@@ -26,10 +26,10 @@ const ContentSection = () => {
                     <Icon name="speed" size={28} />
                   </div>
                   <div className="zubuz-iconbox-data data-small">
-                    <span>Speed & Reliability:</span>
+                    <span>Operational Excellence:</span>
                     <p>
-                      We prioritise quick turnaround times without compromising
-                      on safety. Your package arrives when promised, every time.
+                      We prioritise swift execution and uncompromised safety in all our maritime and overland logistics.
+                      Your energy commodities arrive securely, strictly on schedule.
                     </p>
                   </div>
                 </div>
@@ -38,10 +38,10 @@ const ContentSection = () => {
                     <Icon name="trust" size={28} />
                   </div>
                   <div className="zubuz-iconbox-data data-small">
-                    <span>Trust & Transparency:</span>
+                    <span>Integrity & Transparency:</span>
                     <p>
-                      Real-time tracking, clear pricing, and honest
-                      communication. We earn your trust with every delivery.
+                      From clear, competitive pricing to honest communication across the supply chain,
+                      we build long-term partnerships anchored in absolute trust.
                     </p>
                   </div>
                 </div>

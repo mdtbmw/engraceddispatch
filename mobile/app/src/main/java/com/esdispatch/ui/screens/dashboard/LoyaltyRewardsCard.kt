@@ -89,7 +89,7 @@ fun LoyaltyRewardsCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Engraced VIP Rewards",
+                            text = "ES VIP Rewards",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White
@@ -192,7 +192,7 @@ fun LoyaltyRewardsCard(
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
-                Divider(color = Color.White.copy(alpha = 0.08f))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Text(

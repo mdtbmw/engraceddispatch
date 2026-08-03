@@ -953,7 +953,7 @@ fun EconomyBookingScreen(
                             Icon(Icons.Filled.Info, null, tint = accentIconColor, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "Economy offers cost-effective rates by bundling shipments along the route.",
+                                text = "Economy offers cost-effective rates by bundling shipments along the route (Same Day Delivery).",
                                 fontSize = 11.sp,
                                 color = if (isLight) Obsidian else TextGray,
                                 modifier = Modifier.weight(1f)

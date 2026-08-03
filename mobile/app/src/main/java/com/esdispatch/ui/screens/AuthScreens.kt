@@ -14,8 +14,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -481,7 +481,7 @@ fun LoginScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward, 
+                                    imageVector = Icons.Filled.ArrowForward, 
                                     contentDescription = null, 
                                     tint = if (isLight) Gold else Obsidian, 
                                     modifier = Modifier.size(18.dp)
@@ -563,7 +563,7 @@ fun LoginScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = Icons.Filled.ArrowBack,
                     contentDescription = "Back",
                     tint = Color.White,
                     modifier = Modifier.size(20.dp)
@@ -1106,7 +1106,7 @@ fun SignUpScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        imageVector = Icons.Filled.ArrowForward,
                                         contentDescription = null,
                                         tint = if (isLight) Gold else Obsidian,
                                         modifier = Modifier.size(18.dp)
@@ -1323,7 +1323,7 @@ fun SignUpScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        imageVector = Icons.Filled.ArrowForward,
                                         contentDescription = null,
                                         tint = if (isLight) Gold else Obsidian,
                                         modifier = Modifier.size(18.dp)
@@ -1528,7 +1528,7 @@ fun SignUpScreen(
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                            imageVector = Icons.Filled.ArrowForward,
                                             contentDescription = null,
                                             tint = if (isLight) Gold else Obsidian,
                                             modifier = Modifier.size(18.dp)
@@ -1604,7 +1604,7 @@ fun SignUpScreen(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                imageVector = Icons.Filled.ArrowBack,
                 contentDescription = "Back",
                 tint = Color.White,
                 modifier = Modifier.size(20.dp)
@@ -1633,11 +1633,11 @@ fun FingerprintRegisterDialog(
     val scope = rememberCoroutineScope()
     
     val context = LocalContext.current
-    val activity = context as? android.app.Activity
+    val activity = context as? androidx.fragment.app.FragmentActivity
 
     LaunchedEffect(isPinVerified) {
         if (isPinVerified && activity != null) {
-            authenticateBiometric(
+            com.esdispatch.util.BiometricHelper.authenticate(
                 activity = activity,
                 title = "ESDispatch Biometric Enrollment",
                 subtitle = "Link secure credentials",
@@ -1875,11 +1875,11 @@ fun FingerprintAuthDialog(
     var showFallback by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val activity = context as? android.app.Activity
+    val activity = context as? androidx.fragment.app.FragmentActivity
 
     LaunchedEffect(Unit) {
         if (activity != null) {
-            authenticateBiometric(
+            com.esdispatch.util.BiometricHelper.authenticate(
                 activity = activity,
                 title = "ESDispatch Biometric Verification",
                 subtitle = "Authorize secure access",
