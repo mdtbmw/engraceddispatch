@@ -1,6 +1,7 @@
 import React from "react";
 import type { Metadata } from "next";
 import "./globals.css";
+import "~/assets/css/bootstrap.min.css";
 import "~/assets/css/app.css";
 import "~/assets/css/main.css";
 import "~/assets/css/react-adjustment.css";
