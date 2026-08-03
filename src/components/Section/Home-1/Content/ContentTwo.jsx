@@ -26,7 +26,7 @@ const ContentSectionTwo = () => {
                     <StaggerItem>
                       <div className="zubuz-iconbox-wrap-left">
                         <div className="zubuz-iconbox-icon" style={{ overflow: 'hidden', padding: 0 }}>
-                          <img src="https://placehold.co/56x56/F26522/FFFFFF?text=Quality" alt="Quality Check" style={{ width: '100%', height: '100%' }} />
+                          <img src="/images/v1/quality-check.jpg" alt="Quality Check" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         </div>
                         <div className="zubuz-iconbox-data">
                           <span>Quality Assurance</span>
@@ -39,7 +39,7 @@ const ContentSectionTwo = () => {
                     <StaggerItem>
                       <div className="zubuz-iconbox-wrap-left">
                         <div className="zubuz-iconbox-icon" style={{ overflow: 'hidden', padding: 0 }}>
-                          <img src="https://placehold.co/56x56/0B2046/FFFFFF?text=Scale" alt="Global Scale" style={{ width: '100%', height: '100%' }} />
+                          <img src="/images/v1/global-scale.jpg" alt="Global Scale" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         </div>
                         <div className="zubuz-iconbox-data">
                           <span>Global Scale</span>
