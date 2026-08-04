@@ -168,10 +168,6 @@ class MainActivity : FragmentActivity() {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(
-                            top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
-                            bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                        )
                 ) {
                     NavHost(
                             navController = navController,

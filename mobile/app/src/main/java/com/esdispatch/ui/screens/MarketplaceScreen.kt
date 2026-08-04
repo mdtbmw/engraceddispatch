@@ -28,6 +28,7 @@ import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 import com.esdispatch.viewmodel.MarketplaceItem
 import com.esdispatch.ui.components.ScreenHeader
+import com.esdispatch.ui.components.RoundedSheet
 
 
 
@@ -58,17 +59,24 @@ fun MarketplaceScreen(
         matchesCategory && matchesSearch
     }
     
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isSystemDark) BackgroundDark else BackgroundLight)
-            .padding(bottom = 80.dp) // Leave space for BottomNavigationBar
+            .background(LuxuryBlack)
     ) {
-        ScreenHeader(
-            title = "Marketplace",
-            onBack = { onNavigate("Dashboard") },
-            backgroundColor = if (isSystemDark) BackgroundDark else BackgroundLight
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(HeaderBgColor)
+        ) {
+            ScreenHeader(
+                title = "Marketplace",
+                onBack = { onNavigate("Dashboard") }
+            )
+
+            RoundedSheet(
+                modifier = Modifier.weight(1f)
+            ) {
 
         // Search Bar
         OutlinedTextField(
@@ -227,6 +235,7 @@ fun MarketplaceScreen(
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -421,4 +430,5 @@ fun MarketplaceScreen(
             }
         }
     }
+}
 }

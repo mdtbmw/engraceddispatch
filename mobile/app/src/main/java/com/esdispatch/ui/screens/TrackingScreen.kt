@@ -298,31 +298,28 @@ fun ActiveTrackingScreen(
         it.status == ParcelStatus.OUT_FOR_DELIVERY 
     }
 
-    val hasNoBooking = activeParcel == null
-
-    if (hasNoBooking || activeParcel == null) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (isDark) BackgroundDark else BackgroundLight),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Info,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = TextGray
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("No Active Delivery", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("You don't have any ongoing deliveries to track.", color = TextGray, fontSize = 14.sp)
-        }
-        return
+    val previewParcel = remember {
+        Parcel(
+            id = "ENG-PREVIEW-101",
+            itemName = "Express Logistics Delivery",
+            imageUrl = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=200&h=200&fit=crop",
+            status = ParcelStatus.TRANSIT,
+            pickupAddress = "GRA, Benin City",
+            deliveryAddress = "18 Sakponba Road, Benin City",
+            senderName = "Engraced Dispatch HQ",
+            senderPhone = "+234 800 123 4567",
+            receiverName = "Valued Customer",
+            receiverPhone = "+234 812 345 6789",
+            weight = 2.5,
+            price = 2500.0,
+            courierName = "Musa Ibrahim",
+            courierPhone = "+234 803 111 2233",
+            progress = 0.65f
+        )
     }
 
-    val parcel = activeParcel
+    val parcel = activeParcel ?: previewParcel
+    val hasNoBooking = activeParcel == null
 
     LaunchedEffect(hasNoBooking, parcel.id, parcel.status, parcel.progress) {
         val statusText = when (parcel.status) {

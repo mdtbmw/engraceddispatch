@@ -264,6 +264,7 @@ fun BottomNav(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .navigationBarsPadding()
             .wrapContentHeight()
             .background(Color.Transparent)
     ) {
@@ -280,8 +281,7 @@ fun BottomNav(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .navigationBarsPadding()
-                    .padding(start = 16.dp, end = 16.dp, top = 10.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
