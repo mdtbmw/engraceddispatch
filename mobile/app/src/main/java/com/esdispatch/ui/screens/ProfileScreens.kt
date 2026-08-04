@@ -2493,7 +2493,7 @@ fun NotificationsScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Create real system notifications that are written to Firestore:",
+                            text = "Send System Notification Test:",
                             fontSize = 12.sp,
                             color = secondaryText
                         )
@@ -2509,7 +2509,7 @@ fun NotificationsScreen(
                                         "New Order #${System.currentTimeMillis().toString().substring(7)}",
                                         "A new shipment has been booked and is pending dispatch assignment."
                                     )
-                                    Toast.makeText(context, "Alert dispatched to Firestore", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Notification sent successfully", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
                                     .weight(1f)
@@ -2539,7 +2539,7 @@ fun NotificationsScreen(
                                             "A fleet rider has been assigned to your active dispatch."
                                         )
                                     }
-                                    Toast.makeText(context, "Alert dispatched to Firestore", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Notification sent successfully", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
                                     .weight(1f)
@@ -2561,7 +2561,7 @@ fun NotificationsScreen(
                                         "Delivery Completed #${System.currentTimeMillis().toString().substring(8)}",
                                         "A shipment has been delivered successfully. Customer rating: 5 stars."
                                     )
-                                    Toast.makeText(context, "Alert dispatched to Firestore", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Notification sent successfully", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
                                     .weight(1f)

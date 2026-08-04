@@ -491,19 +491,6 @@ class MainActivity : FragmentActivity() {
                     )
                     .build()
 
-                val aiDispatchShortcut = androidx.core.content.pm.ShortcutInfoCompat.Builder(context, "shortcut_ai_dispatch")
-                    .setShortLabel("AI Dispatch")
-                    .setLongLabel("AI Dispatch & Logistics Assistant")
-                    .setIcon(androidx.core.graphics.drawable.IconCompat.createWithResource(context, R.drawable.ic_shortcut_ai))
-                    .setIntent(
-                        android.content.Intent(context, MainActivity::class.java).apply {
-                            action = "com.esdispatch.ACTION_SHORTCUT"
-                            putExtra("shortcut_route", "CustomerAssistant")
-                            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
-                        }
-                    )
-                    .build()
-
                 val walletShortcut = androidx.core.content.pm.ShortcutInfoCompat.Builder(context, "shortcut_wallet")
                     .setShortLabel("Premium Wallet")
                     .setLongLabel("Manage Fund & Wallet Balance")
@@ -517,7 +504,7 @@ class MainActivity : FragmentActivity() {
                     )
                     .build()
 
-                androidx.core.content.pm.ShortcutManagerCompat.setDynamicShortcuts(context, listOf(sendParcelShortcut, trackParcelShortcut, aiDispatchShortcut, walletShortcut))
+                androidx.core.content.pm.ShortcutManagerCompat.setDynamicShortcuts(context, listOf(sendParcelShortcut, trackParcelShortcut, walletShortcut))
             } catch (e: Throwable) {
                 android.util.Log.w("MainActivity", "Launcher shortcut registration skipped: ${e.message}")
             }
