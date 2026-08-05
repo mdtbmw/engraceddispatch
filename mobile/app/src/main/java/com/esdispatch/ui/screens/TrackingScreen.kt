@@ -432,9 +432,9 @@ fun ActiveTrackingScreen(
 
     val bottomCardHeight by animateDpAsState(
         targetValue = when (drawerState) {
-            DrawerState.CLOSED -> if (hasNoBooking) 20.dp else 120.dp
-            DrawerState.COLLAPSED -> if (hasNoBooking) 132.dp else 420.dp
-            DrawerState.EXPANDED -> if (hasNoBooking) 132.dp else 600.dp
+            DrawerState.CLOSED -> if (hasNoBooking) 40.dp else 190.dp
+            DrawerState.COLLAPSED -> if (hasNoBooking) 140.dp else 440.dp
+            DrawerState.EXPANDED -> if (hasNoBooking) 140.dp else 620.dp
         },
         label = "bottomCardHeight"
     )
@@ -1648,7 +1648,7 @@ is ZodResult.Error -> {
                                         modifier = Modifier
                                             .align(Alignment.BottomCenter)
                                             .fillMaxWidth()
-                                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp)
+                                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 85.dp)
                                     ) {
                                     Box(modifier = Modifier.fillMaxWidth()) {
                                         QuiltedBackground(modifier = Modifier.matchParentSize()) {}
@@ -1792,11 +1792,8 @@ is ZodResult.Error -> {
                                                 isGoingUp = true
                                             }
                                             DrawerState.COLLAPSED -> {
-                                                if (isGoingUp) {
-                                                    drawerState = DrawerState.EXPANDED
-                                                } else {
-                                                    drawerState = DrawerState.CLOSED
-                                                }
+                                                drawerState = DrawerState.EXPANDED
+                                                isGoingUp = true
                                             }
                                             DrawerState.EXPANDED -> {
                                                 drawerState = DrawerState.COLLAPSED
