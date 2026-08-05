@@ -59,7 +59,7 @@ fun MarketplaceScreen(
                           item.vendorStore.contains(searchQuery, ignoreCase = true)
         matchesCategory && matchesSearch
     }
-    val displayItems = if (filteredItems.isNotEmpty()) filteredItems else rawItems
+    val displayItems = if (filteredItems.isNotEmpty()) filteredItems else (if (rawItems.isNotEmpty()) rawItems else viewModel.defaultSampleProducts)
     
     Box(
         modifier = Modifier

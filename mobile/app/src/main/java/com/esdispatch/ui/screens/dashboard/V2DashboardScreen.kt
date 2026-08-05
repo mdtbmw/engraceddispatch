@@ -93,7 +93,7 @@ fun V2DashboardScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
-                contentPadding = PaddingValues(bottom = 28.dp)
+                contentPadding = PaddingValues(bottom = 140.dp)
             ) {
                 item {
                     V2DashboardHeader(

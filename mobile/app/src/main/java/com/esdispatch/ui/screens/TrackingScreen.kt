@@ -432,9 +432,9 @@ fun ActiveTrackingScreen(
 
     val bottomCardHeight by animateDpAsState(
         targetValue = when (drawerState) {
-            DrawerState.CLOSED -> if (hasNoBooking) 20.dp else 60.dp
-            DrawerState.COLLAPSED -> if (hasNoBooking) 132.dp else 340.dp
-            DrawerState.EXPANDED -> if (hasNoBooking) 132.dp else 520.dp
+            DrawerState.CLOSED -> if (hasNoBooking) 20.dp else 120.dp
+            DrawerState.COLLAPSED -> if (hasNoBooking) 132.dp else 420.dp
+            DrawerState.EXPANDED -> if (hasNoBooking) 132.dp else 600.dp
         },
         label = "bottomCardHeight"
     )
@@ -1648,7 +1648,7 @@ is ZodResult.Error -> {
                                         modifier = Modifier
                                             .align(Alignment.BottomCenter)
                                             .fillMaxWidth()
-                                            .padding(16.dp)
+                                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp)
                                     ) {
                                     Box(modifier = Modifier.fillMaxWidth()) {
                                         QuiltedBackground(modifier = Modifier.matchParentSize()) {}
