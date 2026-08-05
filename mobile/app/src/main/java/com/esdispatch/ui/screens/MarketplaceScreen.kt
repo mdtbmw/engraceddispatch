@@ -52,12 +52,16 @@ fun MarketplaceScreen(
 
     val categories = listOf("All", "Delivery Gear", "Apparel", "Lubricants", "Accessories", "Safety")
     
-    val filteredItems = marketplaceItems.filter { item ->
-        val matchesCategory = selectedCategory == "All" || item.category == selectedCategory
-        val matchesSearch = item.title.contains(searchQuery, ignoreCase = true) || 
-                          item.description.contains(searchQuery, ignoreCase = true)
+    val rawItems = if (marketplaceItems.isNotEmpty()) marketplaceItems else viewModel.defaultSampleProducts
+    val filteredItems = rawItems.filter { item ->
+        val matchesCategory = selectedCategory == "All" || item.category.equals(selectedCategory, ignoreCase = true)
+        val matchesSearch = searchQuery.isBlank() || 
+                          item.title.contains(searchQuery, ignoreCase = true) || 
+                          item.description.contains(searchQuery, ignoreCase = true) ||
+                          item.vendorStore.contains(searchQuery, ignoreCase = true)
         matchesCategory && matchesSearch
     }
+    val displayItems = if (filteredItems.isNotEmpty()) filteredItems else rawItems
     
     Box(
         modifier = Modifier
@@ -152,39 +156,15 @@ fun MarketplaceScreen(
         Spacer(modifier = Modifier.height(16.dp))
         
         // Products Grid List
-        if (filteredItems.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Filled.Store,
-                        contentDescription = null,
-                        tint = TextGray.copy(alpha = 0.5f),
-                        modifier = Modifier.size(64.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "No items found",
-                        color = TextGray,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .navigationBarsPadding(),
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(filteredItems) { item ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .navigationBarsPadding(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(displayItems) { item ->
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = if (isSystemDark) Charcoal else GoldenWhite,
@@ -602,7 +582,6 @@ fun MarketplaceScreen(
                         fontSize = 14.sp
                     )
                 }
-            }
         }
     }
 }
