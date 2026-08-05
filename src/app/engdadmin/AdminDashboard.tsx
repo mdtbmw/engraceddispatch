@@ -822,6 +822,61 @@ function AdminDashboardPage() {
       snap.forEach(d => { const x = d.data(); list.push({ id: d.id, ...x }); });
       setNotifications(list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
     }, console.error));
+    unsubs.push(onSnapshot(collection(db, "marketplace_products"), snap => {
+      const list: Product[] = [];
+      snap.forEach(d => {
+        const x = d.data();
+        list.push({
+          id: d.id,
+          name: x.name || x.title || "",
+          category: x.category || "General",
+          price: x.price || 0,
+          stock: x.stock || 0,
+          imageUrl: x.imageUrl || "",
+          status: x.status || (x.stock > 10 ? "In Stock" : x.stock > 0 ? "Low Stock" : "Out of Stock"),
+          description: x.description || "",
+          vendorStore: x.vendorStore || "Official Store",
+          rating: x.rating || 5.0,
+          isDeleted: x.isDeleted || false,
+        });
+      });
+      setProducts(list);
+    }, console.error));
+    unsubs.push(onSnapshot(collection(db, "marketplace_stores"), snap => {
+      const list: VendorStore[] = [];
+      snap.forEach(d => {
+        const x = d.data();
+        list.push({
+          id: d.id,
+          storeName: x.storeName || "",
+          ownerName: x.ownerName || "",
+          email: x.email || "",
+          phone: x.phone || "",
+          category: x.category || "",
+          commissionRate: x.commissionRate || 10,
+          status: x.status || "PENDING",
+          dateEnlisted: x.dateEnlisted || "",
+        });
+      });
+      setStores(list);
+    }, console.error));
+    unsubs.push(onSnapshot(collection(db, "marketplace_orders"), snap => {
+      const list: MarketplaceOrder[] = [];
+      snap.forEach(d => {
+        const x = d.data();
+        list.push({
+          id: d.id,
+          orderNumber: x.orderNumber || d.id.slice(0, 8),
+          customerName: x.customerName || "",
+          storeName: x.storeName || "",
+          itemsCount: x.itemsCount || 1,
+          totalPrice: x.totalPrice || 0,
+          status: x.status || "PAID",
+          date: x.date || "",
+        });
+      });
+      setMarketplaceOrders(list);
+    }, console.error));
     getDoc(doc(db, "system_config", "global_settings")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => { addToast("error", "Failed to load system settings. Using defaults."); });
     getDoc(doc(db, "system_config", "pricing")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => { addToast("error", "Failed to load pricing config. Using defaults."); });
     return () => unsubs.forEach(f => f());
@@ -1212,7 +1267,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
           <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-emerald-500 uppercase tracking-wider">Delivered</span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center"><CheckCircle2 size={16} /></div>
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center"><CheckCircle size={16} /></div>
             </div>
             <p className="text-xl font-black text-[#111] dark:text-white mt-2">{deliveredCount}</p>
           </div>
@@ -1266,7 +1321,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
           {selected.size > 0 && (
             <div className="bg-[#FFC542]/15 border border-[#FFC542]/40 rounded-2xl p-3 flex items-center justify-between gap-3 animate-fade-in">
               <span className="text-xs font-bold text-[#111] dark:text-white flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-[#FFC542]" /> {selected.size} shipments selected
+                <CheckCircle className="w-4 h-4 text-[#FFC542]" /> {selected.size} shipments selected
               </span>
               <div className="flex items-center gap-2">
                 <Select
@@ -2444,6 +2499,90 @@ function LogsTab({ logs }: LogsTabProps) {
 }
 
 
+
+function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: any; addLog: any; addToast: any }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [title, setTitle] = useState("");
+  const [subtitle, setSubtitle] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !imageUrl) { addToast("error", "Title and image URL are required"); return; }
+    setSaving(true);
+    try {
+      await addDoc(collection(db, "banners"), { title, subtitle, imageUrl, active: true, order: banners.length + 1, createdAt: Timestamp.now() });
+      addLog("Add Banner", `Added hero slide '${title}'`);
+      addToast("success", "Hero slide added successfully");
+      setShowAdd(false); setTitle(""); setSubtitle(""); setImageUrl("");
+    } catch (err: any) { addToast("error", "Failed to add hero slide: " + err.message); }
+    setSaving(false);
+  };
+
+  const toggleActive = async (id: string, current: boolean) => {
+    await updateDoc(doc(db, "banners", id), { active: !current, updatedAt: Timestamp.now() });
+    addToast("success", "Banner status updated");
+  };
+
+  const deleteBanner = async (id: string) => {
+    await deleteDoc(doc(db, "banners", id));
+    addToast("success", "Banner removed");
+  };
+
+  return <div className="tab-content space-y-6">
+    <div className="flex items-center justify-between flex-wrap gap-4">
+      <div>
+        <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-5 h-5 text-[#FFC542]" /> Hero Banners & Slides</h1>
+        <p className="text-xs text-black/40 dark:text-white/40 mt-1">Manage promotional banners displayed on mobile app hero carousel</p>
+      </div>
+      <button onClick={() => setShowAdd(true)} className="px-4 py-2.5 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:bg-[#FFC542]/80"><Plus size={16} /> Add Slide</button>
+    </div>
+
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {banners.length === 0 ? (
+        <div className="col-span-full bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-8 text-center text-black/40 dark:text-white/40">No hero banners created yet.</div>
+      ) : (
+        banners.map(b => (
+          <div key={b.id} className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm flex flex-col justify-between">
+            <div className="h-36 bg-gray-100 dark:bg-[#222] relative">
+              <img src={b.imageUrl} alt={b.title} className="w-full h-full object-cover" />
+              <span className={"absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-black " + (b.active ? "bg-emerald-500 text-white" : "bg-gray-500 text-white")}>{b.active ? "ACTIVE" : "INACTIVE"}</span>
+            </div>
+            <div className="p-4 space-y-2">
+              <p className="font-bold text-xs text-[#111] dark:text-white">{b.title}</p>
+              <p className="text-[10px] text-black/40 dark:text-white/40 leading-relaxed">{b.subtitle || "No subtitle"}</p>
+              <div className="flex items-center justify-between pt-2 border-t border-black/5 dark:border-white/5">
+                <button onClick={() => toggleActive(b.id, b.active)} className="text-[10px] font-bold text-[#FFC542] hover:underline">{b.active ? "Disable" : "Enable"}</button>
+                <button onClick={() => deleteBanner(b.id)} className="text-[10px] font-bold text-red-500 hover:underline">Delete</button>
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+
+    {showAdd && (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setShowAdd(false)}>
+        <form onSubmit={handleAdd} className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#FFC542]" /> New Hero Slide</h3>
+          <div className="space-y-3 text-xs">
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 uppercase mb-1">Title</label>
+              <input value={title} onChange={e => setTitle(e.target.value)} required className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 uppercase mb-1">Subtitle</label>
+              <input value={subtitle} onChange={e => setSubtitle(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 uppercase mb-1">Image URL</label>
+              <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} required placeholder="https://..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => setShowAdd(false)} className="px-4 py-2 bg-gray-100 dark:bg-[#222] text-xs font-bold rounded-xl">Cancel</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-[#FFC542] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFC542]/80">{saving ? "Saving..." : "Add Slide"}</button>
+          </div>
+        </form>
+      </div>
+    )}
+  </div>;
+}
 
 function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers: UserProfile[] }) {
   const [trackSearch, setTrackSearch] = useState("");
