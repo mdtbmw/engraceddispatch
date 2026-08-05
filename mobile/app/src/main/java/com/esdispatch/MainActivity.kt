@@ -251,6 +251,11 @@ class MainActivity : FragmentActivity() {
                             if (it == "Dashboard") navController.popBackStack() else navController.navigate(it)
                         })
                     }
+                    composable("VendorPortal") {
+                        VendorPortalScreen(viewModel = viewModel, onNavigate = {
+                            if (it == "Dashboard") navController.popBackStack() else navController.navigate(it)
+                        })
+                    }
                     composable("OrderLogs") {
                         OrderLogsScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
                     }

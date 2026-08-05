@@ -78,6 +78,33 @@ fun MarketplaceScreen(
                 modifier = Modifier.weight(1f)
             ) {
 
+        // Vendor Portal Shortcut Banner
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .clickable { onNavigate("VendorPortal") },
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Gold.copy(alpha = 0.15f)),
+            border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Storefront, contentDescription = null, tint = Gold, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Vendor Control Hub", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                        Text("Manage store products, sales & payouts", fontSize = 10.sp, color = AppTextColor.copy(alpha = 0.6f))
+                    }
+                }
+                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Gold)
+            }
+        }
+
         // Search Bar
         OutlinedTextField(
             value = searchQuery,

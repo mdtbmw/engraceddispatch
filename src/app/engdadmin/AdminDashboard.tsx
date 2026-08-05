@@ -1112,19 +1112,35 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
 
 function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string; db: any; addLog: any }) {
     const [search, setSearch] = useState("");
+    const [statusFilter, setStatusFilter] = useState("ALL");
+    const [categoryFilter, setCategoryFilter] = useState("ALL");
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [bulkStatus, setBulkStatus] = useState("");
     const [page, setPage] = useState(0);
     const [showNew, setShowNew] = useState(false);
     const [assignModal, setAssignModal] = useState<{ delivery: Delivery; show: boolean }>({ delivery: null as any, show: false });
+    const [detailsModal, setDetailsModal] = useState<{ delivery: Delivery; show: boolean }>({ delivery: null as any, show: false });
     const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
     const [creating, setCreating] = useState(false);
-    const perPage = 20;
-    const filtered = deliveries.filter(d => { const q = (searchQuery || search).toLowerCase(); return d.receiverName.toLowerCase().includes(q) || d.senderName.toLowerCase().includes(q) || d.id.includes(q) || (d.itemName && d.itemName.toLowerCase().includes(q)); });
+    const perPage = 15;
+
+    const filtered = deliveries.filter(d => {
+      const q = (searchQuery || search).toLowerCase();
+      const matchSearch = d.receiverName.toLowerCase().includes(q) || d.senderName.toLowerCase().includes(q) || d.id.includes(q) || (d.itemName && d.itemName.toLowerCase().includes(q)) || (d.deliveryAddress && d.deliveryAddress.toLowerCase().includes(q));
+      const matchStatus = statusFilter === "ALL" || d.status === statusFilter;
+      const matchCat = categoryFilter === "ALL" || d.category === categoryFilter;
+      return matchSearch && matchStatus && matchCat;
+    });
+
     const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
     const paged = filtered.slice(page * perPage, (page + 1) * perPage);
-    useEffect(() => { setPage(0); }, [search, searchQuery]);
-    const updateStatus = async (id: string, s: string) => { await updateDoc(doc(db, "deliveries", id), { status: s, updatedAt: Timestamp.now() }); addLog("Status", idShort(id) + " -> " + s); };
+    useEffect(() => { setPage(0); }, [search, searchQuery, statusFilter, categoryFilter]);
+
+    const updateStatus = async (id: string, s: string) => {
+      await updateDoc(doc(db, "deliveries", id), { status: s, updatedAt: Timestamp.now() });
+      addLog("Status", idShort(id) + " -> " + s);
+    };
+
     const assignRider = async (deliveryId: string, rider: UserProfile) => {
       await updateDoc(doc(db, "deliveries", deliveryId), {
         riderId: rider.id, driverId: rider.id, driverName: rider.name,
@@ -1134,244 +1150,363 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
       addLog("Assign Rider", `${rider.name} → ${idShort(deliveryId)}`);
       setAssignModal({ delivery: null as any, show: false });
     };
+
     const bulkUpdate = async () => {
       if (!bulkStatus || selected.size === 0) return;
-      const batch = writeBatch(db); selected.forEach(id => batch.update(doc(db, "deliveries", id), { status: bulkStatus, updatedAt: Timestamp.now() })); await batch.commit();
-      addLog("Bulk", selected.size + " deliveries -> " + bulkStatus); setBulkStatus(""); setSelected(new Set());
+      const batch = writeBatch(db);
+      selected.forEach(id => batch.update(doc(db, "deliveries", id), { status: bulkStatus, updatedAt: Timestamp.now() }));
+      await batch.commit();
+      addLog("Bulk", selected.size + " deliveries -> " + bulkStatus);
+      setBulkStatus("");
+      setSelected(new Set());
     };
+
     const createDelivery = async () => {
       setCreating(true);
       try {
         const ref = await addDoc(collection(db, "deliveries"), { ...newForm, quantity: Number(newForm.quantity), weight: Number(newForm.weight), price: Number(newForm.price), tipAmount: 0, userId: "", courierName: "", courierPhone: "", otpCode: Math.floor(1000 + Math.random() * 9000).toString(), dateString: new Date().toISOString().slice(0, 10), createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
-        addLog("Create Delivery", ref.id + " — " + newForm.itemName); setShowNew(false); setNewForm({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
+        addLog("Create Delivery", ref.id + " — " + newForm.itemName);
+        setShowNew(false);
+        setNewForm({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
       } catch (e: any) { addLog("Error", "Create delivery failed"); }
       setCreating(false);
     };
-    const pendingOrders = deliveries.filter(d => d.status === "PENDING");
-    return <div className="tab-content space-y-6">
-      {/* New Orders Alert Banner */}
-      {pendingOrders.length > 0 && (
-        <div className="bg-[#FFC542]/10 border-2 border-[#FFC542]/30 rounded-3xl p-5 animate-fade-in">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-[#FFC542] flex items-center justify-center"><Bell className="w-5 h-5 text-[#111]" /></div>
+
+    // HeyTek Stat Metrics
+    const totalDeliveries = deliveries.length;
+    const pendingCount = deliveries.filter(d => d.status === "PENDING").length;
+    const transitCount = deliveries.filter(d => d.status === "TRANSIT" || d.status === "OUT_FOR_DELIVERY").length;
+    const deliveredCount = deliveries.filter(d => d.status === "DELIVERED").length;
+    const totalRevenue = deliveries.reduce((acc, d) => acc + (d.price || 0) + (d.tipAmount || 0), 0);
+
+    const statuses = ["ALL", "PENDING", "ASSIGNED", "TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"];
+
+    return (
+      <div className="tab-content space-y-6 animate-fade-in">
+        {/* HeyTek Analytics Metric Header Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-black/50 dark:text-white/50 uppercase tracking-wider">Total Shipments</span>
+              <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center"><Package size={16} /></div>
+            </div>
+            <p className="text-xl font-black text-[#111] dark:text-white mt-2">{totalDeliveries}</p>
+          </div>
+
+          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Pending Assign</span>
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center"><Clock size={16} /></div>
+            </div>
+            <p className="text-xl font-black text-[#111] dark:text-white mt-2">{pendingCount}</p>
+          </div>
+
+          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-purple-500 uppercase tracking-wider">In Transit</span>
+              <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center"><Truck size={16} /></div>
+            </div>
+            <p className="text-xl font-black text-[#111] dark:text-white mt-2">{transitCount}</p>
+          </div>
+
+          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-emerald-500 uppercase tracking-wider">Delivered</span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center"><CheckCircle2 size={16} /></div>
+            </div>
+            <p className="text-xl font-black text-[#111] dark:text-white mt-2">{deliveredCount}</p>
+          </div>
+
+          <div className="col-span-2 sm:col-span-1 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-[#FFC542] uppercase tracking-wider">Gross Revenue</span>
+              <div className="w-8 h-8 rounded-xl bg-[#FFC542]/20 text-[#111] dark:text-white flex items-center justify-center"><DollarSign size={16} /></div>
+            </div>
+            <p className="text-xl font-black text-[#111] dark:text-white mt-2">{fmt(totalRevenue)}</p>
+          </div>
+        </div>
+
+        {/* HeyTek Controls & Search Header */}
+        <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-sm font-black text-[#111] dark:text-white">{pendingOrders.length} New Order{pendingOrders.length > 1 ? 's' : ''} Pending</h2>
-              <p className="text-[10px] text-black/40 dark:text-white/40">These shipments need a rider assigned</p>
+              <h1 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
+                <Package className="w-5 h-5 text-[#FFC542]" /> Dispatch Management Hub
+              </h1>
+              <p className="text-xs text-black/40 dark:text-white/40 mt-0.5">Showing {filtered.length} shipments (page {page + 1}/{totalPages})</p>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="w-full sm:w-64">
+                <SearchInput value={search} onChange={setSearch} placeholder="Search receiver, item, tracking #..." />
+              </div>
+              <button
+                onClick={() => setShowNew(true)}
+                className="px-4 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0"
+              >
+                <Plus className="w-4 h-4" /> New Delivery
+              </button>
             </div>
           </div>
-          <div className="grid gap-2">
-            {pendingOrders.slice(0, 5).map(d => {
-              const onlineRiders = drivers.filter(r => r.isOnline);
-              return <div key={d.id} className="bg-white dark:bg-[#1a1a1a] rounded-2xl p-3 border border-black/5 dark:border-white/10 flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-[#111] dark:text-white truncate">{d.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-normal">#{idShort(d.id)}</span></p>
-                  <p className="text-[10px] text-black/40 dark:text-white/40 truncate">{d.pickupAddress} → {d.deliveryAddress}</p>
-                </div>
-                <button onClick={() => setAssignModal({ delivery: d, show: true })}
-                  className="shrink-0 px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-[10px] font-black transition-all flex items-center gap-1.5">
-                  <UserPlus className="w-3.5 h-3.5" /> Assign Rider
-                </button>
-              </div>;
-            })}
-          </div>
-        </div>
-      )}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Package className="w-5 h-5 text-[#FFC542]" /> Shipments</h1>
-          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} total (page {page + 1}/{totalPages})</p></div>
-        <div className="flex items-center gap-3 flex-wrap w-full sm:w-auto">
-          <button onClick={() => setShowNew(true)} className="flex-1 sm:flex-none px-4 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center justify-center gap-1.5"><Plus className="w-4 h-4" /> New Delivery</button>
-          <div className="flex-1 sm:flex-none"><SearchInput value={search} onChange={setSearch} placeholder="Search..." /></div>
-          {selected.size > 0 && <div className="flex items-center gap-2 w-full sm:w-auto"><span className="text-[10px] font-bold text-black/40 dark:text-white/40">{selected.size} selected</span>
-             <Select value={bulkStatus} onChange={setBulkStatus} placeholder="Bulk..." options={[{value:"ASSIGNED",label:"Assign"},{value:"TRANSIT",label:"Transit"},{value:"OUT_FOR_DELIVERY",label:"Out for delivery"},{value:"DELIVERED",label:"Deliver"},{value:"CANCELLED",label:"Cancel"}]} className="w-36" />
-            <SaveBtn onClick={bulkUpdate} label="Apply" />
-            <button onClick={() => setSelected(new Set())} className="text-[10px] text-black/40 dark:text-white/40 hover:text-red-500 font-semibold">Clear</button>
-          </div>}
-        </div>
-      </div>
-      {showNew && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setShowNew(false)}>
-        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-2xl shadow-2xl ring-1 ring-black/5 dark:ring-white/10 space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Plus className="w-4 h-4 text-[#FFC542]" /> New Delivery</h3>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {[{ k: "receiverName", l: "Receiver Name" }, { k: "receiverPhone", l: "Receiver Phone" }, { k: "senderName", l: "Sender Name" }, { k: "senderPhone", l: "Sender Phone" }, { k: "itemName", l: "Item Name" }, { k: "pickupAddress", l: "Pickup Address" }, { k: "deliveryAddress", l: "Delivery Address" }].map(f => <div key={f.k}><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{f.l}</label>
-              <input value={(newForm as any)[f.k]} onChange={e => setNewForm(p => ({ ...p, [f.k]: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>)}
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Category</label>
-              <Select value={newForm.category} onChange={v => setNewForm(p => ({ ...p, category: v }))} options={[{value:"Standard",label:"Standard"},{value:"Express",label:"Express"},{value:"Economy",label:"Economy"},{value:"Cold Chain",label:"Cold Chain"},{value:"Batch",label:"Batch"},{value:"Multi",label:"Multi"}]} className="w-full" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Status</label>
-              <Select value={newForm.status} onChange={v => setNewForm(p => ({ ...p, status: v }))} options={[{value:"PENDING",label:"PENDING"},{value:"ASSIGNED",label:"ASSIGNED"},{value:"TRANSIT",label:"TRANSIT"},{value:"OUT_FOR_DELIVERY",label:"OUT FOR DELIVERY"}]} className="w-full" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Quantity</label>
-              <input type="number" min="1" value={newForm.quantity} onChange={e => setNewForm(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Weight (kg)</label>
-              <input type="number" step="0.1" min="0.1" value={newForm.weight} onChange={e => setNewForm(p => ({ ...p, weight: parseFloat(e.target.value) || 1 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Assign Driver</label>
-              <Select value={newForm.driverId || ""} onChange={v => setNewForm(p => ({ ...p, driverId: v, driverName: v ? (drivers.find((dr: any) => dr.id === v)?.name || "") : "" }))} placeholder="Unassigned" options={[
-                {value:"",label:"Unassigned"},
-                ...drivers.filter((dr: any) => dr.isOnline !== false).map((dr: any) => ({value:dr.id, label: dr.name || dr.email}))
-              ]} className="w-full" /></div>
-            <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Price (₦)</label>
-              <input type="number" min="0" value={newForm.price} onChange={e => setNewForm(p => ({ ...p, price: parseInt(e.target.value) || 0 }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-          </div>
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-black/10 dark:border-white/10">
-            <button onClick={() => setShowNew(false)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
-            <SaveBtn onClick={createDelivery} loading={creating} label="Create Delivery" />
-          </div>
-        </div>
-      </div>}
-      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
-            <tr><th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 w-8"><input type="checkbox" onChange={e => setSelected(e.target.checked ? new Set(paged.map(d => d.id)) : new Set())} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /></th>
-              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Item</th>
-              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Receiver</th>
-              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Status</th>
-              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Driver</th>
-              <th className="text-right font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Price</th></tr>
-          </thead><tbody className="divide-y divide-black/5 dark:divide-white/10">
-            {paged.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-black/40 dark:text-white/40">No shipments.</td></tr>}
-            {paged.map((d, i) => <tr key={d.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors animate-fade-in " + (selected.has(d.id) ? "bg-[#FFC542]/10" : "") + " " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][i] || "")}>
-              <td className="p-3"><input type="checkbox" checked={selected.has(d.id)} onChange={() => { const s = new Set(selected); s.has(d.id) ? s.delete(d.id) : s.add(d.id); setSelected(s); }} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /></td>
-              <td className="p-3"><p className="font-bold text-[#111] dark:text-white">{d.itemName || "Parcel"}</p><p className="text-[10px] text-black/40 dark:text-white/40">#{idShort(d.id)}</p></td>
-              <td className="p-3 hidden md:table-cell"><span className="text-black/60 dark:text-white/60">{d.receiverName}</span></td>
-              <td className="p-3">
-                <Select value={d.status} onChange={v => updateStatus(d.id, v)} compact
-                  options={[{value:"PENDING",label:"PENDING"},{value:"ASSIGNED",label:"ASSIGNED"},{value:"TRANSIT",label:"TRANSIT"},{value:"OUT_FOR_DELIVERY",label:"OUT FOR DELIVERY"},{value:"DELIVERED",label:"DELIVERED"},{value:"CANCELLED",label:"CANCELLED"}]}
-                  renderOption={(o) => <span className={"px-2 py-0.5 rounded-full font-bold " + sStyle(o.value)}>{o.label}</span>} /></td>
-              <td className="p-3 hidden lg:table-cell">
-                {d.status === "PENDING" ? (
-                  <button onClick={() => setAssignModal({ delivery: d, show: true })}
-                    className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-lg text-[10px] font-black transition-all">Assign</button>
-                ) : ["ASSIGNED","TRANSIT","OUT_FOR_DELIVERY"].includes(d.status) ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-[9px] font-black text-[#111] dark:text-white shrink-0">{(d.courierName || d.driverName || "?").charAt(0)}</div>
-                    <span className="text-[10px] font-bold text-[#111] dark:text-white truncate max-w-[80px]">{d.courierName || d.driverName || "—"}</span>
-                  </div>
-                ) : (
-                  <span className="text-[10px] text-black/40 dark:text-white/40">{d.courierName || d.driverName || "—"}</span>
-                )}
-              </td>
-              <td className="p-3 text-right"><span className="font-bold text-[#111] dark:text-white">{fmt(d.price || 0)}</span>
-                {d.tipAmount > 0 && <p className="text-[10px] text-green-600 dark:text-green-400">+{fmt(d.tipAmount)} tip</p>}</td>
-            </tr>)}
-          </tbody></table>
-        </div>
-      </div>
-      {totalPages > 1 && <div className="flex items-center justify-center gap-2 pt-2">
-        <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronLeft size={14} /></button>
-        {Array.from({ length: totalPages }, (_, i) => <button key={i} onClick={() => setPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === page ? "bg-[#FFC542] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
-        <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
-      </div>}
 
-      {/* Assign Rider Modal */}
-      {assignModal.show && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setAssignModal({ delivery: null as any, show: false })}>
-        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
-          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> Assign Rider</h3>
-          <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20 space-y-1">
-            <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-normal">#{idShort(assignModal.delivery.id)}</span></p>
-            <p className="text-[10px] text-black/40 dark:text-white/40">{assignModal.delivery.pickupAddress} → {assignModal.delivery.deliveryAddress}</p>
-          </div>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Available Riders</p>
-            {drivers.filter(r => r.isOnline).length === 0 && <p className="text-xs text-black/40 dark:text-white/40 text-center py-4">No online riders available. Check back later.</p>}
-            {drivers.filter(r => r.isOnline).map(rider => (
-              <button key={rider.id} onClick={() => assignRider(assignModal.delivery.id, rider)}
-                className="w-full flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#222] hover:bg-[#FFC542]/10 rounded-2xl transition-all text-left border border-transparent hover:border-[#FFC542]/30">
-                <div className="w-10 h-10 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#111] dark:text-white shrink-0">{rider.name.charAt(0)}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-[#111] dark:text-white">{rider.name}</p>
-                  <p className="text-[10px] text-black/40 dark:text-white/40">{rider.bikeNumber || "No bike"} · {rider.deliveryCount || 0} deliveries · ⭐ {(rider.rating || 0).toFixed(1)}</p>
-                </div>
-                <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="Online" />
+          {/* Status Pills Bar */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-t border-black/5 dark:border-white/5 pt-3">
+            {statuses.map(s => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={"px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer " + (statusFilter === s ? "bg-[#111] text-white dark:bg-white dark:text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-[#333]")}
+              >
+                {s === "ALL" ? "All Shipments" : s.replace(/_/g, " ")}
               </button>
             ))}
           </div>
-          <div className="flex justify-end pt-1">
-            <button onClick={() => setAssignModal({ delivery: null as any, show: false })} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
-          </div>
-        </div>
-      </div>}
-    </div>;
-  }
 
-function BannersTab({ banners, db, addLog, addToast }: BannersTabProps) {
-  const [editBanner, setEditBanner] = useState<Banner | null>(null);
-  const [bForm, setBForm] = useState({ title: "", subtitle: "", imageUrl: "", interval: 5, order: 0, active: true });
-  const [saving, setSaving] = useState(false);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const saveBanner = async (b?: Banner) => {
-    setSaving(true);
-    const data: any = { ...bForm, updatedAt: Timestamp.now() };
-    try {
-      if (b) { await updateDoc(doc(db, "banners", b.id), data); addLog("Update Banner", bForm.title); addToast("success", "Banner updated"); }
-      else { await addDoc(collection(db, "banners"), data); addLog("Create Banner", bForm.title); addToast("success", "Banner created"); }
-    } catch (e: any) { addToast("error", e.message); }
-    setSaving(false); setEditBanner(null);
-  };
-  const deleteBanner = async (id: string) => { try { await deleteDoc(doc(db, "banners", id)); addLog("Delete Banner", id); addToast("success", "Banner deleted"); } catch (e: any) { addToast("error", e.message); } };
-  return <div className="tab-content space-y-6">
-    <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-5 h-5 text-[#FFC542]" /> Hero Slides</h1>
-        <p className="text-xs text-black/40 dark:text-white/40 mt-1">{banners.length} slides</p></div>
-      <button onClick={() => { setEditBanner({ id: "", title: "", subtitle: "", imageUrl: "", interval: 5, order: banners.length, active: true }); setBForm({ title: "", subtitle: "", imageUrl: "", interval: 5, order: banners.length, active: true }); }}
-        className="px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Slide</button>
-    </div>
-    <div className="relative w-full h-40 lg:h-56 rounded-3xl overflow-hidden bg-gray-200 dark:bg-gray-800 shadow-sm">
-      {banners.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-black/40 dark:text-white/40 text-xs font-bold">No slides yet.</div>}
-      {banners.length > 0 && <>
-        <div className="absolute inset-0 transition-all duration-500" style={{ backgroundImage: "url(" + banners[activeIdx]?.imageUrl + ")", backgroundSize: "cover", backgroundPosition: "center" }} />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-4 lg:p-6">
-          <span className="inline-block bg-[#FFC542] text-[#111] text-[10px] font-black px-2 py-0.5 rounded-sm mb-2">ENGRACED</span>
-          <h2 className="text-white font-black text-sm lg:text-lg leading-tight drop-shadow-lg">{banners[activeIdx]?.title}</h2>
-          <p className="text-white/80 text-[10px] lg:text-xs mt-1 line-clamp-1">{banners[activeIdx]?.subtitle}</p>
+          {/* Sticky Bulk Action Bar */}
+          {selected.size > 0 && (
+            <div className="bg-[#FFC542]/15 border border-[#FFC542]/40 rounded-2xl p-3 flex items-center justify-between gap-3 animate-fade-in">
+              <span className="text-xs font-bold text-[#111] dark:text-white flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-[#FFC542]" /> {selected.size} shipments selected
+              </span>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={bulkStatus}
+                  onChange={setBulkStatus}
+                  placeholder="Bulk Status..."
+                  options={[
+                    { value: "ASSIGNED", label: "ASSIGNED" },
+                    { value: "TRANSIT", label: "TRANSIT" },
+                    { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" },
+                    { value: "DELIVERED", label: "DELIVERED" },
+                    { value: "CANCELLED", label: "CANCELLED" }
+                  ]}
+                  compact
+                  className="w-36"
+                />
+                <SaveBtn onClick={bulkUpdate} label="Apply" />
+                <button onClick={() => setSelected(new Set())} className="text-xs font-bold text-black/50 dark:text-white/50 hover:text-red-500 px-2 py-1">Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="absolute top-3 right-3 flex gap-1">
-          {banners.map((_, i) => <button key={i} onClick={() => setActiveIdx(i)} className={"w-2 h-2 rounded-full transition-all " + (i === activeIdx ? "bg-[#FFC542] w-4" : "bg-white/50 hover:bg-white/80")} />)}
-        </div>
-      </>}
-    </div>
-    <div className="grid gap-3">
-      {banners.map((b, i) => <div key={b.id} className={"animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-300 flex items-center gap-4 " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5"][i] || "")}>
-        <div className="w-20 h-14 rounded-xl bg-cover bg-center shrink-0 border border-black/10 dark:border-white/10" style={{ backgroundImage: "url(" + b.imageUrl + ")" }} />
-        <div className="flex-1 min-w-0"><p className="text-xs font-bold text-[#111] dark:text-white truncate">{b.title || "Untitled"}</p>
-          <p className="text-[10px] text-black/40 dark:text-white/40 truncate">{b.subtitle}</p>
-          <span className="text-[10px] text-black/40 dark:text-white/40">Order: {b.order} | Interval: {b.interval}s | {b.active ? "Active" : "Inactive"}</span></div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button onClick={() => { setEditBanner(b); setBForm({ title: b.title, subtitle: b.subtitle, imageUrl: b.imageUrl, interval: b.interval, order: b.order, active: b.active }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
-          <button onClick={() => deleteBanner(b.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>
-        </div>
-      </div>)}
-    </div>
-    {editBanner && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditBanner(null)}>
-      <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#FFC542]" /> {editBanner.id ? "Edit" : "New"} Slide</h3>
-        <div className="relative w-full h-32 rounded-2xl overflow-hidden bg-gray-200 dark:bg-gray-800">
-          {bForm.imageUrl && <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url(" + bForm.imageUrl + ")" }} />}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-          <div className="absolute bottom-2 left-3">
-            <span className="inline-block bg-[#FFC542] text-[#111] text-[8px] font-black px-1.5 py-0.5 rounded-sm mb-1">ENGRACED</span>
-            <p className="text-white font-black text-xs drop-shadow-lg">{bForm.title || "Slide Title"}</p>
+
+        {/* HeyTek High-Fidelity Shipments Table */}
+        <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222] border-b border-black/10 dark:border-white/10">
+                <tr>
+                  <th className="p-3.5 text-left w-10">
+                    <input
+                      type="checkbox"
+                      checked={selected.size > 0 && selected.size === paged.length}
+                      onChange={e => setSelected(e.target.checked ? new Set(paged.map(d => d.id)) : new Set())}
+                      className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]"
+                    />
+                  </th>
+                  <th className="p-3.5 text-left font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider">Item & Tracking</th>
+                  <th className="p-3.5 text-left font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider hidden md:table-cell">Recipient & Route</th>
+                  <th className="p-3.5 text-left font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider hidden lg:table-cell">Assigned Rider</th>
+                  <th className="p-3.5 text-left font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider">Status</th>
+                  <th className="p-3.5 text-right font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider">Price</th>
+                  <th className="p-3.5 text-center font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider w-16">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {paged.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-12 text-center text-black/40 dark:text-white/40">
+                      <Package className="w-8 h-8 text-black/20 dark:text-white/20 mx-auto mb-2" />
+                      No shipments found matching filters.
+                    </td>
+                  </tr>
+                ) : (
+                  paged.map((d, i) => (
+                    <tr key={d.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors " + (selected.has(d.id) ? "bg-[#FFC542]/10" : "")}>
+                      <td className="p-3.5">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(d.id)}
+                          onChange={() => {
+                            const s = new Set(selected);
+                            s.has(d.id) ? s.delete(d.id) : s.add(d.id);
+                            setSelected(s);
+                          }}
+                          className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]"
+                        />
+                      </td>
+                      <td className="p-3.5">
+                        <p className="font-bold text-[#111] dark:text-white flex items-center gap-1.5">
+                          {d.itemName || "Parcel"}
+                          {d.category && <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-gray-100 dark:bg-[#333] text-black/60 dark:text-white/60">{d.category}</span>}
+                        </p>
+                        <p className="text-[10px] font-mono text-black/40 dark:text-white/40 mt-0.5 flex items-center gap-1">
+                          #{idShort(d.id)}
+                        </p>
+                      </td>
+                      <td className="p-3.5 hidden md:table-cell">
+                        <p className="font-bold text-[#111] dark:text-white">{d.receiverName || "—"}</p>
+                        <p className="text-[10px] text-black/40 dark:text-white/40 truncate max-w-[200px]" title={`${d.pickupAddress} → ${d.deliveryAddress}`}>
+                          {d.deliveryAddress || "Standard Delivery"}
+                        </p>
+                      </td>
+                      <td className="p-3.5 hidden lg:table-cell">
+                        {d.status === "PENDING" ? (
+                          <button
+                            onClick={() => setAssignModal({ delivery: d, show: true })}
+                            className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-lg text-[10px] font-black transition-all flex items-center gap-1"
+                          >
+                            <UserPlus size={12} /> Assign Rider
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-[10px] font-black text-[#111] dark:text-white shrink-0">
+                              {(d.courierName || d.driverName || "?").charAt(0)}
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-bold text-[#111] dark:text-white truncate max-w-[100px]">{d.courierName || d.driverName || "Assigned"}</p>
+                              {d.courierPhone && <p className="text-[9px] text-black/40 dark:text-white/40">{d.courierPhone}</p>}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3.5">
+                        <Select
+                          value={d.status}
+                          onChange={v => updateStatus(d.id, v)}
+                          compact
+                          options={[
+                            { value: "PENDING", label: "PENDING" },
+                            { value: "ASSIGNED", label: "ASSIGNED" },
+                            { value: "TRANSIT", label: "TRANSIT" },
+                            { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" },
+                            { value: "DELIVERED", label: "DELIVERED" },
+                            { value: "CANCELLED", label: "CANCELLED" }
+                          ]}
+                          renderOption={(o) => <span className={"px-2.5 py-1 rounded-xl text-[10px] font-extrabold shadow-2xs " + sStyle(o.value)}>{o.label}</span>}
+                        />
+                      </td>
+                      <td className="p-3.5 text-right">
+                        <p className="font-extrabold text-[#111] dark:text-white">{fmt(d.price || 0)}</p>
+                        {d.tipAmount > 0 && <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">+{fmt(d.tipAmount)} tip</p>}
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <button
+                          onClick={() => setDetailsModal({ delivery: d, show: true })}
+                          className="p-1.5 rounded-lg text-black/40 dark:text-white/40 hover:text-[#FFC542] hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                          title="View Details"
+                        >
+                          <Eye size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 30)</label>
-            <input value={bForm.title} maxLength={30} onChange={e => setBForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
-          <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SUBTITLE (max 80)</label>
-            <input value={bForm.subtitle} maxLength={80} onChange={e => setBForm(f => ({ ...f, subtitle: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-          <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">IMAGE URL</label>
-            <input value={bForm.imageUrl} onChange={e => setBForm(f => ({ ...f, imageUrl: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-          <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ORDER</label>
-            <input type="number" value={bForm.order} onChange={e => setBForm(f => ({ ...f, order: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-          <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">INTERVAL (sec)</label>
-            <input type="number" value={bForm.interval} onChange={e => setBForm(f => ({ ...f, interval: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-          <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={bForm.active} onChange={e => setBForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
-        </div>
-        <div className="flex items-center justify-end gap-3 pt-2">
-          <button onClick={() => setEditBanner(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
-          <SaveBtn onClick={() => saveBanner(editBanner.id ? editBanner : undefined)} loading={saving} />
-        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2">
+            <p className="text-xs text-black/40 dark:text-white/40">Showing page {page + 1} of {totalPages}</p>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 text-xs font-bold disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-[#222]">Previous</button>
+              <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 text-xs font-bold disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-[#222]">Next</button>
+            </div>
+          </div>
+        )}
+
+        {/* Shipment Details Modal */}
+        {detailsModal.show && detailsModal.delivery && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setDetailsModal({ delivery: null as any, show: false })}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
+                <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
+                  <Package className="w-5 h-5 text-[#FFC542]" /> Shipment Details
+                </h3>
+                <button onClick={() => setDetailsModal({ delivery: null as any, show: false })} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500">Close</button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#222] rounded-2xl">
+                  <div>
+                    <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Tracking ID</p>
+                    <p className="font-mono font-bold text-[#111] dark:text-white">{detailsModal.delivery.id}</p>
+                  </div>
+                  <span className={"px-3 py-1 rounded-xl text-xs font-bold " + sStyle(detailsModal.delivery.status)}>{detailsModal.delivery.status}</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl">
+                    <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Sender</p>
+                    <p className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.senderName || "Sender"}</p>
+                    <p className="text-black/60 dark:text-white/60">{detailsModal.delivery.senderPhone || "—"}</p>
+                    <p className="text-[10px] text-black/40 dark:text-white/40 mt-1">{detailsModal.delivery.pickupAddress}</p>
+                  </div>
+
+                  <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl">
+                    <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Receiver</p>
+                    <p className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.receiverName || "Receiver"}</p>
+                    <p className="text-black/60 dark:text-white/60">{detailsModal.delivery.receiverPhone || "—"}</p>
+                    <p className="text-[10px] text-black/40 dark:text-white/40 mt-1">{detailsModal.delivery.deliveryAddress}</p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Assigned Rider</p>
+                    <p className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.courierName || detailsModal.delivery.driverName || "Unassigned"}</p>
+                    {detailsModal.delivery.courierPhone && <p className="text-black/60 dark:text-white/60">{detailsModal.delivery.courierPhone}</p>}
+                  </div>
+                  {detailsModal.delivery.status === "PENDING" && (
+                    <button
+                      onClick={() => { setDetailsModal({ delivery: null as any, show: false }); setAssignModal({ delivery: detailsModal.delivery, show: true }); }}
+                      className="px-3 py-1.5 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black"
+                    >
+                      Assign
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Assign Rider Modal */}
+        {assignModal.show && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setAssignModal({ delivery: null as any, show: false })}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> Assign Rider</h3>
+              <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20 space-y-1">
+                <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-normal">#{idShort(assignModal.delivery.id)}</span></p>
+                <p className="text-[10px] text-black/40 dark:text-white/40">{assignModal.delivery.pickupAddress} → {assignModal.delivery.deliveryAddress}</p>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto space-y-2">
+                {drivers.length === 0 ? (
+                  <p className="text-xs text-black/40 dark:text-white/40 text-center py-4">No riders available.</p>
+                ) : (
+                  drivers.map(r => (
+                    <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFC542]/50 transition-all">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-[#FFC542] text-[#111] font-black flex items-center justify-center text-xs">{(r.name || "?").charAt(0)}</div>
+                        <div>
+                          <p className="text-xs font-bold text-[#111] dark:text-white">{r.name}</p>
+                          <p className="text-[10px] text-black/40 dark:text-white/40">{r.phone || r.email} {r.isOnline !== false ? "🟢 Online" : "⚪ Offline"}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => assignRider(assignModal.delivery.id, r)} className="px-3 py-1.5 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black hover:bg-[#FFC542]/80">Assign</button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </div>}
-  </div>;
+    );
 }
 
 function ReferralsTab({ referrals, completedReferrals, searchQuery }: ReferralsTabProps) {
