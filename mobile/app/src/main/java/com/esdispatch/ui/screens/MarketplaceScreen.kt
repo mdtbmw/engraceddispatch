@@ -50,7 +50,7 @@ fun MarketplaceScreen(
     
     val marketplaceItems by viewModel.marketplaceProducts.collectAsState()
 
-    val categories = listOf("All", "Packaging", "Merchandise", "Gear", "Accessories")
+    val categories = listOf("All", "Delivery Gear", "Apparel", "Lubricants", "Accessories", "Safety")
     
     val filteredItems = marketplaceItems.filter { item ->
         val matchesCategory = selectedCategory == "All" || item.category == selectedCategory

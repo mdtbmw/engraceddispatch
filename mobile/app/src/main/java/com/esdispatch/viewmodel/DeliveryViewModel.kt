@@ -4746,31 +4746,49 @@ class DeliveryViewModel : WalletViewModel() {
         )
     }
 
+    val defaultSampleProducts = listOf(
+        MarketplaceItem("seed_1", "Heavy Duty Bike Delivery Box", "Delivery Gear", 35000.0, 4.9, 45, "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=500", "Waterproof insulated delivery cargo box with lock", 45, "ESDispatch Fleet Supplies"),
+        MarketplaceItem("seed_2", "Executive Courier Rider Jacket", "Apparel", 18500.0, 4.8, 120, "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=500", "High-visibility reflective windproof jacket", 120, "ProRider Wear"),
+        MarketplaceItem("seed_3", "Engine Synthetic Oil 1L (4T)", "Lubricants", 4200.0, 4.7, 8, "https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500", "High performance synthetic motor oil", 8, "Lagos Auto Care"),
+        MarketplaceItem("seed_4", "Heavy Duty Phone Mount & Charger", "Accessories", 9500.0, 4.9, 65, "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=500", "Anti-vibration aluminum handlebar phone holder", 65, "TechRider Solutions"),
+        MarketplaceItem("seed_5", "Full Face Protective Helmet", "Safety", 28000.0, 4.9, 0, "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500", "DOT certified aerodynamic protective helmet", 0, "SafetyFirst Nigeria")
+    )
+
     private fun listenToMarketplaceProducts() {
         val firestore = com.esdispatch.data.FirebaseManager.firestore ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
         firestore.collection("marketplace_products")
             .addSnapshotListener { snapshot, e ->
-                if (e != null || snapshot == null) return@addSnapshotListener
+                if (e != null) {
+                    android.util.Log.e("DeliveryViewModel", "Error fetching marketplace_products: ${e.message}")
+                    if (_marketplaceProducts.value.isEmpty()) {
+                        _marketplaceProducts.value = defaultSampleProducts
+                    }
+                    return@addSnapshotListener
+                }
+                if (snapshot == null || snapshot.isEmpty) {
+                    _marketplaceProducts.value = defaultSampleProducts
+                    return@addSnapshotListener
+                }
                 val items = snapshot.documents.mapNotNull { doc ->
                     val isDeleted = doc.getBoolean("isDeleted") ?: false
                     if (isDeleted) return@mapNotNull null
                     val id = doc.id
                     val title = doc.getString("name") ?: doc.getString("title") ?: "Product"
                     val category = doc.getString("category") ?: "General"
-                    val price = doc.getDouble("price") ?: doc.getLong("price")?.toDouble() ?: 0.0
-                    val rating = doc.getDouble("rating") ?: 4.9
+                    val price = doc.getDouble("price") ?: doc.getLong("price")?.toDouble() ?: (doc.get("price")?.toString()?.toDoubleOrNull() ?: 0.0)
+                    val rating = doc.getDouble("rating") ?: doc.getLong("rating")?.toDouble() ?: (doc.get("rating")?.toString()?.toDoubleOrNull() ?: 4.9)
                     val imageUrl = doc.getString("imageUrl") ?: ""
                     val description = doc.getString("description") ?: ""
-                    val stock = doc.getLong("stock")?.toInt() ?: 10
+                    val stock = doc.getLong("stock")?.toInt() ?: (doc.get("stock")?.toString()?.toIntOrNull() ?: 10)
                     val vendorStore = doc.getString("vendorStore") ?: "ESDispatch Fleet Supplies"
                     MarketplaceItem(id, title, category, price, rating, 15, imageUrl, description, stock, vendorStore)
                 }
-                _marketplaceProducts.value = items
+                _marketplaceProducts.value = if (items.isNotEmpty()) items else defaultSampleProducts
             }
     }
 
     // --- Marketplace & Promos ---
-    private val _marketplaceProducts = kotlinx.coroutines.flow.MutableStateFlow<List<MarketplaceItem>>(emptyList())
+    private val _marketplaceProducts = kotlinx.coroutines.flow.MutableStateFlow<List<MarketplaceItem>>(defaultSampleProducts)
     val marketplaceProducts: kotlinx.coroutines.flow.StateFlow<List<MarketplaceItem>> = _marketplaceProducts.asStateFlow()
 
     private val _cartItems = kotlinx.coroutines.flow.MutableStateFlow<List<CartItem>>(emptyList())
