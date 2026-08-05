@@ -83,20 +83,20 @@ const HeroSection = () => {
           zIndex: 1,
           display: "flex",
           alignItems: "center",
-          justifyContent: "flex-end",
+          justifyContent: "center",
           pointerEvents: "none",
         }}>
           <motion.div
-            initial={{ opacity: 0, x: 120 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, delay: 0.4, ease: "easeOut" }}
             style={{
-              width: "clamp(300px, 45vw, 600px)",
-              marginRight: "clamp(10px, 3vw, 60px)",
-              filter: "drop-shadow(0 20px 60px rgba(0,0,0,0.12))",
+              width: "clamp(220px, 28vw, 320px)",
+              margin: "0 auto",
+              filter: "drop-shadow(0 20px 50px rgba(0,0,0,0.18))",
             }}
           >
-            <img src="/images/v1/hero-mocup1.png" alt style={{ width: "100%", height: "auto", display: "block" }} />
+            <img src="/images/v1/hero-mocup1.png" alt="ESDispatch App" style={{ width: "100%", height: "auto", display: "block" }} />
           </motion.div>
         </div>
 

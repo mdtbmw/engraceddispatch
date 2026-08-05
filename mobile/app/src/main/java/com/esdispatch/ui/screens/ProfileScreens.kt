@@ -139,6 +139,7 @@ fun ProfileScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
+                        .navigationBarsPadding()
                         .padding(horizontal = 24.dp)
                         .padding(bottom = 120.dp)
                 ) {
@@ -832,7 +833,8 @@ fun WalletScreen(
                         modifier = Modifier
                             .weight(1f)
                             .verticalScroll(rememberScrollState())
-                            .padding(bottom = 16.dp)
+                            .navigationBarsPadding()
+                            .padding(bottom = 120.dp)
                     ) {
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -1223,7 +1225,9 @@ fun SettingsScreen(
                         .fillMaxSize()
                         .background(sheetBg)
                         .verticalScroll(rememberScrollState())
+                        .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 24.dp)
+                        .padding(bottom = 120.dp)
                 ) {
                     Text(
                         text = "Preferences",

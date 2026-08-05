@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -121,32 +122,25 @@ fun BatchBookingScreen(
     // Autocomplete states
     var pickupFocused by remember { mutableStateOf(false) }
     var focusedDestinationIndex by remember { mutableStateOf(-1) }
-    var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var suggestionItems by remember { mutableStateOf<List<com.esdispatch.utils.SearchResultItem>>(emptyList()) }
 
-    // Coroutine-driven geocoder search
+    // Address search using AddressDatabase (Benin City + Lagos) + Mapbox
     fun performSearch(query: String) {
-        if (query.length > 3) {
-            coroutineScope.launch {
-                val results = mutableListOf<String>()
-                try {
-                    withContext(Dispatchers.IO) {
-                        val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
-                        val addresses = com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, query, 5)
-                        if (addresses != null) {
-                            for (addr in addresses) {
-                                addr.getAddressLine(0)?.let { results.add(it) }
-                            }
+        if (query.isNotBlank()) {
+            val localResults = com.esdispatch.data.AddressDatabase.searchItems(query)
+            suggestionItems = localResults
+            if (query.length >= 2) {
+                coroutineScope.launch {
+                    try {
+                        val full = viewModel.searchAddressAutocompleteItems(query)
+                        if (full.isNotEmpty()) {
+                            suggestionItems = full
                         }
-                    }
-                } catch (e: Exception) {
-                    // Fallback to local filtering
+                    } catch (_: Exception) {}
                 }
-                val filteredLandmarks = nigerianLandmarks.filter { it.contains(query, ignoreCase = true) }
-                results.addAll(filteredLandmarks)
-                suggestions = results.distinct()
             }
         } else {
-            suggestions = emptyList()
+            suggestionItems = emptyList()
         }
     }
 
@@ -338,11 +332,11 @@ fun BatchBookingScreen(
                         )
 
                         // Autocomplete Dropdown for Pickup
-                        if (pickupFocused && suggestions.isNotEmpty()) {
+                        if (pickupFocused && suggestionItems.isNotEmpty()) {
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(max = 200.dp)
+                                    .heightIn(max = 240.dp)
                                     .padding(vertical = 8.dp),
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = Charcoal),
@@ -350,20 +344,36 @@ fun BatchBookingScreen(
                                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
                             ) {
                                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                                    suggestions.forEach { suggestion ->
-                                        Text(
-                                            text = suggestion,
-                                            color = AppTextColor,
+                                    suggestionItems.forEach { item ->
+                                        Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clickable {
-                                                    pickup = suggestion
+                                                    pickup = item.displayInput
                                                     pickupFocused = false
-                                                    suggestions = emptyList()
+                                                    suggestionItems = emptyList()
                                                 }
-                                                .padding(14.dp),
-                                            fontSize = 13.sp
-                                        )
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(30.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Gold.copy(alpha = 0.15f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Filled.Place, null, tint = Gold, modifier = Modifier.size(16.dp))
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(item.title, color = AppTextColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                if (item.fullAddress.isNotBlank() && item.fullAddress != item.title) {
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(item.fullAddress, color = TextGray, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                }
+                                            }
+                                        }
                                         HorizontalDivider(color = dividerColor)
                                     }
                                 }
@@ -461,7 +471,7 @@ fun BatchBookingScreen(
                                                 destinations = mutable
                                                 if (focusedDestinationIndex == index) {
                                                     focusedDestinationIndex = -1
-                                                    suggestions = emptyList()
+                                                    suggestionItems = emptyList()
                                                 }
                                             }
                                         ) {
@@ -471,11 +481,11 @@ fun BatchBookingScreen(
                                 }
 
                                 // Autocomplete Dropdown for currently focused dropoff
-                                if (focusedDestinationIndex == index && suggestions.isNotEmpty()) {
+                                if (focusedDestinationIndex == index && suggestionItems.isNotEmpty()) {
                                     Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .heightIn(max = 200.dp)
+                                            .heightIn(max = 240.dp)
                                             .padding(vertical = 8.dp),
                                         shape = RoundedCornerShape(16.dp),
                                         colors = CardDefaults.cardColors(containerColor = Charcoal),
@@ -483,22 +493,38 @@ fun BatchBookingScreen(
                                         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
                                     ) {
                                         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                                            suggestions.forEach { suggestion ->
-                                                Text(
-                                                    text = suggestion,
-                                                    color = AppTextColor,
+                                            suggestionItems.forEach { item ->
+                                                Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .clickable {
                                                             val mutable = destinations.toMutableList()
-                                                            mutable[index] = suggestion
+                                                            mutable[index] = item.displayInput
                                                             destinations = mutable
                                                             focusedDestinationIndex = -1
-                                                            suggestions = emptyList()
+                                                            suggestionItems = emptyList()
                                                         }
-                                                        .padding(14.dp),
-                                                    fontSize = 13.sp
-                                                )
+                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(30.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Gold.copy(alpha = 0.15f)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(Icons.Filled.Place, null, tint = Gold, modifier = Modifier.size(16.dp))
+                                                    }
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(item.title, color = AppTextColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                        if (item.fullAddress.isNotBlank() && item.fullAddress != item.title) {
+                                                            Spacer(modifier = Modifier.height(2.dp))
+                                                            Text(item.fullAddress, color = TextGray, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                        }
+                                                    }
+                                                }
                                                 HorizontalDivider(color = dividerColor)
                                             }
                                         }
@@ -678,21 +704,21 @@ fun BatchBookingScreen(
         }
     }
 
-        // Bottom Pricing Summary - overlayed
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding(),
-            shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-            color = Charcoal,
-            tonalElevation = 8.dp
-        ) {
+        // Bottom Pricing Summary - overlayed (hidden when typing address to prevent screen occlusion)
+        if (!pickupFocused && focusedDestinationIndex == -1) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                color = Charcoal,
+                tonalElevation = 8.dp
+            ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -758,6 +784,7 @@ fun BatchBookingScreen(
                     Text("Book Batch", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (isBookingEnabled) Gold else TextGray)
                 }
             }
+        }
         }
 
         val quotePrice = (pendingQuote as? PendingQuote.Success)?.price ?: 0.0

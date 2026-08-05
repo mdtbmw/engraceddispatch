@@ -159,8 +159,9 @@ fun RiderDashboardScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                contentPadding = PaddingValues(bottom = 24.dp)
+                    .weight(1f)
+                    .navigationBarsPadding(),
+                contentPadding = PaddingValues(bottom = 120.dp)
             ) {
                 // Greeting and Slogan Section
                 item {

@@ -141,9 +141,9 @@ fun OrderLogsScreen(
 
                 // Order History Logs Items List
                 LazyColumn(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).navigationBarsPadding(),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp)
+                    contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
                     if (paginatedParcels.isEmpty() && loadingParcels) {
                         item {

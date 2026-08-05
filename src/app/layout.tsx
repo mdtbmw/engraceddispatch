@@ -9,14 +9,14 @@ import "~/assets/css/react-adjustment.css";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Engraced Dispatch — Premium Logistics & Dispatch",
-  description: "Premium Logistics & Dispatch Operations Management",
+  title: "ESDispatch — PREMIUM LOGISTICS & DISPATCH",
+  description: "Premium Logistics & Dispatch Operations Management System",
   icons: {
     icon: [
-      { url: "https://engraceddispatch-ffba4.web.app/favicon.svg", type: "image/svg+xml" },
-      { url: "https://engraceddispatch-ffba4.web.app/favicon.ico", sizes: "32x32" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "32x32" },
     ],
-    apple: "https://engraceddispatch-ffba4.web.app/apple-touch-icon.png",
+    apple: "/favicon.svg",
   },
 };
 

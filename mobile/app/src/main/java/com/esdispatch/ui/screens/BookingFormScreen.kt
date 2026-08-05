@@ -49,59 +49,45 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-suspend fun detectUserLocation(context: android.content.Context): String {
-    // 1. Try GPS Location via LocationManager
+suspend fun detectUserLocation(context: android.content.Context): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     try {
         if (androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            androidx.core.content.ContextCompat.checkSelfPermission(
                 context,
                 android.Manifest.permission.ACCESS_COARSE_LOCATION
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
-            val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
-            val providers = locationManager?.getProviders(true)
-            var bestLocation: android.location.Location? = null
-            if (providers != null) {
-                for (provider in providers) {
-                    val loc = locationManager.getLastKnownLocation(provider) ?: continue
-                    if (bestLocation == null || loc.accuracy < bestLocation.accuracy) {
-                        bestLocation = loc
+            val fusedClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+            val loc: android.location.Location? = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                fusedClient.getCurrentLocation(
+                    com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY,
+                    null
+                ).addOnSuccessListener { location ->
+                    if (location != null) {
+                        cont.resumeWith(Result.success(location))
+                    } else {
+                        fusedClient.lastLocation.addOnSuccessListener { lastLoc ->
+                            cont.resumeWith(Result.success(lastLoc))
+                        }.addOnFailureListener { cont.resumeWith(Result.success(null)) }
                     }
+                }.addOnFailureListener {
+                    fusedClient.lastLocation.addOnSuccessListener { lastLoc ->
+                        cont.resumeWith(Result.success(lastLoc))
+                    }.addOnFailureListener { cont.resumeWith(Result.success(null)) }
                 }
             }
-            if (bestLocation != null) {
-                val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
-                val addresses = com.esdispatch.utils.GeocoderUtils.getFromLocationCompat(geocoder, bestLocation.latitude, bestLocation.longitude, 1)
-                if (!addresses.isNullOrEmpty()) {
-                    val addrLine = addresses[0].getAddressLine(0)
-                    if (!addrLine.isNullOrBlank()) return addrLine
-                }
+            if (loc != null) {
+                return@withContext com.esdispatch.utils.GeocoderUtils.reverseGeocodeCoordinates(context, loc.latitude, loc.longitude)
             }
         }
     } catch (e: Exception) {
-        android.util.Log.e("DetectLocation", "GPS detection failed: ${e.message}")
+        android.util.Log.e("DetectLocation", "GPS high accuracy detection failed: ${e.message}")
     }
 
-    // 2. Fallback to GeoIP API (extremely robust for virtual/server environments)
-    try {
-        val url = java.net.URL("https://ipapi.co/json/")
-        val urlConnection = url.openConnection() as java.net.HttpURLConnection
-        urlConnection.setRequestProperty("User-Agent", "ESDispatchAndroidApp/1.0")
-        urlConnection.connectTimeout = 3000
-        urlConnection.readTimeout = 3000
-        val response = urlConnection.inputStream.bufferedReader().use { it.readText() }
-        val json = org.json.JSONObject(response)
-        val city = json.optString("city")
-        val region = json.optString("region")
-        val country = json.optString("country_name")
-        val postal = json.optString("postal")
-        if (!city.isNullOrBlank() && !country.isNullOrBlank()) {
-            return "$city, $region, $postal, $country"
-        }
-    } catch (e: Exception) {
-        android.util.Log.e("DetectLocation", "GeoIP fallback failed: ${e.message}")
-    }
-
-    return "Lekki Conservation Centre, Lekki-Epe Expressway, Lagos"
+    return@withContext "Ring Road, Benin City"
 }
 
 @Composable
@@ -140,7 +126,7 @@ fun BookingFormScreen(
     var dropdownExpanded by remember { mutableStateOf(false) }
     var showPinDropForField by remember { mutableStateOf<String?>(null) }
 
-    var apiSuggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var apiSuggestionItems by remember { mutableStateOf<List<com.esdispatch.utils.SearchResultItem>>(emptyList()) }
     var isSearchingSuggestions by remember { mutableStateOf(false) }
 
     val activeQuery = remember(pickup, delivery, additionalStops, focusedField) {
@@ -215,103 +201,19 @@ fun BookingFormScreen(
         }
     }
 
-    val addressDatabase = remember {
-        listOf(
-            "The Palms Shopping Mall, Bisway Road, Lekki, Lagos",
-            "Eko Hotels & Suites, Plot 1415 Adetokunbo Ademola Street, Victoria Island, Lagos",
-            "Civic Centre, Ozumba Mbadiwe Avenue, Victoria Island, Lagos",
-            "Murtala Muhammed International Airport (LOS), Airport Road, Ikeja, Lagos",
-            "Central Business District, Abuja",
-            "Lekki Conservation Centre, Lekki-Epe Expressway, Lagos",
-            "Ikeja City Mall, Obafemi Awolowo Way, Ikeja, Lagos",
-            "National Theatre, Iganmu, Surulere, Lagos",
-            "University of Lagos, Akoka, Yaba, Lagos"
-        )
-    }
-
-    fun levenshteinDistance(s1: String, s2: String): Int {
-        val dp = Array(s1.length + 1) { IntArray(s2.length + 1) }
-        for (i in 0..s1.length) dp[i][0] = i
-        for (j in 0..s2.length) dp[0][j] = j
-        for (i in 1..s1.length) {
-            for (j in 1..s2.length) {
-                val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
-                dp[i][j] = minOf(
-                    dp[i - 1][j] + 1,
-                    dp[i][j - 1] + 1,
-                    dp[i - 1][j - 1] + cost
-                )
-            }
-        }
-        return dp[s1.length][s2.length]
-    }
-
-    fun findAddressMatches(query: String): List<String> {
-        if (query.isBlank()) {
-            val predictiveList = mutableListOf<String>()
+    // Address search using comprehensive Benin City + Lagos database
+    fun findAddressMatchItems(query: String): List<com.esdispatch.utils.SearchResultItem> {
+        return if (query.isBlank()) {
+            val defaults = mutableListOf<com.esdispatch.utils.SearchResultItem>()
             val home = viewModel.homeAddress.value
-            if (home.isNotBlank() && home != "No. 12 Joel Ogunnaike Street, Ikeja GRA, Lagos") {
-                predictiveList.add("🏠 Home: $home")
-            }
+            if (home.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("🏠 Saved Home", home))
             val work = viewModel.workAddress.value
-            if (work.isNotBlank() && work != "Plot 14, Kingsway Road, Ikoyi, Lagos") {
-                predictiveList.add("💼 Work: $work")
-            }
-            predictiveList.addAll(listOf(
-                "Murtala Muhammed International Airport (LOS), Airport Road, Ikeja, Lagos",
-                "Ikeja City Mall, Obafemi Awolowo Way, Ikeja, Lagos",
-                "Lekki Conservation Centre, Lekki-Epe Expressway, Lagos",
-                "Central Business District, Abuja",
-                "University of Lagos, Akoka, Yaba, Lagos"
-            ))
-            return predictiveList.distinct()
+            if (work.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("💼 Saved Work", work))
+            defaults.addAll(com.esdispatch.data.AddressDatabase.getDefaults().take(6).map { it.toSearchResult() })
+            defaults.distinctBy { it.displayInput }
+        } else {
+            com.esdispatch.data.AddressDatabase.searchItems(query)
         }
-        val cleanQuery = query.lowercase().trim()
-        val typoMap = mapOf(
-            "airpt" to "airport",
-            "arpt" to "airport",
-            "mll" to "mall",
-            "lekky" to "lekki",
-            "leki" to "lekki",
-            "unilag" to "university of lagos",
-            "univ" to "university",
-            "sdat" to "sdat cricket ground",
-            "crick" to "cricket",
-            "ashok" to "ashok nagar",
-            "dlf" to "dlf cyber city"
-        )
-        var expandedQuery = cleanQuery
-        for ((typo, replacement) in typoMap) {
-            if (cleanQuery.contains(typo)) {
-                expandedQuery = expandedQuery.replace(typo, replacement)
-            }
-        }
-        
-        // Exact and fuzzy database matches
-        val matches = addressDatabase.filter { address ->
-            val addrLower = address.lowercase()
-            addrLower.contains(cleanQuery) || addrLower.contains(expandedQuery) ||
-            cleanQuery.split(" ").any { word -> word.length > 2 && addrLower.contains(word) }
-        }.toMutableList()
-
-        // Levenshtein intelligent autocorrect matching for words in database
-        if (matches.isEmpty()) {
-            val queryWords = cleanQuery.split(" ")
-            for (address in addressDatabase) {
-                val addrWords = address.lowercase().split(" ", ",", "(", ")")
-                for (qw in queryWords) {
-                    if (qw.length >= 3) {
-                        for (aw in addrWords) {
-                            if (aw.length >= 3 && levenshteinDistance(qw, aw) <= 1) {
-                                matches.add(address)
-                                break
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return matches.distinct()
     }
 
     LaunchedEffect(Unit) {
@@ -333,43 +235,26 @@ fun BookingFormScreen(
         }
     }
 
+    // Address autocomplete via AddressDatabase (instant) + Mapbox Places (async refinement)
     LaunchedEffect(activeQuery) {
-        if (activeQuery.isBlank() || activeQuery.length < 3) {
-            apiSuggestions = emptyList()
+        if (activeQuery.isBlank() || activeQuery.length < 2) {
+            apiSuggestionItems = emptyList()
             return@LaunchedEffect
         }
-        
-        delay(50L) // Almost instant address search per user request
-        isSearchingSuggestions = true
-        
-        withContext(Dispatchers.IO) {
+        apiSuggestionItems = findAddressMatchItems(activeQuery)
+
+        if (activeQuery.length >= 2) {
+            isSearchingSuggestions = true
+            kotlinx.coroutines.delay(300L) // debounce
             try {
-                val encodedQuery = java.net.URLEncoder.encode(activeQuery, "UTF-8")
-                val url = java.net.URL("https://nominatim.openstreetmap.org/search?format=json&q=$encodedQuery&addressdetails=1&limit=5")
-                val urlConnection = url.openConnection() as java.net.HttpURLConnection
-                urlConnection.setRequestProperty("User-Agent", "ESDispatchAndroidApp/1.0 (reachheytek@gmail.com)")
-                urlConnection.connectTimeout = 3000
-                urlConnection.readTimeout = 3000
-                val response = urlConnection.inputStream.bufferedReader().use { it.readText() }
-                val jsonArray = org.json.JSONArray(response)
-                val results = mutableListOf<String>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    val displayName = obj.optString("display_name")
-                    if (!displayName.isNullOrBlank()) {
-                        results.add(displayName)
-                    }
-                }
-                withContext(Dispatchers.Main) {
-                    apiSuggestions = results
-                    isSearchingSuggestions = false
+                val fullResults = viewModel.searchAddressAutocompleteItems(activeQuery)
+                if (fullResults.isNotEmpty()) {
+                    apiSuggestionItems = fullResults
                 }
             } catch (e: Exception) {
-                android.util.Log.e("AddressSearch", "API search failed: ${e.message}")
-                withContext(Dispatchers.Main) {
-                    apiSuggestions = findAddressMatches(activeQuery)
-                    isSearchingSuggestions = false
-                }
+                // Keep local matches fallback
+            } finally {
+                isSearchingSuggestions = false
             }
         }
     }
@@ -597,6 +482,82 @@ fun BookingFormScreen(
                                     )
                                 )
 
+                                // Inline Autocomplete Dropdown for Pickup
+                                val suggestionItemsForPickup = if (focusedField == "pickup") {
+                                    if (activeQuery.isNotBlank() && activeQuery.length >= 2) {
+                                        if (apiSuggestionItems.isNotEmpty()) apiSuggestionItems else findAddressMatchItems(activeQuery)
+                                    } else {
+                                        findAddressMatchItems(activeQuery)
+                                    }
+                                } else emptyList()
+
+                                if (focusedField == "pickup" && (suggestionItemsForPickup.isNotEmpty() || isSearchingSuggestions)) {
+                                    Card(
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = CardDefaults.cardColors(containerColor = if (isDark) MapStandardBg else GoldenWhite),
+                                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.4f) else Slate),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
+                                            Text(
+                                                if (isSearchingSuggestions) "🔍 Searching places & addresses..." else "💡 Verified Location Matches:",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDark) Gold else Obsidian,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                            )
+                                            suggestionItemsForPickup.take(5).forEach { item ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            pickup = item.displayInput
+                                                            focusedField = null
+                                                        }
+                                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(32.dp)
+                                                            .clip(CircleShape)
+                                                            .background(if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Place,
+                                                            contentDescription = null,
+                                                            tint = if (isDark) Gold else Obsidian,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = item.title,
+                                                            fontSize = 13.sp,
+                                                            color = if (isDark) Color.White else Obsidian,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        if (item.fullAddress.isNotBlank() && item.fullAddress != item.title) {
+                                                            Spacer(modifier = Modifier.height(2.dp))
+                                                            Text(
+                                                                text = item.fullAddress,
+                                                                fontSize = 11.sp,
+                                                                color = TextGray,
+                                                                fontWeight = FontWeight.Normal,
+                                                                maxLines = 1,
+                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 // Predict frequently used pickup locations (Tap to apply)
                                 Row(
                                     modifier = Modifier
@@ -666,81 +627,239 @@ fun BookingFormScreen(
 
                             // Dynamic Additional Stops (Multi-stop deliveries)
                             additionalStops.forEachIndexed { index, stopAddress ->
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    OutlinedTextField(
-                                        value = stopAddress,
-                                        onValueChange = { newText ->
-                                            additionalStops = additionalStops.toMutableList().apply { set(index, newText) }
-                                            focusedField = "stop_$index"
-                                        },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .onFocusChanged { if (it.isFocused) focusedField = "stop_$index" },
-                                        shape = RoundedCornerShape(20.dp),
-                                        placeholder = { Text("Delivery stop ${index + 1}", color = TextGray) },
-                                        leadingIcon = {
-                                            Icon(Icons.Filled.AddLocation, null, tint = Gold, modifier = Modifier.size(20.dp))
-                                        },
-                                        trailingIcon = {
-                                            IconButton(onClick = {
-                                                additionalStops = additionalStops.toMutableList().apply { removeAt(index) }
-                                            }) {
-                                                Icon(Icons.Filled.Close, null, tint = Color.Red, modifier = Modifier.size(18.dp))
-                                            }
-                                        },
-                                        textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = if (isLight) Obsidian else Gold,
-                                            unfocusedBorderColor = fieldBorderColor,
-                                            focusedContainerColor = fieldBgColor,
-                                            unfocusedContainerColor = fieldBgColor,
-                                            focusedTextColor = fieldTextColor,
-                                            unfocusedTextColor = fieldTextColor,
-                                            focusedPlaceholderColor = TextGray,
-                                            unfocusedPlaceholderColor = TextGray
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        OutlinedTextField(
+                                            value = stopAddress,
+                                            onValueChange = { newText ->
+                                                additionalStops = additionalStops.toMutableList().apply { set(index, newText) }
+                                                focusedField = "stop_$index"
+                                            },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .onFocusChanged { if (it.isFocused) focusedField = "stop_$index" },
+                                            shape = RoundedCornerShape(20.dp),
+                                            placeholder = { Text("Delivery stop ${index + 1}", color = TextGray) },
+                                            leadingIcon = {
+                                                Icon(Icons.Filled.AddLocation, null, tint = Gold, modifier = Modifier.size(20.dp))
+                                            },
+                                            trailingIcon = {
+                                                IconButton(onClick = {
+                                                    additionalStops = additionalStops.toMutableList().apply { removeAt(index) }
+                                                }) {
+                                                    Icon(Icons.Filled.Close, null, tint = Color.Red, modifier = Modifier.size(18.dp))
+                                                }
+                                            },
+                                            textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = if (isLight) Obsidian else Gold,
+                                                unfocusedBorderColor = fieldBorderColor,
+                                                focusedContainerColor = fieldBgColor,
+                                                unfocusedContainerColor = fieldBgColor,
+                                                focusedTextColor = fieldTextColor,
+                                                unfocusedTextColor = fieldTextColor,
+                                                focusedPlaceholderColor = TextGray,
+                                                unfocusedPlaceholderColor = TextGray
+                                            )
                                         )
-                                    )
+                                    }
+
+                                    // Inline Autocomplete Dropdown for Stop X
+                                    val suggestionItemsForStop = if (focusedField == "stop_$index") {
+                                        if (activeQuery.isNotBlank() && activeQuery.length >= 2) {
+                                            if (apiSuggestionItems.isNotEmpty()) apiSuggestionItems else findAddressMatchItems(activeQuery)
+                                        } else {
+                                            findAddressMatchItems(activeQuery)
+                                        }
+                                    } else emptyList()
+
+                                    if (focusedField == "stop_$index" && (suggestionItemsForStop.isNotEmpty() || isSearchingSuggestions)) {
+                                        Card(
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = CardDefaults.cardColors(containerColor = if (isDark) MapStandardBg else GoldenWhite),
+                                            border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.4f) else Slate),
+                                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                        ) {
+                                            Column(modifier = Modifier.padding(8.dp)) {
+                                                Text(
+                                                    if (isSearchingSuggestions) "🔍 Searching places & addresses..." else "💡 Verified Location Matches:",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isDark) Gold else Obsidian,
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                                )
+                                                suggestionItemsForStop.take(5).forEach { item ->
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable {
+                                                                if (index in additionalStops.indices) {
+                                                                    additionalStops = additionalStops.toMutableList().apply { set(index, item.displayInput) }
+                                                                }
+                                                                focusedField = null
+                                                            }
+                                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(32.dp)
+                                                                .clip(CircleShape)
+                                                                .background(if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.Place,
+                                                                contentDescription = null,
+                                                                tint = if (isDark) Gold else Obsidian,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(
+                                                                text = item.title,
+                                                                fontSize = 13.sp,
+                                                                color = if (isDark) Color.White else Obsidian,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                            if (item.fullAddress.isNotBlank() && item.fullAddress != item.title) {
+                                                                Spacer(modifier = Modifier.height(2.dp))
+                                                                Text(
+                                                                    text = item.fullAddress,
+                                                                    fontSize = 11.sp,
+                                                                    color = TextGray,
+                                                                    fontWeight = FontWeight.Normal,
+                                                                    maxLines = 1,
+                                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
                             // Final Delivery Destination Field
-                            OutlinedTextField(
-                                value = delivery,
-                                onValueChange = { 
-                                    delivery = it 
-                                    focusedField = "delivery"
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .onFocusChanged { if (it.isFocused) focusedField = "delivery" },
-                                shape = RoundedCornerShape(20.dp),
-                                placeholder = { Text("Final delivery address", color = TextGray) },
-                                leadingIcon = {
-                                    Icon(Icons.Filled.Navigation, null, tint = accentIconColor, modifier = Modifier.size(22.dp))
-                                },
-                                trailingIcon = {
-                                    IconButton(onClick = {
-                                        showPinDropForField = "delivery"
-                                    }) {
-                                        Icon(Icons.Filled.Map, null, tint = Gold, modifier = Modifier.size(20.dp))
-                                    }
-                                },
-                                textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = if (isLight) Obsidian else Gold,
-                                    unfocusedBorderColor = fieldBorderColor,
-                                    focusedContainerColor = fieldBgColor,
-                                    unfocusedContainerColor = fieldBgColor,
-                                    focusedTextColor = fieldTextColor,
-                                    unfocusedTextColor = fieldTextColor,
-                                    focusedPlaceholderColor = TextGray,
-                                    unfocusedPlaceholderColor = TextGray
+                            Column {
+                                OutlinedTextField(
+                                    value = delivery,
+                                    onValueChange = { 
+                                        delivery = it 
+                                        focusedField = "delivery"
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .onFocusChanged { if (it.isFocused) focusedField = "delivery" },
+                                    shape = RoundedCornerShape(20.dp),
+                                    placeholder = { Text("Final delivery address", color = TextGray) },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.Navigation, null, tint = accentIconColor, modifier = Modifier.size(22.dp))
+                                    },
+                                    trailingIcon = {
+                                        IconButton(onClick = {
+                                            showPinDropForField = "delivery"
+                                        }) {
+                                            Icon(Icons.Filled.Map, null, tint = Gold, modifier = Modifier.size(20.dp))
+                                        }
+                                    },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = if (isLight) Obsidian else Gold,
+                                        unfocusedBorderColor = fieldBorderColor,
+                                        focusedContainerColor = fieldBgColor,
+                                        unfocusedContainerColor = fieldBgColor,
+                                        focusedTextColor = fieldTextColor,
+                                        unfocusedTextColor = fieldTextColor,
+                                        focusedPlaceholderColor = TextGray,
+                                        unfocusedPlaceholderColor = TextGray
+                                    )
                                 )
-                            )
+
+                                // Inline Autocomplete Dropdown for Delivery
+                                val suggestionItemsForDelivery = if (focusedField == "delivery") {
+                                    if (activeQuery.isNotBlank() && activeQuery.length >= 2) {
+                                        if (apiSuggestionItems.isNotEmpty()) apiSuggestionItems else findAddressMatchItems(activeQuery)
+                                    } else {
+                                        findAddressMatchItems(activeQuery)
+                                    }
+                                } else emptyList()
+
+                                if (focusedField == "delivery" && (suggestionItemsForDelivery.isNotEmpty() || isSearchingSuggestions)) {
+                                    Card(
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = CardDefaults.cardColors(containerColor = if (isDark) MapStandardBg else GoldenWhite),
+                                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.4f) else Slate),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
+                                            Text(
+                                                if (isSearchingSuggestions) "🔍 Searching places & addresses..." else "💡 Verified Location Matches:",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDark) Gold else Obsidian,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                            )
+                                            suggestionItemsForDelivery.take(5).forEach { item ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            delivery = item.displayInput
+                                                            focusedField = null
+                                                        }
+                                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(32.dp)
+                                                            .clip(CircleShape)
+                                                            .background(if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Place,
+                                                            contentDescription = null,
+                                                            tint = if (isDark) Gold else Obsidian,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = item.title,
+                                                            fontSize = 13.sp,
+                                                            color = if (isDark) Color.White else Obsidian,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        if (item.fullAddress.isNotBlank() && item.fullAddress != item.title) {
+                                                            Spacer(modifier = Modifier.height(2.dp))
+                                                            Text(
+                                                                text = item.fullAddress,
+                                                                fontSize = 11.sp,
+                                                                color = TextGray,
+                                                                fontWeight = FontWeight.Normal,
+                                                                maxLines = 1,
+                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                             // Multi-stop Action trigger
                             TextButton(
@@ -757,77 +876,6 @@ fun BookingFormScreen(
                                     fontWeight = FontWeight.Bold,
                                     color = if (isDark) Gold else Obsidian
                                 )
-                            }
-
-                            // AI Address Auto-Suggestions Dropdown Popup
-                            val query = when {
-                                focusedField == "pickup" -> pickup
-                                focusedField == "delivery" -> delivery
-                                focusedField?.startsWith("stop_") == true -> {
-                                    val idx = focusedField!!.removePrefix("stop_").toIntOrNull() ?: 0
-                                    additionalStops.getOrNull(idx) ?: ""
-                                }
-                                else -> ""
-                            }
-                            val suggestions = if (activeQuery.isNotBlank() && activeQuery.length >= 3) {
-                                if (apiSuggestions.isNotEmpty()) apiSuggestions else findAddressMatches(activeQuery)
-                            } else {
-                                findAddressMatches(activeQuery)
-                            }
-                            if (suggestions.isNotEmpty() || isSearchingSuggestions) {
-                                Card(
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = CardDefaults.cardColors(containerColor = if (isDark) MapStandardBg else GoldenWhite),
-                                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.25f) else Slate),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(8.dp)) {
-                                        Text(
-                                            if (isSearchingSuggestions) "🔍 Searching locations..." else "💡 AI Suggestion Matches:",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isDark) Gold else Obsidian,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                        )
-                                        suggestions.take(5).forEach { rawMatch ->
-                                            val isHome = rawMatch.startsWith("🏠 Home: ")
-                                            val isWork = rawMatch.startsWith("💼 Work: ")
-                                            val cleanMatch = when {
-                                                isHome -> rawMatch.removePrefix("🏠 Home: ")
-                                                isWork -> rawMatch.removePrefix("💼 Work: ")
-                                                else -> rawMatch
-                                            }
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable {
-                                                        when {
-                                                            focusedField == "pickup" -> pickup = cleanMatch
-                                                            focusedField == "delivery" -> delivery = cleanMatch
-                                                            focusedField?.startsWith("stop_") == true -> {
-                                                                val idx = focusedField!!.removePrefix("stop_").toIntOrNull() ?: 0
-                                                                if (idx in additionalStops.indices) {
-                                                                    additionalStops = additionalStops.toMutableList().apply { set(idx, cleanMatch) }
-                                                                }
-                                                            }
-                                                        }
-                                                        focusedField = null
-                                                    }
-                                                    .padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                val iconVector = when {
-                                                    isHome -> Icons.Filled.Home
-                                                    isWork -> Icons.Filled.Work
-                                                    else -> Icons.Filled.Place
-                                                 }
-                                                 Icon(iconVector, null, tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
-                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                 Text(rawMatch, color = if (isDark) Color.White else Obsidian, fontSize = 12.sp)
-                                            }
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -1356,61 +1404,62 @@ fun BookingFormScreen(
         }
     }
 
-        // Bottom CTA Get Instant Quote Button
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding(),
-            shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-            color = Charcoal,
-            tonalElevation = 8.dp
-        ) {
-            Box(
+        // Bottom CTA Get Instant Quote Button (hidden when typing address to prevent screen occlusion)
+        if (focusedField == null) {
+            Surface(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(24.dp)
+                    .navigationBarsPadding(),
+                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                color = Charcoal,
+                tonalElevation = 8.dp
             ) {
-                Button(
-                    onClick = {
-                        keyboardController?.hide()
-                        focusManager.clearFocus()
-                        if (pickup.isBlank() || delivery.isBlank()) {
-                            Toast.makeText(context, "Please enter pickup and delivery addresses", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        if (sName.isBlank() || sPhone.isBlank()) {
-                            Toast.makeText(context, "Please fill in sender information", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        if (rName.isBlank() || rPhone.isBlank()) {
-                            Toast.makeText(context, "Please fill in receiver information", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-
-                        viewModel.updateDraftPickup(pickup)
-                        viewModel.updateDraftDelivery(delivery)
-                        viewModel.updateDraftAdditionalStops(additionalStops)
-                        viewModel.updateDraftSpecs(
-                            quantity.toIntOrNull() ?: 1,
-                            weight.toDoubleOrNull() ?: 1.0,
-                            length.toIntOrNull() ?: 10,
-                            width.toIntOrNull() ?: 10,
-                            height.toIntOrNull() ?: 10
-                        )
-                        viewModel.updateDraftSenderInfo(sName, sPhone)
-                        viewModel.updateDraftReceiverInfo(rName, rPhone)
-                        onNavigate("BookingSelection")
-                    },
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(60.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Obsidian),
-                    border = BorderStroke(1.2.dp, Gold)
+                        .padding(24.dp)
                 ) {
-                    Text("Get Instant Quote", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
+                    Button(
+                        onClick = {
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                            if (pickup.isBlank() || delivery.isBlank()) {
+                                Toast.makeText(context, "Please enter pickup and delivery addresses", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (sName.isBlank() || sPhone.isBlank()) {
+                                Toast.makeText(context, "Please fill in sender information", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (rName.isBlank() || rPhone.isBlank()) {
+                                Toast.makeText(context, "Please fill in receiver information", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+
+                            viewModel.updateDraftPickup(pickup)
+                            viewModel.updateDraftDelivery(delivery)
+                            viewModel.updateDraftAdditionalStops(additionalStops)
+                            viewModel.updateDraftSpecs(
+                                quantity.toIntOrNull() ?: 1,
+                                weight.toDoubleOrNull() ?: 1.0,
+                                length.toIntOrNull() ?: 10,
+                                width.toIntOrNull() ?: 10,
+                                height.toIntOrNull() ?: 10
+                            )
+                            viewModel.updateDraftSenderInfo(sName, sPhone)
+                            viewModel.updateDraftReceiverInfo(rName, rPhone)
+                            onNavigate("BookingSelection")
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Obsidian),
+                        border = BorderStroke(1.2.dp, Gold)
+                    ) {
+                        Text("Get Instant Quote", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
+                    }
                 }
             }
         }
@@ -1871,36 +1920,39 @@ fun BookingDetails(
                 }
             }
         }
-    }
 
         // Live Map Tracking CTA at bottom
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-            color = Charcoal,
-            tonalElevation = 8.dp
-        ) {
-            Box(
+        Box(modifier = Modifier.fillMaxSize()) {
+            Surface(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(24.dp)
+                    .navigationBarsPadding(),
+                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                color = Charcoal,
+                tonalElevation = 8.dp
             ) {
-                Button(
-                    onClick = { onNavigate("ActiveTracking") },
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(60.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Obsidian),
-                    border = BorderStroke(1.2.dp, Gold)
+                        .padding(horizontal = 24.dp, vertical = 16.dp)
                 ) {
-                    Icon(Icons.Filled.Place, null, tint = Gold)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Track on Live Map", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
+                    Button(
+                        onClick = { onNavigate("ActiveTracking") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Obsidian),
+                        border = BorderStroke(1.2.dp, Gold)
+                    ) {
+                        Icon(Icons.Filled.Place, null, tint = Gold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Track on Live Map", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
+                    }
                 }
             }
         }
     }
+}
 }

@@ -239,5 +239,27 @@ service cloud.firestore {
       allow create: if isValidSubscriber();
       allow update, delete: if isAdmin();
     }
+
+    // =========================================================
+    // MARKETPLACE (Products, Stores, Orders)
+    // =========================================================
+
+    match /marketplace_products/{docId} {
+      allow read: if true; // Public catalog viewable by customers & vendors
+      allow create, update, delete: if isAdmin() || (isAuth() && resource.data.vendorId == request.auth.uid);
+    }
+
+    match /marketplace_stores/{docId} {
+      allow read: if true; // Public store directory
+      allow create: if isAuth(); // Vendors can apply to enlist store
+      allow update, delete: if isAdmin() || (isAuth() && resource.data.vendorId == request.auth.uid);
+    }
+
+    match /marketplace_orders/{docId} {
+      allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.vendorId == request.auth.uid);
+      allow create: if isAuth() && isReasonableWrite();
+      allow update, delete: if isAdmin();
+    }
   }
 }
+

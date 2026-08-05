@@ -152,8 +152,9 @@ fun MarketplaceScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                    .weight(1f)
+                    .navigationBarsPadding(),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(filteredItems) { item ->
@@ -357,6 +358,10 @@ fun MarketplaceScreen(
     if (showCheckoutSheet) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         var address by remember { mutableStateOf("") }
+        val walletBalance by viewModel.walletBalance.collectAsState()
+        val totalAmount = cartItems.sumOf { it.item.price * it.quantity }
+        val isBalanceEnough = walletBalance >= totalAmount
+
         ModalBottomSheet(
             onDismissRequest = { showCheckoutSheet = false },
             sheetState = sheetState,
@@ -370,48 +375,179 @@ fun MarketplaceScreen(
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 24.dp)
             ) {
-                Text("Checkout", fontSize = 24.sp, fontWeight = FontWeight.Black, color = if (isSystemDark) Gold else Obsidian)
-                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Checkout Cart", fontSize = 22.sp, fontWeight = FontWeight.Black, color = if (isSystemDark) Gold else Obsidian)
+                    TextButton(onClick = { viewModel.clearCart() }) {
+                        Text("Clear All", color = ErrorRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
                 
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(cartItems) { cartItem ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(cartItem.item.title, modifier = Modifier.weight(1f), color = if (isSystemDark) Color.White else Obsidian)
-                            Text("x${cartItem.quantity}", color = TextGray)
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text("₦${String.format("%,.0f", cartItem.item.price * cartItem.quantity)}", fontWeight = FontWeight.Bold, color = if (isSystemDark) Gold else Obsidian)
+                if (cartItems.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Your cart is empty", color = TextGray, fontSize = 14.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(cartItems) { cartItem ->
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isSystemDark) BackgroundDark else Color.White,
+                                border = BorderStroke(1.dp, if (isSystemDark) BorderDark else Slate.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            cartItem.item.title,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = if (isSystemDark) Color.White else Obsidian
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            "₦${String.format("%,.0f", cartItem.item.price)} each",
+                                            fontSize = 11.sp,
+                                            color = TextGray
+                                        )
+                                    }
+                                    
+                                    // Quantity Controls (- / count / +)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier
+                                            .background(if (isSystemDark) Charcoal else GoldenWhite, RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        IconButton(
+                                            onClick = { viewModel.updateCartQuantity(cartItem.item.id, -1) },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Filled.Remove, contentDescription = "Decrease", tint = if (isSystemDark) Gold else Obsidian, modifier = Modifier.size(14.dp))
+                                        }
+                                        Text(
+                                            text = "${cartItem.quantity}",
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 13.sp,
+                                            color = if (isSystemDark) Color.White else Obsidian
+                                        )
+                                        IconButton(
+                                            onClick = { viewModel.updateCartQuantity(cartItem.item.id, 1) },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Filled.Add, contentDescription = "Increase", tint = if (isSystemDark) Gold else Obsidian, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    // Item Total
+                                    Text(
+                                        "₦${String.format("%,.0f", cartItem.item.price * cartItem.quantity)}",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 13.sp,
+                                        color = if (isSystemDark) Gold else Obsidian
+                                    )
+
+                                    IconButton(
+                                        onClick = { viewModel.removeFromCart(cartItem.item.id) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = ErrorRed.copy(alpha = 0.8f), modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 
+                Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider(color = if (isSystemDark) BorderDark else Slate)
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 
-                val total = cartItems.sumOf { it.item.price * it.quantity }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Total", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                    Text("₦${String.format("%,.0f", total)}", fontSize = 22.sp, fontWeight = FontWeight.Black, color = if (isSystemDark) Gold else Obsidian)
+                // Wallet Balance Summary Card
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSystemDark) BackgroundDark else Color.White,
+                    border = BorderStroke(1.dp, if (!isBalanceEnough) ErrorRed else Gold.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Wallet Balance", fontSize = 11.sp, color = TextGray)
+                            Text(
+                                "₦${String.format("%,.2f", walletBalance)}",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (isBalanceEnough) (if (isSystemDark) Gold else Obsidian) else ErrorRed
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Cart Total", fontSize = 11.sp, color = TextGray)
+                            Text(
+                                "₦${String.format("%,.2f", totalAmount)}",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (isSystemDark) Gold else Obsidian
+                            )
+                        }
+                    }
                 }
-                
-                Spacer(modifier = Modifier.height(24.dp))
+
+                if (!isBalanceEnough && cartItems.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "⚠️ Insufficient wallet balance. Please top up your wallet by ₦${String.format("%,.2f", totalAmount - walletBalance)}.",
+                        color = ErrorRed,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
                 
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
-                    label = { Text("Delivery Address") },
+                    label = { Text("Delivery Address", color = TextGray) },
+                    placeholder = { Text("Enter street address & city...", color = TextGray.copy(alpha = 0.5f)) },
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Gold,
                         unfocusedBorderColor = if (isSystemDark) BorderDark else Slate
                     )
                 )
                 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 
                 Button(
                     onClick = {
                         if (address.isBlank()) {
-                            Toast.makeText(context, "Please enter an address", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Please enter a delivery address", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
                         viewModel.checkoutMarketplaceCart(address) { success, msg ->
@@ -421,11 +557,23 @@ fun MarketplaceScreen(
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
-                    shape = RoundedCornerShape(12.dp)
+                    enabled = isBalanceEnough && cartItems.isNotEmpty(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = Obsidian,
+                        disabledContainerColor = Color.Gray.copy(alpha = 0.3f),
+                        disabledContentColor = TextGray
+                    ),
+                    shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("Pay with Wallet", fontWeight = FontWeight.Black)
+                    Text(
+                        text = if (isBalanceEnough) "Pay ₦${String.format("%,.0f", totalAmount)} with Wallet" else "Insufficient Wallet Funds",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 14.sp
+                    )
                 }
             }
         }

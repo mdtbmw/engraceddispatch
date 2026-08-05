@@ -442,175 +442,79 @@ fun QuiltedBackground(
 //      <meta-data android:name="mapbox_access_token" android:value="@string/mapbox_access_token"/>
 //    - Replace this Custom Canvas drawing with Mapbox's MapView inside AndroidView { context -> MapView(context).apply { ... } }
 //    - ALWAYS wrap MapView inside a custom Theme style block. Ensure Mapbox Style is set to Style.DARK or Style.SATELLITE to keep the premium dark/gold luxury aesthetic intact!
-// 3. TO BIND TO REAL BACKEND DATABASE / REAL-TIME WEBSOCKET:
-//    - Bind the 'progress' and location offsets to a real-time Flow/LiveData supplied by your Firebase/Spanner Database or real-time Courier tracking updates.
 //    - Maintain the smooth interpolation logic (e.g. spring or animateFloatAsState) to prevent erratic visual jumps when coordinates update.
+
 @Composable
 fun MapCanvas(
     modifier: Modifier = Modifier,
-    progress: Float = 0.5f, // animate courier along path
+    progress: Float = 0.5f,
     isSatellite: Boolean = false,
     showTraffic: Boolean = true,
     zoom: Float = 14.5f
 ) {
-    val context = LocalContext.current
     val isDarkTheme = MaterialTheme.colorScheme.background == BackgroundDark
-    val mapboxToken = BuildConfig.MAPBOX_ACCESS_TOKEN
 
-    val htmlContent = remember(isSatellite, showTraffic, zoom, progress, isDarkTheme) {
-        """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-            <style>
-                html, body, #map {
-                    margin: 0;
-                    padding: 0;
-                    width: 100%;
-                    height: 100%;
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background: #0E0E10;
-                    overflow: hidden;
-                    z-index: 1;
-                }
-                @keyframes icon-pulse {
-                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.7); }
-                    70% { transform: scale(1.03); box-shadow: 0 0 0 14px rgba(212, 175, 55, 0); }
-                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(212, 175, 55, 0); }
-                }
-                .pulsing-courier {
-                    animation: icon-pulse 2s infinite ease-in-out;
-                    border-radius: 50%;
-                }
-            </style>
-        </head>
-        <body>
-            <div id="map"></div>
-            <script>
-                var map;
-                var courierMarker;
-                var routeLine;
-                
-                // Lagos coordinates
-                var startLat = 6.4281, startLng = 3.4219;
-                var endLat = 6.5244, endLng = 3.3792;
-                
-                function initMap() {
-                    map = L.map('map', {
-                        zoomControl: false,
-                        attributionControl: false
-                    }).setView([startLat, startLng], $zoom);
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(if (isSatellite) Color(0xFF0F141D) else if (isDarkTheme) BackgroundDark else Color(0xFFF4F4F6))
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
 
-                    var tileUrl = '${if (isSatellite) "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" else if (isDarkTheme) "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png" else "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"}';
-                    
-                    L.tileLayer(tileUrl, {
-                        maxZoom: 20
-                    }).addTo(map);
-
-                    // Add Route Line
-                    var pathPoints = [
-                        [startLat, startLng],
-                        [6.4500, 3.4000],
-                        [6.4800, 3.3800],
-                        [endLat, endLng]
-                    ];
-                    
-                    routeLine = L.polyline(pathPoints, {
-                        color: '#D4AF37',
-                        weight: 4,
-                        opacity: 0.85
-                    }).addTo(map);
-
-                    // Start marker
-                    L.circleMarker([startLat, startLng], {
-                        radius: 8,
-                        color: '#000000',
-                        fillColor: '#FFFFFF',
-                        fillOpacity: 1,
-                        weight: 3
-                    }).addTo(map).bindPopup("Pickup Point");
-
-                    // End marker
-                    L.circleMarker([endLat, endLng], {
-                        radius: 8,
-                        color: '#D4AF37',
-                        fillColor: '#FFFFFF',
-                        fillOpacity: 1,
-                        weight: 3
-                    }).addTo(map).bindPopup("Delivery Destination");
-
-                    // Interpolate courier location along path based on progress (0.0 to 1.0)
-                    var progressVal = $progress;
-                    var segmentCount = pathPoints.length - 1;
-                    var segmentIdx = Math.floor(progressVal * segmentCount);
-                    if (segmentIdx >= segmentCount) { segmentIdx = segmentCount - 1; }
-                    var segmentProgress = (progressVal * segmentCount) - segmentIdx;
-                    
-                    var p1 = pathPoints[segmentIdx];
-                    var p2 = pathPoints[segmentIdx + 1];
-                    
-                    var courierLat = p1[0] + (p2[0] - p1[0]) * segmentProgress;
-                    var courierLng = p1[1] + (p2[1] - p1[1]) * segmentProgress;
-
-                    // Courier icon
-                    var courierIcon = L.divIcon({
-                        className: 'pulsing-courier',
-                        html: '<div style="background-color: #D4AF37; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>',
-                        iconSize: [20, 20],
-                        iconAnchor: [10, 10]
-                    });
-
-                    courierMarker = L.marker([courierLat, courierLng], { icon: courierIcon }).addTo(map);
-                    
-                    // Fit bounds of path
-                    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
-                }
-
-                window.onload = initMap;
-            </script>
-        </body>
-        </html>
-        """.trimIndent()
-    }
-
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.useWideViewPort = true
-                settings.loadWithOverviewMode = true
-                webViewClient = WebViewClient()
-                loadDataWithBaseURL(
-                    "https://checkout.paystack.com",
-                    htmlContent,
-                    "text/html",
-                    "UTF-8",
-                    null
-                )
+            // Background Grid Lines
+            val gridPaint = Color.White.copy(alpha = if (isDarkTheme) 0.05f else 0.1f)
+            val gridStep = 40.dp.toPx()
+            var x = 0f
+            while (x < w) {
+                drawLine(gridPaint, Offset(x, 0f), Offset(x, h), strokeWidth = 1f)
+                x += gridStep
             }
-        },
-        modifier = modifier.fillMaxSize(),
-        update = { webView ->
-            webView.loadDataWithBaseURL(
-                "https://checkout.paystack.com",
-                htmlContent,
-                "text/html",
-                "UTF-8",
-                null
+            var y = 0f
+            while (y < h) {
+                drawLine(gridPaint, Offset(0f, y), Offset(w, y), strokeWidth = 1f)
+                y += gridStep
+            }
+
+            // Route Path Points
+            val start = Offset(w * 0.2f, h * 0.75f)
+            val mid = Offset(w * 0.5f, h * 0.45f)
+            val end = Offset(w * 0.8f, h * 0.25f)
+
+            // Route Line
+            val path = Path().apply {
+                moveTo(start.x, start.y)
+                quadraticTo(mid.x, mid.y, end.x, end.y)
+            }
+            drawPath(
+                path = path,
+                color = Gold,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
             )
+
+            // Pickup Node
+            drawCircle(color = Gold, radius = 8.dp.toPx(), center = start)
+            drawCircle(color = Obsidian, radius = 4.dp.toPx(), center = start)
+
+            // Delivery Node
+            drawCircle(color = Obsidian, radius = 8.dp.toPx(), center = end)
+            drawCircle(color = Gold, radius = 4.dp.toPx(), center = end)
+
+            // Courier Position Interpolation
+            val t = progress.coerceIn(0f, 1f)
+            val currentX = (1 - t) * (1 - t) * start.x + 2 * (1 - t) * t * mid.x + t * t * end.x
+            val currentY = (1 - t) * (1 - t) * start.y + 2 * (1 - t) * t * mid.y + t * t * end.y
+            val courierPos = Offset(currentX, currentY)
+
+            // Pulsing Courier Marker
+            drawCircle(color = Gold.copy(alpha = 0.3f), radius = 18.dp.toPx(), center = courierPos)
+            drawCircle(color = Gold, radius = 10.dp.toPx(), center = courierPos)
+            drawCircle(color = Obsidian, radius = 5.dp.toPx(), center = courierPos)
         }
-    )
+    }
 }
 
-// --- Pattern 1 Helper Components ---
 @Composable
 fun ScreenHeader(
     title: String,

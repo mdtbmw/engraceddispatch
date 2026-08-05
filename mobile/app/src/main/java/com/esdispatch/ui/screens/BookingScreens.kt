@@ -1956,7 +1956,8 @@ fun ServiceSelectionScreen(
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .navigationBarsPadding(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
             tonalElevation = 8.dp
@@ -1964,7 +1965,7 @@ fun ServiceSelectionScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp)
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
             ) {
                 Button(
                     onClick = {

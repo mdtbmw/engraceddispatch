@@ -1,5 +1,6 @@
 "use client";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef, useId } from "react";
+import { createPortal } from "react-dom";
 
 async function firestoreRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 2000): Promise<T> {
   let lastError: unknown;
@@ -29,17 +30,55 @@ function useOnlineStatus() {
 import { auth, db } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, writeBatch, addDoc, increment } from "firebase/firestore";
-import { Shield, Truck, Package, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun } from "lucide-react";
+import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun } from "lucide-react";
 import CMSTab from "./CMSTab";
 import dynamic from "next/dynamic";
 const LiveTrackingMap = dynamic(() => import("./LiveTrackingMap"), { ssr: false });
-type TabId = "dashboard" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking";
+type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
 interface Delivery { id: string; status: string; category?: string; receiverName: string; deliveryAddress: string; senderName: string; senderPhone: string; receiverPhone: string; price: number; riderId: string; courierName: string; courierPhone: string; courierLatitude?: number; courierLongitude?: number; itemName: string; pickupAddress: string; quantity: number; weight: number; dateString: string; tipAmount: number; userId: string; otpCode: string; riderBikeNumber?: string; pickupLat?: number; pickupLng?: number; deliveryLat?: number; deliveryLng?: number; driverId?: string; driverName?: string; }
 interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
 interface Referral { id: string; referrerId: string; referrerName: string; referrerEmail: string; refereeId: string; refereeName: string; refereeEmail: string; rewardAmount: number; status: string; }
 interface Promotion { id: string; title: string; description: string; discountType: string; discountValue: number; discountDisplay: string; minOrderAmount: number; maxDiscount: number; code: string; usageLimit: number; usedCount: number; active: boolean; }
 interface AuditEntry { id: string; time: string; action: string; details: string; admin: string; timestamp: number; }
+
+interface Product {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  stock: number;
+  imageUrl: string;
+  status: "In Stock" | "Low Stock" | "Out of Stock";
+  description: string;
+  vendorStore: string;
+  rating: number;
+  isDeleted?: boolean;
+}
+
+interface VendorStore {
+  id: string;
+  storeName: string;
+  ownerName: string;
+  email: string;
+  phone: string;
+  category: string;
+  commissionRate: number;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  dateEnlisted: string;
+}
+
+interface MarketplaceOrder {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  storeName: string;
+  itemsCount: number;
+  totalPrice: number;
+  status: "PAID" | "FULFILLED" | "CANCELLED";
+  date: string;
+}
+
 interface AppContent { id: string; key: string; title: string; description: string; imageUrl: string; ctaText: string; ctaLink: string; order: number; active: boolean; }
 interface Toast { id: number; type: "success" | "error" | "info"; message: string; }
 interface BannersTabProps { banners: Banner[]; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; }
@@ -150,36 +189,31 @@ function Select({ value, onChange, options, placeholder = "Select...", className
   renderOption?: (opt: { value: string; label: string; color?: string }, selected: boolean) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const panelRef = React.useRef<HTMLDivElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) setOpen(false);
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
     };
-    setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
   const selected = options.find(o => o.value === value);
-  return <div className={"relative " + className}>
-    <button type="button" onClick={() => setOpen(true)}
+  return <div ref={containerRef} className={"relative " + className}>
+    <button type="button" onClick={() => setOpen(!open)}
       className={"w-full flex items-center justify-between gap-1.5 bg-white dark:bg-[#1c1c1c] border border-black/10 dark:border-white/10 rounded-xl text-[#111] dark:text-white hover:border-black/20 dark:hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-[#FFC542]/30 focus:border-[#FFC542]/60 transition-all text-left " + (compact ? "px-2 py-1 text-[10px]" : "px-3 py-2.5 text-xs min-h-[38px]")}>
       <span className={"truncate " + (selected ? "" : "text-black/30 dark:text-white/30")}>{selected ? selected.label : placeholder}</span>
-      <ChevronDown className={"w-3 h-3 shrink-0 text-black/40 dark:text-white/40"} />
+      <ChevronDown className={"w-3 h-3 shrink-0 text-black/40 dark:text-white/40 transition-transform " + (open ? "rotate-180" : "")} />
     </button>
-    {open && <div ref={panelRef} className="fixed z-50" style={{
-      top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-      width: "calc(100% - 32px)", maxWidth: "320px"
-    }}>
-      <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-2 shadow-2xl ring-1 ring-black/5 dark:ring-white/10 overflow-hidden">
-        <div className="max-h-72 overflow-y-auto py-1 space-y-0.5">
-          {options.map(o => (
-            <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}
-              className={"w-full text-left flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors " + (compact ? "text-[11px]" : "text-sm ") + (o.value === value ? "bg-[#FFC542]/10 text-[#111] dark:text-white font-bold" : "text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5")}>
-              {renderOption ? renderOption(o, o.value === value) : <span>{o.label}</span>}
-              {o.value === value && <Check className="w-4 h-4 ml-auto text-[#FFC542]" />}
-            </button>
-          ))}
-        </div>
+    {open && <div className="absolute top-full left-0 mt-1.5 w-full min-w-[160px] z-[100] bg-white dark:bg-[#1a1a1a] rounded-2xl p-1.5 shadow-2xl border border-black/10 dark:border-white/10 overflow-hidden animate-scale-in">
+      <div className="max-h-60 overflow-y-auto space-y-0.5">
+        {options.map(o => (
+          <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}
+            className={"w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-xl transition-colors " + (compact ? "text-[10px]" : "text-xs ") + (o.value === value ? "bg-[#FFC542]/15 text-[#111] dark:text-white font-bold" : "text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5")}>
+            {renderOption ? renderOption(o, o.value === value) : <span>{o.label}</span>}
+            {o.value === value && <Check className="w-3.5 h-3.5 ml-auto text-[#FFC542]" />}
+          </button>
+        ))}
       </div>
     </div>}
   </div>;
@@ -271,6 +305,37 @@ async function seedAppContent(db: any, addLog: any, addToast: any, createNotific
     await setDoc(doc(db, "system_config", "global_settings"), { appContent: content, updatedAt: Timestamp.now() }, { merge: true });
     setSettings((prev: any) => ({ ...prev, appContent: content })); addLog("Seeded", "Default app card content"); addToast("success", "App content seeded"); createNotification("App Content Seeded", "Default dashboard content configured");
   } catch (e: any) { addToast("error", "App content seed failed: " + e.message); }
+}
+
+
+async function seedMarketplace(db: any, addLog: any, addToast: any, createNotification: any) {
+  try {
+    const batch = writeBatch(db);
+    const sampleProducts = [
+      { name: "Heavy Duty Bike Delivery Box", category: "Delivery Gear", price: 35000, stock: 45, imageUrl: "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=500", status: "In Stock", description: "Waterproof insulated delivery cargo box with lock", vendorStore: "ESDispatch Fleet Supplies", rating: 4.9 },
+      { name: "Executive Courier Rider Jacket", category: "Apparel", price: 18500, stock: 120, imageUrl: "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=500", status: "In Stock", description: "High-visibility reflective windproof jacket", vendorStore: "ProRider Wear", rating: 4.8 },
+      { name: "Engine Synthetic Oil 1L (4T)", category: "Lubricants", price: 4200, stock: 8, imageUrl: "https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500", status: "Low Stock", description: "High performance synthetic motor oil", vendorStore: "Lagos Auto Care", rating: 4.7 },
+      { name: "Heavy Duty Phone Mount & Charger", category: "Accessories", price: 9500, stock: 65, imageUrl: "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=500", status: "In Stock", description: "Anti-vibration aluminum handlebar phone holder", vendorStore: "TechRider Solutions", rating: 4.9 },
+      { name: "Full Face Protective Helmet", category: "Safety", price: 28000, stock: 0, imageUrl: "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500", status: "Out of Stock", description: "DOT certified aerodynamic protective helmet", vendorStore: "SafetyFirst Nigeria", rating: 4.9 },
+    ];
+
+    const sampleStores = [
+      { storeName: "ESDispatch Fleet Supplies", ownerName: "Official Store", email: "supplies@engraced.com", phone: "08012345678", category: "Fleet Equipment", commissionRate: 5, status: "APPROVED", dateEnlisted: "2026-01-15" },
+      { storeName: "ProRider Wear", ownerName: "Chidi Okonkwo", email: "chidi@prorider.com", phone: "08087654321", category: "Apparel & Gear", commissionRate: 10, status: "APPROVED", dateEnlisted: "2026-02-10" },
+      { storeName: "Lagos Auto Care", ownerName: "Bisi Adebayo", email: "bisi@autocare.ng", phone: "08055544433", category: "Lubricants & Parts", commissionRate: 8, status: "APPROVED", dateEnlisted: "2026-03-01" },
+      { storeName: "WestCoast Spares Hub", ownerName: "Emeka Nwosu", email: "emeka@spares.com", phone: "08099900011", category: "Spare Parts", commissionRate: 12, status: "PENDING", dateEnlisted: "2026-08-02" },
+    ];
+
+    sampleProducts.forEach(p => batch.set(doc(collection(db, "marketplace_products")), { ...p, createdAt: Timestamp.now() }));
+    sampleStores.forEach(s => batch.set(doc(collection(db, "marketplace_stores")), { ...s, createdAt: Timestamp.now() }));
+
+    await batch.commit();
+    addLog("Seeded", "5 marketplace products and 4 vendor stores");
+    addToast("success", "Marketplace catalog & stores seeded successfully");
+    createNotification("Marketplace Seeded", "Sample products and vendor stores added to marketplace");
+  } catch (e: any) {
+    addToast("error", "Marketplace seed failed: " + e.message);
+  }
 }
 
 function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, seedUsers, seedDeliveries, seedBanners, seedPromos, seedReferrals, seedAppContent, seeding, setTab }: any) {
@@ -613,6 +678,11 @@ function AdminDashboardPage() {
   });
   const [appContent, setAppContent] = useState<AppContent[]>([]);
   const [logs, setLogs] = useState<AuditEntry[]>([]);
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [stores, setStores] = useState<VendorStore[]>([]);
+  const [marketplaceOrders, setMarketplaceOrders] = useState<MarketplaceOrder[]>([]);
+
   const [connected, setConnected] = useState(false);
   const [refreshT, setRefreshT] = useState("");
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -793,6 +863,7 @@ function AdminDashboardPage() {
   const seedBannersWrapper = async () => { setSeeding("banners"); await seedBanners(db, addLog, addToast, createNotification); setSeeding(""); };
   const seedPromosWrapper = async () => { setSeeding("promos"); await seedPromos(db, addLog, addToast, createNotification); setSeeding(""); };
   const seedReferralsWrapper = async () => { setSeeding("referrals"); await seedReferrals(db, addLog, addToast, createNotification); setSeeding(""); };
+    const seedMarketplaceWrapper = async () => { setSeeding("marketplace"); await seedMarketplace(db, addLog, addToast, createNotification); setSeeding(""); };
   const seedAppContentWrapper = async () => { setSeeding("appcontent"); await seedAppContent(db, addLog, addToast, createNotification, setSettings); setSeeding(""); };
 
 
@@ -877,6 +948,7 @@ function AdminDashboardPage() {
 
   const allNavItems: { id: TabId; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: "dashboard", label: "Dashboard", icon: <Folder size={22} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
+    { id: "marketplace", label: "Marketplace & Stores", icon: <ShoppingBag size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "tracking", label: "Live Tracking", icon: <MapPin size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "users", label: "Users", icon: <Users size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
@@ -1744,6 +1816,458 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
   </div>;
 }
 
+
+function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMarketplace }: {
+  products: Product[]; stores: VendorStore[]; orders: MarketplaceOrder[];
+  db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void;
+  seedMarketplace: () => Promise<void>;
+}) {
+  const [activeSubTab, setActiveSubTab] = useState<"products" | "stores" | "orders">("products");
+  const [search, setSearch] = useState("");
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddStoreModal, setShowAddStoreModal] = useState(false);
+  const [deleteProductTarget, setDeleteProductTarget] = useState<Product | null>(null);
+
+  // New product form
+  const [pName, setPName] = useState("");
+  const [pCategory, setPCategory] = useState("Delivery Gear");
+  const [pPrice, setPPrice] = useState("");
+  const [pStock, setPStock] = useState("");
+  const [pVendor, setPVendor] = useState("ESDispatch Fleet Supplies");
+  const [pDesc, setPDesc] = useState("");
+  const [pImg, setPImg] = useState("");
+  const [savingProduct, setSavingProduct] = useState(false);
+
+  // New Store form
+  const [sName, setSName] = useState("");
+  const [sOwner, setSOwner] = useState("");
+  const [sEmail, setSEmail] = useState("");
+  const [sPhone, setSPhone] = useState("");
+  const [sCat, setSCat] = useState("Spare Parts & Accessories");
+  const [sComm, setSComm] = useState("10");
+  const [savingStore, setSavingStore] = useState(false);
+
+  const totalProducts = products.filter(p => !p.isDeleted).length;
+  const approvedStores = stores.filter(s => s.status === "APPROVED");
+  const pendingStores = stores.filter(s => s.status === "PENDING");
+  const totalMarketplaceSales = orders.filter(o => o.status === "PAID" || o.status === "FULFILLED").reduce((s, o) => s + (o.totalPrice || 0), 0);
+
+  const filteredProducts = products.filter(p => !p.isDeleted && (p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()) || p.vendorStore.toLowerCase().includes(search.toLowerCase())));
+  const filteredStores = stores.filter(s => s.storeName.toLowerCase().includes(search.toLowerCase()) || s.ownerName.toLowerCase().includes(search.toLowerCase()) || s.category.toLowerCase().includes(search.toLowerCase()));
+
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pName || !pPrice) { addToast("error", "Product name and price are required"); return; }
+    setSavingProduct(true);
+    try {
+      const priceNum = parseFloat(pPrice) || 0;
+      const stockNum = parseInt(pStock) || 0;
+      const statusStr = stockNum === 0 ? "Out of Stock" : stockNum < 10 ? "Low Stock" : "In Stock";
+      await addDoc(collection(db, "marketplace_products"), {
+        name: pName, category: pCategory, price: priceNum, stock: stockNum,
+        vendorStore: pVendor, description: pDesc, imageUrl: pImg || "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=500",
+        status: statusStr, rating: 5.0, createdAt: Timestamp.now()
+      });
+      addLog("Create Product", `Added product '${pName}' (₦${priceNum.toLocaleString()})`);
+      addToast("success", `Product '${pName}' created successfully`);
+      setShowAddModal(false);
+      setPName(""); setPPrice(""); setPStock(""); setPDesc(""); setPImg("");
+    } catch (err: any) {
+      addToast("error", "Failed to add product: " + err.message);
+    } finally { setSavingProduct(false); }
+  };
+
+  const handleAddStore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sName || !sOwner || !sEmail) { addToast("error", "Store name, owner, and email are required"); return; }
+    setSavingStore(true);
+    try {
+      await addDoc(collection(db, "marketplace_stores"), {
+        storeName: sName, ownerName: sOwner, email: sEmail, phone: sPhone,
+        category: sCat, commissionRate: parseFloat(sComm) || 10, status: "APPROVED",
+        dateEnlisted: new Date().toISOString().slice(0, 10), createdAt: Timestamp.now()
+      });
+      addLog("Create Store", `Enlisted vendor store '${sName}'`);
+      addToast("success", `Vendor store '${sName}' enlisted and approved`);
+      setShowAddStoreModal(false);
+      setSName(""); setSOwner(""); setSEmail(""); setSPhone("");
+    } catch (err: any) {
+      addToast("error", "Failed to enlist store: " + err.message);
+    } finally { setSavingStore(false); }
+  };
+
+  const handleUpdateStoreStatus = async (storeId: string, storeName: string, status: "APPROVED" | "REJECTED") => {
+    try {
+      await updateDoc(doc(db, "marketplace_stores", storeId), { status, updatedAt: Timestamp.now() });
+      addLog("Update Store", `Set store '${storeName}' status to ${status}`);
+      addToast("success", `Store '${storeName}' is now ${status}`);
+    } catch (err: any) {
+      addToast("error", "Failed to update store status: " + err.message);
+    }
+  };
+
+  const handleDeleteProduct = async (product: Product) => {
+    try {
+      await updateDoc(doc(db, "marketplace_products", product.id), { isDeleted: true, updatedAt: Timestamp.now() });
+      addLog("Delete Product", `Deleted product '${product.name}'`);
+      addToast("success", `Product '${product.name}' deleted`);
+      setDeleteProductTarget(null);
+    } catch (err: any) {
+      addToast("error", "Failed to delete product: " + err.message);
+    }
+  };
+
+  const handleUpdateProductStock = async (productId: string, name: string, stock: number) => {
+    try {
+      const statusStr = stock === 0 ? "Out of Stock" : stock < 10 ? "Low Stock" : "In Stock";
+      await updateDoc(doc(db, "marketplace_products", productId), { stock, status: statusStr, updatedAt: Timestamp.now() });
+      addLog("Update Stock", `Updated '${name}' stock to ${stock}`);
+      addToast("success", `Stock updated for '${name}'`);
+    } catch (err: any) {
+      addToast("error", "Stock update failed: " + err.message);
+    }
+  };
+
+  const handleUpdateProductPrice = async (productId: string, name: string, price: number) => {
+    try {
+      await updateDoc(doc(db, "marketplace_products", productId), { price, updatedAt: Timestamp.now() });
+      addLog("Update Price", `Updated '${name}' price to ₦${price.toLocaleString()}`);
+      addToast("success", `Price updated for '${name}'`);
+    } catch (err: any) {
+      addToast("error", "Price update failed: " + err.message);
+    }
+  };
+
+  return <div className="tab-content space-y-8">
+    {/* Header & Metrics */}
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <h1 className="text-[28px] font-extrabold tracking-tight text-[#111] dark:text-white flex items-center gap-3">
+          <ShoppingBag className="w-7 h-7 text-[#FFC542]" /> Marketplace & Store Operations
+        </h1>
+        <p className="text-xs font-semibold text-black/50 dark:text-white/50 mt-1">Manage vendor product catalogs, store enlistments, prices, inventory, and sales commissions.</p>
+      </div>
+      <div className="flex items-center gap-3">
+        {products.length === 0 && (
+          <button onClick={seedMarketplace} className="px-4 py-2.5 bg-[#FFC542]/20 border border-[#FFC542]/40 text-[#111] dark:text-white text-xs font-bold rounded-2xl hover:bg-[#FFC542]/30 transition-all flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 text-[#FFC542]" /> Seed Marketplace Data
+          </button>
+        )}
+        <button onClick={() => setShowAddModal(true)} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black text-xs rounded-2xl shadow-md transition-all flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Add Product
+        </button>
+        <button onClick={() => setShowAddStoreModal(true)} className="px-5 py-2.5 bg-[#111] dark:bg-white text-white dark:text-[#111] font-black text-xs rounded-2xl shadow-md transition-all flex items-center gap-2">
+          <Store className="w-4 h-4" /> Enlist Store
+        </button>
+      </div>
+    </div>
+
+    {/* Metric Stat Cards */}
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <StatCard icon={<Package className="w-4 h-4 text-[#FFC542]" />} label="CATALOG PRODUCTS" value={totalProducts.toString()} sub={`${products.filter(p => p.status === "In Stock").length} in stock · ${products.filter(p => p.status === "Low Stock").length} low stock`} />
+      <StatCard icon={<Store className="w-4 h-4 text-[#FFC542]" />} label="ACTIVE VENDOR STORES" value={approvedStores.length.toString()} sub={`${pendingStores.length} pending enlistment requests`} />
+      <StatCard icon={<DollarSign className="w-4 h-4 text-[#FFC542]" />} label="MARKETPLACE SALES" value={`₦${totalMarketplaceSales.toLocaleString()}`} sub={`${orders.length} completed transactions`} />
+      <StatCard icon={<Percent className="w-4 h-4 text-[#FFC542]" />} label="AVG COMMISSION" value="8.5%" sub="Revenue split per store transaction" />
+    </div>
+
+    {/* Sub-tab Navigation & Search Bar */}
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/10 dark:border-white/10 pb-4">
+      <div className="flex gap-2">
+        <button onClick={() => setActiveSubTab("products")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "products" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
+          📦 Products Catalog ({totalProducts})
+        </button>
+        <button onClick={() => setActiveSubTab("stores")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all relative " + (activeSubTab === "stores" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
+          🏪 Vendor Stores ({stores.length})
+          {pendingStores.length > 0 && <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">{pendingStores.length}</span>}
+        </button>
+        <button onClick={() => setActiveSubTab("orders")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "orders" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
+          🛒 Sales & Cart Orders ({orders.length})
+        </button>
+      </div>
+      <div className="w-full sm:w-64">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search product, category, store..." />
+      </div>
+    </div>
+
+    {/* Products Catalog View */}
+    {activeSubTab === "products" && (
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm">
+        {filteredProducts.length === 0 ? (
+          <div className="text-center py-12 text-black/40 dark:text-white/40">
+            <Package className="w-12 h-12 mx-auto mb-3 text-[#FFC542]/50" />
+            <p className="font-extrabold text-base">No marketplace products found</p>
+            <p className="text-xs mt-1">Click "Add Product" or "Seed Marketplace Data" to populate your inventory.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Product</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Category</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Vendor Store</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Price (₦)</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Stock Qty</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Status</th>
+                  <th className="text-right font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {filteredProducts.map(p => (
+                  <tr key={p.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    <td className="p-4 flex items-center gap-3">
+                      <img src={p.imageUrl || "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=100"} alt="" className="w-12 h-12 rounded-2xl object-cover border border-black/10 dark:border-white/10 bg-gray-100" />
+                      <div>
+                        <div className="font-extrabold text-sm text-[#111] dark:text-white">{p.name}</div>
+                        <div className="text-[10px] text-black/40 dark:text-white/40 mt-0.5 line-clamp-1">{p.description}</div>
+                      </div>
+                    </td>
+                    <td className="p-4"><span className="px-3 py-1 bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white rounded-full font-bold text-[10px]">{p.category}</span></td>
+                    <td className="p-4 font-bold text-black/70 dark:text-white/70">{p.vendorStore}</td>
+                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">
+                      <InlineEdit value={p.price.toString()} onSave={v => handleUpdateProductPrice(p.id, p.name, parseFloat(v) || 0)} type="number" />
+                    </td>
+                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">
+                      <InlineEdit value={p.stock.toString()} onSave={v => handleUpdateProductStock(p.id, p.name, parseInt(v) || 0)} type="number" />
+                    </td>
+                    <td className="p-4">
+                      <span className={"px-3 py-1 rounded-full text-[10px] font-bold " + (p.status === "In Stock" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : p.status === "Low Stock" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300")}>
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="p-4 text-right">
+                      <button onClick={() => setDeleteProductTarget(p)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* Vendor Stores & Enlistments View */}
+    {activeSubTab === "stores" && (
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm">
+        {filteredStores.length === 0 ? (
+          <div className="text-center py-12 text-black/40 dark:text-white/40">
+            <Store className="w-12 h-12 mx-auto mb-3 text-[#FFC542]/50" />
+            <p className="font-extrabold text-base">No vendor stores enlisted yet</p>
+            <p className="text-xs mt-1">Click "Enlist Store" to register vendor store partners.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Store Name</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Owner Details</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Category</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Commission Rate</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Enlistment Date</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Status</th>
+                  <th className="text-right font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Approval Controls</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {filteredStores.map(s => (
+                  <tr key={s.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">{s.storeName}</td>
+                    <td className="p-4">
+                      <div className="font-bold text-[#111] dark:text-white">{s.ownerName}</div>
+                      <div className="text-[10px] text-black/40 dark:text-white/40">{s.email} · {s.phone}</div>
+                    </td>
+                    <td className="p-4"><span className="px-3 py-1 bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white rounded-full font-bold text-[10px]">{s.category}</span></td>
+                    <td className="p-4 font-bold text-sm text-[#111] dark:text-white">{s.commissionRate}%</td>
+                    <td className="p-4 text-black/50 dark:text-white/50 font-semibold">{s.dateEnlisted}</td>
+                    <td className="p-4">
+                      <span className={"px-3 py-1 rounded-full text-[10px] font-bold " + (s.status === "APPROVED" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : s.status === "PENDING" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300")}>
+                        {s.status}
+                      </span>
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {s.status !== "APPROVED" && (
+                          <button onClick={() => handleUpdateStoreStatus(s.id, s.storeName, "APPROVED")} className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-[10px] transition-all flex items-center gap-1">
+                            <CheckCircle className="w-3.5 h-3.5" /> Approve
+                          </button>
+                        )}
+                        {s.status !== "REJECTED" && (
+                          <button onClick={() => handleUpdateStoreStatus(s.id, s.storeName, "REJECTED")} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-[10px] transition-all flex items-center gap-1">
+                            <X className="w-3.5 h-3.5" /> Reject
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* Sales & Orders Feed */}
+    {activeSubTab === "orders" && (
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm">
+        {orders.length === 0 ? (
+          <div className="text-center py-12 text-black/40 dark:text-white/40">
+            <ShoppingBag className="w-12 h-12 mx-auto mb-3 text-[#FFC542]/50" />
+            <p className="font-extrabold text-base">No marketplace transactions yet</p>
+            <p className="text-xs mt-1">Customer purchases from vendor stores will stream live here.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Order #</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Customer</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Store</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Total (₦)</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Status</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {orders.map(o => (
+                  <tr key={o.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    <td className="p-4 font-black text-sm text-[#FFC542]">{o.orderNumber}</td>
+                    <td className="p-4 font-bold text-[#111] dark:text-white">{o.customerName}</td>
+                    <td className="p-4 font-semibold text-black/70 dark:text-white/70">{o.storeName}</td>
+                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">₦{o.totalPrice.toLocaleString()}</td>
+                    <td className="p-4">
+                      <span className="px-3 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-full font-bold text-[10px]">{o.status}</span>
+                    </td>
+                    <td className="p-4 text-black/50 dark:text-white/50">{o.date}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* Add Product Modal */}
+    {showAddModal && (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in">
+          <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
+            <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
+              <Plus className="w-5 h-5 text-[#FFC542]" /> Add New Marketplace Product
+            </h3>
+            <button onClick={() => setShowAddModal(false)} className="text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <form onSubmit={handleAddProduct} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Product Title</label>
+              <input type="text" value={pName} onChange={e => setPName(e.target.value)} placeholder="e.g. Heavy Duty Bike Delivery Box" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Category</label>
+                <Select value={pCategory} onChange={setPCategory} options={[
+                  { value: "Delivery Gear", label: "Delivery Gear" },
+                  { value: "Apparel", label: "Apparel & Uniforms" },
+                  { value: "Lubricants", label: "Oil & Lubricants" },
+                  { value: "Accessories", label: "Electronics & Accessories" },
+                  { value: "Safety", label: "Helmets & Safety" },
+                ]} className="w-full" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Price (₦)</label>
+                <input type="number" value={pPrice} onChange={e => setPPrice(e.target.value)} placeholder="35000" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Stock Quantity</label>
+                <input type="number" value={pStock} onChange={e => setPStock(e.target.value)} placeholder="50" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Vendor Store</label>
+                <input type="text" value={pVendor} onChange={e => setPVendor(e.target.value)} placeholder="ESDispatch Fleet Supplies" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Image URL</label>
+              <input type="url" value={pImg} onChange={e => setPImg(e.target.value)} placeholder="https://..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Description</label>
+              <textarea value={pDesc} onChange={e => setPDesc(e.target.value)} placeholder="Product specification..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40 h-20" />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold">Cancel</button>
+              <button type="submit" disabled={savingProduct} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
+                {savingProduct ? "Saving..." : "Create Product"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+
+    {/* Enlist Store Modal */}
+    {showAddStoreModal && (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in">
+          <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
+            <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
+              <Store className="w-5 h-5 text-[#FFC542]" /> Enlist Vendor Store Partner
+            </h3>
+            <button onClick={() => setShowAddStoreModal(false)} className="text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <form onSubmit={handleAddStore} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Name</label>
+              <input type="text" value={sName} onChange={e => setSName(e.target.value)} placeholder="e.g. Lagos Auto Care" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Owner Name</label>
+                <input type="text" value={sOwner} onChange={e => setSOwner(e.target.value)} placeholder="Bisi Adebayo" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Email</label>
+                <input type="email" value={sEmail} onChange={e => setSEmail(e.target.value)} placeholder="bisi@autocare.ng" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Phone Number</label>
+                <input type="text" value={sPhone} onChange={e => setSPhone(e.target.value)} placeholder="08055544433" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Commission Rate (%)</label>
+                <input type="number" value={sComm} onChange={e => setSComm(e.target.value)} placeholder="10" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setShowAddStoreModal(false)} className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold">Cancel</button>
+              <button type="submit" disabled={savingStore} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
+                {savingStore ? "Enlisting..." : "Enlist & Approve Store"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+
+    {/* Delete Confirmation Modal */}
+    <ConfirmModal show={!!deleteProductTarget} title="Delete Marketplace Product" message={`Are you sure you want to delete '${deleteProductTarget?.name}'?`} confirmLabel="Delete Product" onConfirm={() => deleteProductTarget && handleDeleteProduct(deleteProductTarget)} onCancel={() => setDeleteProductTarget(null)} />
+  </div>;
+}
+
 function LogsTab({ logs }: LogsTabProps) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [lPage, setLPage] = useState(0);
@@ -1855,7 +2379,8 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
         setMobileSidebar={setMobileSidebar} notifications={notifications} markNotifRead={markNotifRead} 
       />
       <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 pb-10 pt-6">
-         {tab === "dashboard" && <DashboardTab 
+         {tab === "marketplace" && <MarketplaceTab products={products} stores={stores} orders={marketplaceOrders} db={db} addLog={addLog} addToast={addToast} seedMarketplace={seedMarketplaceWrapper} />}
+        {tab === "dashboard" && <DashboardTab 
             deliveries={deliveries} 
             activeUsers={activeUsers} 
             customers={customers} 

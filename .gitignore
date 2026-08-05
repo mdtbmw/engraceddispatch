@@ -26,3 +26,8 @@ mobile/.gradle/
 
 # Firebase service account (private key - never commit)
 functions/service-account.json
+
+# Reference design folders
+HeyTek/
+HeyTek.zip
+

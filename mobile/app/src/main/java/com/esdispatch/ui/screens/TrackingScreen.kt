@@ -284,6 +284,41 @@ fun ActiveTrackingScreen(
         }
     }
 
+    DisposableEffect(context) {
+        val fusedClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+        val callback = object : com.google.android.gms.location.LocationCallback() {
+            override fun onLocationResult(res: com.google.android.gms.location.LocationResult) {
+                res.lastLocation?.let { loc ->
+                    userCoords = Pair(loc.latitude, loc.longitude)
+                }
+            }
+        }
+        val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val coarseGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (fineGranted || coarseGranted) {
+            val req = com.google.android.gms.location.LocationRequest.Builder(
+                com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, 5000
+            ).setMinUpdateIntervalMillis(2000).build()
+            try {
+                fusedClient.requestLocationUpdates(req, callback, android.os.Looper.getMainLooper())
+            } catch (e: Exception) {
+                android.util.Log.e("TrackingScreen", "Live location updates failed: ${e.message}")
+            }
+        }
+        onDispose {
+            try {
+                fusedClient.removeLocationUpdates(callback)
+            } catch (e: Exception) { }
+        }
+    }
+
     LaunchedEffect(selectedParcel?.id) {
         selectedParcel?.id?.let { id ->
             viewModel.startRealTimeTrackingListener(id)
@@ -2273,9 +2308,53 @@ fun LiveMapView(
                         }
                     }
                 }
+                var liveUserMarker = null;
+
                 function setUserLocation(lat, lng) {
                     userLoc = [lat, lng];
                     hasUserLoc = true;
+                    if (!map && !leafletMap) return;
+                    try {
+                        if (isMapboxActive && typeof mapboxgl !== 'undefined' && map) {
+                            if (liveUserMarker) {
+                                liveUserMarker.setLngLat([lng, lat]);
+                            } else {
+                                var userPinEl = document.createElement('div');
+                                userPinEl.className = 'user-pointer-container';
+                                userPinEl.innerHTML = `
+                                    <div class="user-pointer-pulse"></div>
+                                    <div class="user-pointer-pin">
+                                        <div class="user-pointer-avatar" style="background-image: url('${userAvatar}');"></div>
+                                    </div>
+                                    <div class="user-pointer-dot"></div>
+                                `;
+                                liveUserMarker = new mapboxgl.Marker({
+                                    element: userPinEl,
+                                    anchor: 'bottom'
+                                }).setLngLat([lng, lat]).addTo(map);
+                            }
+                            if (hasNoBooking) {
+                                map.easeTo({ center: [lng, lat], zoom: 15, duration: 1000 });
+                            }
+                        } else if (leafletMap && typeof L !== 'undefined') {
+                            if (liveUserMarker) {
+                                liveUserMarker.setLatLng([lat, lng]);
+                            } else {
+                                var userIcon = L.divIcon({
+                                    className: 'user-pointer-container',
+                                    html: '<div class="user-pointer-pulse"></div><div class="user-pointer-pin"><div class="user-pointer-avatar" style="background-image: url(\'${userAvatar}\');"></div></div><div class="user-pointer-dot"></div>',
+                                    iconSize: [40, 40],
+                                    iconAnchor: [20, 40]
+                                });
+                                liveUserMarker = L.marker([lat, lng], { icon: userIcon }).addTo(leafletMap);
+                            }
+                            if (hasNoBooking) {
+                                leafletMap.panTo([lat, lng]);
+                            }
+                        }
+                    } catch(err) {
+                        console.log("setUserLocation error:", err);
+                    }
                 }
 
                 function initMapContainer() {
@@ -2380,21 +2459,8 @@ fun LiveMapView(
                     courierEl.style.backgroundImage = 'url("$courierAvatar")';
 
                     if (hasNoBooking) {
-                        var userEl = document.createElement('div');
-                        userEl.className = 'user-pointer-container';
-                        userEl.innerHTML = `
-                            <div class="user-pointer-pulse"></div>
-                            <div class="user-pointer-pin">
-                                <div class="user-pointer-avatar" style="background-image: url('${userAvatar}');"></div>
-                            </div>
-                            <div class="user-pointer-dot"></div>
-                        `;
-                        
                         var targetLoc = hasUserLoc ? userLoc : pickupLoc;
-                        courierMarker = new mapboxgl.Marker({
-                            element: userEl,
-                            anchor: 'bottom'
-                        }).setLngLat([targetLoc[1], targetLoc[0]]).addTo(map);
+                        setUserLocation(targetLoc[0], targetLoc[1]);
                         map.setCenter([targetLoc[1], targetLoc[0]]);
                         map.setZoom(15);
                     } else {
@@ -2417,20 +2483,7 @@ fun LiveMapView(
                         }
 
                         if (hasUserLoc) {
-                            var userPinEl = document.createElement('div');
-                            userPinEl.className = 'user-pointer-container';
-                            userPinEl.innerHTML = `
-                                <div class="user-pointer-pulse"></div>
-                                <div class="user-pointer-pin">
-                                    <div class="user-pointer-avatar" style="background-image: url('${userAvatar}');"></div>
-                                </div>
-                                <div class="user-pointer-dot"></div>
-                            `;
-                            
-                            new mapboxgl.Marker({
-                                element: userPinEl,
-                                anchor: 'bottom'
-                            }).setLngLat([userLoc[1], userLoc[0]]).addTo(map);
+                            setUserLocation(userLoc[0], userLoc[1]);
                         }
                     }
 
@@ -2574,23 +2627,9 @@ fun LiveMapView(
                     });
 
                     if (hasNoBooking) {
-                        var userIcon = L.divIcon({
-                            className: 'user-leaflet-pointer',
-                            html: `
-                                <div class="user-pointer-container">
-                                    <div class="user-pointer-pulse"></div>
-                                    <div class="user-pointer-pin">
-                                        <div class="user-pointer-avatar" style="background-image: url('${userAvatar}');"></div>
-                                    </div>
-                                    <div class="user-pointer-dot"></div>
-                                </div>
-                            `,
-                            iconSize: [60, 75],
-                            iconAnchor: [30, 63]
-                        });
                         var targetLoc = hasUserLoc ? userLoc : pickupLoc;
-                        courierMarker = L.marker(targetLoc, { icon: userIcon }).addTo(map);
-                        map.setView(targetLoc, 15);
+                        setUserLocation(targetLoc[0], targetLoc[1]);
+                        leafletMap.setView(targetLoc, 15);
                     } else {
                         // Create and bind tooltips to display beautiful text bubbles with exact address details
                         pickupMarker = L.marker(pickupLoc, { icon: goldCircleIcon }).addTo(map);
@@ -2609,21 +2648,7 @@ fun LiveMapView(
                         fetchOSRMRoute();
 
                         if (hasUserLoc) {
-                            var userPinIcon = L.divIcon({
-                                className: 'user-leaflet-pointer',
-                                html: `
-                                    <div class="user-pointer-container">
-                                        <div class="user-pointer-pulse"></div>
-                                        <div class="user-pointer-pin">
-                                            <div class="user-pointer-avatar" style="background-image: url('${userAvatar}');"></div>
-                                        </div>
-                                        <div class="user-pointer-dot"></div>
-                                    </div>
-                                `,
-                                iconSize: [60, 75],
-                                iconAnchor: [30, 63]
-                            });
-                            L.marker(userLoc, { icon: userPinIcon }).addTo(map);
+                            setUserLocation(userLoc[0], userLoc[1]);
                         }
                     }
 
@@ -2815,6 +2840,12 @@ fun LiveMapView(
     LaunchedEffect(courierLatitude, courierLongitude, isPageLoaded) {
         if (isPageLoaded && courierLatitude != null && courierLongitude != null) {
             webView.evaluateJavascript("updateCourierCoordinates($courierLatitude, $courierLongitude)", null)
+        }
+    }
+
+    LaunchedEffect(userCoords, isPageLoaded) {
+        if (isPageLoaded && userCoords != null) {
+            webView.evaluateJavascript("setUserLocation(${userCoords!!.first}, ${userCoords!!.second})", null)
         }
     }
 
@@ -3945,50 +3976,45 @@ fun ParcelChatDialog(
     }
 }
 
-private suspend fun detectUserLocationCoords(context: android.content.Context): Pair<Double, Double> {
+private suspend fun detectUserLocationCoords(context: android.content.Context): Pair<Double, Double> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     try {
         if (androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            androidx.core.content.ContextCompat.checkSelfPermission(
                 context,
                 android.Manifest.permission.ACCESS_COARSE_LOCATION
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
-            val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
-            val providers = locationManager?.getProviders(true)
-            var bestLocation: android.location.Location? = null
-            if (providers != null) {
-                for (provider in providers) {
-                    val loc = locationManager.getLastKnownLocation(provider) ?: continue
-                    if (bestLocation == null || loc.accuracy < bestLocation.accuracy) {
-                        bestLocation = loc
+            val fusedClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+            val loc: android.location.Location? = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                fusedClient.getCurrentLocation(
+                    com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY,
+                    null
+                ).addOnSuccessListener { location ->
+                    if (location != null) {
+                        cont.resumeWith(Result.success(location))
+                    } else {
+                        fusedClient.lastLocation.addOnSuccessListener { lastLoc ->
+                            cont.resumeWith(Result.success(lastLoc))
+                        }.addOnFailureListener { cont.resumeWith(Result.success(null)) }
                     }
+                }.addOnFailureListener {
+                    fusedClient.lastLocation.addOnSuccessListener { lastLoc ->
+                        cont.resumeWith(Result.success(lastLoc))
+                    }.addOnFailureListener { cont.resumeWith(Result.success(null)) }
                 }
             }
-            if (bestLocation != null) {
-                return Pair(bestLocation.latitude, bestLocation.longitude)
+            if (loc != null) {
+                return@withContext Pair(loc.latitude, loc.longitude)
             }
         }
     } catch (e: Exception) {
-        android.util.Log.e("DetectLocationCoords", "GPS detection failed: ${e.message}")
+        android.util.Log.e("DetectLocationCoords", "GPS high accuracy detection failed: ${e.message}")
     }
 
-    try {
-        val url = java.net.URL("https://ipapi.co/json/")
-        val urlConnection = url.openConnection() as java.net.HttpURLConnection
-        urlConnection.setRequestProperty("User-Agent", "ESDispatchAndroidApp/1.0")
-        urlConnection.connectTimeout = 3000
-        urlConnection.readTimeout = 3000
-        val response = urlConnection.inputStream.bufferedReader().use { it.readText() }
-        val json = org.json.JSONObject(response)
-        val lat = json.optDouble("latitude", Double.NaN)
-        val lng = json.optDouble("longitude", Double.NaN)
-        if (!lat.isNaN() && !lng.isNaN()) {
-            return Pair(lat, lng)
-        }
-    } catch (e: Exception) {
-        android.util.Log.e("DetectLocationCoords", "GeoIP fallback failed: ${e.message}")
-    }
-
-    return Pair(6.4281, 3.4219)
+    return@withContext Pair(6.3345, 5.6254)
 }
 
 

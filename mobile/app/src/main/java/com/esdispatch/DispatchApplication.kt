@@ -5,8 +5,14 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 
 class DispatchApplication : Application() {
+    companion object {
+        lateinit var instance: DispatchApplication
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
+        instance = this
         initializeFirebaseSafely()
     }
 

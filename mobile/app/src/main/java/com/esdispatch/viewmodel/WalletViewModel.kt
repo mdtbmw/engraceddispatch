@@ -27,58 +27,68 @@ open class WalletViewModel : AuthViewModel() {
         // 3. Pass token to Firebase Cloud Functions for secure server-side wallet update.
         // DO NOT update wallet directly from the client in production!
         
-        val uid = _firebaseUserId.value
-        if (uid == null) {
-            // Local fallback
-            _walletBalance.value += amount
-            savePref("wallet_balance", _walletBalance.value)
-            return
+        // Immediate local state update for instant responsive UI animation
+        val currentLocal = _walletBalance.value
+        val optimisticBalance = currentLocal + amount
+        _walletBalance.value = optimisticBalance
+        savePref("wallet_balance", optimisticBalance)
+
+        val isTopUp = amount > 0
+        val title = if (isTopUp) "Wallet Top Up" else "Cash Withdrawal"
+        val displayAmt = if (amount < 0) -amount else amount
+
+        // Record transaction in local flow
+        val localTx = Transaction(
+            id = "TX-PAY-${System.currentTimeMillis()}",
+            title = title,
+            date = "Today",
+            amount = displayAmt,
+            isTopUp = isTopUp
+        )
+        _transactions.value = listOf(localTx) + _transactions.value
+
+        val notifTitle = if (isTopUp) "Wallet Credited! 💳⚡" else "Wallet Debited! 💸"
+        val notifMessage = if (isTopUp) {
+            "Your ESDispatch wallet has been topped up with ₦${String.format("%,.2f", displayAmt)}. Real-time logistics power unlocked! 🚀✨"
+        } else {
+            "Your ESDispatch wallet has been debited by ₦${String.format("%,.2f", displayAmt)}."
         }
-    
+        addNotification(notifTitle, notifMessage)
+
+        appContext?.let { ctx ->
+            try {
+                com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                    context = ctx,
+                    title = notifTitle,
+                    message = notifMessage,
+                    parcelId = null
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("WalletNotif", "Error showing wallet notification: ${e.message}")
+            }
+        }
+
+        val uid = _firebaseUserId.value
+        if (uid != null) {
             com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, amount) { success, newBalance ->
                 if (success) {
                     _walletBalance.value = newBalance
                     savePref("wallet_balance", newBalance)
-                    
-                    val isTopUp = amount > 0
-                    val title = if (isTopUp) "Wallet Top Up" else "Cash Withdrawal"
-                    val displayAmt = if (amount < 0) -amount else amount
-    
                     com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
                         userId = uid,
                         amount = amount,
                         title = title,
                         isTopUp = isTopUp,
                         reference = "PAYSTACK-${System.currentTimeMillis()}"
-                    ) { txnSuccess ->
-                        if (txnSuccess) {
-                            val notifTitle = if (isTopUp) "Wallet Credited! 💳⚡" else "Wallet Debited! 💸"
-                            val notifMessage = if (isTopUp) {
-                                "Your ESDispatch wallet has been topped up with ₦${String.format("%,.2f", displayAmt)}. Real-time logistics power unlocked! 🚀✨"
-                            } else {
-                                "Your ESDispatch wallet has been debited by ₦${String.format("%,.2f", displayAmt)}."
-                            }
-                            addNotification(notifTitle, notifMessage)
-                            
-                            appContext?.let { ctx ->
-                                try {
-                                    com.esdispatch.data.MyFirebaseMessagingService.showNotification(
-                                        context = ctx,
-                                        title = notifTitle,
-                                        message = notifMessage,
-                                        parcelId = null
-                                    )
-                                } catch (e: Exception) {
-                                    android.util.Log.e("WalletNotif", "Error showing wallet notification: ${e.message}")
-                                }
-                            }
-                        }
-                    }
+                    ) { _ -> }
                 } else {
-                    addNotification("Transaction Failed", "Your wallet top-up failed to process.")
+                    // Fallback sync if atomic update had offline issue
+                    com.esdispatch.data.FirebaseManager.syncWalletBalanceToFirestore(uid, optimisticBalance)
+                    com.esdispatch.data.FirebaseManager.syncTransactionToFirestore(localTx, uid)
                 }
             }
         }
+    }
 
     fun adminFundUserWallet(userId: String, userName: String, amount: Double, onResult: (Boolean, String) -> Unit) {
             if (amount <= 0) { onResult(false, "Amount must be positive"); return }

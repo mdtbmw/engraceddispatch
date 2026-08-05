@@ -241,6 +241,8 @@ fun LoginScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .wrapContentHeight()
+                        .navigationBarsPadding()
+                        .imePadding()
                         .padding(horizontal = 24.dp, vertical = 24.dp)
                         .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -863,6 +865,8 @@ fun SignUpScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .wrapContentHeight()
+                        .navigationBarsPadding()
+                        .imePadding()
                         .padding(horizontal = 24.dp, vertical = 24.dp)
                         .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally

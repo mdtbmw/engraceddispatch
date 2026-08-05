@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -103,32 +104,25 @@ fun MultiBookingScreen(
     // Autocomplete states
     var deliveryFocused by remember { mutableStateOf(false) }
     var focusedPickupIndex by remember { mutableStateOf(-1) }
-    var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var suggestionItems by remember { mutableStateOf<List<com.esdispatch.utils.SearchResultItem>>(emptyList()) }
 
-    // Coroutine-driven geocoder search
+    // Address search using AddressDatabase (Benin City + Lagos) + Mapbox
     fun performSearch(query: String) {
-        if (query.length > 3) {
-            coroutineScope.launch {
-                val results = mutableListOf<String>()
-                try {
-                    withContext(Dispatchers.IO) {
-                        val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
-                        val addresses = com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, query, 5)
-                        if (addresses != null) {
-                            for (addr in addresses) {
-                                addr.getAddressLine(0)?.let { results.add(it) }
-                            }
+        if (query.isNotBlank()) {
+            val localResults = com.esdispatch.data.AddressDatabase.searchItems(query)
+            suggestionItems = localResults
+            if (query.length >= 2) {
+                coroutineScope.launch {
+                    try {
+                        val full = viewModel.searchAddressAutocompleteItems(query)
+                        if (full.isNotEmpty()) {
+                            suggestionItems = full
                         }
-                    }
-                } catch (e: Exception) {
-                    // Fallback to local filtering
+                    } catch (_: Exception) {}
                 }
-                val filteredLandmarks = nigerianLandmarks.filter { it.contains(query, ignoreCase = true) }
-                results.addAll(filteredLandmarks)
-                suggestions = results.distinct()
             }
         } else {
-            suggestions = emptyList()
+            suggestionItems = emptyList()
         }
     }
 
@@ -349,7 +343,7 @@ fun MultiBookingScreen(
                                                 pickups = mutable
                                                 if (focusedPickupIndex == index) {
                                                     focusedPickupIndex = -1
-                                                    suggestions = emptyList()
+                                                    suggestionItems = emptyList()
                                                 }
                                             }
                                         ) {
@@ -359,11 +353,11 @@ fun MultiBookingScreen(
                                 }
 
                                 // Autocomplete Dropdown for currently focused pickup
-                                if (focusedPickupIndex == index && suggestions.isNotEmpty()) {
+                                if (focusedPickupIndex == index && suggestionItems.isNotEmpty()) {
                                     Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .heightIn(max = 200.dp)
+                                            .heightIn(max = 240.dp)
                                             .padding(vertical = 8.dp),
                                         shape = RoundedCornerShape(16.dp),
                                         colors = CardDefaults.cardColors(containerColor = Charcoal),
@@ -371,22 +365,38 @@ fun MultiBookingScreen(
                                         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
                                     ) {
                                         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                                            suggestions.forEach { suggestion ->
-                                                Text(
-                                                    text = suggestion,
-                                                    color = AppTextColor,
+                                            suggestionItems.forEach { item ->
+                                                Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .clickable {
                                                             val mutable = pickups.toMutableList()
-                                                            mutable[index] = suggestion
+                                                            mutable[index] = item.displayInput
                                                             pickups = mutable
                                                             focusedPickupIndex = -1
-                                                            suggestions = emptyList()
+                                                            suggestionItems = emptyList()
                                                         }
-                                                        .padding(14.dp),
-                                                    fontSize = 13.sp
-                                                )
+                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(30.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Gold.copy(alpha = 0.15f)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(Icons.Filled.Place, null, tint = Gold, modifier = Modifier.size(16.dp))
+                                                    }
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(item.title, color = AppTextColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                        if (item.fullAddress.isNotBlank() && item.fullAddress != item.title) {
+                                                            Spacer(modifier = Modifier.height(2.dp))
+                                                            Text(item.fullAddress, color = TextGray, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                        }
+                                                    }
+                                                }
                                                 HorizontalDivider(color = if (isLight) BorderLight else Color(0xFF2E2E2E))
                                             }
                                         }
@@ -449,11 +459,11 @@ fun MultiBookingScreen(
                         )
 
                         // Autocomplete Dropdown for Delivery
-                        if (deliveryFocused && suggestions.isNotEmpty()) {
+                        if (deliveryFocused && suggestionItems.isNotEmpty()) {
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(max = 200.dp)
+                                    .heightIn(max = 240.dp)
                                     .padding(vertical = 8.dp),
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = Charcoal),
@@ -461,20 +471,36 @@ fun MultiBookingScreen(
                                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
                             ) {
                                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                                    suggestions.forEach { suggestion ->
-                                        Text(
-                                            text = suggestion,
-                                            color = AppTextColor,
+                                    suggestionItems.forEach { item ->
+                                        Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clickable {
-                                                    delivery = suggestion
+                                                    delivery = item.displayInput
                                                     deliveryFocused = false
-                                                    suggestions = emptyList()
+                                                    suggestionItems = emptyList()
                                                 }
-                                                .padding(14.dp),
-                                            fontSize = 13.sp
-                                        )
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(30.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Gold.copy(alpha = 0.15f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Filled.Place, null, tint = Gold, modifier = Modifier.size(16.dp))
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(item.title, color = AppTextColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                if (item.fullAddress.isNotBlank() && item.fullAddress != item.title) {
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(item.fullAddress, color = TextGray, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                }
+                                            }
+                                        }
                                         HorizontalDivider(color = if (isLight) BorderLight else Color(0xFF2E2E2E))
                                     }
                                 }
@@ -649,88 +675,88 @@ fun MultiBookingScreen(
                         )
                     }
                 }
-            }
-        }
-    }
 
-        // Bottom Pricing Summary - overlayed
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding(),
-            shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-            color = Charcoal,
-            tonalElevation = 8.dp
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("Multi-Pickup Price", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                    when (val quote = pendingQuote) {
-                        is PendingQuote.Success -> {
-                            Text(
-                                text = "₦${String.format("%,.2f", quote.price)}",
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Black,
-                                color = accentColor
-                            )
+                // Bottom Pricing Summary - overlayed
+        if (focusedPickupIndex == -1 && !deliveryFocused) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .navigationBarsPadding(),
+                    shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                    color = Charcoal,
+                    tonalElevation = 8.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Multi-Pickup Price", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Bold)
+                            when (val quote = pendingQuote) {
+                                is PendingQuote.Success -> {
+                                    Text(
+                                        text = "₦${String.format("%,.2f", quote.price)}",
+                                        fontSize = 24.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = accentColor
+                                    )
+                                }
+                                is PendingQuote.Loading -> {
+                                    CircularProgressIndicator(
+                                        color = Gold,
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                                is PendingQuote.Error -> {
+                                    Text(
+                                        text = "Calc Error",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                                else -> {
+                                    Text(
+                                        text = "Enter addresses",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextGray
+                                    )
+                                }
+                            }
                         }
-                        is PendingQuote.Loading -> {
-                            CircularProgressIndicator(
-                                color = Gold,
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp
-                            )
-                        }
-                        is PendingQuote.Error -> {
-                            Text(
-                                text = "Calc Error",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                        else -> {
-                            Text(
-                                text = "Enter addresses",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextGray
-                            )
+
+                        val firstPickup = pickups.firstOrNull() ?: ""
+                        val isAddressesValid = firstPickup.trim().length >= 6 && delivery.trim().length >= 6
+                        val isContactValid = sName.trim().isNotBlank() && sPhone.trim().isNotBlank() && rName.trim().isNotBlank() && rPhone.trim().isNotBlank()
+                        val isBookingEnabled = isAddressesValid && isContactValid && pendingQuote is PendingQuote.Success
+
+                        Button(
+                            onClick = {
+                                showCheckoutSheet = true
+                            },
+                            enabled = isBookingEnabled,
+                            modifier = Modifier
+                                .width(180.dp)
+                                .height(56.dp),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Obsidian,
+                                disabledContainerColor = Color.Gray.copy(alpha = 0.3f),
+                                contentColor = Gold,
+                                disabledContentColor = TextGray
+                            ),
+                            border = BorderStroke(1.2.dp, if (isBookingEnabled) Gold else Color.Gray.copy(alpha = 0.3f))
+                        ) {
+                            Text("Book Multi-Pick", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (isBookingEnabled) Gold else TextGray)
                         }
                     }
-                }
-
-                val firstPickup = pickups.firstOrNull() ?: ""
-                val isAddressesValid = firstPickup.trim().length >= 6 && delivery.trim().length >= 6
-                val isContactValid = sName.trim().isNotBlank() && sPhone.trim().isNotBlank() && rName.trim().isNotBlank() && rPhone.trim().isNotBlank()
-                val isBookingEnabled = isAddressesValid && isContactValid && pendingQuote is PendingQuote.Success
-
-                Button(
-                    onClick = {
-                        showCheckoutSheet = true
-                    },
-                    enabled = isBookingEnabled,
-                    modifier = Modifier
-                        .width(180.dp)
-                        .height(56.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Obsidian,
-                        disabledContainerColor = Color.Gray.copy(alpha = 0.3f),
-                        contentColor = Gold,
-                        disabledContentColor = TextGray
-                    ),
-                    border = BorderStroke(1.2.dp, if (isBookingEnabled) Gold else Color.Gray.copy(alpha = 0.3f))
-                ) {
-                    Text("Book Multi-Pick", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (isBookingEnabled) Gold else TextGray)
                 }
             }
         }
@@ -778,4 +804,7 @@ fun MultiBookingScreen(
             )
         }
     }
+}
+}
+}
 }

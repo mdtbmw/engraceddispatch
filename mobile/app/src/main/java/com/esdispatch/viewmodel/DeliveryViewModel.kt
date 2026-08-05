@@ -1366,6 +1366,7 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     init {
+        listenToMarketplaceProducts()
         // Auto-generate referral code when UID changes
         viewModelScope.launch {
             _firebaseUserId.collect { uid ->
@@ -3273,24 +3274,88 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     private fun geocodeAddressLocalOnly(address: String): Pair<Double, Double>? {
+        // First check the comprehensive AddressDatabase (Benin City + Lagos)
+        val dbResult = com.esdispatch.data.AddressDatabase.getCoordinates(address)
+        if (dbResult != null) return dbResult
+
         val addrLower = address.lowercase()
         return when {
+            // Benin City neighborhoods
+            addrLower.contains("benin city airport") || (addrLower.contains("airport") && addrLower.contains("benin")) -> Pair(6.3166, 5.5995)
+            addrLower.contains("ugbowo") || addrLower.contains("uniben") || addrLower.contains("university of benin") -> Pair(6.3782, 5.6283)
+            addrLower.contains("ubth") || addrLower.contains("teaching hospital") && addrLower.contains("benin") -> Pair(6.3769, 5.6290)
+            addrLower.contains("gra") && (addrLower.contains("benin") || addrLower.contains("reservation")) -> Pair(6.3422, 5.6307)
+            addrLower.contains("ring road") && addrLower.contains("benin") -> Pair(6.3315, 5.6262)
+            addrLower.contains("sapele road") -> Pair(6.3271, 5.6219)
+            addrLower.contains("akpakpava") -> Pair(6.3328, 5.6248)
+            addrLower.contains("ugbor road") || addrLower.contains("ugbor") -> Pair(6.3531, 5.6411)
+            addrLower.contains("ihama road") || addrLower.contains("ihama") -> Pair(6.3458, 5.6389)
+            addrLower.contains("mission road") && addrLower.contains("benin") -> Pair(6.3361, 5.6283)
+            addrLower.contains("forestry road") -> Pair(6.3394, 5.6318)
+            addrLower.contains("lucky way") || addrLower.contains("lucky igbinedion") -> Pair(6.3429, 5.6347)
+            addrLower.contains("adesuwa road") -> Pair(6.3405, 5.6362)
+            addrLower.contains("aduwawa") -> Pair(6.3622, 5.6458)
+            addrLower.contains("ikpoba hill") || addrLower.contains("ikpoba") -> Pair(6.3499, 5.6353)
+            addrLower.contains("new benin") -> Pair(6.3305, 5.6225)
+            addrLower.contains("old benin") -> Pair(6.3338, 5.6248)
+            addrLower.contains("trans-ekehuan") || addrLower.contains("ekehuan") -> Pair(6.3201, 5.6028)
+            addrLower.contains("ekenwan road") || addrLower.contains("ekenwan") -> Pair(6.3311, 5.6104)
+            addrLower.contains("uselu") -> Pair(6.3752, 5.6208)
+            addrLower.contains("oba market") -> Pair(6.3339, 5.6267)
+            addrLower.contains("oba's palace") || addrLower.contains("royal palace") -> Pair(6.3345, 5.6254)
+            addrLower.contains("government house") && addrLower.contains("benin") -> Pair(6.3354, 5.6277)
+            addrLower.contains("oregbeni") -> Pair(6.3498, 5.6352)
+            addrLower.contains("siluko") -> Pair(6.3282, 5.6348)
+            addrLower.contains("benin") && addrLower.contains("secretariat") -> Pair(6.3268, 5.6216)
+            addrLower.contains("textile mill") -> Pair(6.3412, 5.6388)
+            addrLower.contains("dawson road") -> Pair(6.3349, 5.6289)
+            addrLower.contains("benin city") -> Pair(6.3350, 5.6278) // Benin City center
+            // Lagos areas
             addrLower.contains("ikeja gra") || addrLower.contains("joel ogunnaike") -> Pair(6.5818, 3.3598)
             addrLower.contains("ikoyi") || addrLower.contains("kingsway") -> Pair(6.4520, 3.4402)
-            addrLower.contains("lekki") || addrLower.contains("conservation") -> Pair(6.4281, 3.4219)
+            addrLower.contains("lekki") -> Pair(6.4281, 3.4748)
+            addrLower.contains("ajah") -> Pair(6.4678, 3.5782)
             addrLower.contains("yaba") || addrLower.contains("akoka") || addrLower.contains("unilag") -> Pair(6.5178, 3.3859)
-            addrLower.contains("murtala") || addrLower.contains("los") || addrLower.contains("airport") -> Pair(6.5774, 3.3210)
-            addrLower.contains("abuja") || addrLower.contains("cbd") -> Pair(9.0579, 7.4951)
-            addrLower.contains("victoria island") || addrLower.contains("vi ") -> Pair(6.4281, 3.4219)
+            addrLower.contains("murtala") || addrLower.contains("mmia") || (addrLower.contains("airport") && addrLower.contains("lagos")) -> Pair(6.5774, 3.3210)
+            addrLower.contains("victoria island") || addrLower.contains(" vi,") || addrLower.contains(", vi ") -> Pair(6.4281, 3.4219)
+            addrLower.contains("surulere") -> Pair(6.4979, 3.3512)
+            addrLower.contains("apapa") -> Pair(6.4479, 3.3601)
+            addrLower.contains("festac") -> Pair(6.4682, 3.2998)
+            addrLower.contains("gbagada") -> Pair(6.5548, 3.3889)
+            addrLower.contains("maryland") && addrLower.contains("lagos") -> Pair(6.5688, 3.3572)
+            addrLower.contains("oshodi") -> Pair(6.5575, 3.3419)
+            addrLower.contains("ikeja") -> Pair(6.5944, 3.3378)
+            addrLower.contains("ikorodu") -> Pair(6.6191, 3.5054)
+            addrLower.contains("magodo") -> Pair(6.6082, 3.3901)
+            addrLower.contains("ogba") && addrLower.contains("lagos") -> Pair(6.6071, 3.3572)
+            addrLower.contains("agege") -> Pair(6.6168, 3.3221)
+            addrLower.contains("mushin") -> Pair(6.5348, 3.3572)
+            addrLower.contains("lagos island") -> Pair(6.4551, 3.3917)
+            addrLower.contains("lagos") -> Pair(6.5244, 3.3792) // Lagos center fallback
             else -> null
         }
     }
 
     private fun geocodeAddressHashOnly(address: String): Pair<Double, Double> {
-        val hash = Math.abs(address.hashCode())
-        val lat = 6.4281 + ((hash % 150) / 1000.0)
-        val lng = 3.4219 + (((hash / 150) % 150) / 1000.0)
-        return Pair(lat, lng)
+        // Determine if address is Benin City or Lagos and use appropriate center coordinates
+        val isBeninCity = com.esdispatch.data.AddressDatabase.isBeninCity(address)
+        val centerLat = if (isBeninCity) 6.3350 else 6.5244
+        val centerLng = if (isBeninCity) 5.6278 else 3.3792
+        var hash = 0
+        for (char in address.trim().lowercase()) { hash = 31 * hash + char.code }
+        hash = if (hash < 0) -hash else hash
+        val latOffset = (hash % 80) / 1000.0 - 0.04
+        val lngOffset = ((hash / 80) % 80) / 1000.0 - 0.04
+        return Pair(centerLat + latOffset, centerLng + lngOffset)
+    }
+
+    /** Detect if route is intercity Benin City ↔ Lagos */
+    fun isIntercityRoute(pickup: String, delivery: String): Boolean {
+        val pickupIsBenin = com.esdispatch.data.AddressDatabase.isBeninCity(pickup)
+        val deliveryIsBenin = com.esdispatch.data.AddressDatabase.isBeninCity(delivery)
+        val pickupIsLagos = com.esdispatch.data.AddressDatabase.isLagos(pickup)
+        val deliveryIsLagos = com.esdispatch.data.AddressDatabase.isLagos(delivery)
+        return (pickupIsBenin && deliveryIsLagos) || (pickupIsLagos && deliveryIsBenin)
     }
 
     fun estimateDistanceBetween(pickup: String, delivery: String): Double {
@@ -3320,66 +3385,26 @@ class DeliveryViewModel : WalletViewModel() {
     suspend fun geocodeAddress(address: String): Pair<Double, Double>? {
         if (address.isBlank()) return null
         
-        // Check local database/known addresses first for speed/robustness
-        val addrLower = address.lowercase()
-        if (addrLower.contains("ikeja gra") || addrLower.contains("joel ogunnaike")) {
-            return Pair(6.5818, 3.3598) // Ikeja GRA
-        } else if (addrLower.contains("ikoyi") || addrLower.contains("kingsway")) {
-            return Pair(6.4520, 3.4402) // Ikoyi
-        } else if (addrLower.contains("lekki") || addrLower.contains("conservation")) {
-            return Pair(6.4281, 3.4219) // Lekki
-        } else if (addrLower.contains("yaba") || addrLower.contains("akoka") || addrLower.contains("unilag")) {
-            return Pair(6.5178, 3.3859) // Yaba/Unilag
-        } else if (addrLower.contains("murtala") || addrLower.contains("los")) {
-            return Pair(6.5774, 3.3210) // Airport LOS
-        } else if (addrLower.contains("abuja") || addrLower.contains("cbd")) {
-            return Pair(9.0579, 7.4951) // Abuja CBD
-        }
-        
-        // Query Mapbox Geocoding API in IO dispatcher
+        // 1. Check local AddressDatabase first (fastest, most accurate for Benin + Lagos)
+        val localResult = geocodeAddressLocalOnly(address)
+        if (localResult != null) return localResult
+
+        // 2. Query Google native Geocoder
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val token = BuildConfig.MAPBOX_ACCESS_TOKEN
-                
-                val queryEncoded = java.net.URLEncoder.encode(address.trim(), "UTF-8")
-                val urlString = "https://api.mapbox.com/geocoding/v5/mapbox.places/$queryEncoded.json?access_token=$token&limit=1"
-                val url = java.net.URL(urlString)
-                val connection = url.openConnection() as java.net.HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 4000
-                connection.readTimeout = 4000
-                
-                if (connection.responseCode == 200) {
-                    val stream = connection.inputStream
-                    val responseStr = stream.bufferedReader().use { it.readText() }
-                    val json = org.json.JSONObject(responseStr)
-                    val features = json.optJSONArray("features")
-                    if (features != null && features.length() > 0) {
-                        val firstFeature = features.optJSONObject(0)
-                        val center = firstFeature?.optJSONArray("center")
-                        if (center != null && center.length() >= 2) {
-                            val lng = center.optDouble(0)
-                            val lat = center.optDouble(1)
-                            if (!lng.isNaN() && !lat.isNaN()) {
-                                return@withContext Pair(lat, lng)
-                            }
-                        }
-                    }
+                val context = appContext ?: return@withContext geocodeAddressHashOnly(address)
+                val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+                val addresses = com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, address, 1)
+                if (!addresses.isNullOrEmpty()) {
+                    val addr = addresses[0]
+                    return@withContext Pair(addr.latitude, addr.longitude)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("Geocoding", "Mapbox geocoding failed: ${e.message}")
+                android.util.Log.e("Geocoding", "Google Geocoder failed: ${e.message}")
             }
             
-            // Fallback: stable coordinates based on string hash
-            var hash = 0
-            for (char in address.trim().lowercase()) {
-                hash = 31 * hash + char.code
-            }
-            hash = if (hash < 0) -hash else hash
-            // Map to reasonable offsets around Lagos center (6.5244, 3.3792)
-            val latOffset = (hash % 100) / 1000.0 - 0.05
-            val lngOffset = ((hash / 100) % 100) / 1000.0 - 0.05
-            Pair(6.5244 + latOffset, 3.3792 + lngOffset)
+            // 3. Fallback: stable hash-based coordinates centered on Benin City or Lagos
+            geocodeAddressHashOnly(address)
         }
     }
 
@@ -4296,88 +4321,8 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun checkRouteTrafficViaMapbox(pickupAddr: String, deliveryAddr: String) {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                // Determine approximate coordinates based on address keywords, fallback to Lagos central
-                var pLat = 6.4281
-                var pLng = 3.4219
-                var dLat = 6.6194
-                var dLng = 3.3516
-                
-                val addrLower = (pickupAddr + " " + deliveryAddr).lowercase()
-                if (addrLower.contains("ashok") || addrLower.contains("sdat")) {
-                    pLat = 13.0402; pLng = 80.2125
-                    dLat = 13.0330; dLng = 80.2195
-                } else if (addrLower.contains("dubai") || addrLower.contains("abu dhabi")) {
-                    pLat = 24.4539; pLng = 54.3773
-                    dLat = 25.2048; dLng = 55.2708
-                } else if (addrLower.contains("lekki") || addrLower.contains("ikoyi")) {
-                    pLat = 6.4281; pLng = 3.4219
-                    dLat = 6.4584; dLng = 3.4239
-                }
-
-                val token = BuildConfig.MAPBOX_ACCESS_TOKEN
-
-                // Query Mapbox Directions driving-traffic API
-                val urlString = "https://api.mapbox.com/directions/v5/mapbox/driving-traffic/$pLng,$pLat;$dLng,$dLat?access_token=$token&overview=false"
-                val url = java.net.URL(urlString)
-                val connection = url.openConnection() as java.net.HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 4000
-                connection.readTimeout = 4000
-                
-                if (connection.responseCode == 200) {
-                    val stream = connection.inputStream
-                    val reader = java.io.BufferedReader(java.io.InputStreamReader(stream))
-                    val response = StringBuilder()
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        response.append(line)
-                    }
-                    reader.close()
-                    
-                    val responseStr = response.toString()
-                    // Simple parse of duration and duration_typical
-                    // Example format contains: "duration":XXXX.XX, "duration_typical":YYYY.YY
-                    val durationIndex = responseStr.indexOf("\"duration\":")
-                    val typicalIndex = responseStr.indexOf("\"duration_typical\":")
-                    
-                    if (durationIndex != -1 && typicalIndex != -1) {
-                        val durSub = responseStr.substring(durationIndex + 11).takeWhile { it.isDigit() || it == '.' }
-                        val typSub = responseStr.substring(typicalIndex + 19).takeWhile { it.isDigit() || it == '.' }
-                        
-                        val durationVal = durSub.toDoubleOrNull() ?: 0.0
-                        val typicalVal = typSub.toDoubleOrNull() ?: 0.0
-                        
-                        if (durationVal > 0.0 && typicalVal > 0.0) {
-                            val delayRatio = durationVal / typicalVal
-                            // If delay ratio is greater than 1.12 (12% delay) or absolute delay is significant, mark as congested
-                            val isCongested = (delayRatio > 1.12) || (durationVal - typicalVal > 300)
-                            
-                            _aiTrafficCongested.value = isCongested
-                            
-                            if (isCongested) {
-                                val delayMins = ((durationVal - typicalVal) / 60).toInt().coerceAtLeast(4)
-                                val titleNotif = "Route Congestion Alert! ⚠️🚦"
-                                val msgNotif = "Mapbox real-time telemetry detected severe gridlocks. Expected delay: ~$delayMins mins."
-                                
-                                // Avoid spamming multiple identical notifications
-                                if (_notifications.value.none { it.title == titleNotif }) {
-                                    addNotification(titleNotif, msgNotif)
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // Fallback to random simulation if rate limit or network error
-                    _aiTrafficCongested.value = (System.currentTimeMillis() % 2 == 0L)
-                }
-            } catch (e: Exception) {
-                // Fallback to safe simulation state on error
-                _aiTrafficCongested.value = true
-                android.util.Log.e("MapboxTraffic", "Mapbox traffic API fetch error: ${e.message}")
-            }
-        }
+        // Mapbox deprecated. Routing calculations handled locally or via Google Directions
+        _aiTrafficCongested.value = false
     }
 
     /**
@@ -4680,33 +4625,27 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
-    fun searchAddressAutocomplete(query: String): List<String> {
-        if (query.isBlank()) return emptyList()
-        val mockAddresses = listOf(
-            "12 Obafemi Awolowo Way, Ikeja, Lagos",
-            "45 Allen Avenue, Ikeja, Lagos",
-            "100 Admiralty Way, Lekki Phase 1, Lagos",
-            "10 Broad Street, Lagos Island, Lagos",
-            "15 Herbert Macaulay Way, Yaba, Lagos",
-            "20 Adeniran Ogunsanya St, Surulere, Lagos",
-            "Bourdillon Road, Ikoyi, Lagos",
-            "Muri Okunola Park, Victoria Island, Lagos",
-            "Computer Village, Ikeja, Lagos",
-            "Banex Plaza, Wuse 2, Abuja",
-            "Ahmadu Bello Way, Victoria Island, Lagos"
-        )
-        return mockAddresses.filter { it.contains(query, ignoreCase = true) }
+    suspend fun searchAddressAutocompleteItems(query: String): List<com.esdispatch.utils.SearchResultItem> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (query.isBlank()) return@withContext emptyList()
+        val localMatches = com.esdispatch.data.AddressDatabase.searchItems(query)
+        val mapboxMatches = com.esdispatch.utils.GeocoderUtils.fetchMapboxPlacesAutocompleteItems(query)
+        return@withContext (localMatches + mapboxMatches).distinctBy { it.displayInput }
+    }
+
+    suspend fun searchAddressAutocomplete(query: String): List<String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (query.isBlank()) return@withContext emptyList()
+        val items = searchAddressAutocompleteItems(query)
+        return@withContext items.map { it.displayInput }
     }
 
     fun pinDropNearestAddress(): String {
-        val landmarks = listOf(
-            "Admiralty Way, Lekki Phase 1, Lagos",
-            "Ozumba Mbadiwe Avenue, Victoria Island, Lagos",
-            "Isaac John Street, Ikeja GRA, Lagos",
-            "Marina Street Business Hub, Lagos Island",
-            "Kingsway Road, Ikoyi, Lagos"
-        )
-        return landmarks.random()
+        val entry = com.esdispatch.data.AddressDatabase.entries.random()
+        return entry.displayName
+    }
+
+    suspend fun pinDropNearestAddress(lat: Double, lng: Double): String {
+        val context = com.esdispatch.DispatchApplication.instance
+        return com.esdispatch.utils.GeocoderUtils.reverseGeocodeCoordinates(context, lat, lng)
     }
 
     fun optimizeBatchRoute(batchName: String, stops: List<String>, onResult: (BatchRoutePlan) -> Unit) {
@@ -4806,6 +4745,30 @@ class DeliveryViewModel : WalletViewModel() {
             technicianNote = if (status == "OVERDUE") "Schedule service immediately at corporate depot workshop." else "Vehicle operating within safety compliance limits."
         )
     }
+
+    private fun listenToMarketplaceProducts() {
+        val firestore = com.esdispatch.data.FirebaseManager.firestore ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        firestore.collection("marketplace_products")
+            .addSnapshotListener { snapshot, e ->
+                if (e != null || snapshot == null) return@addSnapshotListener
+                val items = snapshot.documents.mapNotNull { doc ->
+                    val isDeleted = doc.getBoolean("isDeleted") ?: false
+                    if (isDeleted) return@mapNotNull null
+                    val id = doc.id
+                    val title = doc.getString("name") ?: doc.getString("title") ?: "Product"
+                    val category = doc.getString("category") ?: "General"
+                    val price = doc.getDouble("price") ?: doc.getLong("price")?.toDouble() ?: 0.0
+                    val rating = doc.getDouble("rating") ?: 4.9
+                    val imageUrl = doc.getString("imageUrl") ?: ""
+                    val description = doc.getString("description") ?: ""
+                    val stock = doc.getLong("stock")?.toInt() ?: 10
+                    val vendorStore = doc.getString("vendorStore") ?: "ESDispatch Fleet Supplies"
+                    MarketplaceItem(id, title, category, price, rating, 15, imageUrl, description, stock, vendorStore)
+                }
+                _marketplaceProducts.value = items
+            }
+    }
+
     // --- Marketplace & Promos ---
     private val _marketplaceProducts = kotlinx.coroutines.flow.MutableStateFlow<List<MarketplaceItem>>(emptyList())
     val marketplaceProducts: kotlinx.coroutines.flow.StateFlow<List<MarketplaceItem>> = _marketplaceProducts.asStateFlow()
@@ -4825,10 +4788,66 @@ class DeliveryViewModel : WalletViewModel() {
         _cartItems.value = current
     }
 
-    fun checkoutMarketplaceCart(address: String, onComplete: (Boolean, String) -> Unit) {
-        // Implementation for checkout
+    fun updateCartQuantity(itemId: String, delta: Int) {
+        val current = _cartItems.value.toMutableList()
+        val existing = current.find { it.item.id == itemId } ?: return
+        val index = current.indexOf(existing)
+        val newQty = existing.quantity + delta
+        if (newQty <= 0) {
+            current.removeAt(index)
+        } else {
+            current[index] = existing.copy(quantity = newQty)
+        }
+        _cartItems.value = current
+    }
+
+    fun removeFromCart(itemId: String) {
+        val current = _cartItems.value.filterNot { it.item.id == itemId }
+        _cartItems.value = current
+    }
+
+    fun clearCart() {
         _cartItems.value = emptyList()
-        onComplete(true, "Checkout successful to $address!")
+    }
+
+    fun checkoutMarketplaceCart(address: String, onComplete: (Boolean, String) -> Unit) {
+        val currentCart = _cartItems.value
+        if (currentCart.isEmpty()) {
+            onComplete(false, "Your cart is empty!")
+            return
+        }
+        val totalAmount = currentCart.sumOf { it.item.price * it.quantity }
+        val currentWallet = _walletBalance.value
+
+        if (currentWallet < totalAmount) {
+            val short = totalAmount - currentWallet
+            onComplete(false, "Insufficient wallet balance. You need ₦${String.format("%,.2f", short)} more to complete this purchase.")
+            return
+        }
+
+        // Deduct from wallet balance
+        _walletBalance.value = currentWallet - totalAmount
+
+        // Record transaction
+        val now = java.text.SimpleDateFormat("MMM dd, yyyy · HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val newTx = Transaction(
+            id = "TX-MKT-" + System.currentTimeMillis().toString().takeLast(6),
+            title = "Marketplace Purchase (${currentCart.size} items)",
+            date = "Today",
+            amount = -totalAmount,
+            isTopUp = false,
+            type = "DEBIT",
+            reference = "MKT-" + System.currentTimeMillis().toString().takeLast(6),
+            userId = _firebaseUserId.value ?: ""
+        )
+        val currentTxList = _transactions.value.toMutableList()
+        currentTxList.add(0, newTx)
+        _transactions.value = currentTxList
+
+        // Clear cart
+        _cartItems.value = emptyList()
+
+        onComplete(true, "Order placed successfully! ₦${String.format("%,.2f", totalAmount)} deducted from wallet. Delivering to $address")
     }
 
     fun applyPromoCode(code: String, onComplete: (Boolean, String) -> Unit) {
@@ -4911,14 +4930,16 @@ object SecurityUtils {
 }
 
 data class MarketplaceItem(
-    val id: String,
-    val title: String,
-    val category: String,
-    val price: Double,
-    val rating: Double,
-    val reviewsCount: Int,
-    val imageUrl: String,
-    val description: String
+    val id: String = "",
+    val title: String = "",
+    val category: String = "",
+    val price: Double = 0.0,
+    val rating: Double = 4.9,
+    val reviewsCount: Int = 12,
+    val imageUrl: String = "",
+    val description: String = "",
+    val stock: Int = 10,
+    val vendorStore: String = "ESDispatch Partner Store"
 )
 
 data class CartItem(
