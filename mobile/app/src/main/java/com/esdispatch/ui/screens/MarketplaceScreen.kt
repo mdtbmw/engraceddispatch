@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -362,4 +363,212 @@ fun MarketplaceScreen(
             }
         }
     }
+
+    // Real Marketplace Cart & Checkout Bottom Sheet
+    if (showCheckoutSheet && cartItems.isNotEmpty()) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val walletBalance by viewModel.walletBalance.collectAsState()
+        var shippingAddress by remember { mutableStateOf("12 Ikeja City Mall Way, Lagos") }
+        var selectedPaymentMethod by remember { mutableStateOf("Wallet") }
+        var isSubmitting by remember { mutableStateOf(false) }
+
+        val subtotal = cartItems.sumOf { it.item.price * it.quantity }
+        val deliveryFee = 1500.0
+        val grandTotal = subtotal + deliveryFee
+
+        ModalBottomSheet(
+            onDismissRequest = { showCheckoutSheet = false },
+            sheetState = sheetState,
+            containerColor = if (isDark) Charcoal else GoldenWhite,
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+            modifier = Modifier.fillMaxHeight(0.92f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.ShoppingCart, contentDescription = null, tint = Gold, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Cart Checkout (${cartItems.size})", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
+                    }
+                    IconButton(onClick = { showCheckoutSheet = false }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close", tint = AppTextColor)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Cart Items List
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(cartItems) { cartItem ->
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isDark) LuxuryBlack else Color.White,
+                            border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Image(
+                                    painter = rememberAsyncImagePainter(cartItem.item.imageUrl),
+                                    contentDescription = cartItem.item.title,
+                                    modifier = Modifier
+                                        .size(54.dp)
+                                        .clip(RoundedCornerShape(10.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(cartItem.item.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppTextColor, maxLines = 1)
+                                    Text(cartItem.item.vendorStore, fontSize = 10.sp, color = Gold, fontWeight = FontWeight.SemiBold)
+                                    Text("₦${String.format("%,.0f", cartItem.item.price)} each", fontSize = 11.sp, color = TextGray)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = { viewModel.updateCartQuantity(cartItem.item.id, -1) },
+                                        modifier = Modifier.size(28.dp).background(if (isDark) Charcoal else GoldenWhite, CircleShape)
+                                    ) {
+                                        Icon(Icons.Filled.Remove, contentDescription = "Decrease", tint = AppTextColor, modifier = Modifier.size(14.dp))
+                                    }
+                                    Text("${cartItem.quantity}", modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = AppTextColor)
+                                    IconButton(
+                                        onClick = { viewModel.updateCartQuantity(cartItem.item.id, 1) },
+                                        modifier = Modifier.size(28.dp).background(Gold, CircleShape)
+                                    ) {
+                                        Icon(Icons.Filled.Add, contentDescription = "Increase", tint = Obsidian, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Shipping Address Input
+                Text("SHIPPING DESTINATION", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Gold, letterSpacing = 1.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = shippingAddress,
+                    onValueChange = { shippingAddress = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = if (isDark) BorderDark else Slate,
+                        focusedContainerColor = if (isDark) LuxuryBlack else Color.White,
+                        unfocusedContainerColor = if (isDark) LuxuryBlack else Color.White
+                    ),
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = AppTextColor)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Payment Method Options
+                Text("SELECT PAYMENT METHOD", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Gold, letterSpacing = 1.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { selectedPaymentMethod = "Wallet" },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selectedPaymentMethod == "Wallet") Gold.copy(alpha = 0.2f) else (if (isDark) LuxuryBlack else Color.White),
+                        border = BorderStroke(1.5.dp, if (selectedPaymentMethod == "Wallet") Gold else BorderDark)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text("ESDispatch Wallet", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                            Text("Bal: ₦${String.format("%,.0f", walletBalance)}", fontSize = 10.sp, color = Gold, fontWeight = FontWeight.Black)
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { selectedPaymentMethod = "Paystack Card" },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selectedPaymentMethod == "Paystack Card") Gold.copy(alpha = 0.2f) else (if (isDark) LuxuryBlack else Color.White),
+                        border = BorderStroke(1.5.dp, if (selectedPaymentMethod == "Paystack Card") Gold else BorderDark)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text("Debit Card / Transfer", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                            Text("Instant Paystack Gateway", fontSize = 10.sp, color = TextGray)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Price Summary Breakdown
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(if (isDark) LuxuryBlack else Color.White, RoundedCornerShape(16.dp))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Items Subtotal", fontSize = 11.sp, color = TextGray)
+                        Text("₦${String.format("%,.0f", subtotal)}", fontSize = 11.sp, color = AppTextColor, fontWeight = FontWeight.Bold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Dispatch Express Shipping", fontSize = 11.sp, color = TextGray)
+                        Text("₦${String.format("%,.0f", deliveryFee)}", fontSize = 11.sp, color = AppTextColor, fontWeight = FontWeight.Bold)
+                    }
+                    Divider(color = if (isDark) BorderDark else Slate, thickness = 0.8.dp)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Grand Total Amount", fontSize = 13.sp, fontWeight = FontWeight.Black, color = AppTextColor)
+                        Text("₦${String.format("%,.0f", grandTotal)}", fontSize = 15.sp, fontWeight = FontWeight.Black, color = Gold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Button(
+                    onClick = {
+                        isSubmitting = true
+                        viewModel.checkoutMarketplaceCart(shippingAddress, selectedPaymentMethod) { success, msg ->
+                            isSubmitting = false
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            if (success) {
+                                showCheckoutSheet = false
+                                onNavigate("OrderLogs")
+                            }
+                        }
+                    },
+                    enabled = !isSubmitting,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    if (isSubmitting) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Obsidian, strokeWidth = 2.5.dp)
+                    } else {
+                        Text("PAY ₦${String.format("%,.0f", grandTotal)} & PLACE ORDER", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+    }
+
 }

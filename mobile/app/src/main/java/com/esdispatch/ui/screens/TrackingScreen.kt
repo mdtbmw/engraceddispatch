@@ -43,16 +43,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import android.content.Intent
@@ -80,18 +71,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.zIndex
 import android.widget.Toast
-import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material.icons.filled.History
@@ -99,8 +84,6 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Delete
 import com.esdispatch.R
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.filled.Lock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -111,6 +94,7 @@ import com.esdispatch.ui.components.MapCanvas
 import com.esdispatch.ui.components.QuiltedBackground
 import com.esdispatch.ui.components.RoundedSheet
 import com.esdispatch.ui.components.ScreenHeader
+import com.esdispatch.ui.components.BottomNav
 import com.esdispatch.ui.components.SupportButton
 import com.esdispatch.ui.components.SupportDialog
 import com.esdispatch.ui.theme.*
@@ -236,6 +220,9 @@ fun ActiveTrackingScreen(
     val isLight = MaterialTheme.colorScheme.background == BackgroundLight
     val context = LocalContext.current
     val recentSearches by viewModel.recentSearches.collectAsState()
+
+    val activeViewMode by viewModel.activeViewMode.collectAsState()
+    val userRole by viewModel.userRole.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var searchQueryError by remember { mutableStateOf<String?>(null) }
@@ -432,9 +419,9 @@ fun ActiveTrackingScreen(
 
     val bottomCardHeight by animateDpAsState(
         targetValue = when (drawerState) {
-            DrawerState.CLOSED -> if (hasNoBooking) 40.dp else 190.dp
-            DrawerState.COLLAPSED -> if (hasNoBooking) 140.dp else 440.dp
-            DrawerState.EXPANDED -> if (hasNoBooking) 140.dp else 620.dp
+            DrawerState.CLOSED -> if (hasNoBooking) 40.dp else 120.dp
+            DrawerState.COLLAPSED -> if (hasNoBooking) 140.dp else 360.dp
+            DrawerState.EXPANDED -> if (hasNoBooking) 140.dp else 560.dp
         },
         label = "bottomCardHeight"
     )
@@ -552,30 +539,35 @@ fun ActiveTrackingScreen(
     val aiTrafficCongested by viewModel.aiTrafficCongested.collectAsState()
 
     val headerBgColor = if (isDark) Gold else Obsidian
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(headerBgColor)
-    ) {
-        ScreenHeader(
-            title = "Track Shipment",
-            onBack = { onNavigate("Dashboard") },
-            rightContent = {
-                SupportButton(onClick = { showSupportDialog = true })
-            }
-        )
-
-        if (showSupportDialog) {
-            SupportDialog(onDismiss = { showSupportDialog = false })
-        }
-
-        Box(
+    Scaffold(
+        containerColor = headerBgColor,
+        bottomBar = { BottomNav(currentScreen = "ActiveTracking", onNavigate = onNavigate, activeViewMode = activeViewMode, userRole = userRole) }
+    ) { innerPadding ->
+        Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
-                .background(if (isDark) BackgroundDark else BackgroundLight)
+                .fillMaxSize()
+                .padding(bottom = innerPadding.calculateBottomPadding())
+                .background(headerBgColor)
         ) {
+            ScreenHeader(
+                title = "Track Shipment",
+                onBack = { onNavigate("Dashboard") },
+                rightContent = {
+                    SupportButton(onClick = { showSupportDialog = true })
+                }
+            )
+
+            if (showSupportDialog) {
+                SupportDialog(onDismiss = { showSupportDialog = false })
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
+                    .background(if (isDark) BackgroundDark else BackgroundLight)
+            ) {
             val routeColor = if (aiTrafficCongested) "#FF3B30" else if (showTraffic) "#FF9500" else "#D4AF37"
 
             // 1. FULL SCREEN MAP BACKGROUND (Uber-like experience)
@@ -1648,7 +1640,7 @@ is ZodResult.Error -> {
                                         modifier = Modifier
                                             .align(Alignment.BottomCenter)
                                             .fillMaxWidth()
-                                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 85.dp)
+                                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp)
                                     ) {
                                     Box(modifier = Modifier.fillMaxWidth()) {
                                         QuiltedBackground(modifier = Modifier.matchParentSize()) {}
@@ -1830,6 +1822,7 @@ is ZodResult.Error -> {
                 }
             }
         }
+    }
 
 /**
  * Floating Map Control buttons supporting custom zoom, traffic, or map mode triggers.

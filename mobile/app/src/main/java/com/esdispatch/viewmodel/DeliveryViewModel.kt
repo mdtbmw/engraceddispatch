@@ -4828,44 +4828,137 @@ class DeliveryViewModel : WalletViewModel() {
         _cartItems.value = emptyList()
     }
 
-    fun checkoutMarketplaceCart(address: String, onComplete: (Boolean, String) -> Unit) {
+    fun checkoutMarketplaceCart(address: String, paymentMethod: String = "Wallet", onComplete: (Boolean, String) -> Unit) {
         val currentCart = _cartItems.value
         if (currentCart.isEmpty()) {
             onComplete(false, "Your cart is empty!")
             return
         }
-        val totalAmount = currentCart.sumOf { it.item.price * it.quantity }
-        val currentWallet = _walletBalance.value
+        val subtotal = currentCart.sumOf { it.item.price * it.quantity }
+        val deliveryFee = 1500.0
+        val grandTotal = subtotal + deliveryFee
 
-        if (currentWallet < totalAmount) {
-            val short = totalAmount - currentWallet
-            onComplete(false, "Insufficient wallet balance. You need ₦${String.format("%,.2f", short)} more to complete this purchase.")
-            return
+        val firestore = com.esdispatch.data.FirebaseManager.firestore ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        val userId = _firebaseUserId.value ?: "guest_user"
+
+        if (paymentMethod == "Wallet") {
+            val currentWallet = _walletBalance.value
+            if (currentWallet < grandTotal) {
+                val short = grandTotal - currentWallet
+                onComplete(false, "Insufficient wallet balance. You need ₦${String.format("%,.2f", short)} more to complete this purchase.")
+                return
+            }
+
+            // Real Firestore Wallet Balance Deduction
+            _walletBalance.value = currentWallet - grandTotal
+            if (userId.isNotBlank() && userId != "guest_user") {
+                firestore.collection("users").document(userId)
+                    .update("walletBalance", com.google.firebase.firestore.FieldValue.increment(-grandTotal))
+                    .addOnFailureListener { e -> android.util.Log.e("DeliveryViewModel", "Failed to update Firestore wallet balance: ${e.message}") }
+            }
+
+            // Real Firestore Wallet Transaction Record
+            val txRef = "MKT-" + System.currentTimeMillis().toString().takeLast(8)
+            val txData = hashMapOf(
+                "id" to "TX-$txRef",
+                "userId" to userId,
+                "title" to "Marketplace Order (${currentCart.size} items)",
+                "amount" to -grandTotal,
+                "type" to "DEBIT",
+                "isTopUp" to false,
+                "reference" to txRef,
+                "date" to "Today",
+                "createdAt" to com.google.firebase.Timestamp.now()
+            )
+            firestore.collection("wallet_transactions").add(txData)
+
+            val newTx = Transaction(
+                id = "TX-$txRef",
+                title = "Marketplace Order (${currentCart.size} items)",
+                date = "Today",
+                amount = -grandTotal,
+                isTopUp = false,
+                type = "DEBIT",
+                reference = txRef,
+                userId = userId
+            )
+            val currentTxList = _transactions.value.toMutableList()
+            currentTxList.add(0, newTx)
+            _transactions.value = currentTxList
         }
 
-        // Deduct from wallet balance
-        _walletBalance.value = currentWallet - totalAmount
+        // Create Real Firestore Marketplace Order with Vendor Commission Split
+        val orderRef = "ORD-MKT-" + System.currentTimeMillis().toString().takeLast(6)
+        val defaultCommissionRate = 8.5 // 8.5% platform commission
+        val commissionAmount = subtotal * (defaultCommissionRate / 100.0)
+        val netVendorPayout = subtotal - commissionAmount
 
-        // Record transaction
-        val now = java.text.SimpleDateFormat("MMM dd, yyyy · HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
-        val newTx = Transaction(
-            id = "TX-MKT-" + System.currentTimeMillis().toString().takeLast(6),
-            title = "Marketplace Purchase (${currentCart.size} items)",
-            date = "Today",
-            amount = -totalAmount,
-            isTopUp = false,
-            type = "DEBIT",
-            reference = "MKT-" + System.currentTimeMillis().toString().takeLast(6),
-            userId = _firebaseUserId.value ?: ""
+        val orderItemsData = currentCart.map { c ->
+            hashMapOf(
+                "productId" to c.item.id,
+                "title" to c.item.title,
+                "category" to c.item.category,
+                "price" to c.item.price,
+                "quantity" to c.quantity,
+                "vendorStore" to c.item.vendorStore
+            )
+        }
+
+        val primaryVendorStore = currentCart.firstOrNull()?.item?.vendorStore ?: "ESDispatch Fleet Supplies"
+
+        val orderDoc = hashMapOf(
+            "orderId" to orderRef,
+            "userId" to userId,
+            "userName" to (_userName.value.ifEmpty { "Valued Customer" }),
+            "userPhone" to (_userPhone.value.ifEmpty { "08000000000" }),
+            "items" to orderItemsData,
+            "subtotal" to subtotal,
+            "deliveryFee" to deliveryFee,
+            "totalAmount" to grandTotal,
+            "commissionRate" to defaultCommissionRate,
+            "commissionAmount" to commissionAmount,
+            "vendorPayout" to netVendorPayout,
+            "vendorStore" to primaryVendorStore,
+            "paymentMethod" to paymentMethod,
+            "shippingAddress" to address,
+            "status" to "PAID",
+            "createdAt" to com.google.firebase.Timestamp.now()
         )
-        val currentTxList = _transactions.value.toMutableList()
-        currentTxList.add(0, newTx)
-        _transactions.value = currentTxList
 
-        // Clear cart
-        _cartItems.value = emptyList()
+        firestore.collection("marketplace_orders").add(orderDoc)
+            .addOnSuccessListener {
+                // Update Vendor Store Balance & Order Count in Firestore
+                firestore.collection("marketplace_stores")
+                    .whereEqualTo("storeName", primaryVendorStore)
+                    .get()
+                    .addOnSuccessListener { query ->
+                        if (!query.isEmpty) {
+                            for (storeDoc in query.documents) {
+                                storeDoc.reference.update(
+                                    mapOf(
+                                        "vendorWallet" to com.google.firebase.firestore.FieldValue.increment(netVendorPayout),
+                                        "totalSales" to com.google.firebase.firestore.FieldValue.increment(1),
+                                        "totalCommissionPaid" to com.google.firebase.firestore.FieldValue.increment(commissionAmount),
+                                        "updatedAt" to com.google.firebase.Timestamp.now()
+                                    )
+                                )
+                            }
+                        }
+                    }
 
-        onComplete(true, "Order placed successfully! ₦${String.format("%,.2f", totalAmount)} deducted from wallet. Delivering to $address")
+                // Decrement Product Inventory in Firestore
+                currentCart.forEach { c ->
+                    firestore.collection("marketplace_products").document(c.item.id)
+                        .update("stock", com.google.firebase.firestore.FieldValue.increment(-c.quantity.toLong()))
+                }
+
+                // Clear Local Cart
+                _cartItems.value = emptyList()
+                onComplete(true, "Order #$orderRef placed successfully! Total ₦${String.format("%,.0f", grandTotal)} charged. Delivering to $address")
+            }
+            .addOnFailureListener { e ->
+                onComplete(false, "Order placement failed: ${e.message}")
+            }
     }
 
     fun applyPromoCode(code: String, onComplete: (Boolean, String) -> Unit) {
