@@ -1,4 +1,4 @@
-package com.esdispatch.ui.screens
+﻿package com.esdispatch.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -78,7 +78,7 @@ fun ExpressBookingScreen(
     ) { permissions ->
         val granted = permissions.values.any { it }
         coroutineScope.launch {
-            Toast.makeText(context, "🎯 Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "ðŸŽ¯ Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
             val detected = withContext(Dispatchers.IO) {
                 detectUserLocation(context)
             }
@@ -153,9 +153,9 @@ fun ExpressBookingScreen(
         return if (query.isBlank()) {
             val defaults = mutableListOf<com.esdispatch.utils.SearchResultItem>()
             val home = viewModel.homeAddress.value
-            if (home.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("🏠 Saved Home", home))
+            if (home.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("ðŸ  Saved Home", home))
             val work = viewModel.workAddress.value
-            if (work.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("💼 Saved Work", work))
+            if (work.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("ðŸ’¼ Saved Work", work))
             defaults.addAll(com.esdispatch.data.AddressDatabase.getDefaults().take(6).map { it.toSearchResult() })
             defaults.distinctBy { it.displayInput }
         } else {
@@ -352,7 +352,7 @@ fun ExpressBookingScreen(
                                     Icon(Icons.Filled.LocalOffer, contentDescription = null, tint = Gold, modifier = Modifier.size(24.dp))
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
-                                        Text("⚡ ${adminDiscountPercent}% EXPRESS DISCOUNT ACTIVE", color = GoldLight, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                        Text("âš¡ ${adminDiscountPercent}% EXPRESS DISCOUNT ACTIVE", color = GoldLight, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
                                         Text("Prices shown will include your exclusive savings!", color = TextGray, fontSize = 11.sp)
                                     }
                                 }
@@ -413,7 +413,7 @@ fun ExpressBookingScreen(
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text(
-                                        if (isSearchingSuggestions) "🔍 Searching places & addresses..." else "💡 Verified Location Matches:",
+                                        if (isSearchingSuggestions) "ðŸ” Searching places & addresses..." else "ðŸ’¡ Verified Location Matches:",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Gold else Obsidian,
@@ -514,7 +514,7 @@ fun ExpressBookingScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("⚡ Frequent:", fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Bold)
+                            Text("âš¡ Frequent:", fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Bold)
                             listOf("The Palms Mall", "Ikeja City Mall").forEach { freq ->
                                 Surface(
                                     color = Gold.copy(alpha = 0.12f),
@@ -584,7 +584,7 @@ fun ExpressBookingScreen(
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text(
-                                        if (isSearchingSuggestions) "🔍 Searching places & addresses..." else "💡 Verified Location Matches:",
+                                        if (isSearchingSuggestions) "ðŸ” Searching places & addresses..." else "ðŸ’¡ Verified Location Matches:",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Gold else Obsidian,
@@ -660,7 +660,7 @@ fun ExpressBookingScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("⚡ Sender Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
+                            Text("âš¡ Sender Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -714,7 +714,7 @@ fun ExpressBookingScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("⚡ Receiver Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
+                            Text("âš¡ Receiver Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
                             Text(
                                 "From Contacts",
                                 fontSize = 10.sp,
@@ -960,7 +960,7 @@ fun ExpressBookingScreen(
                     when (val quote = pendingQuote) {
                         is PendingQuote.Success -> {
                             Text(
-                                text = "₦${String.format("%,.2f", quote.price)}",
+                                text = "â‚¦${String.format("%,.2f", quote.price)}",
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Black,
                                 color = accentColor
@@ -1030,8 +1030,13 @@ fun ExpressBookingScreen(
                     viewModel.updateDraftSenderInfo(sName, sPhone)
                     viewModel.updateDraftReceiverInfo(rName, rPhone)
                     viewModel.finalizeDraftPrice("Express", quotePrice)
-                    viewModel.confirmBooking()
-                    onNavigate("PaymentSuccess")
+                    viewModel.confirmBooking { ok, msg ->
+                        if (ok) {
+                            onNavigate("PaymentSuccess")
+                        } else {
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    }
                 },
                 onFundRequired = { missingAmt ->
                     showCheckoutSheet = false
@@ -1053,8 +1058,13 @@ fun ExpressBookingScreen(
                     viewModel.updateDraftSenderInfo(sName, sPhone)
                     viewModel.updateDraftReceiverInfo(rName, rPhone)
                     viewModel.finalizeDraftPrice("Express", quotePrice)
-                    viewModel.confirmBooking()
-                    onNavigate("PaymentSuccess")
+                    viewModel.confirmBooking { ok, msg ->
+                        if (ok) {
+                            onNavigate("PaymentSuccess")
+                        } else {
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    }
                 },
                 onDismiss = { showPaystackSheet = false }
             )

@@ -150,6 +150,23 @@ class MainActivity : FragmentActivity() {
                 viewModel.initializeDatabase(context)
             }
             LaunchedEffect(Unit) {
+                // Register the initial FCM token once so server push targeting works even
+                // when onNewToken is never fired (fresh installs with cached tokens).
+                try {
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                        .addOnSuccessListener { token ->
+                            val uid = com.esdispatch.data.FirebaseManager.auth?.uid
+                            if (uid != null && token.isNotBlank()) {
+                                com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                    .collection("users").document(uid)
+                                    .update("fcmToken", token)
+                            }
+                        }
+                } catch (e: Exception) {
+                    android.util.Log.w("MainActivity", "FCM initial token fetch failed: ${e.message}")
+                }
+            }
+            LaunchedEffect(Unit) {
                 com.esdispatch.data.FirebaseManager.fcmNotifications.collect { pair ->
                     val title = pair.first
                     val message = pair.second

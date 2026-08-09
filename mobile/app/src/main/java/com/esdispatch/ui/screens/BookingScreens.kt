@@ -1,4 +1,4 @@
-package com.esdispatch.ui.screens
+﻿package com.esdispatch.ui.screens
 
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
@@ -75,7 +75,7 @@ fun SendParcelScreen(
     ) { permissions ->
         val granted = permissions.values.any { it }
         coroutineScope.launch {
-            Toast.makeText(context, "🎯 Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "ðŸŽ¯ Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
             val detected = withContext(Dispatchers.IO) {
                 detectUserLocation(context)
             }
@@ -254,7 +254,7 @@ fun SendParcelScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "⚡ Smart 'Book Again' (Recent)",
+                                text = "âš¡ Smart 'Book Again' (Recent)",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Gold
@@ -294,13 +294,13 @@ fun SendParcelScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(text = "₦${String.format("%,.0f", p.price)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                            Text(text = "â‚¦${String.format("%,.0f", p.price)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Gold)
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
                                                 color = Gold.copy(alpha = 0.2f)
                                             ) {
                                                 Text(
-                                                    text = "Rebook ⚡",
+                                                    text = "Rebook âš¡",
                                                     fontSize = 9.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = Gold,
@@ -361,20 +361,20 @@ fun SendParcelScreen(
                                     onClick = {
                                         pickup = viewModel.aiCorrectAddress(pickup)
                                         delivery = viewModel.aiCorrectAddress(delivery)
-                                        Toast.makeText(context, "✨ AI Address validation & correction applied!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "âœ¨ AI Address validation & correction applied!", Toast.LENGTH_SHORT).show()
                                     },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                 ) {
-                                    Text("✨ AI Correct", fontSize = 11.sp, color = Gold)
+                                    Text("âœ¨ AI Correct", fontSize = 11.sp, color = Gold)
                                 }
                                 TextButton(
                                     onClick = {
                                         delivery = viewModel.pinDropNearestAddress()
-                                        Toast.makeText(context, "📍 Pin-dropped nearest landmark detected!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "ðŸ“ Pin-dropped nearest landmark detected!", Toast.LENGTH_SHORT).show()
                                     },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                 ) {
-                                    Text("📍 Drop Pin", fontSize = 11.sp, color = Gold)
+                                    Text("ðŸ“ Drop Pin", fontSize = 11.sp, color = Gold)
                                 }
                             }
                         }
@@ -865,6 +865,7 @@ fun BookingSelectionScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val draft by viewModel.parcelDraft.collectAsState()
     val walletBalance by viewModel.walletBalance.collectAsState()
     var selectedTab by remember { mutableStateOf(draft.selectedService) }
@@ -1032,8 +1033,13 @@ fun BookingSelectionScreen(
                             pendingAmount = priceExpressSameDay
                             onPaymentSuccessAction = {
                                 viewModel.finalizeDraftPrice("Express", priceExpressSameDay)
-                                viewModel.confirmBooking()
-                                onNavigate("PaymentSuccess")
+                                viewModel.confirmBooking { ok, msg ->
+                                    if (ok) {
+                                        onNavigate("PaymentSuccess")
+                                    } else {
+                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             }
                             showCheckoutSheet = true
                         },
@@ -1077,7 +1083,7 @@ fun BookingSelectionScreen(
                                         }
                                         Text("Delivery within 12 hours", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                     }
-                                    Text("₦${String.format("%,.2f", priceExpressSameDay)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
+                                    Text("â‚¦${String.format("%,.2f", priceExpressSameDay)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
                                 }
 
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -1114,8 +1120,13 @@ fun BookingSelectionScreen(
                             pendingAmount = priceExpressNextDay
                             onPaymentSuccessAction = {
                                 viewModel.finalizeDraftPrice("Express", priceExpressNextDay)
-                                viewModel.confirmBooking()
-                                onNavigate("PaymentSuccess")
+                                viewModel.confirmBooking { ok, msg ->
+                                    if (ok) {
+                                        onNavigate("PaymentSuccess")
+                                    } else {
+                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             }
                             showCheckoutSheet = true
                         },
@@ -1130,7 +1141,7 @@ fun BookingSelectionScreen(
                                     Text("Next Day", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
                                     Text("Delivery by tomorrow 6 PM", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                 }
-                                Text("₦${String.format("%,.2f", priceExpressNextDay)}", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = accentTextColor)
+                                Text("â‚¦${String.format("%,.2f", priceExpressNextDay)}", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = accentTextColor)
                             }
                         }
                     }
@@ -1140,8 +1151,13 @@ fun BookingSelectionScreen(
                             pendingAmount = priceEconomy
                             onPaymentSuccessAction = {
                                 viewModel.finalizeDraftPrice("Economy", priceEconomy)
-                                viewModel.confirmBooking()
-                                onNavigate("PaymentSuccess")
+                                viewModel.confirmBooking { ok, msg ->
+                                    if (ok) {
+                                        onNavigate("PaymentSuccess")
+                                    } else {
+                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             }
                             showCheckoutSheet = true
                         },
@@ -1162,7 +1178,7 @@ fun BookingSelectionScreen(
                                     Text("Standard", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
                                     Text("Delivery in 3-5 business days", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                 }
-                                Text("₦${String.format("%,.2f", priceEconomy)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
+                                Text("â‚¦${String.format("%,.2f", priceEconomy)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
                             }
                         }
                     }
@@ -1172,8 +1188,13 @@ fun BookingSelectionScreen(
                             pendingAmount = priceBatch
                             onPaymentSuccessAction = {
                                 viewModel.finalizeDraftPrice("Batch", priceBatch)
-                                viewModel.confirmBooking()
-                                onNavigate("PaymentSuccess")
+                                viewModel.confirmBooking { ok, msg ->
+                                    if (ok) {
+                                        onNavigate("PaymentSuccess")
+                                    } else {
+                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             }
                             showCheckoutSheet = true
                         },
@@ -1194,7 +1215,7 @@ fun BookingSelectionScreen(
                                     Text("Multi-parcel", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
                                     Text("Bulk delivery optimization", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                 }
-                                Text("₦${String.format("%,.2f", priceBatch)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
+                                Text("â‚¦${String.format("%,.2f", priceBatch)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Text("Up to 10 parcels included", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentTextColor)
@@ -1206,8 +1227,13 @@ fun BookingSelectionScreen(
                             pendingAmount = priceMulti
                             onPaymentSuccessAction = {
                                 viewModel.finalizeDraftPrice("Multi", priceMulti)
-                                viewModel.confirmBooking()
-                                onNavigate("PaymentSuccess")
+                                viewModel.confirmBooking { ok, msg ->
+                                    if (ok) {
+                                        onNavigate("PaymentSuccess")
+                                    } else {
+                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             }
                             showCheckoutSheet = true
                         },
@@ -1228,7 +1254,7 @@ fun BookingSelectionScreen(
                                     Text("Multi-Stop", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
                                     Text("Deliver to up to 5 destinations", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                 }
-                                Text("₦${String.format("%,.2f", priceMulti)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
+                                Text("â‚¦${String.format("%,.2f", priceMulti)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Text("Up to 5 addresses included", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentTextColor)
@@ -1358,7 +1384,7 @@ fun BookingSelectionScreen(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
                                     Text("Prepaid Dispatch Wallet", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color.White)
-                                    Text("Balance: ₦${String.format("%,.2f", walletBalance)}", fontSize = 11.sp, color = Gold, fontWeight = FontWeight.Bold)
+                                    Text("Balance: â‚¦${String.format("%,.2f", walletBalance)}", fontSize = 11.sp, color = Gold, fontWeight = FontWeight.Bold)
                                 }
                             }
 
@@ -1405,7 +1431,7 @@ fun BookingSelectionScreen(
                 Column {
                     Text("Total Amount", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Bold)
                     Text(
-                        text = "₦${String.format("%,.2f", calculatedAmt)}",
+                        text = "â‚¦${String.format("%,.2f", calculatedAmt)}",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Black,
                         color = accentTextColor
@@ -1417,8 +1443,13 @@ fun BookingSelectionScreen(
                         pendingAmount = calculatedAmt
                         onPaymentSuccessAction = {
                             viewModel.finalizeDraftPrice(selectedTab)
-                            viewModel.confirmBooking()
-                            onNavigate("PaymentSuccess")
+                            viewModel.confirmBooking { ok, msg ->
+                                if (ok) {
+                                    onNavigate("PaymentSuccess")
+                                } else {
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                }
+                            }
                         }
                         showCheckoutSheet = true
                     },
@@ -1615,7 +1646,7 @@ fun PaymentSuccessScreen(
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("AMOUNT PAID", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
                                     Text(
-                                        text = "₦${String.format("%,.2f", latestParcel?.price ?: 2500.00)}",
+                                        text = "â‚¦${String.format("%,.2f", latestParcel?.price ?: 2500.00)}",
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Gold,

@@ -23,7 +23,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -97,9 +99,10 @@ fun ProofOfDeliveryScreen(
             }
 
             if (isSignatureMode) {
-                SignaturePadView {
-                    // Logic to upload signature would go here
-                    viewModel.markParcelDelivered(parcelId)
+                SignaturePadView { bitmap ->
+                    val stream = java.io.ByteArrayOutputStream()
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, stream)
+                    viewModel.uploadPodAndCompleteParcel(parcelId, stream.toByteArray(), "SIGNATURE")
                     navController.popBackStack()
                 }
             } else {
@@ -129,8 +132,25 @@ fun ProofOfDeliveryScreen(
                             object : ImageCapture.OnImageCapturedCallback() {
                                 override fun onCaptureSuccess(image: ImageProxy) {
                                     Log.d("POD", "Photo captured successfully!")
+                                    val buffer = image.planes[0].buffer
+                                    val bytes = ByteArray(buffer.remaining())
+                                    buffer.get(bytes)
+                                    val rotation = image.imageInfo.rotationDegrees
                                     image.close()
-                                    viewModel.markParcelDelivered(parcelId)
+                                    val raw = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                    val rotated = if (rotation != 0 && raw != null) {
+                                        val m = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
+                                        android.graphics.Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+                                    } else {
+                                        raw
+                                    }
+                                    if (rotated != null) {
+                                        val stream = java.io.ByteArrayOutputStream()
+                                        rotated.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, stream)
+                                        viewModel.uploadPodAndCompleteParcel(parcelId, stream.toByteArray(), "PHOTO")
+                                    } else {
+                                        viewModel.markParcelDelivered(parcelId)
+                                    }
                                     navController.popBackStack()
                                 }
                                 override fun onError(exception: ImageCaptureException) {
@@ -151,15 +171,17 @@ fun ProofOfDeliveryScreen(
 }
 
 @Composable
-fun SignaturePadView(onComplete: () -> Unit) {
+fun SignaturePadView(onComplete: (android.graphics.Bitmap) -> Unit) {
     var paths by remember { mutableStateOf(listOf<Path>()) }
     var currentPath by remember { mutableStateOf<Path?>(null) }
-    
+    var padPx by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .onSizeChanged { padPx = androidx.compose.ui.geometry.Size(it.width.toFloat(), it.height.toFloat()) }
                 .background(Color.White, RoundedCornerShape(12.dp))
                 .border(2.dp, Gold, RoundedCornerShape(12.dp))
                 .pointerInput(Unit) {
@@ -202,7 +224,25 @@ fun SignaturePadView(onComplete: () -> Unit) {
             }
             Spacer(modifier = Modifier.width(16.dp))
             Button(
-                onClick = onComplete,
+                onClick = {
+                    if (padPx.width < 10f || padPx.height < 10f) return@Button
+                    val w = padPx.width.toInt()
+                    val h = padPx.height.toInt()
+                    val bitmap = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                    val canvas = android.graphics.Canvas(bitmap)
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                    val paint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.BLACK
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeWidth = 10f
+                        strokeCap = android.graphics.Paint.Cap.ROUND
+                        strokeJoin = android.graphics.Paint.Join.ROUND
+                        isAntiAlias = true
+                    }
+                    paths.forEach { path -> canvas.drawPath(path.asAndroidPath(), paint) }
+                    currentPath?.let { canvas.drawPath(it.asAndroidPath(), paint) }
+                    onComplete(bitmap)
+                },
                 modifier = Modifier.weight(1f).height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold)
             ) {

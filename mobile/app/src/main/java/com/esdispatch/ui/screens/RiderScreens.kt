@@ -1812,7 +1812,7 @@ fun GpsMovementSimulator(
                     Button(
                         onClick = {
                             showArrivedDialog = false
-                            viewModel.updateParcelStatusByRider(parcelId, ParcelStatus.OUT_FOR_DELIVERY, 0.95f) { success, _ ->
+                            viewModel.updateParcelStatusByRider(parcelId, ParcelStatus.ARRIVED, 0.95f) { success, _ ->
                                 if (success) {
                                     Toast.makeText(context, "Status updated to ARRIVED! Awaiting OTP validation.", Toast.LENGTH_LONG).show()
                                 }

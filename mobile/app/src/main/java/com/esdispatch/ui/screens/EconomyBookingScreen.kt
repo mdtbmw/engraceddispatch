@@ -1,4 +1,4 @@
-package com.esdispatch.ui.screens
+﻿package com.esdispatch.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -77,7 +77,7 @@ fun EconomyBookingScreen(
     ) { permissions ->
         val granted = permissions.values.any { it }
         coroutineScope.launch {
-            Toast.makeText(context, "🎯 Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "ðŸŽ¯ Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
             val detected = withContext(Dispatchers.IO) {
                 detectUserLocation(context)
             }
@@ -178,9 +178,9 @@ fun EconomyBookingScreen(
         return if (query.isBlank()) {
             val defaults = mutableListOf<com.esdispatch.utils.SearchResultItem>()
             val home = viewModel.homeAddress.value
-            if (home.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("🏠 Saved Home", home))
+            if (home.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("ðŸ  Saved Home", home))
             val work = viewModel.workAddress.value
-            if (work.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("💼 Saved Work", work))
+            if (work.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("ðŸ’¼ Saved Work", work))
             defaults.addAll(com.esdispatch.data.AddressDatabase.getDefaults().take(6).map { it.toSearchResult() })
             defaults.distinctBy { it.displayInput }
         } else {
@@ -340,7 +340,7 @@ fun EconomyBookingScreen(
                                     Icon(Icons.Filled.LocalOffer, contentDescription = null, tint = Color(0xFF2ECC71), modifier = Modifier.size(24.dp))
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
-                                        Text("🌿 ${adminDiscountPercent}% ECO DISCOUNT ACTIVE", color = Color(0xFF2ECC71), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                        Text("ðŸŒ¿ ${adminDiscountPercent}% ECO DISCOUNT ACTIVE", color = Color(0xFF2ECC71), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
                                         Text("Go green and save money!", color = TextGray, fontSize = 11.sp)
                                     }
                                 }
@@ -401,7 +401,7 @@ fun EconomyBookingScreen(
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text(
-                                        if (isSearchingSuggestions) "🔍 Searching places & addresses..." else "💡 Verified Location Matches:",
+                                        if (isSearchingSuggestions) "ðŸ” Searching places & addresses..." else "ðŸ’¡ Verified Location Matches:",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Gold else Obsidian,
@@ -541,7 +541,7 @@ fun EconomyBookingScreen(
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text(
-                                        if (isSearchingSuggestions) "🔍 Searching places & addresses..." else "💡 Verified Location Matches:",
+                                        if (isSearchingSuggestions) "ðŸ” Searching places & addresses..." else "ðŸ’¡ Verified Location Matches:",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Gold else Obsidian,
@@ -683,7 +683,7 @@ fun EconomyBookingScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("🌿 Sender Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2ECC71))
+                            Text("ðŸŒ¿ Sender Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2ECC71))
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -737,7 +737,7 @@ fun EconomyBookingScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("🌿 Receiver Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2ECC71))
+                            Text("ðŸŒ¿ Receiver Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2ECC71))
                             Text(
                                 "From Contacts",
                                 fontSize = 10.sp,
@@ -978,7 +978,7 @@ fun EconomyBookingScreen(
                     when (val quote = pendingQuote) {
                         is PendingQuote.Success -> {
                             Text(
-                                text = "₦${String.format("%,.2f", quote.price)}",
+                                text = "â‚¦${String.format("%,.2f", quote.price)}",
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Black,
                                 color = accentColor
@@ -1046,8 +1046,13 @@ fun EconomyBookingScreen(
                     viewModel.updateDraftPickup(pickup)
                     viewModel.updateDraftDelivery(delivery)
                     viewModel.finalizeDraftPrice("Economy", quotePrice)
-                    viewModel.confirmBooking()
-                    onNavigate("PaymentSuccess")
+                    viewModel.confirmBooking { ok, msg ->
+                        if (ok) {
+                            onNavigate("PaymentSuccess")
+                        } else {
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    }
                 },
                 onFundRequired = { missingAmt ->
                     showCheckoutSheet = false
@@ -1067,8 +1072,13 @@ fun EconomyBookingScreen(
                     viewModel.updateDraftPickup(pickup)
                     viewModel.updateDraftDelivery(delivery)
                     viewModel.finalizeDraftPrice("Economy", quotePrice)
-                    viewModel.confirmBooking()
-                    onNavigate("PaymentSuccess")
+                    viewModel.confirmBooking { ok, msg ->
+                        if (ok) {
+                            onNavigate("PaymentSuccess")
+                        } else {
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    }
                 },
                 onDismiss = { showPaystackSheet = false }
             )

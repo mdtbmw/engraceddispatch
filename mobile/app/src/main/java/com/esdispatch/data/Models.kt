@@ -5,7 +5,7 @@ import androidx.room.PrimaryKey
 import java.util.UUID
 
 enum class ParcelStatus {
-    PENDING, ASSIGNED, TRANSIT, DELIVERED, CANCELLED, OUT_FOR_DELIVERY
+    PENDING, ASSIGNED, PICKED_UP, ARRIVED, OUT_FOR_DELIVERY, TRANSIT, DELIVERED, CANCELLED
 }
 
 @Entity(tableName = "parcels")

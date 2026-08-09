@@ -4889,11 +4889,13 @@ fun PaystackCheckoutSheet(
                 }
             }
 
-            // Embedded WebView with real-world Paystack Inline SDK integration
+            // Embedded WebView with real-world Paystack Inline SDK integration.
+            // The public key comes from BuildConfig (PAYSTACK_PUBLIC_KEY env var at build time);
+            // if it is blank the checkout must NOT silently fall back to a test key.
             val paystackKey = try {
-                com.esdispatch.BuildConfig.PAYSTACK_PUBLIC_KEY.ifBlank { "pk_test_4e7f3ee19be1e39bbf8789382f0c7cc89e8f6e80" }
+                com.esdispatch.BuildConfig.PAYSTACK_PUBLIC_KEY
             } catch (e: Throwable) {
-                "pk_test_4e7f3ee19be1e39bbf8789382f0c7cc89e8f6e80"
+                ""
             }
             val authEmail = try {
                 com.esdispatch.data.FirebaseManager.auth?.currentUser?.email
@@ -4964,6 +4966,10 @@ fun PaystackCheckoutSheet(
                             <script src="https://js.paystack.co/v1/inline.js"></script>
                         </head>
                         <body>
+                            <script>
+                                window.ESD_PS_KEY = '$paystackKey';
+                            </script>
+
                             <div class="loader"></div>
                             <h2 id="status-title">Connecting to Gateway...</h2>
                             <p id="status-desc">Initializing Paystack Secure Checkout.</p>
@@ -4971,9 +4977,14 @@ fun PaystackCheckoutSheet(
                             <script>
                                 window.onload = function() {
                                     try {
+                                        if (!window.ESD_PS_KEY) {
+                                            document.getElementById('status-title').innerText = "Gateway Not Configured";
+                                            document.getElementById('status-desc').innerText = "Paystack public key is missing. Build with PAYSTACK_PUBLIC_KEY set.";
+                                            return;
+                                        }
                                         var amountInKobo = Math.round($amount * 100);
                                         var handler = PaystackPop.setup({
-                                            key: '$paystackKey',
+                                            key: window.ESD_PS_KEY,
                                             email: '$userEmail',
                                             amount: amountInKobo,
                                             currency: 'NGN',

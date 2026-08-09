@@ -23,11 +23,16 @@ service cloud.firestore {
       );
     }
 
-    // Dispatchers can read deliveries but NOT escalate their role or modify user roles
+    // Dispatchers can read/update deliveries but NOT escalate their role or modify user roles
     function isDispatcher() {
       return isAuth() && (
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dispatcher'
       );
+    }
+
+    // A vendor is any authenticated user who owns a marketplace store
+    function isVendor(userId) {
+      return isAuth() && request.auth.uid == userId;
     }
 
     function isOwner(userId) {
@@ -37,7 +42,7 @@ service cloud.firestore {
     // Prevent non-admin from setting admin/super_admin role
     function notElevatingToAdmin() {
       return !request.resource.data.keys().hasAny(['role'])
-        || request.resource.data.role in ['customer', 'rider', 'dispatcher'];
+        || request.resource.data.role in ['customer', 'rider', 'dispatcher', 'vendor'];
     }
 
     // Read size limit: deny reads of documents over 256 KiB
@@ -83,24 +88,34 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin() || isDispatcher();
-      allow create: if isOwner(userId) && notElevatingToAdmin() && isReasonableWrite();
-      allow update: if (isOwner(userId) && notElevatingToAdmin()) || isAdmin();
+      // Owner self-signup OR admin/dispatcher creating accounts for others
+      allow create: if (isOwner(userId) && notElevatingToAdmin() && isReasonableWrite())
+        || isAdmin()
+        || isDispatcher();
+      // Update: owner (cannot self-elevate), admin (can promote), dispatcher (non-role fields only)
+      allow update: if (isOwner(userId) && notElevatingToAdmin())
+        || isAdmin()
+        || (isDispatcher() && !request.resource.data.keys().hasAny(['role', 'isOnline', 'walletBalance', 'loyaltyPoints']));
       allow delete: if isSuperAdmin();
 
-      // Only super_admin can escalate to admin/super_admin
-      allow update: if (isOwner(userId) && notElevatingToAdmin())
-        || isSuperAdmin();
-
       match /notifications/{notifId} {
-        allow read: if isOwner(userId);
+        allow read: if isOwner(userId) || isAdmin();
         allow create: if isAdmin();
         allow update: if isOwner(userId) || isAdmin();
         allow delete: if isAdmin();
       }
-      
+
+      // Wallet ledger: written by the owning client under tight size limits until
+      // a server-side Cloud Function backend is deployed.
       match /transactions/{transactionId} {
         allow read: if isOwner(userId) || isAdmin();
-        allow create, update, delete: if false; // Only allowed via backend Atomic db.runTransaction or Cloud Functions
+        allow create: if (isOwner(userId) && isReasonableWrite()) || isAdmin();
+        allow update, delete: if false;
+      }
+
+      // Cart persistence: only ever owned by the user
+      match /cart/{itemId} {
+        allow read, create, update, delete: if isOwner(userId) && isReasonableWrite();
       }
 
       match /deliveries/{deliveryId} {
@@ -112,9 +127,11 @@ service cloud.firestore {
     // =========================================================
     // FLEET LOCATIONS
     // =========================================================
+    // Live GPS is private: readable only by the rider, admins and dispatchers.
+    // Customers receive courier positions via the deliveries document instead.
 
     match /fleet_locations/{riderId} {
-      allow read: if isAuth(); // Customers need to read it during tracking
+      allow read: if isOwner(riderId) || isAdmin() || isDispatcher();
       allow create, update: if isOwner(riderId) || isAdmin();
       allow delete: if isAdmin();
     }
@@ -126,8 +143,12 @@ service cloud.firestore {
     match /deliveries/{deliveryId} {
       allow read: if isDispatcher() || isAdmin() || isOwner(resource.data.userId)
         || isOwner(resource.data.riderId);
-      allow create: if isAuth() && isReasonableWrite();
-      allow update: if isDispatcher() || isAdmin();
+      allow create: if isAuth() && isReasonableWrite() && request.resource.data.userId == request.auth.uid
+        || isDispatcher() || isAdmin();
+      // Riders are permitted to advance their own deliveries (status/OTP/POD);
+      // dispatchers and admins manage everything.
+      allow update: if isDispatcher() || isAdmin()
+        || (isAuth() && isOwner(resource.data.riderId));
       allow delete: if isAdmin();
     }
 
@@ -156,6 +177,7 @@ service cloud.firestore {
     }
 
     match /system_config/{docId} {
+      // App clients read feature/pricing config; secrets must never be stored here
       allow read: if isAuth();
       allow write: if isAdmin();
     }
@@ -199,6 +221,13 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /referral_redemptions/{docId} {
+      allow read: if isAuth() && (request.auth.uid == resource.data.userId || isAdmin());
+      allow create: if isAuth() && isReasonableWrite()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
     // =========================================================
     // NOTIFICATIONS
     // =========================================================
@@ -210,17 +239,17 @@ service cloud.firestore {
           || resource.data.userId == null
           || isAdmin());
       allow create: if isAdmin();
-      allow update: if isAdmin();
+      allow update: if isAdmin() || isOwner(resource.data.userId);
       allow delete: if isAdmin();
     }
 
     // =========================================================
-    // AUDIT LOGS
+    // AUDIT LOGS — only admins may record entries (anti-forgery)
     // =========================================================
 
     match /audit_logs/{docId} {
       allow read: if isAdmin();
-      allow create: if isAuth() && isReasonableWrite();
+      allow create: if isAdmin();
       allow update, delete: if isAdmin();
     }
 
@@ -241,25 +270,44 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // MARKETPLACE (Products, Stores, Orders)
+    // MARKETPLACE (Products, Stores, Orders, Payouts)
     // =========================================================
 
     match /marketplace_products/{docId} {
       allow read: if true; // Public catalog viewable by customers & vendors
-      allow create, update, delete: if isAdmin() || (isAuth() && resource.data.vendorId == request.auth.uid);
+      allow create: if isAdmin() || (isAuth() && request.resource.data.vendorId == request.auth.uid && isReasonableWrite());
+      // Vendors edit their own products; any authenticated user may only adjust the stock field
+      // (customer purchases). All other mutations require admin.
+      allow update: if isAdmin()
+        || (isAuth() && resource.data.vendorId == request.auth.uid && isReasonableWrite())
+        || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']));
+      allow delete: if isAdmin() || (isAuth() && resource.data.vendorId == request.auth.uid);
     }
 
     match /marketplace_stores/{docId} {
       allow read: if true; // Public store directory
-      allow create: if isAuth(); // Vendors can apply to enlist store
-      allow update, delete: if isAdmin() || (isAuth() && resource.data.vendorId == request.auth.uid);
+      // Vendors can create their own store (doc keyed by their uid via ownerId);
+      // admins enlist stores on behalf of partner accounts.
+      allow create: if isAuth() && request.resource.data.ownerId == request.auth.uid && isReasonableWrite()
+        || isAdmin();
+      allow update: if isAdmin()
+        || (isAuth() && (resource.data.ownerId == request.auth.uid || resource.data.id == request.auth.uid) && isReasonableWrite());
+      allow delete: if isAdmin() || (isAuth() && resource.data.ownerId == request.auth.uid);
     }
 
     match /marketplace_orders/{docId} {
       allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.vendorId == request.auth.uid);
-      allow create: if isAuth() && isReasonableWrite();
+      allow create: if isAuth() && isReasonableWrite() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
+    }
+
+    // Vendor payout requests: readable by the requester and admins, written by the requester only,
+    // mutation (approve/reject) belongs to admins.
+    match /vendor_payout_requests/{docId} {
+      allow read: if isAuth() && (request.auth.uid == resource.data.vendorId || isAdmin());
+      allow create: if isAuth() && isReasonableWrite() && request.resource.data.vendorId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
   }
 }
-

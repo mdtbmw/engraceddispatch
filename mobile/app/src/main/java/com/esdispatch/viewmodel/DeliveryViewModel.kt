@@ -1,4 +1,4 @@
-﻿package com.esdispatch.viewmodel
+package com.esdispatch.viewmodel
 
 
 import android.content.Context
@@ -815,6 +815,7 @@ class DeliveryViewModel : WalletViewModel() {
             riderName = rider.name,
             riderPhone = rider.phone,
             riderBikeNumber = "ESD-" + rider.id.takeLast(4),
+            requireOnline = false,
             onComplete = { success, error ->
                 if (success) {
                     showCustomToast("Successfully assigned ${rider.name} to Parcel #$parcelId! ðŸ“¦ðŸš€")
@@ -898,6 +899,40 @@ class DeliveryViewModel : WalletViewModel() {
                     parcelId = parcelId
                 )
             }
+        }
+    }
+
+    /** Upload a proof-of-delivery (photo/signature) to Storage, stamp the delivery doc, then pay the rider. */
+    fun uploadPodAndCompleteParcel(parcelId: String, podBytes: ByteArray, podType: String) {
+        try {
+            val ref = com.google.firebase.storage.FirebaseStorage.getInstance()
+                .reference.child("pod/$parcelId/$podType-${System.currentTimeMillis()}.jpg")
+            ref.putBytes(podBytes)
+                .addOnSuccessListener {
+                    ref.downloadUrl.addOnSuccessListener { url ->
+                        com.esdispatch.data.FirebaseManager.firestore?.collection("deliveries")?.document(parcelId)
+                            ?.update(
+                                mapOf(
+                                    "podUrl" to url.toString(),
+                                    "podType" to podType,
+                                    "podTimestamp" to com.google.firebase.Timestamp.now()
+                                )
+                            )
+                            ?.addOnFailureListener { e ->
+                                android.util.Log.e("POD", "Failed to stamp podUrl on delivery: ${e.message}")
+                            }
+                        markParcelDelivered(parcelId)
+                    }.addOnFailureListener {
+                        markParcelDelivered(parcelId)
+                    }
+                }
+                .addOnFailureListener { e ->
+                    android.util.Log.e("DeliveryViewModel", "POD upload failed: ${e.message}")
+                    markParcelDelivered(parcelId)
+                }
+        } catch (e: Exception) {
+            android.util.Log.e("POD", "POD upload error: ${e.message}")
+            markParcelDelivered(parcelId)
         }
     }
 
@@ -3211,6 +3246,8 @@ class DeliveryViewModel : WalletViewModel() {
                                         ParcelStatus.PENDING -> "Pending Dispatch"
                                         ParcelStatus.ASSIGNED -> "Courier Assigned"
                                         ParcelStatus.TRANSIT -> "In Transit"
+                                        ParcelStatus.PICKED_UP -> "Picked Up"
+                                        ParcelStatus.ARRIVED -> "Arrived"
                                         ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
                                         ParcelStatus.DELIVERED -> "Delivered"
                                         ParcelStatus.CANCELLED -> "Cancelled"
@@ -3702,114 +3739,133 @@ class DeliveryViewModel : WalletViewModel() {
         _parcelDraft.update { it.copy(selectedService = serviceType, price = basePrice) }
     }
 
-    fun confirmBooking() {
+    fun confirmBooking(onComplete: ((Boolean, String) -> Unit)? = null) {
         val draft = _parcelDraft.value
-        val cost = draft.price
-        
+        val rawCost = draft.price
+        if (rawCost <= 0) {
+            onComplete?.invoke(false, "Invalid booking price")
+            return
+        }
+        val cost = applyPromoDiscount(rawCost)
         val uid = _firebaseUserId.value
-        if (uid != null && cost > 0) {
-            com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, -cost) { success, newBalance ->
-                if (success) {
-                    _walletBalance.value = newBalance
-                    savePref("wallet_balance", newBalance)
+
+        fun createBooking() {
+            // Create new Parcel record
+            val newParcel = Parcel(
+                id = "PC-${System.currentTimeMillis().toString().substring(8)}",
+                itemName = if (draft.selectedService == "Express") "Express Parcel" else "New Parcel (${draft.selectedService})",
+                imageUrl = "https://images.unsplash.com/photo-1589409514187-c21d14bf0d13?w=100&h=100&fit=crop",
+                status = ParcelStatus.PENDING,
+                pickupAddress = draft.pickupAddress.ifBlank { "Unspecified Pickup" },
+                deliveryAddress = draft.deliveryAddress.ifBlank { "Unspecified Delivery" },
+                senderName = draft.senderName.ifBlank { _userName.value.ifBlank { "Engraced Member" } },
+                senderPhone = draft.senderPhone.ifBlank { _userPhone.value },
+                receiverName = draft.receiverName.ifBlank { "Recipient" },
+                receiverPhone = draft.receiverPhone.ifBlank { "" },
+                quantity = draft.quantity,
+                weight = draft.weight,
+                length = draft.length,
+                width = draft.width,
+                height = draft.height,
+                price = cost,
+                progress = 0.0f,
+                userId = _firebaseUserId.value ?: "",
+                additionalStops = draft.stops.filter { it.isNotBlank() }.joinToString("|"),
+                otpCode = (1000..9999).random().toString()
+            )
+
+            _parcels.value = listOf(newParcel) + _parcels.value
+            _selectedParcel.value = newParcel
+
+            // Add to Notifications
+            val bookTitle = "Booking Confirmed! ðŸŽ‰ðŸ“¦"
+            val bookMsg = "Your parcel shipment '${newParcel.itemName}' (#${newParcel.id}) has been booked via ${draft.selectedService} service! Paid â‚¦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier! ðŸš€âš¡"
+            val notif = NotificationItem(
+                id = "NT-${System.currentTimeMillis().toString().substring(8)}",
+                title = bookTitle,
+                message = bookMsg,
+                time = "Just now",
+                parcelId = newParcel.id
+            )
+            _notifications.value = listOf(notif) + _notifications.value
+
+            val newTx = Transaction(
+                id = "TX-${System.currentTimeMillis().toString().substring(8)}",
+                title = "Parcel Delivery (${draft.selectedService})",
+                date = "Today",
+                amount = -cost,
+                isTopUp = false,
+                type = "DEBIT",
+                reference = newParcel.id,
+                userId = _firebaseUserId.value ?: ""
+            )
+            _transactions.value = listOf(newTx) + _transactions.value
+
+            // Show actual Android status bar notification
+            appContext?.let { ctx ->
+                try {
+                    com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                        context = ctx,
+                        title = bookTitle,
+                        message = bookMsg,
+                        parcelId = newParcel.id
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.e("BookingNotif", "Error showing booking notification: ${e.message}")
+                }
+            }
+
+            // Reset draft & promo
+            _parcelDraft.value = ParcelDraft()
+            _activePromo = ActivePromo()
+
+            // Write directly to Room SQLite Database for offline-first resilience!
+            savePref("wallet_balance", _walletBalance.value)
+            viewModelScope.launch {
+                repository?.saveParcel(newParcel)
+                repository?.saveTransaction(newTx)
+                repository?.saveNotification(notif)
+                syncParcel(newParcel)
+                val fUid = _firebaseUserId.value
+                if (fUid != null) {
                     com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
-                        userId = uid,
+                        userId = fUid,
                         amount = -cost,
                         title = "Parcel Delivery (${draft.selectedService})",
                         isTopUp = false,
-                        reference = "BOOKING-${System.currentTimeMillis()}"
+                        reference = newParcel.id
                     ) {}
+                    com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(fUid, _loyaltyPoints.value, _deliveryCount.value)
                 }
             }
+        }
+
+        if (uid != null) {
+            if (_walletBalance.value < cost) {
+                onComplete?.invoke(false, "Insufficient wallet balance (â‚¦${String.format("%,.0f", cost)} needed).")
+                return
+            }
+            // Atomic debit; only when the server confirms do we create the booking.
+            com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, -cost) { success, newBalance ->
+                if (!success) {
+                    onComplete?.invoke(false, "Wallet debit failed — booking was NOT created. Please retry.")
+                    return@updateUserWalletBalance
+                }
+                _walletBalance.value = newBalance
+                savePref("wallet_balance", newBalance)
+                createBooking()
+                onComplete?.invoke(true, "Booking confirmed")
+            }
         } else {
-            // Local fallback
-            if (_walletBalance.value >= cost) {
-                _walletBalance.value -= cost
-                savePref("wallet_balance", _walletBalance.value)
+            // Unauthenticated / guest fallback: local-only booking (no wallet debit)
+            if (_walletBalance.value < cost) {
+                onComplete?.invoke(false, "Insufficient wallet balance.")
+                return
             }
-        }
-
-        // Create new Parcel record
-        val newParcel = Parcel(
-            id = "PC-${System.currentTimeMillis().toString().substring(8)}",
-            itemName = if (draft.selectedService == "Express") "Express Parcel" else "New Parcel (${draft.selectedService})",
-            imageUrl = "https://images.unsplash.com/photo-1589409514187-c21d14bf0d13?w=100&h=100&fit=crop",
-            status = ParcelStatus.PENDING,
-            pickupAddress = draft.pickupAddress.ifBlank { "Unspecified Pickup" },
-            deliveryAddress = draft.deliveryAddress.ifBlank { "Unspecified Delivery" },
-            senderName = draft.senderName.ifBlank { _userName.value.ifBlank { "Engraced Member" } },
-            senderPhone = draft.senderPhone.ifBlank { "+234 812 345 6789" },
-            receiverName = draft.receiverName.ifBlank { "Recipient" },
-            receiverPhone = draft.receiverPhone.ifBlank { "+234 815 999 0000" },
-            quantity = draft.quantity,
-            weight = draft.weight,
-            length = draft.length,
-            width = draft.width,
-            height = draft.height,
-            price = cost,
-            progress = 0.0f,
-            userId = _firebaseUserId.value ?: "",
-            additionalStops = draft.stops.filter { it.isNotBlank() }.joinToString("|"),
-            otpCode = (1000..9999).random().toString()
-        )
-
-        _parcels.value = listOf(newParcel) + _parcels.value
-        _selectedParcel.value = newParcel
-
-        // Add to Notifications
-        val bookTitle = "Booking Confirmed! ðŸŽ‰ðŸ“¦"
-        val bookMsg = "Your parcel shipment '${newParcel.itemName}' (#${newParcel.id}) has been successfully booked via ${draft.selectedService} service! Paid â‚¦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier! ðŸš€âš¡"
-        val notif = NotificationItem(
-            id = "NT-${System.currentTimeMillis().toString().substring(8)}",
-            title = bookTitle,
-            message = bookMsg,
-            time = "Just now",
-            parcelId = newParcel.id
-        )
-        _notifications.value = listOf(notif) + _notifications.value
-
-        val newTx = Transaction(
-            id = "TX-${System.currentTimeMillis().toString().substring(8)}",
-            title = "Parcel Delivery (${draft.selectedService})",
-            date = "Today",
-            amount = -cost,
-            isTopUp = false,
-            type = "DEBIT",
-            reference = newParcel.id,
-            userId = _firebaseUserId.value ?: ""
-        )
-        _transactions.value = listOf(newTx) + _transactions.value
-
-        // Show actual Android status bar notification
-        appContext?.let { ctx ->
-            try {
-                com.esdispatch.data.MyFirebaseMessagingService.showNotification(
-                    context = ctx,
-                    title = bookTitle,
-                    message = bookMsg,
-                    parcelId = newParcel.id
-                )
-            } catch (e: Exception) {
-                android.util.Log.e("BookingNotif", "Error showing booking notification: ${e.message}")
-            }
-        }
-
-        // Reset draft
-        _parcelDraft.value = ParcelDraft()
-
-        // Write directly to Room SQLite Database for offline-first resilience!
-        savePref("wallet_balance", _walletBalance.value)
-        viewModelScope.launch {
-            repository?.saveParcel(newParcel)
-            repository?.saveTransaction(newTx)
-            repository?.saveNotification(notif)
-            syncParcel(newParcel)
-            val uid = _firebaseUserId.value
-            if (uid != null) {
-                com.esdispatch.data.FirebaseManager.syncWalletBalanceToFirestore(uid, _walletBalance.value)
-                com.esdispatch.data.FirebaseManager.syncTransactionToFirestore(newTx, uid)
-                com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(uid, _loyaltyPoints.value, _deliveryCount.value)
-            }
+            _walletBalance.value -= cost
+            savePref("wallet_balance", _walletBalance.value)
+            createBooking()
+            onComplete?.invoke(true, "Booking confirmed (offline)")
         }
     }
 
@@ -4859,9 +4915,18 @@ class DeliveryViewModel : WalletViewModel() {
                     val vendorId = doc.getString("vendorId") ?: ""
                     MarketplaceItem(id, title, category, price, rating, 15, imageUrl, description, stock, vendorStore, vendorId)
                 }
-                _marketplaceProducts.value = items
+                _rawMarketplaceProducts = items
+                _marketplaceProducts.value = items.filter { it.vendorId !in _demoStoreIds }
                 if (_storeDocs.isNotEmpty()) rebuildStoreList()
             }
+    }
+
+    // Raw (unfiltered) product catalog + ids of demo stores (demo products must not surface)
+    private var _rawMarketplaceProducts: List<MarketplaceItem> = emptyList()
+    private val _demoStoreIds = mutableSetOf<String>()
+
+    private fun republishMarketplaceProducts() {
+        _marketplaceProducts.value = _rawMarketplaceProducts.filter { it.vendorId !in _demoStoreIds }
     }
 
     // --- Marketplace Vendor Stores (public browsing) ---
@@ -4923,6 +4988,9 @@ class DeliveryViewModel : WalletViewModel() {
                     val data = doc.data ?: return@mapNotNull null
                     doc.id to data
                 }
+                _demoStoreIds.clear()
+                _demoStoreIds.addAll(_storeDocs.filter { it.second["isDemo"] == true }.map { it.first })
+                republishMarketplaceProducts()
                 rebuildStoreList()
             }
     }
@@ -5132,214 +5200,318 @@ class DeliveryViewModel : WalletViewModel() {
             onComplete(false, "Your cart is empty!")
             return
         }
+        val firestore = com.esdispatch.data.FirebaseManager.firestore ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        val userId = _firebaseUserId.value ?: "guest_user"
         val subtotal = currentCart.sumOf { it.item.price * it.quantity }
         val deliveryFee = 1500.0
         val pointsDiscount = com.esdispatch.utils.LoyaltyRewards.pointsDiscount(_loyaltyPoints.value, redeemPoints)
         val grandTotal = (subtotal + deliveryFee - pointsDiscount).coerceAtLeast(0.0)
-
-        val firestore = com.esdispatch.data.FirebaseManager.firestore ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
-        val userId = _firebaseUserId.value ?: "guest_user"
-
-        if (paymentMethod == "Wallet") {
-            val currentWallet = _walletBalance.value
-            if (currentWallet < grandTotal) {
-                val short = grandTotal - currentWallet
-                onComplete(false, "Insufficient wallet balance. You need â‚¦${String.format("%,.2f", short)} more to complete this purchase.")
-                return
-            }
-
-            // Real Firestore Wallet Balance Deduction
-            _walletBalance.value = currentWallet - grandTotal
-            if (userId.isNotBlank() && userId != "guest_user") {
-                firestore.collection("users").document(userId)
-                    .update("walletBalance", com.google.firebase.firestore.FieldValue.increment(-grandTotal))
-                    .addOnFailureListener { e -> android.util.Log.e("DeliveryViewModel", "Failed to update Firestore wallet balance: ${e.message}") }
-            }
-
-            // Real Firestore Wallet Transaction Record
-            val txRef = "MKT-" + System.currentTimeMillis().toString().takeLast(8)
-            val txData = hashMapOf(
-                "id" to "TX-$txRef",
-                "userId" to userId,
-                "title" to "Marketplace Order (${currentCart.size} items)",
-                "amount" to -grandTotal,
-                "type" to "DEBIT",
-                "isTopUp" to false,
-                "reference" to txRef,
-                "date" to "Today",
-                "createdAt" to com.google.firebase.Timestamp.now()
-            )
-            firestore.collection("wallet_transactions").add(txData)
-
-            val newTx = Transaction(
-                id = "TX-$txRef",
-                title = "Marketplace Order (${currentCart.size} items)",
-                date = "Today",
-                amount = -grandTotal,
-                isTopUp = false,
-                type = "DEBIT",
-                reference = txRef,
-                userId = userId
-            )
-            val currentTxList = _transactions.value.toMutableList()
-            currentTxList.add(0, newTx)
-            _transactions.value = currentTxList
-        }
-
-        // Redeem loyalty points for the checkout discount
-        if (redeemPoints && pointsDiscount > 0 && _loyaltyPoints.value >= com.esdispatch.utils.LoyaltyRewards.DISCOUNT_THRESHOLD_POINTS) {
-            val remaining = _loyaltyPoints.value - com.esdispatch.utils.LoyaltyRewards.DISCOUNT_POINTS_COST
-            _loyaltyPoints.value = remaining.coerceAtLeast(0)
-            savePref("loyalty_points", remaining.coerceAtLeast(0))
-            val uid = _firebaseUserId.value
-            if (uid != null) {
-                viewModelScope.launch {
-                    com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(uid, remaining.coerceAtLeast(0), _deliveryCount.value)
-                }
-            }
-        }
-
-        // Create Real Firestore Marketplace Order with per-Store Commission Split
         val orderRef = "ORD-MKT-" + System.currentTimeMillis().toString().takeLast(6)
-        val primaryVendorId = currentCart.firstOrNull()?.item?.vendorId ?: ""
-        val primaryVendorStore = currentCart.firstOrNull()?.item?.vendorStore ?: "ESDispatch Fleet Supplies"
+        val isWalletPayment = paymentMethod == "Wallet"
+        var effectiveSubtotal = subtotal
+        var effectiveGrandTotal = grandTotal
+        val splits = mutableListOf<VendorSplitRecord>()
 
-        val orderItemsData = currentCart.map { c ->
-            hashMapOf(
-                "productId" to c.item.id,
-                "title" to c.item.title,
-                "category" to c.item.category,
-                "price" to c.item.price,
-                "quantity" to c.quantity,
-                "vendorStore" to c.item.vendorStore,
-                "vendorId" to c.item.vendorId
-            )
+        if (isWalletPayment && userId == "guest_user") {
+            onComplete(false, "Please sign in to pay with your wallet.")
+            return
         }
 
-        fun placeOrder(commissionRate: Double) {
-            val commissionAmount = subtotal * (commissionRate / 100.0)
-            val netVendorPayout = subtotal - commissionAmount
-
-            val orderDoc = hashMapOf(
-                "orderId" to orderRef,
-                "userId" to userId,
-                "userName" to (_userName.value.ifEmpty { "Valued Customer" }),
-                "userPhone" to (_userPhone.value.ifEmpty { "08000000000" }),
-                "items" to orderItemsData,
-                "subtotal" to subtotal,
-                "deliveryFee" to deliveryFee,
-                "totalAmount" to grandTotal,
-                "pointsDiscount" to pointsDiscount,
-                "pointsRedeemed" to (redeemPoints && pointsDiscount > 0),
-                "commissionRate" to commissionRate,
-                "commissionAmount" to commissionAmount,
-                "vendorPayout" to netVendorPayout,
-                "vendorStore" to primaryVendorStore,
-                "vendorId" to primaryVendorId,
-                "paymentMethod" to paymentMethod,
-                "shippingAddress" to address,
-                "status" to "PAID",
-                "createdAt" to com.google.firebase.Timestamp.now()
-            )
-
-            firestore.collection("marketplace_orders").add(orderDoc)
-                .addOnSuccessListener {
-                    // Credit the vendor store by owner uid (reliable, no name collisions)
-                    if (primaryVendorId.isNotBlank()) {
-                        firestore.collection("marketplace_stores").document(primaryVendorId)
-                            .update(
-                                mapOf(
-                                    "vendorWallet" to com.google.firebase.firestore.FieldValue.increment(netVendorPayout),
-                                    "totalSales" to com.google.firebase.firestore.FieldValue.increment(1),
-                                    "totalCommissionPaid" to com.google.firebase.firestore.FieldValue.increment(commissionAmount),
-                                    "updatedAt" to com.google.firebase.Timestamp.now()
-                                )
+        viewModelScope.launch {
+            val error = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    // 1) Fresh stock + price verification straight from the live product docs
+                    val freshProducts = mutableMapOf<String, com.google.firebase.firestore.DocumentSnapshot>()
+                    for (c in currentCart) {
+                        if (c.item.id !in freshProducts) {
+                            freshProducts[c.item.id] = com.google.android.gms.tasks.Tasks.await(
+                                firestore.collection("marketplace_products").document(c.item.id).get()
                             )
-                        // Real Firestore + push notification to the vendor about the new paid order
-                        com.esdispatch.data.FirebaseManager.sendNotificationToUser(
-                            primaryVendorId,
-                            "New Marketplace Order! ðŸ“¦",
-                            "You have a new paid order #$orderRef. Prepare and dispatch it now to keep earning!"
+                        }
+                    }
+                    for (c in currentCart) {
+                        val snap = freshProducts[c.item.id]
+                            ?: return@withContext "One of your items is no longer available. Please refresh your cart."
+                        if (!snap.exists()) {
+                            return@withContext "${c.item.title} is no longer available. Please remove it from your cart."
+                        }
+                        val remaining = snap.getLong("stock") ?: Long.MAX_VALUE
+                        if (remaining < c.quantity) {
+                            return@withContext "Only $remaining left in stock for ${c.item.title}. Please reduce the quantity."
+                        }
+                    }
+                    effectiveSubtotal = currentCart.sumOf { c ->
+                        (freshProducts[c.item.id]?.getDouble("price") ?: c.item.price) * c.quantity
+                    }
+                    effectiveGrandTotal = (effectiveSubtotal + deliveryFee - pointsDiscount).coerceAtLeast(0.0)
+
+                    // 2) Per-vendor commission split resolved from live store docs
+                    for ((key, items) in currentCart.groupBy { c -> c.item.vendorId.ifBlank { c.item.vendorStore } }) {
+                        val first = items.first().item
+                        val vendorId = first.vendorId
+                        var storeId = ""
+                        var rate = 8.5
+                        if (vendorId.isNotBlank()) {
+                            val storeSnap = com.google.android.gms.tasks.Tasks.await(
+                                firestore.collection("marketplace_stores").document(vendorId).get()
+                            )
+                            if (storeSnap.exists()) {
+                                storeId = storeSnap.id
+                                rate = storeSnap.getDouble("commissionRate") ?: 8.5
+                            }
+                        } else {
+                            val legacyQuery = com.google.android.gms.tasks.Tasks.await(
+                                firestore.collection("marketplace_stores").whereEqualTo("storeName", key).limit(1).get()
+                            )
+                            if (!legacyQuery.isEmpty) {
+                                storeId = legacyQuery.documents[0].id
+                                rate = legacyQuery.documents[0].getDouble("commissionRate") ?: 8.5
+                            }
+                        }
+                        val vendorSubtotal = items.sumOf { c ->
+                            (freshProducts[c.item.id]?.getDouble("price") ?: c.item.price) * c.quantity
+                        }
+                        val commissionAmount = vendorSubtotal * (rate / 100.0)
+                        splits.add(
+                            VendorSplitRecord(
+                                storeId = storeId,
+                                storeName = first.vendorStore,
+                                subtotal = vendorSubtotal,
+                                commissionRate = rate,
+                                commissionAmount = commissionAmount,
+                                vendorPayout = vendorSubtotal - commissionAmount
+                            )
                         )
-                    } else {
-                        // Fallback for legacy seeded products without a vendorId
-                        firestore.collection("marketplace_stores")
-                            .whereEqualTo("storeName", primaryVendorStore)
-                            .get()
-                            .addOnSuccessListener { query ->
-                                if (!query.isEmpty) {
-                                    for (storeDoc in query.documents) {
-                                        storeDoc.reference.update(
-                                            mapOf(
-                                                "vendorWallet" to com.google.firebase.firestore.FieldValue.increment(netVendorPayout),
-                                                "totalSales" to com.google.firebase.firestore.FieldValue.increment(1),
-                                                "totalCommissionPaid" to com.google.firebase.firestore.FieldValue.increment(commissionAmount),
-                                                "updatedAt" to com.google.firebase.Timestamp.now()
-                                            )
+                    }
+
+                    // 3) Wallet eligibility gate before any write
+                    if (isWalletPayment) {
+                        val walletSnap = com.google.android.gms.tasks.Tasks.await(
+                            firestore.collection("users").document(userId).get()
+                        )
+                        val balance = walletSnap.getDouble("walletBalance") ?: _walletBalance.value
+                        if (balance < effectiveGrandTotal) {
+                            val short = effectiveGrandTotal - balance
+                            return@withContext "Insufficient wallet balance. You need NGN ${String.format("%,.2f", short)} more to complete this purchase."
+                        }
+                    }
+
+                    // 4) Atomic commit: stock, wallet debit, vendor credits, order, dispatch record, ledger
+                    com.google.android.gms.tasks.Tasks.await(
+                        firestore.runTransaction { txn ->
+                            currentCart.forEach { c ->
+                                val productRef = firestore.collection("marketplace_products").document(c.item.id)
+                                val snap = try {
+                                    txn.get(productRef)
+                                } catch (e: Exception) {
+                                    throw com.google.firebase.firestore.FirebaseFirestoreException(
+                                        "${c.item.title} is no longer available.",
+                                        com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
+                                    )
+                                }
+                                val remaining = snap.getLong("stock") ?: 0L
+                                if (remaining < c.quantity) {
+                                    throw com.google.firebase.firestore.FirebaseFirestoreException(
+                                        "Insufficient stock for ${c.item.title}. Please refresh your cart.",
+                                        com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
+                                    )
+                                }
+                                txn.update(productRef, "stock", com.google.firebase.firestore.FieldValue.increment(-c.quantity.toLong()))
+                            }
+                            if (isWalletPayment) {
+                                val userRef = firestore.collection("users").document(userId)
+                                val userSnap = try {
+                                    txn.get(userRef)
+                                } catch (e: Exception) {
+                                    throw com.google.firebase.firestore.FirebaseFirestoreException(
+                                        "Wallet verification failed. Please try again.",
+                                        com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
+                                    )
+                                }
+                                val balance = userSnap.getDouble("walletBalance") ?: 0.0
+                                if (balance < effectiveGrandTotal) {
+                                    throw com.google.firebase.firestore.FirebaseFirestoreException(
+                                        "Insufficient wallet balance.",
+                                        com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
+                                    )
+                                }
+                                txn.update(userRef, "walletBalance", com.google.firebase.firestore.FieldValue.increment(-effectiveGrandTotal))
+                            }
+                            for (split in splits) {
+                                if (split.storeId.isBlank() || split.vendorPayout <= 0) continue
+                                val storeRef = firestore.collection("marketplace_stores").document(split.storeId)
+                                val storeSnap = try { txn.get(storeRef) } catch (e: Exception) { null }
+                                if (storeSnap != null && storeSnap.exists()) {
+                                    txn.update(
+                                        storeRef,
+                                        mapOf(
+                                            "vendorWallet" to com.google.firebase.firestore.FieldValue.increment(split.vendorPayout),
+                                            "totalSales" to com.google.firebase.firestore.FieldValue.increment(1),
+                                            "totalCommissionPaid" to com.google.firebase.firestore.FieldValue.increment(split.commissionAmount),
+                                            "updatedAt" to com.google.firebase.Timestamp.now()
                                         )
-                                    }
+                                    )
                                 }
                             }
+                            txn.set(
+                                firestore.collection("marketplace_orders").document(orderRef),
+                                mapOf<String, Any>(
+                                    "orderId" to orderRef,
+                                    "userId" to userId,
+                                    "userName" to (_userName.value.ifEmpty { "Valued Customer" }),
+                                    "userPhone" to (_userPhone.value.ifEmpty { "08000000000" }),
+                                    "shippingAddress" to address,
+                                    "paymentMethod" to paymentMethod,
+                                    "status" to "PAID",
+                                    "subtotal" to effectiveSubtotal,
+                                    "deliveryFee" to deliveryFee,
+                                    "pointsDiscount" to pointsDiscount,
+                                    "pointsRedeemed" to (redeemPoints && pointsDiscount > 0),
+                                    "totalAmount" to effectiveGrandTotal,
+                                    "commissionRate" to (splits.firstOrNull()?.commissionRate ?: 8.5),
+                                    "commissionAmount" to splits.sumOf { it.commissionAmount },
+                                    "vendorPayout" to splits.sumOf { it.vendorPayout },
+                                    "vendorSplits" to splits.map { s ->
+                                        mapOf<String, Any>(
+                                            "storeId" to s.storeId,
+                                            "storeName" to s.storeName,
+                                            "subtotal" to s.subtotal,
+                                            "commissionRate" to s.commissionRate,
+                                            "commissionAmount" to s.commissionAmount,
+                                            "vendorPayout" to s.vendorPayout
+                                        )
+                                    },
+                                    "items" to currentCart.map { c ->
+                                        mapOf<String, Any>(
+                                            "productId" to c.item.id,
+                                            "title" to c.item.title,
+                                            "category" to c.item.category,
+                                            "price" to (freshProducts[c.item.id]?.getDouble("price") ?: c.item.price),
+                                            "quantity" to c.quantity,
+                                            "vendorStore" to c.item.vendorStore,
+                                            "vendorId" to c.item.vendorId
+                                        )
+                                    },
+                                    "createdAt" to com.google.firebase.Timestamp.now()
+                                )
+                            )
+                            val fulfilmentStore = splits.firstOrNull()?.storeName ?: "ESDispatch Fleet Supplies"
+                            val dispatchDoc = mapOf<String, Any>(
+                                "id" to orderRef,
+                                "itemName" to currentCart.joinToString { c -> c.item.title },
+                                "imageUrl" to currentCart.first().item.imageUrl,
+                                "status" to "PENDING",
+                                "pickupAddress" to "$fulfilmentStore - Vendor Fulfilment Point",
+                                "deliveryAddress" to address,
+                                "senderName" to fulfilmentStore,
+                                "senderPhone" to "08000000000",
+                                "receiverName" to (_userName.value.ifEmpty { "Valued Customer" }),
+                                "receiverPhone" to (_userPhone.value.ifEmpty { "08000000000" }),
+                                "quantity" to currentCart.sumOf { c -> c.quantity },
+                                "weight" to 2.5,
+                                "price" to effectiveGrandTotal,
+                                "deliveryFee" to deliveryFee,
+                                "type" to "MARKETPLACE",
+                                "progress" to 0.0f,
+                                "userId" to userId,
+                                "riderId" to "",
+                                "courierName" to "",
+                                "courierPhone" to "",
+                                "otpCode" to "",
+                                "otpVerified" to false,
+                                "isRated" to false,
+                                "tipAmount" to 0.0,
+                                "createdAt" to com.google.firebase.Timestamp.now(),
+                                "lastUpdated" to System.currentTimeMillis()
+                            )
+                            txn.set(firestore.collection("deliveries").document(orderRef), dispatchDoc)
+                            if (userId != "guest_user") {
+                                txn.set(
+                                    firestore.collection("users").document(userId).collection("deliveries").document(orderRef),
+                                    dispatchDoc
+                                )
+                            }
+                            if (isWalletPayment) {
+                                val txRef = "MKT-" + System.currentTimeMillis().toString().takeLast(8)
+                                txn.set(
+                                    firestore.collection("users").document(userId).collection("transactions").document(orderRef),
+                                    mapOf<String, Any>(
+                                        "id" to txRef,
+                                        "userId" to userId,
+                                        "title" to "Marketplace Order (${currentCart.size} items)",
+                                        "amount" to effectiveGrandTotal,
+                                        "isTopUp" to false,
+                                        "type" to "DEBIT",
+                                        "status" to "SUCCESS",
+                                        "reference" to txRef,
+                                        "date" to "Today",
+                                        "timestamp" to System.currentTimeMillis(),
+                                        "createdAt" to com.google.firebase.Timestamp.now()
+                                    )
+                                )
+                            }
+                            null
+                        }
+                    )
+                    null
+                } catch (e: Exception) {
+                    e.message ?: "Checkout failed. Please try again."
+                }
+            }
+
+            if (error != null) {
+                onComplete(false, error)
+                return@launch
+            }
+
+            if (isWalletPayment) {
+                _walletBalance.value = (_walletBalance.value - effectiveGrandTotal).coerceAtLeast(0.0)
+                val newTx = Transaction(
+                    id = "TX-" + System.currentTimeMillis().toString().takeLast(8),
+                    title = "Marketplace Order (${currentCart.size} items)",
+                    date = "Today",
+                    amount = -effectiveGrandTotal,
+                    isTopUp = false,
+                    type = "DEBIT",
+                    reference = "MKT-" + System.currentTimeMillis().toString().takeLast(8),
+                    userId = userId
+                )
+                val currentTxList = _transactions.value.toMutableList()
+                currentTxList.add(0, newTx)
+                _transactions.value = currentTxList
+            }
+            if (redeemPoints && pointsDiscount > 0 && _loyaltyPoints.value >= com.esdispatch.utils.LoyaltyRewards.DISCOUNT_THRESHOLD_POINTS) {
+                val remaining = (_loyaltyPoints.value - com.esdispatch.utils.LoyaltyRewards.DISCOUNT_POINTS_COST).coerceAtLeast(0)
+                _loyaltyPoints.value = remaining
+                savePref("loyalty_points", remaining)
+                val uid = _firebaseUserId.value
+                if (uid != null) {
+                    viewModelScope.launch {
+                        com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(uid, remaining, _deliveryCount.value)
                     }
-
-                    // Decrement Product Inventory in Firestore
-                    currentCart.forEach { c ->
-                        firestore.collection("marketplace_products").document(c.item.id)
-                            .update("stock", com.google.firebase.firestore.FieldValue.increment(-c.quantity.toLong()))
-                    }
-
-                    // Create matching Dispatch Parcel record for live map tracking
-                    val parcelDoc = hashMapOf(
-                        "id" to orderRef,
-                        "trackingNumber" to orderRef,
-                        "senderName" to primaryVendorStore,
-                        "senderPhone" to "08000000000",
-                        "recipientName" to (_userName.value.ifEmpty { "Valued Customer" }),
-                        "recipientPhone" to (_userPhone.value.ifEmpty { "08000000000" }),
-                        "recipientAddress" to address,
-                        "pickupAddress" to "$primaryVendorStore Warehouse Depot",
-                        "packageType" to "Marketplace Cargo",
-                        "weightKg" to 2.5,
-                        "deliveryFee" to deliveryFee,
-                        "status" to "TRANSIT",
-                        "estimatedMinutes" to 35,
-                        "currentLat" to 6.5244,
-                        "currentLng" to 3.3792,
-                        "riderId" to "rider_1",
-                        "riderName" to "Tunde Bakare",
-                        "riderPhone" to "+2348031234567",
-                        "createdAt" to com.google.firebase.Timestamp.now()
-                    )
-                    firestore.collection("parcels").document(orderRef).set(parcelDoc)
-
-                    // Clear Local Cart
-                    _cartItems.value = emptyList()
-                    // Real buyer notification + celebration
-                    showInAppNotification(
-                        "Order Placed! ðŸ›ï¸",
-                        "Order #$orderRef confirmed. Track it live from your dashboard."
-                    )
-                    addNotification(
-                        "Order Placed! ðŸ›ï¸",
-                        "Order #$orderRef confirmed. Track it live from your dashboard.",
-                        orderRef
-                    )
-                    onComplete(true, "Order #$orderRef placed successfully! Tracking live at #$orderRef")
                 }
-                .addOnFailureListener { e ->
-                    onComplete(false, "Order placement failed: ${e.message}")
+            }
+            _cartItems.value = emptyList()
+            clearCart()
+            for (split in splits) {
+                if (split.storeId.isNotBlank()) {
+                    com.esdispatch.data.FirebaseManager.sendNotificationToUser(
+                        split.storeId,
+                        "New Marketplace Order!",
+                        "You have a new paid order #$orderRef. Prepare and dispatch it now to keep earning!"
+                    )
                 }
-        }
-
-        if (primaryVendorId.isNotBlank()) {
-            firestore.collection("marketplace_stores").document(primaryVendorId).get()
-                .addOnSuccessListener { storeDoc ->
-                    val rate = storeDoc.getDouble("commissionRate") ?: 8.5
-                    placeOrder(rate)
-                }
-                .addOnFailureListener { placeOrder(8.5) }
-        } else {
-            placeOrder(8.5)
+            }
+            showInAppNotification(
+                "Order Placed!",
+                "Order #$orderRef confirmed. Track it live from your dashboard."
+            )
+            addNotification(
+                "Order Placed!",
+                "Order #$orderRef confirmed. Track it live from your dashboard.",
+                orderRef
+            )
+            onComplete(true, "Order #$orderRef placed successfully! Tracking live at #$orderRef")
         }
     }
 
@@ -5352,7 +5524,7 @@ class DeliveryViewModel : WalletViewModel() {
     fun listenToVendorStore() {
         val uid = _firebaseUserId.value ?: return
         val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
-        val wasVerified = _isVendorVerified.value
+        var wasVerified = _isVendorVerified.value
         fs.collection("marketplace_stores").document(uid)
             .addSnapshotListener { snap, _ ->
                 if (snap == null || !snap.exists()) {
@@ -5364,8 +5536,8 @@ class DeliveryViewModel : WalletViewModel() {
                 val nowVerified = snap.getBoolean("isVerified") ?: false
                 _vendorStoreExists.value = true
                 _isVendorVerified.value = nowVerified
-                _vendorKycSubmitted.value = snap.getBoolean("kycStatus") != null &&
-                        (snap.getString("kycStatus") ?: "") != "none"
+                // kycStatus is a STRING ("none" | "submitted" | "approved" | "rejected")
+                _vendorKycSubmitted.value = (snap.getString("kycStatus") ?: "none") != "none"
                 _vendorStore.value = snap.data
                 // Celebration when a pending store finally goes LIVE (e.g. admin approves later)
                 if (nowVerified && !wasVerified && _vendorKycSubmitted.value) {
@@ -5380,6 +5552,7 @@ class DeliveryViewModel : WalletViewModel() {
                         ""
                     )
                 }
+                wasVerified = nowVerified
                 listenToVendorOrders()
             }
     }
@@ -5482,9 +5655,8 @@ class DeliveryViewModel : WalletViewModel() {
     fun listenToVendorOrders() {
         val uid = _firebaseUserId.value ?: return
         val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
-        val sName = (_vendorStore.value?.get("storeName") as? String) ?: return
         fs.collection("marketplace_orders")
-            .whereEqualTo("vendorStore", sName)
+            .whereEqualTo("vendorId", uid)
             .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
             .limit(50)
             .addSnapshotListener { snap, _ ->
@@ -5679,13 +5851,54 @@ class DeliveryViewModel : WalletViewModel() {
             })
     }
 
+    // Active promo state: set by applyPromoCode, applied at booking/checkout fees
+    private var _activePromo = ActivePromo()
+
     fun applyPromoCode(code: String, onComplete: (Boolean, String) -> Unit) {
-        // Implementation for promo code
-        if (code == "DISCOUNT10") {
-            onComplete(true, "Promo applied!") 
-        } else {
-            onComplete(false, "Invalid code")
-        }
+        val trimmed = code.trim().uppercase()
+        val fs = com.esdispatch.data.FirebaseManager.firestore
+            ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        // Real discount lookup from the promotions collection (admin-managed)
+        fs.collection("promotions")
+            .whereEqualTo("code", trimmed)
+            .get()
+            .addOnSuccessListener { snap ->
+                val promo = snap.documents.firstOrNull { it.getBoolean("active") != false }
+                if (promo == null) {
+                    _activePromo = ActivePromo()
+                    onComplete(false, "Invalid or inactive code")
+                    return@addOnSuccessListener
+                }
+                val discountType = promo.getString("discountType")
+                val value = promo.getDouble("discountValue") ?: promo.getLong("discountValue")?.toDouble() ?: 0.0
+                val minOrder = promo.getDouble("minOrderAmount") ?: 0.0
+                val maxDiscount = promo.getDouble("maxDiscount") ?: 0.0
+                _activePromo = ActivePromo(
+                    code = trimmed,
+                    discountType = discountType ?: "percent",
+                    discountValue = value,
+                    minOrderAmount = minOrder,
+                    maxDiscount = maxDiscount
+                )
+                onComplete(true, "Promo $trimmed applied!")
+            }
+            .addOnFailureListener { e ->
+                _activePromo = ActivePromo()
+                onComplete(false, e.message ?: "Failed to validate code")
+            }
+    }
+
+    fun clearActivePromo() {
+        _activePromo = ActivePromo()
+    }
+
+    /** Applies the active promo discount to [amount]; returns the discounted price. */
+    fun applyPromoDiscount(amount: Double): Double {
+        val p = _activePromo
+        if (p.code.isBlank() || amount <= 0) return amount
+        var discounted = if (p.discountType == "flat") amount - p.discountValue else amount * (1.0 - p.discountValue / 100.0)
+        if (p.maxDiscount > 0) discounted = maxOf(discounted, amount - p.maxDiscount)
+        return maxOf(0.0, discounted)
     }
 
     fun redeemReferralCode(code: String, onComplete: (Boolean, String) -> Unit) {
@@ -5705,15 +5918,22 @@ class DeliveryViewModel : WalletViewModel() {
         viewModelScope.launch {
             try {
                 val redemption = hashMapOf(
+                    "userId" to uid,
                     "redeemedBy" to uid,
                     "code" to trimmed,
                     "redeemedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
                     "rewardAmount" to 3000.0
                 )
+                // Credit only after the server records the redemption (rules: userId == auth.uid)
                 db.collection("referral_redemptions").add(redemption)
-                addLoyaltyPoints(300)
-                topUpWallet(3000.0)
-                onComplete(true, "ðŸŽ‰ Referral code redeemed! â‚¦3,000 credited to your wallet & 300 Pts added!")
+                    .addOnSuccessListener {
+                        addLoyaltyPoints(300)
+                        topUpWallet(3000.0)
+                        onComplete(true, "ðŸŽ‰ Referral code redeemed! â‚¦3,000 credited to your wallet & 300 Pts added!")
+                    }
+                    .addOnFailureListener { e ->
+                        onComplete(false, e.message ?: "Redemption failed — not credited.")
+                    }
             } catch (e: Exception) {
                 onComplete(false, e.message ?: "Failed to redeem code")
             }
@@ -5738,6 +5958,15 @@ data class ParcelDraft(
     val height: Int = 10,
     val selectedService: String = "Express",
     val price: Double = 0.0
+)
+
+/** Discount coupon state resolved from the admin-managed `promotions` collection. */
+data class ActivePromo(
+    val code: String = "",
+    val discountType: String = "percent",
+    val discountValue: Double = 0.0,
+    val minOrderAmount: Double = 0.0,
+    val maxDiscount: Double = 0.0
 )
 
 sealed class PendingQuote {
@@ -5824,4 +6053,14 @@ data class MarketplaceStore(
 data class CartItem(
     val item: MarketplaceItem,
     val quantity: Int
+)
+
+
+data class VendorSplitRecord(
+    val storeId: String,
+    val storeName: String,
+    val subtotal: Double,
+    val commissionRate: Double,
+    val commissionAmount: Double,
+    val vendorPayout: Double
 )

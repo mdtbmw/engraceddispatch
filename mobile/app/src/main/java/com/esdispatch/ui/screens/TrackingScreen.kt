@@ -351,6 +351,8 @@ fun ActiveTrackingScreen(
             ParcelStatus.PENDING -> "Pending Dispatch"
             ParcelStatus.ASSIGNED -> "Courier Assigned"
             ParcelStatus.TRANSIT -> "In Transit to destination"
+            ParcelStatus.PICKED_UP -> "Parcel picked up by courier"
+            ParcelStatus.ARRIVED -> "Courier has arrived!"
             ParcelStatus.OUT_FOR_DELIVERY -> "Out for delivery now!"
             ParcelStatus.DELIVERED -> "Delivered safely!"
             ParcelStatus.CANCELLED -> "Cancelled"
@@ -1504,30 +1506,36 @@ is ZodResult.Error -> {
                                                                  
                                                                  val parcelForId = viewModel.parcels.collectAsState().value.find { it.id.equals(searchId, ignoreCase = true) }
                                                                  if (parcelForId != null) {
-                                                                     val badgeText = when (parcelForId.status) {
-                                                                         ParcelStatus.PENDING -> "Pending"
-                                                                         ParcelStatus.ASSIGNED -> "Assigned"
-                                                                         ParcelStatus.TRANSIT -> "In Transit"
-                                                                         ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
-                                                                         ParcelStatus.DELIVERED -> "Delivered"
-                                                                         ParcelStatus.CANCELLED -> "Cancelled"
-                                                                     }
-                                                                     val badgeBgColor = when (parcelForId.status) {
-                                                                         ParcelStatus.PENDING -> Color(0x202196F3)
-                                                                         ParcelStatus.ASSIGNED -> Color(0x209C27B0)
-                                                                         ParcelStatus.DELIVERED -> Color(0x204CAF50)
-                                                                         ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
-                                                                         ParcelStatus.CANCELLED -> Color(0x20F44336)
-                                                                         ParcelStatus.TRANSIT -> if (isDark) Gold.copy(alpha = 0.15f) else Color(0x100E0E10)
-                                                                     }
-                                                                     val badgeTextColor = when (parcelForId.status) {
-                                                                         ParcelStatus.PENDING -> Color(0xFF2196F3)
-                                                                         ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
-                                                                         ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
-                                                                         ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
-                                                                         ParcelStatus.CANCELLED -> Color(0xFFF44336)
-                                                                         ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
-                                                                     }
+val badgeText = when (parcelForId.status) {
+                                                                     ParcelStatus.PENDING -> "Pending"
+                                                                     ParcelStatus.ASSIGNED -> "Assigned"
+                                                                     ParcelStatus.TRANSIT -> "In Transit"
+                                                                     ParcelStatus.PICKED_UP -> "Picked Up"
+                                                                     ParcelStatus.ARRIVED -> "Arrived"
+                                                                     ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
+                                                                     ParcelStatus.DELIVERED -> "Delivered"
+                                                                     ParcelStatus.CANCELLED -> "Cancelled"
+                                                                 }
+                                                                 val badgeBgColor = when (parcelForId.status) {
+                                                                     ParcelStatus.PENDING -> Color(0x202196F3)
+                                                                     ParcelStatus.ASSIGNED -> Color(0x209C27B0)
+                                                                     ParcelStatus.PICKED_UP -> Color(0x205E35B1)
+                                                                     ParcelStatus.ARRIVED -> Color(0x2000897B)
+                                                                     ParcelStatus.DELIVERED -> Color(0x204CAF50)
+                                                                     ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
+                                                                     ParcelStatus.CANCELLED -> Color(0x20F44336)
+                                                                     ParcelStatus.TRANSIT -> if (isDark) Gold.copy(alpha = 0.15f) else Color(0x100E0E10)
+                                                                 }
+                                                                 val badgeTextColor = when (parcelForId.status) {
+                                                                     ParcelStatus.PENDING -> Color(0xFF2196F3)
+                                                                     ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
+                                                                     ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
+                                                                     ParcelStatus.ARRIVED -> Color(0xFF00897B)
+                                                                     ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
+                                                                     ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
+                                                                     ParcelStatus.CANCELLED -> Color(0xFFF44336)
+                                                                     ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
+                                                                 }
                                                                      Surface(
                                                                          color = badgeBgColor,
                                                                          shape = RoundedCornerShape(6.dp),
@@ -2910,6 +2918,8 @@ fun DeliveryEstimationCard(
     val estimationText = when (status) {
         ParcelStatus.PENDING -> "Awaiting Assignment"
         ParcelStatus.ASSIGNED -> "Preparing for Pickup"
+        ParcelStatus.PICKED_UP -> "Parcel Picked Up"
+        ParcelStatus.ARRIVED -> "Arrived at Destination"
         ParcelStatus.DELIVERED -> "Delivered"
         ParcelStatus.OUT_FOR_DELIVERY -> "Today, July 7, 2026"
         ParcelStatus.CANCELLED -> "No Delivery (Cancelled)"
@@ -2925,6 +2935,8 @@ fun DeliveryEstimationCard(
     val windowText = when (status) {
         ParcelStatus.PENDING -> "Waiting for dispatcher to assign a courier"
         ParcelStatus.ASSIGNED -> "Courier has been dispatched to pickup location"
+        ParcelStatus.PICKED_UP -> "Courier has picked up the parcel"
+        ParcelStatus.ARRIVED -> "Courier is at the delivery location"
         ParcelStatus.DELIVERED -> "Delivered at 1:15 PM"
         ParcelStatus.OUT_FOR_DELIVERY -> "Expected between 2:00 PM - 6:00 PM"
         ParcelStatus.CANCELLED -> "Shipment was cancelled by sender"
@@ -2940,6 +2952,8 @@ fun DeliveryEstimationCard(
     val confidenceScore = when (status) {
         ParcelStatus.PENDING -> "N/A"
         ParcelStatus.ASSIGNED -> "96.5% Precision"
+        ParcelStatus.PICKED_UP -> "97.8% Precision"
+        ParcelStatus.ARRIVED -> "99.5% On-Time"
         ParcelStatus.DELIVERED -> "100% Verified"
         ParcelStatus.OUT_FOR_DELIVERY -> "99.2% Accurate"
         ParcelStatus.CANCELLED -> "N/A"
@@ -3033,6 +3047,8 @@ fun AnimatedStatusBadge(
     val targetBgColor = when (status) {
         ParcelStatus.PENDING -> Color(0x202196F3)
         ParcelStatus.ASSIGNED -> Color(0x209C27B0)
+        ParcelStatus.PICKED_UP -> Color(0x205E35B1)
+        ParcelStatus.ARRIVED -> Color(0x2000897B)
         ParcelStatus.DELIVERED -> Color(0x204CAF50)
         ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
         ParcelStatus.CANCELLED -> Color(0x20F44336)
@@ -3041,6 +3057,8 @@ fun AnimatedStatusBadge(
     val targetTextColor = when (status) {
         ParcelStatus.PENDING -> Color(0xFF2196F3)
         ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
+        ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
+        ParcelStatus.ARRIVED -> Color(0xFF00897B)
         ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
         ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
         ParcelStatus.CANCELLED -> Color(0xFFF44336)
@@ -3049,6 +3067,8 @@ fun AnimatedStatusBadge(
     val badgeText = when (status) {
         ParcelStatus.PENDING -> "Pending Dispatch"
         ParcelStatus.ASSIGNED -> "Courier Assigned"
+        ParcelStatus.PICKED_UP -> "Picked Up"
+        ParcelStatus.ARRIVED -> "Arrived"
         ParcelStatus.TRANSIT -> "In Transit"
         ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
         ParcelStatus.DELIVERED -> "Delivered"

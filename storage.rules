@@ -1,0 +1,35 @@
+rules_version = '2';
+// Firebase Storage security rules for ESDispatch app assets.
+// Uploads are scoped to the authenticated owner; public gallery reads are allowed.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Profile avatars (btw: publicly needed for web/chat/review avatars)
+    match /avatars/{userId}/{file} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Marketplace store assets (logo/cover) — keyed by the store owner uid
+    match /store-assets/{storeId}/{file} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == storeId;
+    }
+
+    // Proof-of-delivery photos & signatures — visible to authenticated users,
+    // writable only by the delivery owner or its assigned rider
+    match /pod/{deliveryId}/{file} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (
+        request.auth.uid == get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.userId ||
+        request.auth.uid == get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.riderId
+      );
+    }
+
+    // Incident/SOS evidence photos
+    match /incidents/{riderId}/{file} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == riderId;
+    }
+  }
+}

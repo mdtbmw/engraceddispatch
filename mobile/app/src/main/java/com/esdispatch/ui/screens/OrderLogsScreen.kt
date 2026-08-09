@@ -213,6 +213,8 @@ fun OrderHistoryItem(
             val accentColor = when (parcel.status) {
                 ParcelStatus.PENDING -> Color(0xFF2196F3)
                 ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
+                ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
+                ParcelStatus.ARRIVED -> Color(0xFF00897B)
                 ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
                 ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
                 ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
@@ -264,6 +266,8 @@ fun OrderHistoryItem(
                 val tagColor = when (parcel.status) {
                     ParcelStatus.PENDING -> Color(0xFF2196F3)
                     ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
+                    ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
+                    ParcelStatus.ARRIVED -> Color(0xFF00897B)
                     ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
                     ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
                     ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
@@ -273,6 +277,8 @@ fun OrderHistoryItem(
                 val tagBg = when (parcel.status) {
                     ParcelStatus.PENDING -> Color(0x202196F3)
                     ParcelStatus.ASSIGNED -> Color(0x209C27B0)
+                    ParcelStatus.PICKED_UP -> Color(0x205E35B1)
+                    ParcelStatus.ARRIVED -> Color(0x2000897B)
                     ParcelStatus.TRANSIT -> if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)
                     ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
                     ParcelStatus.DELIVERED -> Color(0x204CAF50)
@@ -282,6 +288,8 @@ fun OrderHistoryItem(
                 val tagText = when (parcel.status) {
                     ParcelStatus.PENDING -> "PENDING DISPATCH"
                     ParcelStatus.ASSIGNED -> "COURIER ASSIGNED"
+                    ParcelStatus.PICKED_UP -> "PICKED UP"
+                    ParcelStatus.ARRIVED -> "ARRIVED"
                     ParcelStatus.TRANSIT -> "IN TRANSIT"
                     ParcelStatus.OUT_FOR_DELIVERY -> "OUT FOR DELIVERY"
                     ParcelStatus.DELIVERED -> "DELIVERED"

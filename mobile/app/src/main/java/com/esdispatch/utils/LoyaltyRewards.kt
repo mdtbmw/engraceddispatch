@@ -13,7 +13,7 @@ data class LoyaltyTierInfo(
 object LoyaltyRewards {
 
     const val DISCOUNT_THRESHOLD_POINTS = 500
-    const val DISCOUNT_POINTS_COST = 1000
+    const val DISCOUNT_POINTS_COST = 500
     const val DISCOUNT_AMOUNT = 1000.0
 
     fun tierFor(points: Int): LoyaltyTierInfo = when {

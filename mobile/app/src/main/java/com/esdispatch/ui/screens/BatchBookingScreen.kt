@@ -1,4 +1,4 @@
-package com.esdispatch.ui.screens
+﻿package com.esdispatch.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -726,7 +726,7 @@ fun BatchBookingScreen(
                     when (val quote = pendingQuote) {
                         is PendingQuote.Success -> {
                             Text(
-                                text = "₦${String.format("%,.2f", quote.price)}",
+                                text = "â‚¦${String.format("%,.2f", quote.price)}",
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Black,
                                 color = accentColor
@@ -799,8 +799,13 @@ fun BatchBookingScreen(
                     viewModel.updateDraftSenderInfo(sName, sPhone)
                     viewModel.updateDraftReceiverInfo(rName, rPhone)
                     viewModel.finalizeDraftPrice("Batch", quotePrice)
-                    viewModel.confirmBooking()
-                    onNavigate("PaymentSuccess")
+                    viewModel.confirmBooking { ok, msg ->
+                        if (ok) {
+                            onNavigate("PaymentSuccess")
+                        } else {
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    }
                 },
                 onFundRequired = { missingAmt ->
                     showCheckoutSheet = false
@@ -822,8 +827,13 @@ fun BatchBookingScreen(
                     viewModel.updateDraftSenderInfo(sName, sPhone)
                     viewModel.updateDraftReceiverInfo(rName, rPhone)
                     viewModel.finalizeDraftPrice("Batch", quotePrice)
-                    viewModel.confirmBooking()
-                    onNavigate("PaymentSuccess")
+                    viewModel.confirmBooking { ok, msg ->
+                        if (ok) {
+                            onNavigate("PaymentSuccess")
+                        } else {
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    }
                 },
                 onDismiss = { showPaystackSheet = false }
             )

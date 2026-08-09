@@ -465,6 +465,7 @@ object FirebaseManager {
             "riderId" to parcel.riderId,
             "riderBikeNumber" to parcel.riderBikeNumber,
             "otpCode" to parcel.otpCode,
+            "otpExpiresAt" to (System.currentTimeMillis() + 60 * 60 * 1000L),
             "otpVerified" to parcel.otpVerified,
             "isRated" to parcel.isRated,
             "customerRating" to parcel.customerRating,
@@ -1378,7 +1379,10 @@ object FirebaseManager {
     /**
      * Accept a pending parcel and assign to rider in Firestore.
      */
-    fun acceptParcelByRider(parcelId: String, riderId: String, riderName: String, riderPhone: String, riderBikeNumber: String, onComplete: (Boolean, String?) -> Unit) {
+    // Accept a pending parcel and assign to rider in Firestore.
+    // requireOnline=true for rider self-claims (they must be online); dispatcher/admin
+    // assignment passes requireOnline=false so offline employees can be assigned directly.
+    fun acceptParcelByRider(parcelId: String, riderId: String, riderName: String, riderPhone: String, riderBikeNumber: String, requireOnline: Boolean = true, onComplete: (Boolean, String?) -> Unit) {
         val db = firestore
         if (db == null) {
             onComplete(false, "Firestore not available")
@@ -1387,6 +1391,13 @@ object FirebaseManager {
 
         val docRef = db.collection("deliveries").document(parcelId)
         db.runTransaction { transaction ->
+            if (requireOnline) {
+                val riderSnap = transaction.get(db.collection("users").document(riderId))
+                val isOnline = riderSnap.getBoolean("isOnline") ?: false
+                if (!isOnline) {
+                    throw Exception("You are offline. Go online to accept new deliveries.")
+                }
+            }
             val snapshot = transaction.get(docRef)
             val currentStatus = snapshot.getString("status") ?: "PENDING"
             if (currentStatus != "PENDING") {
@@ -1479,6 +1490,8 @@ object FirebaseManager {
                             ParcelStatus.TRANSIT -> "Parcel Out for Delivery 🚀"
                             ParcelStatus.DELIVERED -> "Parcel Delivered Successfully 🎉"
                             ParcelStatus.ASSIGNED -> "Parcel Assigned 🏍️"
+                            ParcelStatus.PICKED_UP -> "Parcel Picked Up 📦"
+                            ParcelStatus.ARRIVED -> "Rider Arrived 📍"
                             else -> "Parcel Status Update 🔄"
                         }
                         sendNotificationToUser(
@@ -1554,7 +1567,11 @@ object FirebaseManager {
         docRef.get().addOnSuccessListener { snapshot ->
             if (snapshot.exists()) {
                 val realOtp = snapshot.getString("otpCode") ?: ""
-                val isValid = realOtp.isNotEmpty() && realOtp == otpInput
+                val otpExpiresAt = snapshot.getLong("otpExpiresAt") ?: (System.currentTimeMillis() + 60 * 60 * 1000L)
+                val otpAttempts = snapshot.getLong("otpAttempts") ?: 0L
+                val isLocked = otpAttempts >= 5
+                val isExpired = System.currentTimeMillis() > otpExpiresAt
+                val isValid = !isLocked && !isExpired && realOtp.isNotEmpty() && realOtp == otpInput
                 
                 if (isValid) {
                     val parcelUserId = snapshot.getString("userId") ?: ""
@@ -1565,6 +1582,8 @@ object FirebaseManager {
                         transaction.update(docRef, "status", "DELIVERED")
                         transaction.update(docRef, "progress", 1.0f)
                         transaction.update(docRef, "otpVerified", true)
+                        transaction.update(docRef, "otpAttempts", 0)
+                        transaction.update(docRef, "otpVerifiedAt", System.currentTimeMillis())
                         transaction.update(docRef, "lastUpdated", System.currentTimeMillis())
                     }.addOnSuccessListener {
                         // Update subcollection
@@ -1579,38 +1598,28 @@ object FirebaseManager {
                                 )
                             )
                         }
-                        
-                        // Rider earnings: 80% of price is credited to rider's wallet balance!
-                        if (riderId.isNotEmpty() && price > 0.0) {
-                            val earningAmount = price * 0.8
-                            val riderRef = db.collection("users").document(riderId)
-                            
-                            riderRef.get().addOnSuccessListener { riderSnap ->
-                                val currentBalance = riderSnap.getDouble("walletBalance") ?: 0.0
-                                val newBalance = currentBalance + earningAmount
-                                
-                                riderRef.update("walletBalance", newBalance).addOnSuccessListener {
-                                    // Add earning transaction to rider's transactions subcollection
-                                    val txRef = "ESD-EARN-${System.currentTimeMillis()}"
-                                    val txMap = hashMapOf(
-                                        "id" to txRef,
-                                        "title" to "Delivery Earnings",
-                                        "date" to "Today",
-                                        "amount" to earningAmount,
-                                        "isTopUp" to true,
-                                        "timestamp" to System.currentTimeMillis()
-                                    )
-                                    riderRef.collection("transactions").document(txRef).set(txMap)
-                                }
-                            }
-                        }
-                        
+
+                        // NOTE: Rider payout is NOT credited here. It is awarded exactly once
+                        // in markParcelDelivered/POD completion so riders are never paid twice.
                         onComplete(true, null)
                     }.addOnFailureListener { e ->
                         onComplete(false, e.message ?: "Failed to verify OTP.")
                     }
                 } else {
-                    onComplete(false, "Invalid 4-digit security code. Please check with customer.")
+                    // Record the failed attempt for lockout tracking
+                    val attemptsMessage = when {
+                        isLocked -> "Too many incorrect attempts. This delivery is locked — contact the dispatcher."
+                        isExpired -> "This security code has expired. Contact the dispatcher to reissue."
+                        else -> "Invalid 4-digit security code. Please check with customer."
+                    }
+                    if (!isLocked) {
+                        db.collection("deliveries").document(parcelId)
+                            .update("otpAttempts", com.google.firebase.firestore.FieldValue.increment(1))
+                            .addOnFailureListener { e ->
+                                Log.e(TAG, "Failed to record OTP attempt: ${e.message}")
+                            }
+                    }
+                    onComplete(false, attemptsMessage)
                 }
             } else {
                 onComplete(false, "Parcel not found.")

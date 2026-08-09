@@ -18,7 +18,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.d(TAG, "Refreshed FCM registration token: $token")
-        // Send token to backend / save locally if needed
+        // Persist locally and push to Firestore so backend can target this device
         val prefs = getSharedPreferences("esdispatch_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("fcm_token", token).apply()
         
