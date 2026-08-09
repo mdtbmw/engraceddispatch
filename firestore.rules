@@ -182,6 +182,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Admin-only secrets (FCM server key, webhook credentials). Never readable by app clients.
+    match /admin_config/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // =========================================================
     // CMS COLLECTIONS (service cards, team, testimonials, blog, portfolio)
     // =========================================================
