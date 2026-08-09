@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect, useCallback, useRef, useId } from "react";
 import { createPortal } from "react-dom";
 
@@ -29,8 +29,8 @@ function useOnlineStatus() {
 }
 import { auth, db } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, writeBatch, addDoc, increment } from "firebase/firestore";
-import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun } from "lucide-react";
+import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment } from "firebase/firestore";
+import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat } from "lucide-react";
 import CMSTab from "./CMSTab";
 import dynamic from "next/dynamic";
 const LiveTrackingMap = dynamic(() => import("./LiveTrackingMap"), { ssr: false });
@@ -66,6 +66,19 @@ interface VendorStore {
   commissionRate: number;
   status: "PENDING" | "APPROVED" | "REJECTED";
   dateEnlisted: string;
+  vendorBalance?: number;
+  description?: string;
+  address?: string;
+  logoUrl?: string;
+  coverUrl?: string;
+  ownerId?: string;
+  storeRating?: number;
+  totalSales?: number;
+  isVerified?: boolean;
+  isFeatured?: boolean;
+  featuredRank?: number;
+  isDemo?: boolean;
+  isDeleted?: boolean;
 }
 
 interface MarketplaceOrder {
@@ -106,11 +119,12 @@ function EdLogoSvg({ size = 36, className = "", dark = false }: { size?: number;
   </svg>;
 }
 
-function fmt(n: number): string { return "₦" + n.toLocaleString("en-US"); }
+function fmt(n: number): string { return "â‚¦" + n.toLocaleString("en-US"); }
 function idShort(id: string): string { return id.length > 8 ? id.slice(-8) : id; }
 function rBadge(role: string): string {
   switch (role) {
     case "rider": return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+    case "vendor": return "bg-[#FFC542]/25 text-[#111] dark:text-[#FFC542]";
     case "admin": return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300";
     case "super_admin": return "bg-[#FFC542]/20 text-[#111] dark:text-white";
     default: return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
@@ -152,7 +166,7 @@ function InlineEdit({ value, onSave, type = "text" }: { value: string; onSave: (
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value);
   useEffect(() => setVal(value), [value]);
-  if (!editing) return <span onClick={() => setEditing(true)} className="cursor-pointer hover:bg-[#FFC542]/10 px-1.5 py-0.5 rounded group inline-flex items-center gap-1.5 -ml-1.5 transition-colors text-[#111] dark:text-white">{value || "—"} <Edit3 className="w-3 h-3 text-[#FFC542]/0 group-hover:text-[#FFC542]" /></span>;
+  if (!editing) return <span onClick={() => setEditing(true)} className="cursor-pointer hover:bg-[#FFC542]/10 px-1.5 py-0.5 rounded group inline-flex items-center gap-1.5 -ml-1.5 transition-colors text-[#111] dark:text-white">{value || "â€”"} <Edit3 className="w-3 h-3 text-[#FFC542]/0 group-hover:text-[#FFC542]" /></span>;
   return <input type={type} value={val} onChange={e => setVal(e.target.value)} onBlur={() => { onSave(val); setEditing(false); }} onKeyDown={e => { if (e.key === "Enter") { onSave(val); setEditing(false); } if (e.key === "Escape") { setVal(value); setEditing(false); }}} className="bg-white dark:bg-[#222] border border-[#FFC542]/50 rounded-xl px-2 py-1 text-sm text-[#111] dark:text-white w-full shadow-sm" autoFocus />;
 }
 function ConfirmModal({ show, title, message, confirmLabel, onConfirm, onCancel }: { show: boolean; title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void }) {
@@ -301,7 +315,7 @@ async function seedReferrals(db: any, addLog: any, addToast: any, createNotifica
 
 async function seedAppContent(db: any, addLog: any, addToast: any, createNotification: any, setSettings: any) {
   try {
-    const content = { referral: { benefitText: "Invite your friends and earn \u20A6500 in wallet credit for each successful referral!", referrerCode: "", reward: 500, active: true }, aiAssistant: { title: "Dispatch Assistant", description: "Need help with your delivery? Our AI assistant is here 24/7.", tag: "Powered by HeyTek AI", active: true }, welcomeGift: { title: "Welcome to Engraced!", credit: 2500, coins: 10, active: true }, weatherTraffic: { optimalMessage: "Light traffic conditions — perfect timing.", congestedMessage: "Heavy traffic on major routes — expect 15-20 min delays.", optimalBadge: "Smooth Sailing", congestedBadge: "Heavy Traffic", active: true }, loyalty: { bronzeThreshold: 10, silverThreshold: 25, goldThreshold: 50, platinumThreshold: 100, ordersForBronze: 3, ordersForSilver: 5, ordersForGold: 10, dailyBonus: 25, active: true }, statsConfig: { promoSavingsPerBooking: 3500, statLabels: ["Deliveries", "Saved", "Earned", "Redeemed"], active: true } };
+    const content = { referral: { benefitText: "Invite your friends and earn \u20A6500 in wallet credit for each successful referral!", referrerCode: "", reward: 500, active: true }, aiAssistant: { title: "Dispatch Assistant", description: "Need help with your delivery? Our AI assistant is here 24/7.", tag: "Powered by HeyTek AI", active: true }, welcomeGift: { title: "Welcome to Engraced!", credit: 2500, coins: 10, active: true }, weatherTraffic: { optimalMessage: "Light traffic conditions â€” perfect timing.", congestedMessage: "Heavy traffic on major routes â€” expect 15-20 min delays.", optimalBadge: "Smooth Sailing", congestedBadge: "Heavy Traffic", active: true }, loyalty: { bronzeThreshold: 10, silverThreshold: 25, goldThreshold: 50, platinumThreshold: 100, ordersForBronze: 3, ordersForSilver: 5, ordersForGold: 10, dailyBonus: 25, active: true }, statsConfig: { promoSavingsPerBooking: 3500, statLabels: ["Deliveries", "Saved", "Earned", "Redeemed"], active: true } };
     await setDoc(doc(db, "system_config", "global_settings"), { appContent: content, updatedAt: Timestamp.now() }, { merge: true });
     setSettings((prev: any) => ({ ...prev, appContent: content })); addLog("Seeded", "Default app card content"); addToast("success", "App content seeded"); createNotification("App Content Seeded", "Default dashboard content configured");
   } catch (e: any) { addToast("error", "App content seed failed: " + e.message); }
@@ -311,28 +325,41 @@ async function seedAppContent(db: any, addLog: any, addToast: any, createNotific
 async function seedMarketplace(db: any, addLog: any, addToast: any, createNotification: any) {
   try {
     const batch = writeBatch(db);
-    const sampleProducts = [
-      { name: "Heavy Duty Bike Delivery Box", category: "Delivery Gear", price: 35000, stock: 45, imageUrl: "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=500", status: "In Stock", description: "Waterproof insulated delivery cargo box with lock", vendorStore: "ESDispatch Fleet Supplies", rating: 4.9 },
-      { name: "Executive Courier Rider Jacket", category: "Apparel", price: 18500, stock: 120, imageUrl: "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=500", status: "In Stock", description: "High-visibility reflective windproof jacket", vendorStore: "ProRider Wear", rating: 4.8 },
-      { name: "Engine Synthetic Oil 1L (4T)", category: "Lubricants", price: 4200, stock: 8, imageUrl: "https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500", status: "Low Stock", description: "High performance synthetic motor oil", vendorStore: "Lagos Auto Care", rating: 4.7 },
-      { name: "Heavy Duty Phone Mount & Charger", category: "Accessories", price: 9500, stock: 65, imageUrl: "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=500", status: "In Stock", description: "Anti-vibration aluminum handlebar phone holder", vendorStore: "TechRider Solutions", rating: 4.9 },
-      { name: "Full Face Protective Helmet", category: "Safety", price: 28000, stock: 0, imageUrl: "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500", status: "Out of Stock", description: "DOT certified aerodynamic protective helmet", vendorStore: "SafetyFirst Nigeria", rating: 4.9 },
+    const today = new Date().toISOString().slice(0, 10);
+    // Deterministic owner ids so products link to storefronts in the mobile app
+    const storeOwners = [
+      { id: "seed_store_esdispatch", storeName: "ESDispatch Fleet Supplies", ownerName: "Official Store", email: "supplies@engraced.com", phone: "08012345678", category: "Fleet Equipment", commissionRate: 5, description: "Official ESDispatch fleet equipment, rider kits and dispatch consumables for the whole team.", address: "14 Adeola Odeku Street, Victoria Island, Lagos" },
+      { id: "seed_store_prorider", storeName: "ProRider Wear", ownerName: "Chidi Okonkwo", email: "chidi@prorider.com", phone: "08087654321", category: "Apparel", commissionRate: 10, description: "Premium reflective courier jackets, riding apparel and protective wear engineered for Nigerian roads.", address: "22 Allen Avenue, Ikeja, Lagos" },
+      { id: "seed_store_autocare", storeName: "Lagos Auto Care", ownerName: "Bisi Adebayo", email: "bisi@autocare.ng", phone: "08055544433", category: "Lubricants", commissionRate: 8, description: "High-performance engine oils, brake pads and workshop supplies for fleet maintenance.", address: "5 Opebi Road, Ikeja, Lagos" },
+      { id: "seed_store_safetyfirst", storeName: "SafetyFirst Nigeria", ownerName: "Amina Yusuf", email: "amina@safetyfirst.ng", phone: "08099900011", category: "Safety", commissionRate: 11, description: "Certified helmets, high-visibility vests and DOT-approved rider safety equipment.", address: "77 Toyin Street, Ikeja, Lagos" },
+      { id: "seed_store_techrider", storeName: "TechRider Solutions", ownerName: "Femi Adewale", email: "femi@techrider.ng", phone: "08044455667", category: "Electronics", commissionRate: 12, description: "Smartphone mounts, power banks, dashcams and rider tech accessories.", address: "101 Admiralty Way, Lekki Phase 1, Lagos" },
+    ];
+    const productSeeds = [
+      { name: "Heavy Duty Bike Delivery Box", category: "Delivery Gear", price: 35000, stock: 45, imageUrl: "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=500", status: "In Stock", description: "Waterproof insulated delivery cargo box with lock", vendorStore: "ESDispatch Fleet Supplies", vendorId: "seed_store_esdispatch", rating: 4.9 },
+      { name: "Executive Courier Rider Jacket", category: "Apparel", price: 18500, stock: 120, imageUrl: "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=500", status: "In Stock", description: "High-visibility reflective windproof jacket", vendorStore: "ProRider Wear", vendorId: "seed_store_prorider", rating: 4.8 },
+      { name: "Engine Synthetic Oil 1L (4T)", category: "Lubricants", price: 4200, stock: 8, imageUrl: "https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500", status: "Low Stock", description: "High performance synthetic motor oil", vendorStore: "Lagos Auto Care", vendorId: "seed_store_autocare", rating: 4.7 },
+      { name: "Heavy Duty Phone Mount & Charger", category: "Electronics", price: 9500, stock: 65, imageUrl: "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=500", status: "In Stock", description: "Anti-vibration aluminum handlebar phone holder", vendorStore: "TechRider Solutions", vendorId: "seed_store_techrider", rating: 4.9 },
+      { name: "Full Face Protective Helmet", category: "Safety", price: 28000, stock: 0, imageUrl: "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500", status: "Out of Stock", description: "DOT certified aerodynamic protective helmet", vendorStore: "SafetyFirst Nigeria", vendorId: "seed_store_safetyfirst", rating: 4.9 },
+      { name: "Reflective Safety Vest", category: "Safety", price: 6500, stock: 30, imageUrl: "https://images.unsplash.com/photo-1550989460-0adf9ea622e2?w=500", status: "In Stock", description: "High-visibility neon vest for night-time dispatch", vendorStore: "SafetyFirst Nigeria", vendorId: "seed_store_safetyfirst", rating: 4.8 },
+      { name: "Chrome Helmet Visor", category: "Safety", price: 3200, stock: 22, imageUrl: "https://images.unsplash.com/photo-1573871669400-9a27b80c3c9c?w=500", status: "In Stock", description: "Anti-fog scratch resistant visor for full-face helmets", vendorStore: "SafetyFirst Nigeria", vendorId: "seed_store_safetyfirst", rating: 4.7 },
     ];
 
-    const sampleStores = [
-      { storeName: "ESDispatch Fleet Supplies", ownerName: "Official Store", email: "supplies@engraced.com", phone: "08012345678", category: "Fleet Equipment", commissionRate: 5, status: "APPROVED", dateEnlisted: "2026-01-15" },
-      { storeName: "ProRider Wear", ownerName: "Chidi Okonkwo", email: "chidi@prorider.com", phone: "08087654321", category: "Apparel & Gear", commissionRate: 10, status: "APPROVED", dateEnlisted: "2026-02-10" },
-      { storeName: "Lagos Auto Care", ownerName: "Bisi Adebayo", email: "bisi@autocare.ng", phone: "08055544433", category: "Lubricants & Parts", commissionRate: 8, status: "APPROVED", dateEnlisted: "2026-03-01" },
-      { storeName: "WestCoast Spares Hub", ownerName: "Emeka Nwosu", email: "emeka@spares.com", phone: "08099900011", category: "Spare Parts", commissionRate: 12, status: "PENDING", dateEnlisted: "2026-08-02" },
-    ];
-
-    sampleProducts.forEach(p => batch.set(doc(collection(db, "marketplace_products")), { ...p, createdAt: Timestamp.now() }));
-    sampleStores.forEach(s => batch.set(doc(collection(db, "marketplace_stores")), { ...s, createdAt: Timestamp.now() }));
+    storeOwners.forEach(s => batch.set(doc(db, "marketplace_stores", s.id), {
+      id: s.id, ownerId: s.id, storeName: s.storeName, ownerName: s.ownerName, email: s.email,
+      phone: s.phone, category: s.category, description: s.description, address: s.address, logoUrl: "",
+      coverUrl: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&fit=crop",
+      commissionRate: s.commissionRate, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
+      status: "APPROVED", isVerified: true, isPendingReview: false, kycStatus: "approved",
+      isFeatured: false, featuredRank: 0, isDemo: true, isDeleted: false,
+      verificationNote: "Seeded by ESDispatch admin (demo)", dateEnlisted: today,
+      createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
+    }));
+    productSeeds.forEach(p => batch.set(doc(collection(db, "marketplace_products")), { ...p, createdAt: Timestamp.now(), updatedAt: Timestamp.now() }));
 
     await batch.commit();
-    addLog("Seeded", "5 marketplace products and 4 vendor stores");
-    addToast("success", "Marketplace catalog & stores seeded successfully");
-    createNotification("Marketplace Seeded", "Sample products and vendor stores added to marketplace");
+    addLog("Seeded", "7 marketplace products and 5 linked vendor stores");
+    addToast("success", "Marketplace catalog & vendor stores seeded successfully");
+    createNotification("Marketplace Seeded", "Sample products and vendor storefronts added to marketplace");
   } catch (e: any) {
     addToast("error", "Marketplace seed failed: " + e.message);
   }
@@ -358,10 +385,10 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
   );
   return <div className="tab-content space-y-8">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="stagger-1"><StatCard icon={<Users className="w-4 h-4 text-[#FFC542]" />} label="TOTAL USERS" value={activeUsers.length.toString()} sub={customers.length + " customers · " + drivers.length + " drivers"} /></div>
-        <div className="stagger-2"><StatCard icon={<Package className="w-4 h-4 text-[#FFC542]" />} label="SHIPMENTS" value={deliveries.length.toString()} sub={pendingDeliveries.length + " pending · " + delivered.length + " delivered"} /></div>
-        <div className="stagger-3"><StatCard icon={<DollarSign className="w-4 h-4 text-[#FFC542]" />} label="REVENUE" value={fmt(totalRevenue)} sub={fmt(totalTips) + " in tips · " + referrals.length + " referrals"} /></div>
-        <div className="stagger-4"><StatCard icon={<Activity className="w-4 h-4 text-[#FFC542]" />} label="ONLINE" value={(activeUsers.filter((u: any) => u.isOnline).length).toString()} sub={drivers.filter((d: any) => d.isOnline).length + " drivers · " + (activeUsers.filter((u: any) => u.role === "customer" && u.isOnline).length) + " customers"} /></div>
+        <div className="stagger-1"><StatCard icon={<Users className="w-4 h-4 text-[#FFC542]" />} label="TOTAL USERS" value={activeUsers.length.toString()} sub={customers.length + " customers Â· " + drivers.length + " drivers"} /></div>
+        <div className="stagger-2"><StatCard icon={<Package className="w-4 h-4 text-[#FFC542]" />} label="SHIPMENTS" value={deliveries.length.toString()} sub={pendingDeliveries.length + " pending Â· " + delivered.length + " delivered"} /></div>
+        <div className="stagger-3"><StatCard icon={<DollarSign className="w-4 h-4 text-[#FFC542]" />} label="REVENUE" value={fmt(totalRevenue)} sub={fmt(totalTips) + " in tips Â· " + referrals.length + " referrals"} /></div>
+        <div className="stagger-4"><StatCard icon={<Activity className="w-4 h-4 text-[#FFC542]" />} label="ONLINE" value={(activeUsers.filter((u: any) => u.isOnline).length).toString()} sub={drivers.filter((d: any) => d.isOnline).length + " drivers Â· " + (activeUsers.filter((u: any) => u.role === "customer" && u.isOnline).length) + " customers"} /></div>
       </div>
       <section>
         <div className="flex justify-between items-end mb-6 flex-wrap gap-4">
@@ -436,14 +463,14 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
               {recentDeliveries.filter((d: any) => d.status !== "DELIVERED" && d.status !== "CANCELLED" && (filterCat === "all" || d.category === filterCat)).slice(0, 8).map((d: any, idx: number) => (
                 <div key={d.id} className={"grid grid-cols-12 gap-4 py-3.5 border-b border-black/5 dark:border-white/5 items-center px-3 hover:bg-black/5 dark:hover:bg-white/5 transition-colors rounded-xl last:border-b-0 cursor-pointer animate-fade-in " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][idx] || "stagger-1")}>
                   <div className="col-span-6 flex flex-col justify-center">
-                    <div className="font-extrabold text-[14px] text-[#111] dark:text-white leading-snug">{(idx + 1).toString().padStart(2,"0")}. {d.itemName || "Parcel"} — {d.receiverName}</div>
-                    <div className="text-[13px] font-medium text-black/50 dark:text-white/50 mt-0.5">{d.status.replace(/_/g, " ")} · {d.pickupAddress}</div>
+                    <div className="font-extrabold text-[14px] text-[#111] dark:text-white leading-snug">{(idx + 1).toString().padStart(2,"0")}. {d.itemName || "Parcel"} â€” {d.receiverName}</div>
+                    <div className="text-[13px] font-medium text-black/50 dark:text-white/50 mt-0.5">{d.status.replace(/_/g, " ")} Â· {d.pickupAddress}</div>
                   </div>
                   <div className="col-span-4 flex items-center gap-3.5">
                     <div className="w-9 h-9 rounded-full bg-[#FFC542]/10 border border-black/5 dark:border-white/10 flex items-center justify-center text-xs font-black text-[#111] dark:text-white">{d.courierName?.charAt(0) || "?"}</div>
                     <span className="font-bold text-[14px] text-[#111] dark:text-white">{d.courierName || "Unassigned"}</span>
                   </div>
-                  <div className="col-span-2 text-right font-extrabold text-[14px] text-[#111] dark:text-white">{d.dateString ? d.dateString.slice(0, 10) : "—"}</div>
+                  <div className="col-span-2 text-right font-extrabold text-[14px] text-[#111] dark:text-white">{d.dateString ? d.dateString.slice(0, 10) : "â€”"}</div>
                 </div>
               ))}
             </div>
@@ -846,16 +873,29 @@ function AdminDashboardPage() {
       const list: VendorStore[] = [];
       snap.forEach(d => {
         const x = d.data();
+        const ownerId = x.ownerId || x.id || d.id;
         list.push({
           id: d.id,
           storeName: x.storeName || "",
           ownerName: x.ownerName || "",
-          email: x.email || "",
+          email: x.email || x.ownerEmail || "",
           phone: x.phone || "",
-          category: x.category || "",
+          category: x.category || "General",
           commissionRate: x.commissionRate || 10,
           status: x.status || "PENDING",
           dateEnlisted: x.dateEnlisted || "",
+          description: x.description || "",
+          address: x.address || "",
+          logoUrl: x.logoUrl || "",
+          coverUrl: x.coverUrl || "",
+          ownerId,
+          storeRating: x.storeRating || 5.0,
+          totalSales: x.totalSales || 0,
+          isVerified: x.isVerified || false,
+          isFeatured: x.isFeatured || false,
+          featuredRank: x.featuredRank || 0,
+          isDemo: x.isDemo || false,
+          isDeleted: x.isDeleted || false,
         });
       });
       setStores(list);
@@ -1057,6 +1097,20 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
       addLog("Update User", editUser.name + " -> " + (form.name || editUser.name)); setEditUser(null);
     };
     const deleteUser = async (id: string) => { await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() }); addLog("Delete User", "Soft-deleted " + id); setConfirmDelete(null); };
+    const promoteToVendor = async (u: UserProfile) => {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        await setDoc(doc(db, "marketplace_stores", u.id), {
+          id: u.id, ownerId: u.id, storeName: u.name + "'s Store", category: "General",
+          ownerName: u.name, email: u.email, phone: u.phone, description: "", address: "",
+          commissionRate: 8.5, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
+          isVerified: true, isPendingReview: false, kycStatus: "approved", status: "APPROVED",
+          dateEnlisted: today, createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
+        }, { merge: true });
+        await updateDoc(doc(db, "users", u.id), { role: "vendor", userRole: "Vendor", isVendorVerified: true, updatedAt: Timestamp.now() });
+        addLog("Upgrade Vendor", `Upgraded '${u.name}' (${u.email}) to vendor with approved storefront`);
+      } catch (err: any) { addLog("Error", "Upgrade to vendor failed: " + (err.message || "unknown")); }
+    };
     const createUser = async () => {
       if (newUserForm.pin !== newUserForm.confirmPin) { addLog("Error", "PIN mismatch"); return; }
       if (newUserForm.pin.length < 4) { addLog("Error", "PIN must be at least 4 digits"); return; }
@@ -1065,6 +1119,18 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
         const derivedPwd = getDynamicPassword(newUserForm.email, newUserForm.pin);
         const cred = await createUserWithEmailAndPassword(auth, newUserForm.email, derivedPwd);
         await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, name: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone, role: newUserForm.role, bikeNumber: newUserForm.bikeNumber, pin: newUserForm.pin, status: "offline", isOnline: false, rating: 0, deliveryCount: 0, walletBalance: 0, loyaltyPoints: 0, photoUrl: "", isDeleted: false, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+        if (newUserForm.role === "vendor") {
+          // Auto-create an approved vendor storefront tied to the new user's uid (mobile schema)
+          await setDoc(doc(db, "marketplace_stores", cred.user.uid), {
+            id: cred.user.uid, ownerId: cred.user.uid, storeName: newUserForm.name + "'s Store",
+            category: "General", ownerName: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone,
+            description: "", address: "", commissionRate: 8.5, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
+            isVerified: true, isPendingReview: false, kycStatus: "approved", status: "APPROVED",
+            dateEnlisted: new Date().toISOString().slice(0, 10), createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
+          });
+          await updateDoc(doc(db, "users", cred.user.uid), { userRole: "Vendor", isVendorVerified: true });
+          addLog("Create Vendor", "Created vendor '" + newUserForm.name + "' with auto-approved storefront");
+        }
         addLog("Create User", newUserForm.name + " (" + newUserForm.email + ") as " + newUserForm.role); setShowNewUser(false); setNewUserStep(1); setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
       } catch (e: any) { addLog("Error", "Create user failed: " + (e.message || "unknown")); }
       setCreatingUser(false);
@@ -1080,7 +1146,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
       </div>
       {showNewUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setShowNewUser(false)}>
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> New User — Step {newUserStep}/2</h3>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> New User â€” Step {newUserStep}/2</h3>
           {/* Step indicator */}
           <div className="flex gap-2">
             <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 1 ? "bg-[#FFC542]" : "bg-gray-200 dark:bg-gray-700")} />
@@ -1095,25 +1161,29 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
               <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone</label>
                 <input value={newUserForm.phone} onChange={e => setNewUserForm(p => ({ ...p, phone: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
               <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Role</label>
-                <Select value={newUserForm.role} onChange={v => { setNewUserForm(p => ({ ...p, role: v })); if (v !== "rider") setNewUserForm(p => ({ ...p, bikeNumber: "" })); }} options={[{value:"customer",label:"Customer"},{value:"rider",label:"Rider"},{value:"admin",label:"Admin"}]} className="w-full" /></div>
+                <Select value={newUserForm.role} onChange={v => { setNewUserForm(p => ({ ...p, role: v })); if (v !== "rider") setNewUserForm(p => ({ ...p, bikeNumber: "" })); }} options={[{value:"customer",label:"Customer"},{value:"rider",label:"Rider"},{value:"vendor",label:"Vendor (opens a storefront)"},{value:"admin",label:"Admin"}]} className="w-full" /></div>
+              {newUserForm.role === "vendor" && <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20">
+                <p className="text-[10px] font-bold text-[#FFC542] uppercase">Vendor Storefront</p>
+                <p className="text-xs text-[#111] dark:text-white font-semibold mt-1">An approved vendor store will be created automatically for this account. The vendor can manage it from the mobile app.</p>
+              </div>}
               <div className="flex justify-end pt-2">
-                <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else addLog("Error", "Fill in name and email first"); }} className="px-6 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-all">Next →</button>
+                <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else addLog("Error", "Fill in name and email first"); }} className="px-6 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-all">Next â†’</button>
               </div>
             </div>
           ) : (
             <div className="space-y-3">
               <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20">
                 <p className="text-xs font-bold text-[#111] dark:text-white">{newUserForm.name}</p>
-                <p className="text-[10px] text-black/40 dark:text-white/40">{newUserForm.email} · {newUserForm.role}</p>
+                <p className="text-[10px] text-black/40 dark:text-white/40">{newUserForm.email} Â· {newUserForm.role}</p>
               </div>
-              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">PIN (4+ digits — used for app login)</label>
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">PIN (4+ digits â€” used for app login)</label>
                 <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(p => ({ ...p, pin: e.target.value.replace(/\D/g, '') }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" placeholder="Enter PIN" /></div>
               <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Confirm PIN</label>
                 <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(p => ({ ...p, confirmPin: e.target.value.replace(/\D/g, '') }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" placeholder="Confirm PIN" /></div>
               {newUserForm.role === "rider" && <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike Number</label>
                 <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(p => ({ ...p, bikeNumber: e.target.value }))} placeholder="e.g. LASG-1234" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>}
               <div className="flex items-center justify-between gap-3 pt-2 border-t border-black/10 dark:border-white/10">
-                <button onClick={() => setNewUserStep(1)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">← Back</button>
+                <button onClick={() => setNewUserStep(1)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">â† Back</button>
                 <SaveBtn onClick={createUser} loading={creatingUser} label="Create Account" />
               </div>
             </div>
@@ -1135,6 +1205,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
               <td className="p-3 hidden md:table-cell"><span className="text-black/60 dark:text-white/60">{u.email}</span></td>
               <td className="p-3 hidden lg:table-cell"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + rBadge(u.role)}>{u.role.toUpperCase()}</span></td>
               <td className="p-3 text-right">
+                {(u.role !== "vendor" && u.role !== "admin" && u.role !== "super_admin") && <button title="Upgrade to Vendor" onClick={() => promoteToVendor(u)} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Store className="w-3.5 h-3.5" /></button>}
                 <button onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role, phone: u.phone, bikeNumber: u.bikeNumber || "", status: u.status }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
                 <button onClick={() => setConfirmDelete(u.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button></td>
             </tr>)}
@@ -1202,7 +1273,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
         courierName: rider.name, courierPhone: rider.phone, riderBikeNumber: rider.bikeNumber || "",
         status: "ASSIGNED", updatedAt: Timestamp.now()
       });
-      addLog("Assign Rider", `${rider.name} → ${idShort(deliveryId)}`);
+      addLog("Assign Rider", `${rider.name} â†’ ${idShort(deliveryId)}`);
       setAssignModal({ delivery: null as any, show: false });
     };
 
@@ -1220,7 +1291,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
       setCreating(true);
       try {
         const ref = await addDoc(collection(db, "deliveries"), { ...newForm, quantity: Number(newForm.quantity), weight: Number(newForm.weight), price: Number(newForm.price), tipAmount: 0, userId: "", courierName: "", courierPhone: "", otpCode: Math.floor(1000 + Math.random() * 9000).toString(), dateString: new Date().toISOString().slice(0, 10), createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
-        addLog("Create Delivery", ref.id + " — " + newForm.itemName);
+        addLog("Create Delivery", ref.id + " â€” " + newForm.itemName);
         setShowNew(false);
         setNewForm({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
       } catch (e: any) { addLog("Error", "Create delivery failed"); }
@@ -1400,8 +1471,8 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                         </p>
                       </td>
                       <td className="p-3.5 hidden md:table-cell">
-                        <p className="font-bold text-[#111] dark:text-white">{d.receiverName || "—"}</p>
-                        <p className="text-[10px] text-black/40 dark:text-white/40 truncate max-w-[200px]" title={`${d.pickupAddress} → ${d.deliveryAddress}`}>
+                        <p className="font-bold text-[#111] dark:text-white">{d.receiverName || "â€”"}</p>
+                        <p className="text-[10px] text-black/40 dark:text-white/40 truncate max-w-[200px]" title={`${d.pickupAddress} â†’ ${d.deliveryAddress}`}>
                           {d.deliveryAddress || "Standard Delivery"}
                         </p>
                       </td>
@@ -1497,14 +1568,14 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                   <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl">
                     <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Sender</p>
                     <p className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.senderName || "Sender"}</p>
-                    <p className="text-black/60 dark:text-white/60">{detailsModal.delivery.senderPhone || "—"}</p>
+                    <p className="text-black/60 dark:text-white/60">{detailsModal.delivery.senderPhone || "â€”"}</p>
                     <p className="text-[10px] text-black/40 dark:text-white/40 mt-1">{detailsModal.delivery.pickupAddress}</p>
                   </div>
 
                   <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl">
                     <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Receiver</p>
                     <p className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.receiverName || "Receiver"}</p>
-                    <p className="text-black/60 dark:text-white/60">{detailsModal.delivery.receiverPhone || "—"}</p>
+                    <p className="text-black/60 dark:text-white/60">{detailsModal.delivery.receiverPhone || "â€”"}</p>
                     <p className="text-[10px] text-black/40 dark:text-white/40 mt-1">{detailsModal.delivery.deliveryAddress}</p>
                   </div>
                 </div>
@@ -1536,7 +1607,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
               <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> Assign Rider</h3>
               <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20 space-y-1">
                 <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-normal">#{idShort(assignModal.delivery.id)}</span></p>
-                <p className="text-[10px] text-black/40 dark:text-white/40">{assignModal.delivery.pickupAddress} → {assignModal.delivery.deliveryAddress}</p>
+                <p className="text-[10px] text-black/40 dark:text-white/40">{assignModal.delivery.pickupAddress} â†’ {assignModal.delivery.deliveryAddress}</p>
               </div>
 
               <div className="max-h-60 overflow-y-auto space-y-2">
@@ -1549,7 +1620,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                         <div className="w-8 h-8 rounded-full bg-[#FFC542] text-[#111] font-black flex items-center justify-center text-xs">{(r.name || "?").charAt(0)}</div>
                         <div>
                           <p className="text-xs font-bold text-[#111] dark:text-white">{r.name}</p>
-                          <p className="text-[10px] text-black/40 dark:text-white/40">{r.phone || r.email} {r.isOnline !== false ? "🟢 Online" : "⚪ Offline"}</p>
+                          <p className="text-[10px] text-black/40 dark:text-white/40">{r.phone || r.email} {r.isOnline !== false ? "ðŸŸ¢ Online" : "âšª Offline"}</p>
                         </div>
                       </div>
                       <button onClick={() => assignRider(assignModal.delivery.id, r)} className="px-3 py-1.5 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black hover:bg-[#FFC542]/80">Assign</button>
@@ -1796,7 +1867,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
     <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Settings2 className="w-5 h-5 text-[#FFC542]" /> Settings</h1>
       <p className="text-xs text-black/40 dark:text-white/40 mt-1">System preferences</p></div>
 
-    {/* Section 1 — System Controls */}
+    {/* Section 1 â€” System Controls */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Shield className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">System Controls</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
@@ -1809,22 +1880,23 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("System Controls")} loading={saving} /></div>
     </div>
 
-    {/* Section 2 — Feature Toggles */}
+    {/* Section 2 â€” Feature Toggles */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Zap className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Feature Toggles</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
-        <Toggle label="Points & Loyalty" desc="Bronze/Silver/Gold/Platinum tier system" checked={!!sForm.pointsAndLoyalty} onChange={v => upd("pointsAndLoyalty", v)} />
-        <Toggle label="Driver Tips" desc="Customers can add tips on delivery" checked={!!sForm.driverTipsEnabled} onChange={v => upd("driverTipsEnabled", v)} />
+        <Toggle label="Points & Loyalty" desc="Bronze/Silver/Gold/Platinum tier system" checked={!!sForm.pointsAndLoyalty} onChange={v => { upd("pointsSystemEnabled", v); upd("pointsAndLoyalty", v); }} />
+        <Toggle label="Driver Tips" desc="Customers can add tips on delivery" checked={!!sForm.driverTipsEnabled} onChange={v => { upd("tipSystemEnabled", v); upd("driverTipsEnabled", v); }} />
+        <Toggle label="Auto-Verify Vendors" desc="Instantly approve vendor stores once KYC + delivery milestone are met" checked={!!sForm.autoVerifyVendors} onChange={v => upd("autoVerifyVendors", v)} />
         <Toggle label="Referral System" desc="Referral rewards and invite codes" checked={!!sForm.referralEnabled} onChange={v => upd("referralEnabled", v)} />
         <Toggle label="Dynamic Pricing" desc="Surge pricing based on demand" checked={!!sForm.dynamicPricing} onChange={v => upd("dynamicPricing", v)} />
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Feature Toggles")} loading={saving} /></div>
     </div>
 
-    {/* Section 3 — Delivery Types */}
+    {/* Section 3 â€” Delivery Types */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Truck className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Delivery Types</span></div>
-      <p className="text-[10px] text-black/40 dark:text-white/40">Manage delivery categories — rename, enable/disable, set per-type pricing</p>
+      <p className="text-[10px] text-black/40 dark:text-white/40">Manage delivery categories â€” rename, enable/disable, set per-type pricing</p>
       <div className="overflow-x-auto rounded-xl border border-black/10 dark:border-white/10">
         <table className="w-full text-xs">
           <thead className="bg-gray-50 dark:bg-[#222]">
@@ -1832,7 +1904,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
               <th className="p-2 text-left font-bold text-black/40 dark:text-white/40 w-10">On</th>
               <th className="p-2 text-left font-bold text-black/40 dark:text-white/40">Name</th>
               <th className="p-2 text-left font-bold text-black/40 dark:text-white/40 hidden md:table-cell">Desc</th>
-              <th className="p-2 text-right font-bold text-black/40 dark:text-white/40 w-20">Base (₦)</th>
+              <th className="p-2 text-right font-bold text-black/40 dark:text-white/40 w-20">Base (â‚¦)</th>
               <th className="p-2 text-right font-bold text-black/40 dark:text-white/40 w-16">/km</th>
               <th className="p-2 text-right font-bold text-black/40 dark:text-white/40 w-16">/kg</th>
               <th className="p-2 w-8"></th>
@@ -1897,23 +1969,23 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Delivery Types")} loading={saving} /></div>
     </div>
 
-    {/* Section 4 — Points & Rewards */}
+    {/* Section 4 â€” Points & Rewards */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><DollarSign className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Pricing</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">BASE FARE (₦)</label>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">BASE FARE (â‚¦)</label>
           <input type="number" value={sForm.baseFare ?? ""} onChange={e => upd("baseFare", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">PER KG RATE (₦)</label>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">PER KG RATE (â‚¦)</label>
           <input type="number" step="0.1" value={sForm.perKgRate ?? ""} onChange={e => upd("perKgRate", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">EXPRESS SURCHARGE (₦)</label>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">EXPRESS SURCHARGE (â‚¦)</label>
           <input type="number" value={sForm.expressSurcharge ?? ""} onChange={e => upd("expressSurcharge", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SURGE MULTIPLIER (×)</label>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SURGE MULTIPLIER (Ã—)</label>
           <input type="number" step="0.1" min="1" value={sForm.surgeMultiplier ?? ""} onChange={e => upd("surgeMultiplier", parseFloat(e.target.value) || 1)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Pricing")} loading={saving} /></div>
     </div>
 
-    {/* Section 4 — Points & Rewards Configuration */}
+    {/* Section 4 â€” Points & Rewards Configuration */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Award className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Points & Rewards</span></div>
       <p className="text-[10px] text-black/40 dark:text-white/40">Configure loyalty tiers, welcome gift, and referral rewards</p>
@@ -1959,17 +2031,17 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
         <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Daily Bonus Points</label>
           <input type="number" value={sForm.appContent?.loyalty?.dailyBonus ?? 10} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), dailyBonus: parseInt(e.target.value) || 10 } })}
             className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Welcome Gift (₦)</label>
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Welcome Gift (â‚¦)</label>
           <input type="number" value={sForm.appContent?.welcomeGift?.credit ?? 2500} onChange={e => upd("appContent", { ...(sForm.appContent || {}), welcomeGift: { ...(sForm.appContent?.welcomeGift || {}), credit: parseFloat(e.target.value) || 0 } })}
             className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Referral Reward (₦)</label>
+        <div><label className="text-[9px] font-bold text-black/40 dark:text-white/40 block">Referral Reward (â‚¦)</label>
           <input type="number" value={sForm.referralReward ?? 500} onChange={e => upd("referralReward", parseFloat(e.target.value) || 0)}
             className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Points & Rewards")} loading={saving} /></div>
     </div>
 
-    {/* Section 5 — Branding & Communication */}
+    {/* Section 5 â€” Branding & Communication */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Globe className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Branding & Communication</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1994,7 +2066,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Branding")} loading={saving} /></div>
     </div>
 
-    {/* Section 6 — Master System Overrides */}
+    {/* Section 6 â€” Master System Overrides */}
     <div className="bg-white dark:bg-[#1a1a1a] border-2 border-[#FFC542]/30 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><AlertTriangle className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Master System Overrides</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
@@ -2035,15 +2107,25 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
   const [sPhone, setSPhone] = useState("");
   const [sCat, setSCat] = useState("Spare Parts & Accessories");
   const [sComm, setSComm] = useState("10");
+  const [sDesc, setSDesc] = useState("");
+  const [sAddr, setSAddr] = useState("");
+  const [sLogo, setSLogo] = useState("");
+  const [sCover, setSCover] = useState("");
   const [savingStore, setSavingStore] = useState(false);
 
+  // Edit / transfer / delete store targets
+  const [editStoreTarget, setEditStoreTarget] = useState<VendorStore | null>(null);
+  const [transferStoreTarget, setTransferStoreTarget] = useState<VendorStore | null>(null);
+  const [transferEmail, setTransferEmail] = useState("");
+  const [savingStoreOp, setSavingStoreOp] = useState(false);
+
   const totalProducts = products.filter(p => !p.isDeleted).length;
-  const approvedStores = stores.filter(s => s.status === "APPROVED");
-  const pendingStores = stores.filter(s => s.status === "PENDING");
+  const approvedStores = stores.filter(s => s.status === "APPROVED" && !s.isDeleted);
+  const pendingStores = stores.filter(s => s.status === "PENDING" && !s.isDeleted);
   const totalMarketplaceSales = orders.filter(o => o.status === "PAID" || o.status === "FULFILLED").reduce((s, o) => s + (o.totalPrice || 0), 0);
 
   const filteredProducts = products.filter(p => !p.isDeleted && (p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()) || p.vendorStore.toLowerCase().includes(search.toLowerCase())));
-  const filteredStores = stores.filter(s => s.storeName.toLowerCase().includes(search.toLowerCase()) || s.ownerName.toLowerCase().includes(search.toLowerCase()) || s.category.toLowerCase().includes(search.toLowerCase()));
+  const filteredStores = stores.filter(s => !s.isDeleted && (s.storeName.toLowerCase().includes(search.toLowerCase()) || s.ownerName.toLowerCase().includes(search.toLowerCase()) || s.category.toLowerCase().includes(search.toLowerCase())));
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2058,7 +2140,7 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
         vendorStore: pVendor, description: pDesc, imageUrl: pImg || "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=500",
         status: statusStr, rating: 5.0, createdAt: Timestamp.now()
       });
-      addLog("Create Product", `Added product '${pName}' (₦${priceNum.toLocaleString()})`);
+      addLog("Create Product", `Added product '${pName}' (â‚¦${priceNum.toLocaleString()})`);
       addToast("success", `Product '${pName}' created successfully`);
       setShowAddModal(false);
       setPName(""); setPPrice(""); setPStock(""); setPDesc(""); setPImg("");
@@ -2072,15 +2154,39 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
     if (!sName || !sOwner || !sEmail) { addToast("error", "Store name, owner, and email are required"); return; }
     setSavingStore(true);
     try {
-      await addDoc(collection(db, "marketplace_stores"), {
-        storeName: sName, ownerName: sOwner, email: sEmail, phone: sPhone,
-        category: sCat, commissionRate: parseFloat(sComm) || 10, status: "APPROVED",
-        dateEnlisted: new Date().toISOString().slice(0, 10), createdAt: Timestamp.now()
+      // Resolve owner user â€” link to an existing account (by email) or create a vendor user doc
+      let ownerId = "";
+      let ownerEmail = sEmail.trim().toLowerCase();
+      const matched = await getDocs(query(collection(db, "users"), where("email", "==", ownerEmail)));
+      let existingUser: any = null;
+      matched.forEach(d => { const x = d.data(); if (x.isDeleted) return; existingUser = { id: d.id, ...x }; });
+      if (existingUser) {
+        ownerId = existingUser.id;
+        await updateDoc(doc(db, "users", ownerId), { role: "vendor", userRole: "Vendor", isVendorVerified: true, updatedAt: Timestamp.now() });
+      } else {
+        ownerId = "vendor_" + Date.now();
+        await setDoc(doc(db, "users", ownerId), {
+          uid: ownerId, name: sOwner, email: ownerEmail, phone: sPhone || "", role: "vendor",
+          userRole: "Vendor", isVendorVerified: true, pin: "", status: "offline", isOnline: false,
+          rating: 0, deliveryCount: 0, walletBalance: 0, loyaltyPoints: 0, photoUrl: "",
+          isDeleted: false, pendingAuth: true, createdAt: Timestamp.now(), updatedAt: Timestamp.now()
+        });
+        addLog("Create Vendor User", `Created vendor user record '${sOwner}' (${ownerEmail})`);
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      await setDoc(doc(db, "marketplace_stores", ownerId), {
+        id: ownerId, ownerId, storeName: sName, category: sCat, ownerName: sOwner, email: ownerEmail,
+        phone: sPhone, description: sDesc, address: sAddr, logoUrl: sLogo, coverUrl: sCover,
+        commissionRate: parseFloat(sComm) || 10, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
+        status: "APPROVED", isVerified: true, isPendingReview: false, kycStatus: "approved",
+        isFeatured: false, featuredRank: 0, isDemo: false, isDeleted: false,
+        verificationNote: "Enlisted by ESDispatch admin", dateEnlisted: today,
+        createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
       });
-      addLog("Create Store", `Enlisted vendor store '${sName}'`);
+      addLog("Create Store", `Enlisted vendor store '${sName}' owned by '${sOwner}'`);
       addToast("success", `Vendor store '${sName}' enlisted and approved`);
       setShowAddStoreModal(false);
-      setSName(""); setSOwner(""); setSEmail(""); setSPhone("");
+      setSName(""); setSOwner(""); setSEmail(""); setSPhone(""); setSDesc(""); setSAddr(""); setSLogo(""); setSCover("");
     } catch (err: any) {
       addToast("error", "Failed to enlist store: " + err.message);
     } finally { setSavingStore(false); }
@@ -2088,12 +2194,132 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
 
   const handleUpdateStoreStatus = async (storeId: string, storeName: string, status: "APPROVED" | "REJECTED") => {
     try {
-      await updateDoc(doc(db, "marketplace_stores", storeId), { status, updatedAt: Timestamp.now() });
+      const approved = status === "APPROVED";
+      // Mirrors mobile VendorPortal/admin schema so approval reflects instantly in-app
+      await updateDoc(doc(db, "marketplace_stores", storeId), {
+        status,
+        isVerified: approved,
+        isPendingReview: !approved,
+        kycStatus: approved ? "approved" : "rejected",
+        verificationNote: approved ? "Approved by ESDispatch admin" : "Rejected by ESDispatch admin",
+        reviewedAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
       addLog("Update Store", `Set store '${storeName}' status to ${status}`);
       addToast("success", `Store '${storeName}' is now ${status}`);
     } catch (err: any) {
       addToast("error", "Failed to update store status: " + err.message);
     }
+  };
+
+  // Save editable store profile fields (name/owner/contact/category/commission/description/address/images/featured rank)
+  const handleEditStore = async (store: VendorStore) => {
+    setSavingStoreOp(true);
+    try {
+      await updateDoc(doc(db, "marketplace_stores", store.id), {
+        storeName: store.storeName,
+        ownerName: store.ownerName,
+        email: store.email,
+        phone: store.phone,
+        category: store.category,
+        commissionRate: store.commissionRate || 10,
+        description: store.description || "",
+        address: store.address || "",
+        logoUrl: store.logoUrl || "",
+        coverUrl: store.coverUrl || "",
+        isFeatured: !!store.isFeatured,
+        featuredRank: store.isFeatured ? (store.featuredRank ?? 1) : 0,
+        updatedAt: Timestamp.now()
+      });
+      addLog("Update Store", `Edited store '${store.storeName}'`);
+      addToast("success", `Store '${store.storeName}' updated`);
+      setEditStoreTarget(null);
+    } catch (err: any) {
+      addToast("error", "Failed to update store: " + err.message);
+    } finally { setSavingStoreOp(false); }
+  };
+
+  /** Quick toggle for the featured carousel slot without opening the full editor */
+  const handleToggleFeatured = async (store: VendorStore) => {
+    try {
+      const nextFeatured = !store.isFeatured;
+      await updateDoc(doc(db, "marketplace_stores", store.id), {
+        isFeatured: nextFeatured,
+        featuredRank: nextFeatured ? ((store.featuredRank ?? 0) > 0 ? (store.featuredRank ?? 1) : 1) : 0,
+        updatedAt: Timestamp.now()
+      });
+      addLog("Update Store", `${nextFeatured ? "Featured" : "Unfeatured"} store '${store.storeName}'`);
+      addToast("success", nextFeatured ? `'${store.storeName}' is now featured on the Marketplace` : `'${store.storeName}' removed from featured`);
+    } catch (err: any) {
+      addToast("error", "Featured toggle failed: " + err.message);
+    }
+  };
+
+  /** Transfer store ownership to another registered user: store doc + all linked products reassigned */
+  const handleTransferStore = async (store: VendorStore, targetEmail: string) => {
+    const email = targetEmail.trim().toLowerCase();
+    if (!email) { addToast("error", "Enter the new owner's registered email"); return; }
+    setSavingStoreOp(true);
+    try {
+      const matched = await getDocs(query(collection(db, "users"), where("email", "==", email)));
+      let newOwner: any = null;
+      matched.forEach(d => { const x = d.data(); if (!x.isDeleted) newOwner = { id: d.id, ...x }; });
+      if (!newOwner) {
+        addToast("error", `No user account found for '${email}'. The target owner must have a registered account.`);
+        return;
+      }
+      const oldOwnerId = store.ownerId || store.id;
+      const newOwnerId = newOwner.id;
+      const batch = writeBatch(db);
+      batch.set(doc(db, "marketplace_stores", newOwnerId), {
+        id: newOwnerId, ownerId: newOwnerId, ownerName: newOwner.name || newOwner.displayName || newOwnerId,
+        email, ownerEmail: email, storeName: store.storeName, category: store.category,
+        phone: newOwner.phone || store.phone || "",
+        description: store.description || "",
+        address: store.address || "",
+        logoUrl: store.logoUrl || "",
+        coverUrl: store.coverUrl || "",
+        commissionRate: store.commissionRate || 10,
+        vendorBalance: store.vendorBalance || 0, totalSales: store.totalSales || 0, storeRating: store.storeRating || 5.0,
+        status: store.status || "APPROVED", isVerified: !!store.isVerified, isPendingReview: !store.isVerified,
+        kycStatus: store.isVerified ? "approved" : "submitted",
+        isFeatured: !!store.isFeatured, featuredRank: store.featuredRank || 0,
+        isDemo: false, isDeleted: false,
+        dateEnlisted: store.dateEnlisted || new Date().toISOString().slice(0, 10),
+        transferredAt: Timestamp.now(), updatedAt: Timestamp.now()
+      }, { merge: true });
+      batch.update(doc(db, "marketplace_stores", oldOwnerId), {
+        isDeleted: true, status: "REJECTED", isVerified: false, isPendingReview: false,
+        updatedAt: Timestamp.now()
+      });
+      // Reassign all products of the old owner to the new owner
+      const prodSnap = await getDocs(query(collection(db, "marketplace_products"), where("vendorId", "==", oldOwnerId)));
+      prodSnap.forEach(pd => {
+        const pdData = pd.data();
+        batch.update(pd.ref, {
+          vendorId: newOwnerId,
+          vendorStore: store.storeName || pdData.vendorStore || "Store",
+          updatedAt: Timestamp.now()
+        });
+      });
+      await batch.commit();
+      await updateDoc(doc(db, "users", newOwnerId), { role: "vendor", userRole: "Vendor", isVendorVerified: true, updatedAt: Timestamp.now() });
+      addLog("Transfer Store", `Transferred '${store.storeName}' from '${store.ownerName}' to '${newOwner.name || email}' (${prodSnap.size} products reassigned)`);
+      addToast("success", `Store transferred to '${email}' with ${prodSnap.size} products`);
+      setTransferStoreTarget(null);
+      setTransferEmail("");
+    } catch (err: any) {
+      addToast("error", "Transfer failed: " + err.message);
+    } finally { setSavingStoreOp(false); }
+  };
+
+  /** Soft-delete a store: hidden from the app immediately, products stay for audit */
+  const handleDeleteStore = async (store: VendorStore) => {
+    await updateDoc(doc(db, "marketplace_stores", store.id), {
+      isDeleted: true, isPendingReview: false, updatedAt: Timestamp.now()
+    });
+    addLog("Delete Store", `Soft-deleted store '${store.storeName}'`);
+    addToast("success", `Store '${store.storeName}' removed from the marketplace`);
   };
 
   const handleDeleteProduct = async (product: Product) => {
@@ -2121,7 +2347,7 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
   const handleUpdateProductPrice = async (productId: string, name: string, price: number) => {
     try {
       await updateDoc(doc(db, "marketplace_products", productId), { price, updatedAt: Timestamp.now() });
-      addLog("Update Price", `Updated '${name}' price to ₦${price.toLocaleString()}`);
+      addLog("Update Price", `Updated '${name}' price to â‚¦${price.toLocaleString()}`);
       addToast("success", `Price updated for '${name}'`);
     } catch (err: any) {
       addToast("error", "Price update failed: " + err.message);
@@ -2154,9 +2380,9 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
 
     {/* Metric Stat Cards */}
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatCard icon={<Package className="w-4 h-4 text-[#FFC542]" />} label="CATALOG PRODUCTS" value={totalProducts.toString()} sub={`${products.filter(p => p.status === "In Stock").length} in stock · ${products.filter(p => p.status === "Low Stock").length} low stock`} />
+      <StatCard icon={<Package className="w-4 h-4 text-[#FFC542]" />} label="CATALOG PRODUCTS" value={totalProducts.toString()} sub={`${products.filter(p => p.status === "In Stock").length} in stock Â· ${products.filter(p => p.status === "Low Stock").length} low stock`} />
       <StatCard icon={<Store className="w-4 h-4 text-[#FFC542]" />} label="ACTIVE VENDOR STORES" value={approvedStores.length.toString()} sub={`${pendingStores.length} pending enlistment requests`} />
-      <StatCard icon={<DollarSign className="w-4 h-4 text-[#FFC542]" />} label="MARKETPLACE SALES" value={`₦${totalMarketplaceSales.toLocaleString()}`} sub={`${orders.length} completed transactions`} />
+      <StatCard icon={<DollarSign className="w-4 h-4 text-[#FFC542]" />} label="MARKETPLACE SALES" value={`â‚¦${totalMarketplaceSales.toLocaleString()}`} sub={`${orders.length} completed transactions`} />
       <StatCard icon={<Percent className="w-4 h-4 text-[#FFC542]" />} label="AVG COMMISSION" value="8.5%" sub="Revenue split per store transaction" />
     </div>
 
@@ -2164,14 +2390,14 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/10 dark:border-white/10 pb-4">
       <div className="flex gap-2">
         <button onClick={() => setActiveSubTab("products")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "products" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
-          📦 Products Catalog ({totalProducts})
+          ðŸ“¦ Products Catalog ({totalProducts})
         </button>
         <button onClick={() => setActiveSubTab("stores")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all relative " + (activeSubTab === "stores" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
-          🏪 Vendor Stores ({stores.length})
+          ðŸª Vendor Stores ({stores.length})
           {pendingStores.length > 0 && <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">{pendingStores.length}</span>}
         </button>
         <button onClick={() => setActiveSubTab("orders")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "orders" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
-          🛒 Sales & Cart Orders ({orders.length})
+          ðŸ›’ Sales & Cart Orders ({orders.length})
         </button>
       </div>
       <div className="w-full sm:w-64">
@@ -2196,7 +2422,7 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
                   <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Product</th>
                   <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Category</th>
                   <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Vendor Store</th>
-                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Price (₦)</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Price (â‚¦)</th>
                   <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Stock Qty</th>
                   <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Status</th>
                   <th className="text-right font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Actions</th>
@@ -2265,7 +2491,20 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
               <tbody className="divide-y divide-black/5 dark:divide-white/10">
                 {filteredStores.map(s => (
                   <tr key={s.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">{s.storeName}</td>
+                    <td className="p-4">
+                      <div className="font-black text-sm text-[#111] dark:text-white flex items-center gap-2">
+                        {s.storeName}
+                        {s.isFeatured && (s.featuredRank ?? 0) > 0 && (
+                          <span className="px-2 py-0.5 bg-[#FFC542] text-[#111] rounded-lg font-black text-[9px] flex items-center gap-1">
+                            <Star className="w-3 h-3" /> FEATURED #{s.featuredRank}
+                          </span>
+                        )}
+                        {s.isVerified && (
+                          <span className="px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-lg font-black text-[9px]">VERIFIED</span>
+                        )}
+                      </div>
+                      {s.isDemo && <div className="text-[10px] text-black/30 dark:text-white/30 font-bold mt-0.5">DEMO • hidden from customers</div>}
+                    </td>
                     <td className="p-4">
                       <div className="font-bold text-[#111] dark:text-white">{s.ownerName}</div>
                       <div className="text-[10px] text-black/40 dark:text-white/40">{s.email} · {s.phone}</div>
@@ -2279,17 +2518,32 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
                       </span>
                     </td>
                     <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
                         {s.status !== "APPROVED" && (
                           <button onClick={() => handleUpdateStoreStatus(s.id, s.storeName, "APPROVED")} className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-[10px] transition-all flex items-center gap-1">
                             <CheckCircle className="w-3.5 h-3.5" /> Approve
                           </button>
                         )}
+                        <button onClick={() => handleToggleFeatured(s)} title="Feature / unfeature on mobile carousel" className={"px-3 py-1.5 rounded-xl font-bold text-[10px] transition-all flex items-center gap-1 " + (s.isFeatured && (s.featuredRank ?? 0) > 0 ? "bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111]" : "bg-gray-100 dark:bg-[#222] hover:bg-black/5 dark:hover:bg-white/10 text-black/60 dark:text-white/60")}>
+                          <Star className="w-3.5 h-3.5" /> {s.isFeatured && (s.featuredRank ?? 0) > 0 ? "Unfeature" : "Feature"}
+                        </button>
+                        <button onClick={() => setEditStoreTarget(s)} className="px-3 py-1.5 bg-white dark:bg-[#222] border border-black/15 dark:border-white/15 hover:bg-black/5 dark:hover:bg-white/10 text-black/70 dark:text-white/70 rounded-xl font-bold text-[10px] transition-all flex items-center gap-1">
+                          <Pencil className="w-3.5 h-3.5" /> Edit
+                        </button>
+                        <button onClick={() => setTransferStoreTarget(s)} className="px-3 py-1.5 bg-white dark:bg-[#222] border border-black/15 dark:border-white/15 hover:bg-black/5 dark:hover:bg-white/10 text-black/70 dark:text-white/70 rounded-xl font-bold text-[10px] transition-all flex items-center gap-1">
+                          <Repeat className="w-3.5 h-3.5" /> Transfer
+                        </button>
                         {s.status !== "REJECTED" && (
                           <button onClick={() => handleUpdateStoreStatus(s.id, s.storeName, "REJECTED")} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-[10px] transition-all flex items-center gap-1">
                             <X className="w-3.5 h-3.5" /> Reject
                           </button>
                         )}
+                        <button
+                          onClick={() => { if (window.confirm(`Permanently remove '${s.storeName}' from the customer marketplace? Products and order history are kept for audit.`)) handleDeleteStore(s); }}
+                          className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all" title="Remove store"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -2318,7 +2572,7 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
                   <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Order #</th>
                   <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Customer</th>
                   <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Store</th>
-                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Total (₦)</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Total (â‚¦)</th>
                   <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Status</th>
                   <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Date</th>
                 </tr>
@@ -2329,7 +2583,7 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
                     <td className="p-4 font-black text-sm text-[#FFC542]">{o.orderNumber}</td>
                     <td className="p-4 font-bold text-[#111] dark:text-white">{o.customerName}</td>
                     <td className="p-4 font-semibold text-black/70 dark:text-white/70">{o.storeName}</td>
-                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">₦{o.totalPrice.toLocaleString()}</td>
+                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">â‚¦{o.totalPrice.toLocaleString()}</td>
                     <td className="p-4">
                       <span className="px-3 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-full font-bold text-[10px]">{o.status}</span>
                     </td>
@@ -2372,7 +2626,7 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
                 ]} className="w-full" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Price (₦)</label>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Price (â‚¦)</label>
                 <input type="number" value={pPrice} onChange={e => setPPrice(e.target.value)} placeholder="35000" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
               </div>
             </div>
@@ -2442,6 +2696,26 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
                 <input type="number" value={sComm} onChange={e => setSComm(e.target.value)} placeholder="10" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
               </div>
             </div>
+            <div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Description (shown on storefront)</label>
+              <textarea value={sDesc} onChange={e => setSDesc(e.target.value)} rows={2} placeholder="Premium spare parts and delivery accessories in Lagosâ€¦" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Address (full detail, shown on storefront)</label>
+              <input type="text" value={sAddr} onChange={e => setSAddr(e.target.value)} placeholder="12 Adeola Odeku St, Victoria Island, Lagos" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+<div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Logo URL (optional)</label>
+              <input type="text" value={sLogo} onChange={e => setSLogo(e.target.value)} placeholder="https://…/logo.png" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Cover Photo URL (optional)</label>
+              <input type="text" value={sCover} onChange={e => setSCover(e.target.value)} placeholder="https://…/cover.jpg" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20">
+              <p className="text-[10px] font-bold text-[#FFC542] uppercase">Owner Account</p>
+              <p className="text-xs text-[#111] dark:text-white mt-1">If the email matches an existing user, they are upgraded to Vendor instantly. Otherwise a vendor user record is created automatically.</p>
+            </div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setShowAddStoreModal(false)} className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold">Cancel</button>
               <button type="submit" disabled={savingStore} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
@@ -2449,6 +2723,114 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    )}
+
+    {/* Edit Store Modal */}
+    {editStoreTarget && (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in">
+          <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
+            <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-[#FFC542]" /> Edit Store — {editStoreTarget.storeName}
+            </h3>
+            <button onClick={() => setEditStoreTarget(null)} className="text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <form
+            onSubmit={e => { e.preventDefault(); handleEditStore(editStoreTarget); }}
+            className="space-y-3"
+          >
+            <div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Name</label>
+              <input type="text" value={editStoreTarget.storeName} onChange={e => setEditStoreTarget({ ...editStoreTarget, storeName: e.target.value })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Owner Name</label>
+                <input type="text" value={editStoreTarget.ownerName} onChange={e => setEditStoreTarget({ ...editStoreTarget, ownerName: e.target.value })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Category</label>
+                <input type="text" value={editStoreTarget.category} onChange={e => setEditStoreTarget({ ...editStoreTarget, category: e.target.value })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Email</label>
+                <input type="email" value={editStoreTarget.email} onChange={e => setEditStoreTarget({ ...editStoreTarget, email: e.target.value })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Phone</label>
+                <input type="text" value={editStoreTarget.phone || ""} onChange={e => setEditStoreTarget({ ...editStoreTarget, phone: e.target.value })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Commission Rate (%)</label>
+                <input type="number" value={editStoreTarget.commissionRate} onChange={e => setEditStoreTarget({ ...editStoreTarget, commissionRate: parseFloat(e.target.value) || 0 })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Featured Rank (1–10, 0 = off)</label>
+                <input type="number" min={0} max={10} value={editStoreTarget.isFeatured ? (editStoreTarget.featuredRank || 1) : 0} onChange={e => { const r = parseInt(e.target.value) || 0; setEditStoreTarget({ ...editStoreTarget, featuredRank: r, isFeatured: r > 0 }); }} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Description</label>
+              <textarea value={editStoreTarget.description || ""} onChange={e => setEditStoreTarget({ ...editStoreTarget, description: e.target.value })} rows={2} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Address</label>
+              <input type="text" value={editStoreTarget.address || ""} onChange={e => setEditStoreTarget({ ...editStoreTarget, address: e.target.value })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Logo URL</label>
+                <input type="text" value={editStoreTarget.logoUrl || ""} onChange={e => setEditStoreTarget({ ...editStoreTarget, logoUrl: e.target.value })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Cover URL</label>
+                <input type="text" value={editStoreTarget.coverUrl || ""} onChange={e => setEditStoreTarget({ ...editStoreTarget, coverUrl: e.target.value })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setEditStoreTarget(null)} className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold">Cancel</button>
+              <button type="submit" disabled={savingStoreOp} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
+                {savingStoreOp ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+
+    {/* Transfer Store Ownership Modal */}
+    {transferStoreTarget && (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-md shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in">
+          <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
+            <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
+              <Repeat className="w-5 h-5 text-[#FFC542]" /> Transfer Ownership
+            </h3>
+            <button onClick={() => setTransferStoreTarget(null)} className="text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <p className="text-xs text-black/50 dark:text-white/50">
+            Transfer <b className="text-[#111] dark:text-white">{transferStoreTarget.storeName}</b> from <b className="text-[#111] dark:text-white">{transferStoreTarget.ownerName}</b> to another registered user. All products listed under this store are reassigned to the new owner.
+          </p>
+          <div>
+            <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">New Owner's Registered Email</label>
+            <input type="email" value={transferEmail} onChange={e => setTransferEmail(e.target.value)} placeholder="owner@company.com" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setTransferStoreTarget(null)} className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold">Cancel</button>
+            <button onClick={() => handleTransferStore(transferStoreTarget, transferEmail)} disabled={savingStoreOp} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
+              {savingStoreOp ? "Transferring..." : "Transfer Store"}
+            </button>
+          </div>
         </div>
       </div>
     )}
@@ -2609,7 +2991,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
         return <div key={d.id} onClick={() => setTSelectedId(tSelectedId === d.id ? null : d.id)} className={"bg-white dark:bg-[#1a1a1a] border rounded-3xl p-5 shadow-sm animate-fade-in cursor-pointer transition-all " + (tSelectedId === d.id ? "border-[#FFC542] ring-2 ring-[#FFC542]/30" : "border-black/10 dark:border-white/10 hover:border-[#FFC542]/50")}>
           <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
             <div><p className="font-bold text-[#111] dark:text-white">{d.itemName || "Parcel"}</p>
-              <p className="text-[10px] text-black/40 dark:text-white/40">#{idShort(d.id)} • {d.receiverName} → {d.deliveryAddress}</p>
+              <p className="text-[10px] text-black/40 dark:text-white/40">#{idShort(d.id)} â€¢ {d.receiverName} â†’ {d.deliveryAddress}</p>
               {d.courierName && <p className="text-[10px] text-[#FFC542] mt-0.5 font-medium">{d.courierName}</p>}</div>
             <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status.replace(/_/g, " ")}</span>
           </div>

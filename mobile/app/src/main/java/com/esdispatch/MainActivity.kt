@@ -96,11 +96,40 @@ class MainActivity : FragmentActivity() {
         super.attachBaseContext(newBase)
     }
 
+    private fun showPendingCrashReport() {
+        try {
+            val prefs = getSharedPreferences(com.esdispatch.DispatchApplication.PREFS, android.content.Context.MODE_PRIVATE)
+            val crash = prefs.getString(com.esdispatch.DispatchApplication.KEY_LAST_CRASH, null)
+            if (crash.isNullOrBlank()) return
+            prefs.edit().remove(com.esdispatch.DispatchApplication.KEY_LAST_CRASH).apply()
+            android.app.AlertDialog.Builder(this)
+                .setTitle("ESDispatch Crash Report")
+                .setMessage("The app crashed last time it ran. Copy this and send it to the developer:\n\n" + crash.take(3000))
+                .setPositiveButton("OK") { d, _ -> d.dismiss() }
+                .setNeutralButton("Copy") { d, _ ->
+                    try {
+                        val clip = android.content.ClipData.newPlainText("esdispatch_crash", crash)
+                        (getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                            ?.setPrimaryClip(clip)
+                    } catch (e: Throwable) {
+                        android.util.Log.w("MainActivity", "Clipboard copy failed: ${e.message}")
+                    }
+                    d.dismiss()
+                }
+                .setCancelable(false)
+                .show()
+        } catch (e: Throwable) {
+            android.util.Log.w("MainActivity", "Crash report dialog failed: ${e.message}")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         viewModel = androidx.lifecycle.ViewModelProvider(this)[DeliveryViewModel::class.java]
         setupShortcuts()
+
+        showPendingCrashReport()
 
         val shortcutRoute = intent?.getStringExtra("shortcut_route")
         if (shortcutRoute != null) {
@@ -255,6 +284,18 @@ class MainActivity : FragmentActivity() {
                         VendorPortalScreen(viewModel = viewModel, onNavigate = {
                             if (it == "Dashboard") navController.popBackStack() else navController.navigate(it)
                         })
+                    }
+                    composable("VendorStorefront/{vendorId}") { backStackEntry ->
+                        val vendorId = backStackEntry.arguments?.getString("vendorId") ?: ""
+                        VendorStorefrontScreen(viewModel = viewModel, vendorId = vendorId, onNavigate = {
+                            if (it == "Dashboard") navController.popBackStack() else navController.navigate(it)
+                        })
+                    }
+                    composable("VendorProfile/{vendorId}") { backStackEntry ->
+                        val vendorId = backStackEntry.arguments?.getString("vendorId") ?: ""
+                        VendorProfileScreen(vendorId = vendorId, viewModel = viewModel, onNavigate = {
+                            if (it == "Dashboard") navController.popBackStack() else navController.navigate(it)
+                        }, onBack = { navController.popBackStack() })
                     }
                     composable("OrderLogs") {
                         OrderLogsScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })

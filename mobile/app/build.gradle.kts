@@ -24,6 +24,8 @@ android {
     val envMapboxToken = System.getenv("MAPBOX_ACCESS_TOKEN") ?: ""
     val resolvedMapboxToken = if (envMapboxToken.isNotEmpty()) envMapboxToken else ""
     buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"$resolvedMapboxToken\"")
+    val paystackKey = System.getenv("PAYSTACK_PUBLIC_KEY") ?: ""
+    buildConfigField("String", "PAYSTACK_PUBLIC_KEY", "\"$paystackKey\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -126,8 +128,10 @@ dependencies {
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.messaging)
-    implementation(libs.firebase.crashlytics)
-    implementation(libs.firebase.storage)
+  implementation(libs.firebase.crashlytics)
+  implementation(libs.firebase.storage)
+  implementation(libs.firebase.database)
+  implementation(libs.paystack)
   implementation(libs.zxing)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)

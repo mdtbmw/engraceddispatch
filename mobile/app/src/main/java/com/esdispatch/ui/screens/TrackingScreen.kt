@@ -85,6 +85,9 @@ import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Delete
 import com.esdispatch.R
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.MyLocation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -520,6 +523,7 @@ fun ActiveTrackingScreen(
     var showTraffic by remember { mutableStateOf(true) }
     var mapZoom by remember { mutableFloatStateOf(14.5f) }
     var dismissedTrafficAlert by remember { mutableStateOf(false) }
+    var followUser by remember { mutableStateOf(true) }
 
     // Dynamic infinite animation for real-time courier path gliding
     val infiniteTransition = rememberInfiniteTransition(label = "tracking")
@@ -540,13 +544,12 @@ fun ActiveTrackingScreen(
 
     val headerBgColor = if (isDark) Gold else Obsidian
     Scaffold(
-        containerColor = headerBgColor,
-        bottomBar = { BottomNav(currentScreen = "ActiveTracking", onNavigate = onNavigate, activeViewMode = activeViewMode, userRole = userRole) }
+        containerColor = headerBgColor
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = innerPadding.calculateBottomPadding())
+                .padding(top = innerPadding.calculateTopPadding())
                 .background(headerBgColor)
         ) {
             ScreenHeader(
@@ -595,6 +598,7 @@ fun ActiveTrackingScreen(
                     courierLongitude = parcel.courierLongitude,
                     userAvatar = userAvatar,
                     hasNoBooking = hasNoBooking,
+                    followUser = followUser,
                     userCoords = userCoords
                 )
             }
@@ -619,9 +623,8 @@ fun ActiveTrackingScreen(
                     color = if (isLight) Obsidian else Gold,
                     shape = RoundedCornerShape(16.dp),
                     border = BorderStroke(1.dp, if (isLight) Obsidian else BorderDark),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { dismissedTrafficAlert = true }
+                    onClick = { dismissedTrafficAlert = true },
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier
@@ -835,6 +838,13 @@ fun ActiveTrackingScreen(
                 }
                 MapControlButton(icon = Icons.Default.Remove, description = "Zoom Out") {
                     if (mapZoom > 2f) mapZoom -= 0.5f
+                }
+                MapControlButton(
+                    icon = Icons.Default.MyLocation,
+                    description = if (followUser) "Following you — tap to follow courier" else "Following courier — tap to follow you",
+                    isActive = followUser
+                ) {
+                    followUser = !followUser
                 }
                 MapControlButton(
                     icon = Icons.Default.Traffic,
@@ -1069,70 +1079,44 @@ fun ActiveTrackingScreen(
                                             isDark = isDark
                                         )
 
-                                        // 3. Sender to Receiver addresses overview panel
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                        // 3. Sender to Receiver addresses overview panel — full detail, Uber-style
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 4.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
                                             if (isLocalLoading) {
                                                 Column(modifier = Modifier.weight(1.0f)) {
                                                     Text("PICKUP", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
                                                     SkeletonBox(
-                                                        modifier = Modifier.width(120.dp).height(16.dp),
+                                                        modifier = Modifier.width(180.dp).height(16.dp),
                                                         isLight = isLight
                                                     )
                                                 }
-                                                Icon(
-                                                    imageVector = Icons.Default.Navigation,
-                                                    contentDescription = null,
-                                                    tint = accentIconColor,
-                                                    modifier = Modifier
-                                                        .size(16.dp)
-                                                        .padding(horizontal = 4.dp)
-                                                )
-                                                Column(
-                                                    modifier = Modifier.weight(1.0f),
-                                                    horizontalAlignment = Alignment.End
-                                                ) {
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Column(modifier = Modifier.weight(1.0f)) {
                                                     Text("DESTINATION", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
                                                     SkeletonBox(
-                                                        modifier = Modifier.width(120.dp).height(16.dp),
+                                                        modifier = Modifier.width(180.dp).height(16.dp),
                                                         isLight = isLight
                                                     )
                                                 }
                                             } else {
-                                                Column(modifier = Modifier.weight(1.0f)) {
-                                                    Text("PICKUP", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                                    Text(
-                                                        text = parcel.pickupAddress.substringBefore(","),
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = AppOnSurface,
-                                                        maxLines = 1
-                                                    )
-                                                }
-                                                Icon(
-                                                    imageVector = Icons.Default.Navigation,
-                                                    contentDescription = null,
-                                                    tint = accentIconColor,
-                                                    modifier = Modifier
-                                                        .size(16.dp)
-                                                        .padding(horizontal = 4.dp)
+                                                AddressDetailRow(
+                                                    icon = Icons.Filled.Place,
+                                                    label = "PICKUP",
+                                                    address = parcel.pickupAddress,
+                                                    accentColor = accentIconColor,
+                                                    onSurfaceColor = AppOnSurface
                                                 )
-                                                Column(
-                                                    modifier = Modifier.weight(1.0f),
-                                                    horizontalAlignment = Alignment.End
-                                                ) {
-                                                    Text("DESTINATION", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                                    Text(
-                                                        text = parcel.deliveryAddress.substringBefore(","),
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = AppOnSurface,
-                                                        maxLines = 1
-                                                    )
-                                                }
+                                                AddressDetailRow(
+                                                    icon = Icons.Filled.Flag,
+                                                    label = "DESTINATION",
+                                                    address = parcel.deliveryAddress,
+                                                    accentColor = accentIconColor,
+                                                    onSurfaceColor = AppOnSurface
+                                                )
                                             }
                                         }
 
@@ -1765,38 +1749,38 @@ is ZodResult.Error -> {
 
                         // Collapsible drawer arrow button overlapping the top center edge
                         Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = AppSurface,
+                            border = BorderStroke(1.dp, if (isLight) Slate else Gold.copy(alpha = 0.3f)),
+                            onClick = {
+                                if (hasNoBooking) {
+                                    // Only two states: CLOSED and COLLAPSED
+                                    drawerState = if (drawerState == DrawerState.CLOSED) {
+                                        DrawerState.COLLAPSED
+                                    } else {
+                                        DrawerState.CLOSED
+                                    }
+                                } else {
+                                    when (drawerState) {
+                                        DrawerState.CLOSED -> {
+                                            drawerState = DrawerState.COLLAPSED
+                                            isGoingUp = true
+                                        }
+                                        DrawerState.COLLAPSED -> {
+                                            drawerState = DrawerState.EXPANDED
+                                            isGoingUp = true
+                                        }
+                                        DrawerState.EXPANDED -> {
+                                            drawerState = DrawerState.COLLAPSED
+                                            isGoingUp = false
+                                        }
+                                    }
+                                }
+                            },
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
                                 .offset(y = (-18).dp)
-                                .border(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate, RoundedCornerShape(12.dp))
-                                .clickable {
-                                    if (hasNoBooking) {
-                                        // Only two states: CLOSED and COLLAPSED
-                                        drawerState = if (drawerState == DrawerState.CLOSED) {
-                                            DrawerState.COLLAPSED
-                                        } else {
-                                            DrawerState.CLOSED
-                                        }
-                                    } else {
-                                        when (drawerState) {
-                                            DrawerState.CLOSED -> {
-                                                drawerState = DrawerState.COLLAPSED
-                                                isGoingUp = true
-                                            }
-                                            DrawerState.COLLAPSED -> {
-                                                drawerState = DrawerState.EXPANDED
-                                                isGoingUp = true
-                                            }
-                                            DrawerState.EXPANDED -> {
-                                                drawerState = DrawerState.COLLAPSED
-                                                isGoingUp = false
-                                            }
-                                        }
-                                    }
-                                },
-                            shape = RoundedCornerShape(12.dp),
-                            color = AppSurface,
-                            border = BorderStroke(1.dp, if (isLight) Slate else Gold.copy(alpha = 0.3f))
+                                .zIndex(30f)
                         ) {
                             Box(
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -1888,6 +1872,43 @@ class LeafletJavascriptInterface(
     }
 }
 
+@Composable
+private fun AddressDetailRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    address: String,
+    accentColor: Color,
+    onSurfaceColor: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(accentColor.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, tint = accentColor, modifier = Modifier.size(13.dp))
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray, letterSpacing = 1.sp)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = address.ifBlank { "Address pending" },
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = onSurfaceColor,
+                lineHeight = 18.sp
+            )
+        }
+    }
+}
+
 private fun geocodeAddressToLatLng(context: android.content.Context, address: String): Pair<Double, Double> {
     val lower = address.lowercase()
     try {
@@ -1944,6 +1965,7 @@ fun LiveMapView(
     courierLongitude: Double? = null,
     userAvatar: String = "",
     hasNoBooking: Boolean = false,
+    followUser: Boolean = true,
     userCoords: Pair<Double, Double>? = null
 ) {
     val context = LocalContext.current
@@ -2299,6 +2321,25 @@ fun LiveMapView(
                     }
                 }
                 var liveUserMarker = null;
+                var followMode = ${if (followUser) "'user'" else "'courier'"};
+                var userFollowZoom = 15.0;
+
+                function recenterToUser() {
+                    if (!userLoc) return;
+                    if (isMapboxActive && map && typeof mapboxgl !== 'undefined') {
+                        var targetZoom = Math.max(typeof map.getZoom === 'function' ? map.getZoom() : userFollowZoom, userFollowZoom);
+                        map.easeTo({ center: [userLoc[1], userLoc[0]], zoom: targetZoom, duration: 900 });
+                    } else if (leafletMap && typeof L !== 'undefined') {
+                        leafletMap.panTo([userLoc[0], userLoc[1]], { animate: true, duration: 0.9 });
+                    }
+                }
+
+                function setFollowMode(mode) {
+                    followMode = mode;
+                    if (mode === 'user') {
+                        recenterToUser();
+                    }
+                }
 
                 function setUserLocation(lat, lng) {
                     userLoc = [lat, lng];
@@ -2323,8 +2364,9 @@ fun LiveMapView(
                                     anchor: 'bottom'
                                 }).setLngLat([lng, lat]).addTo(map);
                             }
-                            if (hasNoBooking) {
-                                map.easeTo({ center: [lng, lat], zoom: 15, duration: 1000 });
+                            if (followMode === 'user') {
+                                var targetZoom = Math.max(typeof map.getZoom === 'function' ? map.getZoom() : userFollowZoom, userFollowZoom);
+                                map.easeTo({ center: [lng, lat], zoom: targetZoom, duration: 900 });
                             }
                         } else if (leafletMap && typeof L !== 'undefined') {
                             if (liveUserMarker) {
@@ -2338,8 +2380,8 @@ fun LiveMapView(
                                 });
                                 liveUserMarker = L.marker([lat, lng], { icon: userIcon }).addTo(leafletMap);
                             }
-                            if (hasNoBooking) {
-                                leafletMap.panTo([lat, lng]);
+                            if (followMode === 'user') {
+                                leafletMap.panTo([lat, lng], { animate: true, duration: 0.9 });
                             }
                         }
                     } catch(err) {
@@ -2756,6 +2798,13 @@ fun LiveMapView(
                             courierMarker.setLatLng([lat, lng]);
                         }
                     }
+                    if (map && followMode === 'courier' && !hasRealCoords) {
+                        if (isMapboxActive) {
+                            map.panTo([lng, lat], { animate: true, duration: 500 });
+                        } else {
+                            map.panTo([lat, lng], { animate: true, duration: 0.5 });
+                        }
+                    }
                     if (window.AndroidMap) {
                         window.AndroidMap.onTrackingUpdated(lat, lng);
                     }
@@ -2765,10 +2814,10 @@ fun LiveMapView(
                     if (courierMarker) {
                         if (isMapboxActive) {
                             courierMarker.setLngLat([lngVal, latVal]);
-                            if (map) map.panTo([lngVal, latVal]);
+                            if (map && followMode === 'courier') map.panTo([lngVal, latVal]);
                         } else {
                             courierMarker.setLatLng([latVal, lngVal]);
-                            if (map) map.panTo([latVal, lngVal]);
+                            if (map && followMode === 'courier') map.panTo([latVal, lngVal]);
                         }
                         if (window.AndroidMap) {
                             window.AndroidMap.onTrackingUpdated(latVal, lngVal);
@@ -2836,6 +2885,12 @@ fun LiveMapView(
     LaunchedEffect(userCoords, isPageLoaded) {
         if (isPageLoaded && userCoords != null) {
             webView.evaluateJavascript("setUserLocation(${userCoords!!.first}, ${userCoords!!.second})", null)
+        }
+    }
+
+    LaunchedEffect(followUser, isPageLoaded) {
+        if (isPageLoaded) {
+            webView.evaluateJavascript("setFollowMode('${if (followUser) "user" else "courier"}')", null)
         }
     }
 

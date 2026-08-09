@@ -770,7 +770,8 @@ fun SendParcelScreen(
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .navigationBarsPadding(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
             tonalElevation = 8.dp
@@ -1388,7 +1389,8 @@ fun BookingSelectionScreen(
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .navigationBarsPadding(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
             tonalElevation = 8.dp

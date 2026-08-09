@@ -42,6 +42,7 @@ secretsGradlePlugin = "2.0.1"
 googleServices = "4.5.0"
 playServicesAuth = "21.2.0"
 securityCrypto = "1.1.0-alpha06"
+paystack = "3.1.3"
 
 firebaseCrashlyticsPlugin = "3.0.1"
 firebaseStorage = "21.0.0"
@@ -106,6 +107,8 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 
 firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics", version.ref = "firebaseCrashlytics" }
 firebase-storage = { group = "com.google.firebase", name = "firebase-storage", version.ref = "firebaseStorage" }
+firebase-database = { group = "com.google.firebase", name = "firebase-database" }
+paystack = { group = "co.paystack.android", name = "paystack", version.ref = "paystack" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

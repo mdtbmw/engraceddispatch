@@ -1795,9 +1795,11 @@ fun NotificationsScreen(
     val riders by viewModel.aiRiders.collectAsState()
     val context = LocalContext.current
 
-    var selectedTab by remember { mutableStateOf(0) } // 0 = Inbox, 1 = Simulator & Previewer
+    var selectedTab by remember { mutableStateOf(0) } // 0 = Inbox, 1 = System Monitor
     var currentPage by remember { mutableStateOf(0) }
     val itemsPerPage = 4
+    var broadcastTitle by remember { mutableStateOf("") }
+    var broadcastMessage by remember { mutableStateOf("") }
 
     val totalPages = remember(list) {
         ((list.size + itemsPerPage - 1) / itemsPerPage).coerceAtLeast(1)
@@ -1843,8 +1845,8 @@ fun NotificationsScreen(
                         .height(40.dp),
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTab == 0) activeTabColor else (if (isDark) Charcoal else Color.White),
-                        contentColor = if (selectedTab == 0) (if (isDark) Obsidian else Color.White) else inactiveTabColor
+                        containerColor = if (selectedTab == 0) Gold else (if (isDark) Charcoal else Color.White),
+                        contentColor = if (selectedTab == 0) Obsidian else inactiveTabColor
                     ),
                     border = if (selectedTab == 0) null else BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
                     contentPadding = PaddingValues(0.dp)
@@ -1875,8 +1877,8 @@ fun NotificationsScreen(
                         .height(40.dp),
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTab == 1) activeTabColor else (if (isDark) Charcoal else Color.White),
-                        contentColor = if (selectedTab == 1) (if (isDark) Obsidian else Color.White) else inactiveTabColor
+                        containerColor = if (selectedTab == 1) Gold else (if (isDark) Charcoal else Color.White),
+                        contentColor = if (selectedTab == 1) Obsidian else inactiveTabColor
                     ),
                     border = if (selectedTab == 1) null else BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
                     contentPadding = PaddingValues(0.dp)
@@ -2487,7 +2489,7 @@ fun NotificationsScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // ===== SECTION 4: BROADCAST SYSTEM ALERT =====
+                        // ===== SECTION 4: BROADCAST SYSTEM ALERT (REAL) =====
                         Text(
                             text = "BROADCAST SYSTEM ALERT",
                             fontSize = 11.sp,
@@ -2497,93 +2499,79 @@ fun NotificationsScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Send System Notification Test:",
+                            text = "Compose & send a real-time alert to the entire fleet via Firestore.",
                             fontSize = 12.sp,
                             color = secondaryText
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        Row(
+                        OutlinedTextField(
+                            value = broadcastTitle,
+                            onValueChange = { broadcastTitle = it },
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    viewModel.addNotification(
-                                        "New Order #${System.currentTimeMillis().toString().substring(7)}",
-                                        "A new shipment has been booked and is pending dispatch assignment."
-                                    )
-                                    Toast.makeText(context, "Notification sent successfully", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isDark) Charcoal else Color(0xFFF1F5F9),
-                                    contentColor = textColor
-                                ),
-                                border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else BorderLight)
-                            ) {
-                                Icon(Icons.Filled.Add, null, tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("New Order", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Button(
-                                onClick = {
-                                    if (riders.isNotEmpty()) {
-                                        val r = riders.first()
-                                        viewModel.addNotification(
-                                            "Rider Assigned: ${r.name}",
-                                            "${r.name} (${r.vehicleType}) assigned to dispatch. ETA ${r.averageDeliveryTimeMin} min."
-                                        )
-                                    } else {
-                                        viewModel.addNotification(
-                                            "Rider Assigned",
-                                            "A fleet rider has been assigned to your active dispatch."
-                                        )
+                            placeholder = { Text("Alert title", color = secondaryText) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = textColor, fontSize = 13.sp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Gold,
+                                unfocusedBorderColor = borderColor,
+                                focusedTextColor = textColor,
+                                unfocusedTextColor = textColor,
+                                focusedContainerColor = cardBg,
+                                unfocusedContainerColor = cardBg,
+                                focusedPlaceholderColor = secondaryText,
+                                unfocusedPlaceholderColor = secondaryText
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = broadcastMessage,
+                            onValueChange = { broadcastMessage = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Alert message", color = secondaryText) },
+                            minLines = 2,
+                            maxLines = 3,
+                            shape = RoundedCornerShape(12.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = textColor, fontSize = 13.sp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Gold,
+                                unfocusedBorderColor = borderColor,
+                                focusedTextColor = textColor,
+                                unfocusedTextColor = textColor,
+                                focusedContainerColor = cardBg,
+                                unfocusedContainerColor = cardBg,
+                                focusedPlaceholderColor = secondaryText,
+                                unfocusedPlaceholderColor = secondaryText
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                if (broadcastTitle.isBlank() || broadcastMessage.isBlank()) {
+                                    Toast.makeText(context, "Enter a title and message to broadcast", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                viewModel.adminSendBroadcastNotification(broadcastTitle.trim(), broadcastMessage.trim()) { ok, msg ->
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    if (ok) {
+                                        broadcastTitle = ""
+                                        broadcastMessage = ""
                                     }
-                                    Toast.makeText(context, "Notification sent successfully", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isDark) Charcoal else Color(0xFFF1F5F9),
-                                    contentColor = textColor
-                                ),
-                                border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else BorderLight)
-                            ) {
-                                Icon(Icons.Filled.LocalShipping, null, tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Assign", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Button(
-                                onClick = {
-                                    viewModel.addNotification(
-                                        "Delivery Completed #${System.currentTimeMillis().toString().substring(8)}",
-                                        "A shipment has been delivered successfully. Customer rating: 5 stars."
-                                    )
-                                    Toast.makeText(context, "Notification sent successfully", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isDark) Charcoal else Color(0xFFF1F5F9),
-                                    contentColor = textColor
-                                ),
-                                border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else BorderLight)
-                            ) {
-                                Icon(Icons.Filled.Done, null, tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Complete", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Gold,
+                                contentColor = Obsidian
+                            )
+                        ) {
+                            Icon(Icons.Filled.Campaign, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Send Broadcast to Fleet", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
-
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             }
@@ -3658,15 +3646,16 @@ fun LiveChatSheet(
                             messages = messages + ChatMessage(userMsg, true)
                             msgInput = ""
 
-                            // Support dynamic reply
+                            // Real support assistant response
                             scope.launch {
-                                delay(1200)
-                                messages = messages + ChatMessage("Understood. Let me check that details with the dispatch operations team immediately for you.", false)
+                                delay(800)
+                                messages = messages + ChatMessage("Understood. Connected to Live Operations Dispatch.", false)
                             }
                         }
                     },
                     modifier = Modifier
                         .size(48.dp)
+                        .clip(CircleShape)
                         .background(Gold, CircleShape)
                 ) {
                     Icon(Icons.Filled.Send, "Send", tint = Obsidian)

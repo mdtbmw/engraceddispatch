@@ -4,13 +4,16 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -22,15 +25,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import com.esdispatch.ui.components.AddressAutocompleteField
+import com.esdispatch.ui.components.RoundedSheet
+import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 import com.esdispatch.viewmodel.MarketplaceItem
-import com.esdispatch.ui.components.ScreenHeader
-import com.esdispatch.ui.components.RoundedSheet
+import com.esdispatch.viewmodel.MarketplaceStore
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,29 +45,40 @@ fun MarketplaceScreen(
     onNavigate: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val isDark = isDarkTheme
-    
+    // Correct dark-mode check — isDarkTheme doesn't exist as a top-level symbol
+    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
+
+    // Live Firestore state
+    val marketplaceItems by viewModel.marketplaceProducts.collectAsState()
+    val stores by viewModel.marketplaceStores.collectAsState()
+    val cartItems by viewModel.cartItems.collectAsState()
+    val walletBalance by viewModel.walletBalance.collectAsState()
+    val marketplaceStores by viewModel.marketplaceStores.collectAsState()
+
+    // UI state
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
     var showItemDetails by remember { mutableStateOf<MarketplaceItem?>(null) }
-    val cartItems by viewModel.cartItems.collectAsState()
     var showCheckoutSheet by remember { mutableStateOf(false) }
-    
-    val marketplaceItems by viewModel.marketplaceProducts.collectAsState()
 
-    val categories = listOf("All", "Delivery Gear", "Apparel", "Lubricants", "Accessories", "Safety")
-    
-    val rawItems = if (marketplaceItems.isNotEmpty()) marketplaceItems else viewModel.defaultSampleProducts
+    // Aligned with Vendor Portal product categories so every vendor item is reachable
+    val categories = listOf("All", "Delivery Gear", "Apparel", "Lubricants", "Accessories", "Safety", "Packaging", "Electronics", "General", "Food & Beverages", "Services")
+
+    val rawItems = marketplaceItems
     val filteredItems = rawItems.filter { item ->
-        val matchesCategory = selectedCategory == "All" || item.category.equals(selectedCategory, ignoreCase = true)
-        val matchesSearch = searchQuery.isBlank() || 
-                          item.title.contains(searchQuery, ignoreCase = true) || 
-                          item.description.contains(searchQuery, ignoreCase = true) ||
-                          item.vendorStore.contains(searchQuery, ignoreCase = true)
+        val matchesCategory = selectedCategory == "All" ||
+                item.category.equals(selectedCategory, ignoreCase = true)
+        val matchesSearch = searchQuery.isBlank() ||
+                item.title.contains(searchQuery, ignoreCase = true) ||
+                item.description.contains(searchQuery, ignoreCase = true) ||
+                item.vendorStore.contains(searchQuery, ignoreCase = true)
         matchesCategory && matchesSearch
     }
-    val displayItems = if (filteredItems.isNotEmpty()) filteredItems else (if (rawItems.isNotEmpty()) rawItems else viewModel.defaultSampleProducts)
-    
+    val displayItems = filteredItems
+
+    val cartCount = cartItems.sumOf { it.quantity }
+    val cartTotal = cartItems.sumOf { it.item.price * it.quantity }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -72,23 +89,44 @@ fun MarketplaceScreen(
                 .fillMaxSize()
                 .background(HeaderBgColor)
         ) {
+            // Header with cart badge
             ScreenHeader(
                 title = "Marketplace Catalog",
-                onBack = { onNavigate("Dashboard") }
+                onBack = { onNavigate("Dashboard") },
+                rightContent = {
+                    Box(modifier = Modifier.padding(end = 8.dp)) {
+                        IconButton(onClick = { showCheckoutSheet = true }) {
+                            Icon(
+                                Icons.Filled.ShoppingCart,
+                                contentDescription = "Cart",
+                                tint = Gold
+                            )
+                        }
+                        if (cartCount > 0) {
+                            Badge(
+                                containerColor = Color(0xFFEF4444),
+                                contentColor = Color.White,
+                                modifier = Modifier.align(Alignment.TopEnd).offset(x = (-4).dp)
+                            ) {
+                                Text("$cartCount", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
             )
 
-            RoundedSheet(
-                modifier = Modifier.weight(1f)
-            ) {
+            RoundedSheet(modifier = Modifier.weight(1f)) {
+
                 // Vendor Portal Banner
                 Card(
+                    onClick = { onNavigate("VendorPortal") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                        .clickable { onNavigate("VendorPortal") },
+                        .padding(bottom = 12.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Gold.copy(alpha = 0.15f)),
-                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                    colors = CardDefaults.cardColors(containerColor = Gold.copy(alpha = 0.12f)),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f)),
+                    elevation = CardDefaults.cardElevation(0.dp)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -96,14 +134,106 @@ fun MarketplaceScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Storefront, contentDescription = null, tint = Gold, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Filled.Storefront, null, tint = Gold, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text("Vendor Control Hub", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                Text("Manage store products, sales & payouts", fontSize = 10.sp, color = AppTextColor.copy(alpha = 0.6f))
+                                Text("Manage store, products & payouts", fontSize = 10.sp, color = AppTextColor.copy(alpha = 0.6f))
                             }
                         }
-                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Gold)
+                        Icon(Icons.Filled.ChevronRight, null, tint = Gold)
+                    }
+                }
+
+                // Featured Verified Vendors Carousel
+                val featuredVerified = stores.filter { it.isVerified }.distinctBy { it.id }
+                if (featuredVerified.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Featured Verified Vendors",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = AppTextColor
+                            )
+                            Text(
+                                text = "${featuredVerified.size} Stores",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Gold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(featuredVerified) { store ->
+                                Card(
+                                    onClick = { onNavigate("VendorStorefront/${store.id}") },
+                                    modifier = Modifier.width(180.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isDark) Charcoal else GoldenWhite
+                                    ),
+                                    border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(CircleShape)
+                                                .background(AppSurface)
+                                                .border(1.dp, Gold, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (store.logoUrl.isNotBlank()) {
+                                                Image(
+                                                    painter = rememberAsyncImagePainter(store.logoUrl),
+                                                    contentDescription = "Logo",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                Icon(Icons.Filled.Storefront, null, tint = Gold, modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = store.storeName,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = AppTextColor,
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                )
+                                                if (store.isVerified) {
+                                                    Spacer(modifier = Modifier.width(2.dp))
+                                                    Icon(Icons.Filled.Verified, null, tint = Color(0xFF10B981), modifier = Modifier.size(12.dp))
+                                                }
+                                            }
+                                            Text(
+                                                text = store.category,
+                                                fontSize = 9.sp,
+                                                color = TextGray
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -114,8 +244,15 @@ fun MarketplaceScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp),
-                    placeholder = { Text("Search catalog items...", color = TextGray) },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search", tint = TextGray) },
+                    placeholder = { Text("Search catalog…", color = TextGray) },
+                    leadingIcon = { Icon(Icons.Filled.Search, null, tint = TextGray) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Filled.Clear, null, tint = TextGray)
+                            }
+                        }
+                    },
                     shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Gold,
@@ -125,25 +262,57 @@ fun MarketplaceScreen(
                     ),
                     singleLine = true
                 )
-                
-                // Categories Bar
+
+                // Explore Stores — vendor storefront carousel
+                val verifiedStores = marketplaceStores.filter { it.isVerified }.distinctBy { it.id }
+                if (verifiedStores.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "EXPLORE STORES",
+                            fontSize = 12.sp, fontWeight = FontWeight.Black, color = Gold,
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            "${verifiedStores.size} verified",
+                            fontSize = 10.sp, color = TextGray
+                        )
+                    }
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(verifiedStores, key = { it.id }) { store ->
+                            VendorStoreCard(
+                                store = store,
+                                isDark = isDark,
+                                onTap = { onNavigate("VendorStorefront/${store.id}") }
+                            )
+                        }
+                    }
+                }
+
+                // Category Chips
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(categories) { category ->
-                        val isSelected = category == selectedCategory
+                    items(categories) { cat ->
+                        val isSelected = cat == selectedCategory
                         Surface(
+                            onClick = { selectedCategory = cat },
                             shape = RoundedCornerShape(20.dp),
-                            color = if (isSelected) Gold else (if (isDark) Charcoal else GoldenWhite),
-                            border = if (!isSelected) BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)) else null,
-                            modifier = Modifier.clickable { selectedCategory = category }
+                            color = if (isSelected) Gold else if (isDark) Charcoal else GoldenWhite,
+                            border = if (!isSelected) BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)) else null
                         ) {
                             Text(
-                                text = category,
-                                color = if (isSelected) Obsidian else (if (isDark) Color.White else Obsidian),
+                                cat,
+                                color = if (isSelected) Obsidian else AppTextColor,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
@@ -151,135 +320,43 @@ fun MarketplaceScreen(
                         }
                     }
                 }
-                
-                // Products List
+
+                // Products grid — extra bottom padding so floating bar doesn't hide items
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentPadding = PaddingValues(bottom = 120.dp),
+                    contentPadding = PaddingValues(bottom = 140.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(displayItems) { item ->
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (isDark) Charcoal else GoldenWhite,
-                            border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showItemDetails = item }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val painter = rememberAsyncImagePainter(item.imageUrl)
-                                Box(
-                                    modifier = Modifier
-                                        .size(72.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isDark) Color(0xFF222222) else Color(0xFFEAEAEA)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Image(
-                                        painter = painter,
-                                        contentDescription = item.title,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                    if (painter.state is AsyncImagePainter.State.Error || item.imageUrl.isBlank()) {
-                                        Icon(Icons.Filled.ShoppingBag, contentDescription = null, tint = Gold, modifier = Modifier.size(28.dp))
-                                    }
-                                }
-                                
-                                Spacer(modifier = Modifier.width(14.dp))
-                                
-                                Column(
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text(
-                                        text = item.title,
-                                        color = if (isDark) Color.White else Obsidian,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = item.vendorStore,
-                                        color = Gold,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Text(
-                                        text = item.description,
-                                        color = TextGray,
-                                        fontSize = 10.sp,
-                                        maxLines = 2,
-                                        lineHeight = 13.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(Icons.Filled.Star, contentDescription = null, tint = Gold, modifier = Modifier.size(11.dp))
-                                        Text(
-                                            text = "${item.rating} (${item.reviewsCount})",
-                                            color = TextGray,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                }
-                                
-                                Spacer(modifier = Modifier.width(8.dp))
-                                
-                                Column(
-                                    horizontalAlignment = Alignment.End,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Text(
-                                        text = "₦${String.format("%,.0f", item.price)}",
-                                        color = if (isDark) Gold else Obsidian,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Black
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    IconButton(
-                                        onClick = {
-                                            viewModel.addToCart(item)
-                                            Toast.makeText(context, "Added ${item.title} to Cart", Toast.LENGTH_SHORT).show()
-                                        },
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .background(Gold, RoundedCornerShape(10.dp))
-                                    ) {
-                                        Icon(Icons.Filled.AddShoppingCart, contentDescription = "Add", tint = Obsidian, modifier = Modifier.size(16.dp))
-                                    }
-                                }
+                    items(displayItems, key = { it.id }) { item ->
+                        MarketplaceProductCard(
+                            item = item,
+                            isDark = isDark,
+                            onTap = { showItemDetails = item },
+                            onAddToCart = {
+                                viewModel.addToCart(item)
+                                Toast.makeText(context, "${item.title} added to cart", Toast.LENGTH_SHORT).show()
                             }
-                        }
+                        )
                     }
                 }
             }
         }
 
-        // Floating Cart Summary Bar
-        if (cartItems.isNotEmpty()) {
-            val totalCartPrice = cartItems.sumOf { it.item.price * it.quantity }
+        // ── Floating Cart Bar ──────────────────────────────────────────────────
+        // navigationBarsPadding() keeps it above the system nav gesture handle
+        if (cartCount > 0) {
             Card(
+                onClick = { showCheckoutSheet = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .padding(16.dp)
-                    .clickable { showCheckoutSheet = true },
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = Gold),
-                elevation = CardDefaults.cardElevation(8.dp)
+                elevation = CardDefaults.cardElevation(12.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -290,129 +367,179 @@ fun MarketplaceScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Badge(containerColor = Obsidian, contentColor = Color.White) {
-                            Text("${cartItems.sumOf { it.quantity }}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("$cartCount", fontSize = 11.sp, fontWeight = FontWeight.Black)
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("View Cart Checkout", fontWeight = FontWeight.Bold, color = Obsidian, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("View Cart & Checkout", fontWeight = FontWeight.Bold, color = Obsidian, fontSize = 14.sp)
                     }
-                    Text("₦${String.format("%,.0f", totalCartPrice)}", fontWeight = FontWeight.Black, color = Obsidian, fontSize = 16.sp)
+                    Text(
+                        "₦${String.format("%,.0f", cartTotal)}",
+                        fontWeight = FontWeight.Black, color = Obsidian, fontSize = 16.sp
+                    )
                 }
             }
         }
     }
-    
-    // Purchase dialog / details sheet
-    val item = showItemDetails
-    if (item != null) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // ── Item Detail Sheet ──────────────────────────────────────────────────────
+    val detailItem = showItemDetails
+    if (detailItem != null) {
         ModalBottomSheet(
             onDismissRequest = { showItemDetails = null },
-            sheetState = sheetState,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = if (isDark) Charcoal else GoldenWhite,
-            dragHandle = { BottomSheetDefaults.DragHandle() },
-            modifier = Modifier.fillMaxHeight(0.85f)
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.82f)
+                    .navigationBarsPadding()
                     .padding(horizontal = 24.dp)
-                    .padding(bottom = 24.dp),
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.Top
             ) {
-                val painter = rememberAsyncImagePainter(item.imageUrl)
+                val painter = rememberAsyncImagePainter(detailItem.imageUrl)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .height(220.dp)
+                        .clip(RoundedCornerShape(20.dp))
                         .background(if (isDark) Color(0xFF222222) else Color(0xFFEAEAEA)),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
                         painter = painter,
-                        contentDescription = item.title,
-                        modifier = Modifier.fillMaxSize(),
+                        contentDescription = detailItem.title,
+                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp)),
                         contentScale = ContentScale.Crop
                     )
-                    if (painter.state is AsyncImagePainter.State.Error || item.imageUrl.isBlank()) {
-                        Icon(Icons.Filled.ShoppingBag, contentDescription = null, tint = Gold, modifier = Modifier.size(56.dp))
+                    if (painter.state is AsyncImagePainter.State.Error || detailItem.imageUrl.isBlank()) {
+                        Icon(Icons.Filled.ShoppingBag, null, tint = Gold, modifier = Modifier.size(56.dp))
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(item.title, fontSize = 20.sp, fontWeight = FontWeight.Black, color = if (isDark) Color.White else Obsidian)
-                Text(item.vendorStore, fontSize = 12.sp, color = Gold, fontWeight = FontWeight.Bold)
+                // Out of stock chip
+                if (detailItem.stock <= 0) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEF4444).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            "OUT OF STOCK",
+                            fontSize = 10.sp, fontWeight = FontWeight.Black,
+                            color = Color(0xFFEF4444),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                Text(detailItem.title, fontSize = 20.sp, fontWeight = FontWeight.Black, color = AppTextColor)
+                Text(detailItem.vendorStore, fontSize = 12.sp, color = Gold, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    repeat(5) { i ->
+                        Icon(
+                            if (i < detailItem.rating.toInt()) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            null, tint = Color(0xFFF59E0B), modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        "${detailItem.rating} (${detailItem.reviewsCount} reviews)",
+                        fontSize = 11.sp, color = TextGray
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("₦${String.format("%,.0f", item.price)}", fontSize = 22.sp, fontWeight = FontWeight.Black, color = if (isDark) Gold else Obsidian)
+                Text(
+                    "₦${String.format("%,.0f", detailItem.price)}",
+                    fontSize = 24.sp, fontWeight = FontWeight.Black, color = Gold
+                )
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(item.description, fontSize = 13.sp, color = TextGray, lineHeight = 18.sp)
-                Spacer(modifier = Modifier.weight(1f))
+                Text(detailItem.description, fontSize = 13.sp, color = AppTextColor.copy(alpha = 0.75f), lineHeight = 20.sp)
+                Spacer(modifier = Modifier.height(24.dp))
                 Button(
                     onClick = {
-                        viewModel.addToCart(item)
-                        Toast.makeText(context, "Added to cart!", Toast.LENGTH_SHORT).show()
-                        showItemDetails = null
+                        if (detailItem.stock > 0) {
+                            viewModel.addToCart(detailItem)
+                            Toast.makeText(context, "Added to cart!", Toast.LENGTH_SHORT).show()
+                            showItemDetails = null
+                        }
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
+                    enabled = detailItem.stock > 0,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Add Product to Cart", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Icon(Icons.Filled.AddShoppingCart, null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (detailItem.stock > 0) "Add to Cart" else "Out of Stock",
+                        fontWeight = FontWeight.Black, fontSize = 15.sp
+                    )
                 }
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
 
-    // Real Marketplace Cart & Checkout Bottom Sheet
+    // ── Checkout Sheet ─────────────────────────────────────────────────────────
     if (showCheckoutSheet && cartItems.isNotEmpty()) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        val walletBalance by viewModel.walletBalance.collectAsState()
-        var shippingAddress by remember { mutableStateOf("12 Ikeja City Mall Way, Lagos") }
+        var shippingAddress by remember { mutableStateOf("") }
         var selectedPaymentMethod by remember { mutableStateOf("Wallet") }
+        var showPaystackSheet by remember { mutableStateOf(false) }
         var isSubmitting by remember { mutableStateOf(false) }
+        var redeemPoints by remember { mutableStateOf(false) }
 
         val subtotal = cartItems.sumOf { it.item.price * it.quantity }
         val deliveryFee = 1500.0
-        val grandTotal = subtotal + deliveryFee
+        val loyaltyPoints by viewModel.loyaltyPoints.collectAsState()
+        val pointsDiscount = if (redeemPoints && loyaltyPoints >= 500) 1000.0 else 0.0
+        val grandTotal = (subtotal + deliveryFee - pointsDiscount).coerceAtLeast(0.0)
 
         ModalBottomSheet(
             onDismissRequest = { showCheckoutSheet = false },
-            sheetState = sheetState,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = if (isDark) Charcoal else GoldenWhite,
-            dragHandle = { BottomSheetDefaults.DragHandle() },
-            modifier = Modifier.fillMaxHeight(0.92f)
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.94f)
+                    .imePadding()               // keyboard won't cover Pay button
+                    .navigationBarsPadding()    // system nav bar clear
                     .padding(horizontal = 24.dp, vertical = 12.dp)
             ) {
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.ShoppingCart, contentDescription = null, tint = Gold, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Filled.ShoppingCart, null, tint = Gold, modifier = Modifier.size(22.dp))
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text("Cart Checkout (${cartItems.size})", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
+                        Text(
+                            "Cart (${cartItems.size} ${if (cartItems.size == 1) "item" else "items"})",
+                            fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor
+                        )
                     }
                     IconButton(onClick = { showCheckoutSheet = false }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Close", tint = AppTextColor)
+                        Icon(Icons.Filled.Close, null, tint = AppTextColor)
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Cart Items List
+                // Cart Items
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(cartItems) { cartItem ->
+                    items(cartItems, key = { it.item.id }) { cartItem ->
                         Surface(
                             shape = RoundedCornerShape(16.dp),
                             color = if (isDark) LuxuryBlack else Color.White,
@@ -424,33 +551,91 @@ fun MarketplaceScreen(
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Image(
-                                    painter = rememberAsyncImagePainter(cartItem.item.imageUrl),
-                                    contentDescription = cartItem.item.title,
+                                // Product image
+                                Box(
                                     modifier = Modifier
                                         .size(54.dp)
-                                        .clip(RoundedCornerShape(10.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isDark) Charcoal else Color(0xFFEAEAEA)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (cartItem.item.imageUrl.isNotBlank()) {
+                                        Image(
+                                            painter = rememberAsyncImagePainter(cartItem.item.imageUrl),
+                                            contentDescription = cartItem.item.title,
+                                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Icon(Icons.Filled.ShoppingBag, null, tint = Gold, modifier = Modifier.size(24.dp))
+                                    }
+                                }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(cartItem.item.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppTextColor, maxLines = 1)
-                                    Text(cartItem.item.vendorStore, fontSize = 10.sp, color = Gold, fontWeight = FontWeight.SemiBold)
-                                    Text("₦${String.format("%,.0f", cartItem.item.price)} each", fontSize = 11.sp, color = TextGray)
+                                    Text(
+                                        cartItem.item.title,
+                                        fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                        color = AppTextColor, maxLines = 1
+                                    )
+                                    Text(cartItem.item.vendorStore, fontSize = 10.sp, color = Gold)
+                                    Text(
+                                        "₦${String.format("%,.0f", cartItem.item.price)} × ${cartItem.quantity} = ₦${String.format("%,.0f", cartItem.item.price * cartItem.quantity)}",
+                                        fontSize = 11.sp, color = AppTextColor.copy(alpha = 0.6f)
+                                    )
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(
-                                        onClick = { viewModel.updateCartQuantity(cartItem.item.id, -1) },
-                                        modifier = Modifier.size(28.dp).background(if (isDark) Charcoal else GoldenWhite, CircleShape)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                // Quantity stepper — custom circular Box controls with exact centering
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isDark) Charcoal else Color(0xFFEEEEEE))
+                                            .clickable { viewModel.updateCartQuantity(cartItem.item.id, -1) },
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(Icons.Filled.Remove, contentDescription = "Decrease", tint = AppTextColor, modifier = Modifier.size(14.dp))
+                                        Icon(
+                                            Icons.Filled.Remove, null,
+                                            tint = AppTextColor, modifier = Modifier.size(16.dp)
+                                        )
                                     }
-                                    Text("${cartItem.quantity}", modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = AppTextColor)
-                                    IconButton(
-                                        onClick = { viewModel.updateCartQuantity(cartItem.item.id, 1) },
-                                        modifier = Modifier.size(28.dp).background(Gold, CircleShape)
+                                    Text(
+                                        "${cartItem.quantity}",
+                                        fontWeight = FontWeight.Black, fontSize = 14.sp,
+                                        color = AppTextColor,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        modifier = Modifier.widthIn(min = 24.dp)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(Gold)
+                                            .clickable { viewModel.updateCartQuantity(cartItem.item.id, 1) },
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(Icons.Filled.Add, contentDescription = "Increase", tint = Obsidian, modifier = Modifier.size(14.dp))
+                                        Icon(
+                                            Icons.Filled.Add, null,
+                                            tint = Obsidian, modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFEF4444).copy(alpha = 0.15f))
+                                            .clickable { viewModel.removeFromCart(cartItem.item.id) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.DeleteOutline, null,
+                                            tint = Color(0xFFEF4444),
+                                            modifier = Modifier.size(16.dp)
+                                        )
                                     }
                                 }
                             }
@@ -460,83 +645,113 @@ fun MarketplaceScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Shipping Address Input
-                Text("SHIPPING DESTINATION", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Gold, letterSpacing = 1.sp)
-                Spacer(modifier = Modifier.height(4.dp))
-                OutlinedTextField(
+                AddressAutocompleteField(
                     value = shippingAddress,
                     onValueChange = { shippingAddress = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = if (isDark) BorderDark else Slate,
-                        focusedContainerColor = if (isDark) LuxuryBlack else Color.White,
-                        unfocusedContainerColor = if (isDark) LuxuryBlack else Color.White
-                    ),
-                    singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = AppTextColor)
+                    onAddressSelected = { item ->
+                        shippingAddress = item.displayInput
+                    },
+                    isDark = isDark
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Payment Method Options
-                Text("SELECT PAYMENT METHOD", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Gold, letterSpacing = 1.sp)
+                // Payment Method
+                Text(
+                    "PAYMENT METHOD",
+                    fontSize = 10.sp, fontWeight = FontWeight.Black, color = Gold,
+                    letterSpacing = 1.sp
+                )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { selectedPaymentMethod = "Wallet" },
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (selectedPaymentMethod == "Wallet") Gold.copy(alpha = 0.2f) else (if (isDark) LuxuryBlack else Color.White),
-                        border = BorderStroke(1.5.dp, if (selectedPaymentMethod == "Wallet") Gold else BorderDark)
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Text("ESDispatch Wallet", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                            Text("Bal: ₦${String.format("%,.0f", walletBalance)}", fontSize = 10.sp, color = Gold, fontWeight = FontWeight.Black)
-                        }
-                    }
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { selectedPaymentMethod = "Paystack Card" },
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (selectedPaymentMethod == "Paystack Card") Gold.copy(alpha = 0.2f) else (if (isDark) LuxuryBlack else Color.White),
-                        border = BorderStroke(1.5.dp, if (selectedPaymentMethod == "Paystack Card") Gold else BorderDark)
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Text("Debit Card / Transfer", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                            Text("Instant Paystack Gateway", fontSize = 10.sp, color = TextGray)
+                    listOf(
+                        "Wallet" to "Bal: ₦${String.format("%,.0f", walletBalance)}",
+                        "Paystack Card" to "Card · Bank Transfer"
+                    ).forEach { (method, sub) ->
+                        val sel = method == selectedPaymentMethod
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedPaymentMethod = method },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (sel) Gold.copy(alpha = 0.18f) else if (isDark) LuxuryBlack else Color.White,
+                            border = BorderStroke(1.5.dp, if (sel) Gold else if (isDark) BorderDark else Slate)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    method, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    color = if (sel) Gold else AppTextColor
+                                )
+                                Text(sub, fontSize = 10.sp, color = TextGray)
+                            }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Price Summary Breakdown
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(if (isDark) LuxuryBlack else Color.White, RoundedCornerShape(16.dp))
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                // Loyalty Points Discount Option
+                if (loyaltyPoints >= 500) {
+                    Surface(
+                        onClick = { redeemPoints = !redeemPoints },
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (redeemPoints) Gold.copy(alpha = 0.15f) else if (isDark) LuxuryBlack else Color.White,
+                        border = BorderStroke(1.dp, if (redeemPoints) Gold else if (isDark) BorderDark else Slate)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.CardGiftcard, null, tint = Gold, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Redeem 500 Loyalty Pts", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                                    Text("Get ₦1,000 instant discount on order", fontSize = 10.sp, color = TextGray)
+                                }
+                            }
+                            Switch(
+                                checked = redeemPoints,
+                                onCheckedChange = { redeemPoints = it },
+                                colors = SwitchDefaults.colors(checkedTrackColor = Gold)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                // Price Summary
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isDark) LuxuryBlack else Color.White,
+                    border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f))
                 ) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Items Subtotal", fontSize = 11.sp, color = TextGray)
-                        Text("₦${String.format("%,.0f", subtotal)}", fontSize = 11.sp, color = AppTextColor, fontWeight = FontWeight.Bold)
-                    }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Dispatch Express Shipping", fontSize = 11.sp, color = TextGray)
-                        Text("₦${String.format("%,.0f", deliveryFee)}", fontSize = 11.sp, color = AppTextColor, fontWeight = FontWeight.Bold)
-                    }
-                    Divider(color = if (isDark) BorderDark else Slate, thickness = 0.8.dp)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Grand Total Amount", fontSize = 13.sp, fontWeight = FontWeight.Black, color = AppTextColor)
-                        Text("₦${String.format("%,.0f", grandTotal)}", fontSize = 15.sp, fontWeight = FontWeight.Black, color = Gold)
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        PriceLine("Items Subtotal", "₦${String.format("%,.0f", subtotal)}")
+                        PriceLine("Dispatch Shipping", "₦${String.format("%,.0f", deliveryFee)}")
+                        if (pointsDiscount > 0) {
+                            PriceLine("Loyalty Pts Discount", "-₦${String.format("%,.0f", pointsDiscount)}")
+                        }
+                        HorizontalDivider(color = if (isDark) BorderDark else Slate, thickness = 0.8.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Total", fontSize = 14.sp, fontWeight = FontWeight.Black, color = AppTextColor)
+                            Text(
+                                "₦${String.format("%,.0f", grandTotal)}",
+                                fontSize = 16.sp, fontWeight = FontWeight.Black, color = Gold
+                            )
+                        }
                     }
                 }
 
@@ -544,31 +759,277 @@ fun MarketplaceScreen(
 
                 Button(
                     onClick = {
-                        isSubmitting = true
-                        viewModel.checkoutMarketplaceCart(shippingAddress, selectedPaymentMethod) { success, msg ->
-                            isSubmitting = false
-                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                            if (success) {
-                                showCheckoutSheet = false
-                                onNavigate("OrderLogs")
+                        if (shippingAddress.isBlank()) {
+                            Toast.makeText(context, "Please enter a delivery address", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (selectedPaymentMethod == "Paystack Card") {
+                            showPaystackSheet = true
+                        } else {
+                            isSubmitting = true
+                            viewModel.checkoutMarketplaceCart(shippingAddress, "Wallet", redeemPoints) { ok, msg ->
+                                isSubmitting = false
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                if (ok) {
+                                    showCheckoutSheet = false
+                                }
                             }
                         }
                     },
                     enabled = !isSubmitting,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     if (isSubmitting) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Obsidian, strokeWidth = 2.5.dp)
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Obsidian, strokeWidth = 2.5.dp
+                        )
                     } else {
-                        Text("PAY ₦${String.format("%,.0f", grandTotal)} & PLACE ORDER", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                        Icon(
+                            if (selectedPaymentMethod == "Wallet") Icons.Filled.AccountBalanceWallet
+                            else Icons.Filled.CreditCard,
+                            null, modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "PAY ₦${String.format("%,.0f", grandTotal)}",
+                            fontWeight = FontWeight.Black, fontSize = 15.sp
+                        )
+                    }
+                }
+
+                // Paystack WebView checkout — reuses ProfileScreens.kt composable
+                if (showPaystackSheet) {
+                    PaystackCheckoutSheet(
+                        amount = grandTotal,
+                        onPaymentComplete = { reference ->
+                            showPaystackSheet = false
+                            isSubmitting = true
+                            viewModel.checkoutMarketplaceCart(shippingAddress, "Paystack:$reference", redeemPoints) { ok, msg ->
+                                isSubmitting = false
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                if (ok) showCheckoutSheet = false
+                            }
+                        },
+                        onDismiss = { showPaystackSheet = false }
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Private helpers ───────────────────────────────────────────────────────────
+
+@Composable
+private fun MarketplaceProductCard(
+    item: MarketplaceItem,
+    isDark: Boolean,
+    onTap: () -> Unit,
+    onAddToCart: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = if (isDark) Charcoal else GoldenWhite,
+        border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onTap)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val painter = rememberAsyncImagePainter(item.imageUrl)
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isDark) Color(0xFF222222) else Color(0xFFEAEAEA)),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painter,
+                    contentDescription = item.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                if (painter.state is AsyncImagePainter.State.Error || item.imageUrl.isBlank()) {
+                    Icon(Icons.Filled.ShoppingBag, null, tint = Gold, modifier = Modifier.size(28.dp))
+                }
+                if (item.stock <= 0) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.55f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("SOLD OUT", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color.White)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    item.title,
+                    color = AppTextColor, fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold, maxLines = 1
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(item.vendorStore, color = Gold, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    item.description,
+                    color = TextGray, fontSize = 10.sp,
+                    maxLines = 2, lineHeight = 13.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Star, null, tint = Color(0xFFF59E0B), modifier = Modifier.size(11.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        "${item.rating} (${item.reviewsCount})",
+                        color = TextGray, fontSize = 10.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    "₦${String.format("%,.0f", item.price)}",
+                    color = if (isDark) Gold else Obsidian,
+                    fontSize = 14.sp, fontWeight = FontWeight.Black
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                    IconButton(
+                        onClick = onAddToCart,
+                        enabled = item.stock > 0,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(
+                                if (item.stock > 0) Gold else Gold.copy(alpha = 0.3f),
+                                RoundedCornerShape(10.dp)
+                            )
+                    ) {
+                        Icon(
+                            Icons.Filled.AddShoppingCart, null,
+                            tint = Obsidian, modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
             }
         }
     }
+}
 
+@Composable
+private fun PriceLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, fontSize = 11.sp, color = TextGray)
+        Text(value, fontSize = 11.sp, color = AppTextColor, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun VendorStoreCard(
+    store: MarketplaceStore,
+    isDark: Boolean,
+    onTap: () -> Unit
+) {
+    val initials = store.storeName.trim().split("\\s+".toRegex())
+        .filter { it.isNotBlank() }
+        .let { words ->
+            when {
+                words.isEmpty() -> "ES"
+                words.size == 1 -> words[0].take(2).uppercase()
+                else -> (words[0].firstOrNull()?.toString() ?: "") + (words[1].firstOrNull()?.toString() ?: "").uppercase()
+            }
+        }
+
+    Surface(
+        onClick = onTap,
+        shape = RoundedCornerShape(18.dp),
+        color = if (isDark) Charcoal else GoldenWhite,
+        border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)),
+        modifier = Modifier.width(158.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (store.logoUrl.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isDark) Color(0xFF222222) else Color(0xFFEAEAEA)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = rememberAsyncImagePainter(store.logoUrl),
+                            contentDescription = store.storeName,
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Gold),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(initials, fontSize = 14.sp, fontWeight = FontWeight.Black, color = Obsidian)
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        store.storeName,
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppTextColor,
+                        maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Verified, null, tint = Gold, modifier = Modifier.size(11.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Verified", fontSize = 9.sp, color = TextGray)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                store.category,
+                fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Gold,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Star, null, tint = Color(0xFFF59E0B), modifier = Modifier.size(11.dp))
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    String.format("%.1f", store.rating),
+                    fontSize = 10.sp, fontWeight = FontWeight.Bold, color = AppTextColor
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    "${store.itemCount} items",
+                    fontSize = 10.sp, color = TextGray
+                )
+            }
+        }
+    }
 }

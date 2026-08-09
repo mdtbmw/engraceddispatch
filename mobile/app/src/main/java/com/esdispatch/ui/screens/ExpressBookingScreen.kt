@@ -321,8 +321,7 @@ fun ExpressBookingScreen(
                                         addr,
                                         fontSize = 10.sp,
                                         color = TextGray,
-                                        maxLines = 2,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        lineHeight = 14.sp
                                     )
                                 }
                             }

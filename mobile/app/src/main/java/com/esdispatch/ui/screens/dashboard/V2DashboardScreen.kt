@@ -410,7 +410,7 @@ private fun V2DashboardHeader(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-            .background(Obsidian)
+            .background(if (isDark) Gold else Obsidian)
     ) {
         Column(
             modifier = Modifier
@@ -445,20 +445,20 @@ private fun V2DashboardHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    V2HeaderChip(text = "$loyaltyPoints Pts", icon = Icons.Filled.CardGiftcard)
-                    V2HeaderChip(text = "$deliveryCount Sent", icon = Icons.Filled.LocalShipping)
+                    V2HeaderChip(text = "$loyaltyPoints Pts", icon = Icons.Filled.CardGiftcard, isDark = isDark)
+                    V2HeaderChip(text = "$deliveryCount Sent", icon = Icons.Filled.LocalShipping, isDark = isDark)
                     Box(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.1f))
+                            .background(if (isDark) Obsidian.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.1f))
                             .clickable { onNotifications() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Notifications,
                             contentDescription = "Notifications",
-                            tint = Gold,
+                            tint = if (isDark) Obsidian else Gold,
                             modifier = Modifier.size(20.dp)
                         )
                         Box(
@@ -466,8 +466,8 @@ private fun V2DashboardHeader(
                                 .align(Alignment.TopEnd)
                                 .offset(x = (-2).dp, y = 2.dp)
                                 .size(9.dp)
-                                .background(Gold, shape = CircleShape)
-                                .border(1.5.dp, Obsidian, CircleShape)
+                                .background(if (isDark) Obsidian else Gold, shape = CircleShape)
+                                .border(1.5.dp, if (isDark) Gold else Obsidian, CircleShape)
                         )
                     }
                 }
@@ -479,13 +479,13 @@ private fun V2DashboardHeader(
                 text = "Hello,",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color.White.copy(alpha = 0.7f)
+                color = if (isDark) Obsidian.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.7f)
             )
             Text(
                 text = "$firstName!",
                 fontSize = 34.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color.White
+                color = if (isDark) Obsidian else Color.White
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -520,17 +520,21 @@ private fun V2DashboardHeader(
 }
 
 @Composable
-private fun V2HeaderChip(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+private fun V2HeaderChip(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isDark: Boolean = false
+) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(alpha = 0.1f))
+            .background(if (isDark) Obsidian.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.1f))
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = Gold, modifier = Modifier.size(14.dp))
+        Icon(icon, null, tint = if (isDark) Obsidian else Gold, modifier = Modifier.size(14.dp))
         Spacer(modifier = Modifier.width(6.dp))
-        Text(text, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Text(text, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isDark) Obsidian else Color.White)
     }
 }
 

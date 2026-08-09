@@ -50,3 +50,26 @@ This document establishes the official user interface rules, color standards, st
 - Use modern Jetpack Compose layouts and Material 3 components.
 - Do not hardcode static colors for text or card containers; use the dynamic `Charcoal`, `LuxuryBlack`, and `AppTextColor` color tokens which automatically adjust to the system's dark theme state.
 - Keep the overall user interface predictable, professional, and symmetrical.
+
+## ⚠️ MANDATORY BUILD, RELEASE & DEPLOY WORKFLOW (ALWAYS FOLLOW)
+The production project spans an **Android app (`mobile/`)** and a **Next.js web admin (repo root, deployed on Vercel)**. Two past incidents happened because work was "verified" by a partial build only (debug compile) and never packaged/installed, and because fixes were left uncommitted so the live site kept failing. Enforce the steps below on EVERY change.
+
+### Android (mobile/)
+1. **After every code change**, run: `.\gradlew.bat :app:compileDebugKotlin --console=plain` from `D:\Eng App\mobile`. Fix all errors.
+2. **ALWAYS produce the release APK before declaring a task done**: `.\gradlew.bat :app:assembleRelease --console=plain` (allow a timeout ≥ 1,800,000 ms — R8 is slow).
+   - Artifact: `D:\Eng App\mobile\app\build\outputs\apk\release\app-release.apk`
+3. **Install & visually verify on the physical device** (USB debugging + file transfer):
+   - `C:\Users\USER\AppData\Local\Android\Sdk\platform-tools\adb.exe devices` (must show a device)
+   - `& "C:\Users\USER\AppData\Local\Android\Sdk\platform-tools\adb.exe" install -r "D:\Eng App\mobile\app\build\outputs\apk\release\app-release.apk"`
+4. **`BUILD SUCCESSFUL` ≠ done.** A feature is only done after it is installed and exercised on the device.
+
+### Web admin (Next.js / Vercel)
+1. **After every web change**, run `npx tsc --noEmit` from the repo root (`D:\Eng App`) and fix all type errors.
+2. **Never leave changes uncommitted.** The live site 404 was caused by a committed `vercel.json` that was fixed only in the working tree. Before handing off:
+   - `git status` → review `git diff` → commit the intended files → confirm the branch is pushed.
+   - The admin portal is at **`/engdadmin`** (with the `d`); `/engadmin` is a redirect alias.
+3. **Deployment is manual by the owner.** The user redeploys on Vercel after a commit/push. Never claim a web fix is "live" — say it is committed and ready to redeploy.
+
+### Full-stack data consistency
+- Vendor storefronts (`marketplace_stores`) and products (`marketplace_products` → `vendorId`) must stay schema-compatible between mobile and admin. When adding fields to store/product docs, update BOTH `DeliveryViewModel` (mobile listeners) and `AdminDashboard.tsx` (seed + create/upgrade handlers).
+

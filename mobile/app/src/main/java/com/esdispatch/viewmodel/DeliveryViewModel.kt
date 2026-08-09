@@ -1,4 +1,4 @@
-package com.esdispatch.viewmodel
+﻿package com.esdispatch.viewmodel
 
 
 import android.content.Context
@@ -167,6 +167,7 @@ class DeliveryViewModel : WalletViewModel() {
         _bankName.value = prefs.getString("bank_name", "Access Bank") ?: "Access Bank"
         _accountNumber.value = prefs.getString("account_number", "0123456789") ?: "0123456789"
         _accountName.value = prefs.getString("account_name", "Engraced Member") ?: "Engraced Member"
+        _autoVerifyVendors.value = prefs.getBoolean("auto_verify_vendors", true)
 
         val savedAreas = prefs.getString("service_areas", "") ?: ""
         if (savedAreas.isNotEmpty()) {
@@ -487,7 +488,7 @@ class DeliveryViewModel : WalletViewModel() {
         savePref("pricing_per_kg", perKg.toString())
         savePref("pricing_express", express.toString())
         savePref("pricing_surge", surge.toString())
-        logAdminActivity("Pricing Config", "Updated base: ₦$base, perKg: ₦$perKg, express: ₦$express, surge: ${surge}x")
+        logAdminActivity("Pricing Config", "Updated base: â‚¦$base, perKg: â‚¦$perKg, express: â‚¦$express, surge: ${surge}x")
 
         try {
             val db = FirebaseManager.firestore
@@ -532,6 +533,7 @@ class DeliveryViewModel : WalletViewModel() {
                 "tipSystemEnabled" to _tipSystemEnabled.value,
                 "emailVerificationRequired" to _emailVerificationRequired.value,
                 "phoneVerificationRequired" to _phoneVerificationRequired.value,
+                "autoVerifyVendors" to _autoVerifyVendors.value,
                 "dashboardSectionsEnabled" to _dashboardSectionsEnabled.value,
                 "adminCardSliderConfigs" to _adminCardSliderConfigs.value,
                 "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
@@ -581,6 +583,13 @@ class DeliveryViewModel : WalletViewModel() {
         _phoneVerificationRequired.value = enabled
         savePref("phone_verification_required", enabled)
         logAdminActivity("Toggle Settings", "Phone Number Verification Required set to $enabled")
+        syncGlobalSettingsToFirestore()
+    }
+
+    fun toggleAutoVerifyVendors(enabled: Boolean) {
+        _autoVerifyVendors.value = enabled
+        savePref("auto_verify_vendors", enabled)
+        logAdminActivity("Toggle Settings", "Auto-verify vendors on KYC set to $enabled")
         syncGlobalSettingsToFirestore()
     }
 
@@ -808,7 +817,7 @@ class DeliveryViewModel : WalletViewModel() {
             riderBikeNumber = "ESD-" + rider.id.takeLast(4),
             onComplete = { success, error ->
                 if (success) {
-                    showCustomToast("Successfully assigned ${rider.name} to Parcel #$parcelId! 📦🚀")
+                    showCustomToast("Successfully assigned ${rider.name} to Parcel #$parcelId! ðŸ“¦ðŸš€")
                     // If it matches a local parcel in our lists, update it
                     val updatedList = _parcels.value.map { parcel ->
                         if (parcel.id == parcelId) {
@@ -847,6 +856,19 @@ class DeliveryViewModel : WalletViewModel() {
 
         updateParcelStatusByRider(parcelId, ParcelStatus.DELIVERED, 1.0f) { success, _ ->
             if (success) {
+                // A real delivery is completed (not just booked): bump delivery stats.
+                val updatedCount = _deliveryCount.value + 1
+                _deliveryCount.value = updatedCount
+                savePref("delivery_count", updatedCount)
+                if (_pointsSystemEnabled.value) {
+                    val pts = _loyaltyPoints.value + 15
+                    _loyaltyPoints.value = pts
+                    savePref("loyalty_points", pts)
+                }
+                com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(
+                    uid, _loyaltyPoints.value, updatedCount
+                )
+
                 if (payout > 0) {
                     com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, payout) { payoutSuccess, newBal ->
                         if (payoutSuccess) {
@@ -871,8 +893,8 @@ class DeliveryViewModel : WalletViewModel() {
                 
                 // Add Notification
                 addNotification(
-                    title = "Parcel Delivered! 🏁📦",
-                    message = "Parcel #$parcelId has been successfully delivered and proof of delivery captured. You earned ₦${String.format("%,.2f", payout)}",
+                    title = "Parcel Delivered! ðŸðŸ“¦",
+                    message = "Parcel #$parcelId has been successfully delivered and proof of delivery captured. You earned â‚¦${String.format("%,.2f", payout)}",
                     parcelId = parcelId
                 )
             }
@@ -978,7 +1000,7 @@ class DeliveryViewModel : WalletViewModel() {
         )
         viewModelScope.launch {
             repository?.saveShiftAttendance(attendance)
-            showCustomToast("Shift status updated: $status ⏱️")
+            showCustomToast("Shift status updated: $status â±ï¸")
         }
     }
 
@@ -1010,10 +1032,10 @@ class DeliveryViewModel : WalletViewModel() {
         viewModelScope.launch {
             repository?.saveVehicleInspection(inspection)
             if (passed) {
-                showCustomToast("Vehicle Pre-Trip Inspection PASSED ✅. Ready for dispatch.")
+                showCustomToast("Vehicle Pre-Trip Inspection PASSED âœ…. Ready for dispatch.")
                 onComplete(true, "Passed successfully")
             } else {
-                showCustomToast("Inspection FAILED ❌. Correct safety issues before dispatch.")
+                showCustomToast("Inspection FAILED âŒ. Correct safety issues before dispatch.")
                 onComplete(false, "Pre-trip inspection failed mandatory safety checks.")
             }
         }
@@ -1039,7 +1061,7 @@ class DeliveryViewModel : WalletViewModel() {
         )
         viewModelScope.launch {
             repository?.saveExpenseClaim(claim)
-            showCustomToast("Expense claim submitted for HR/Payroll review ($amount) 💸")
+            showCustomToast("Expense claim submitted for HR/Payroll review ($amount) ðŸ’¸")
             onComplete(true, "Submitted successfully")
         }
     }
@@ -1062,7 +1084,7 @@ class DeliveryViewModel : WalletViewModel() {
         )
         viewModelScope.launch {
             repository?.saveShiftRoster(roster)
-            showCustomToast("Leave request submitted to operations manager 📅")
+            showCustomToast("Leave request submitted to operations manager ðŸ“…")
             onComplete(true, "Leave requested")
         }
     }
@@ -1076,7 +1098,7 @@ class DeliveryViewModel : WalletViewModel() {
         )
         viewModelScope.launch {
             repository?.saveOfflineSyncItem(item)
-            showCustomToast("Action cached offline (low-signal sync queue) 📡")
+            showCustomToast("Action cached offline (low-signal sync queue) ðŸ“¡")
         }
     }
 
@@ -1087,7 +1109,7 @@ class DeliveryViewModel : WalletViewModel() {
                 repository?.markSyncItemSynced(item.id)
             }
             if (list.isNotEmpty()) {
-                showCustomToast("Successfully synchronized ${list.size} offline items with corporate server! 🔄")
+                showCustomToast("Successfully synchronized ${list.size} offline items with corporate server! ðŸ”„")
             } else {
                 showCustomToast("Offline queue is already fully synchronized.")
             }
@@ -1325,7 +1347,7 @@ class DeliveryViewModel : WalletViewModel() {
         savePref("show_onboarding_tooltip", false)
     }
 
-    // Invite Code — generated per user from Firebase UID
+    // Invite Code â€” generated per user from Firebase UID
     private val _referralCode = MutableStateFlow("SHARE-ENGRACED")
     val referralCode: StateFlow<String> = _referralCode.asStateFlow()
     
@@ -1367,6 +1389,17 @@ class DeliveryViewModel : WalletViewModel() {
 
     init {
         listenToMarketplaceProducts()
+        listenToMarketplaceStores()
+        listenToGlobalSettings()
+        // Load vendor store status and cart when user logs in
+        viewModelScope.launch {
+            _firebaseUserId.collect { uid ->
+                if (uid != null) {
+                    listenToVendorStore()
+                    loadUserCart()
+                }
+            }
+        }
         // Auto-generate referral code when UID changes
         viewModelScope.launch {
             _firebaseUserId.collect { uid ->
@@ -1387,7 +1420,7 @@ class DeliveryViewModel : WalletViewModel() {
         if (_promotions.value.isEmpty()) {
             _promotions.value = listOf(
                 com.esdispatch.data.PromoCode(discountPercent = 25, description = "Enjoy 25% discount on Express bookings.", code = "EID2026"),
-                com.esdispatch.data.PromoCode(discountPercent = 100, description = "Get ₦2,500 instant credit on first parcel.", code = "FIRSTFREE", isLimited = false),
+                com.esdispatch.data.PromoCode(discountPercent = 100, description = "Get â‚¦2,500 instant credit on first parcel.", code = "FIRSTFREE", isLimited = false),
                 com.esdispatch.data.PromoCode(discountPercent = 30, description = "Saturdays & Sundays economy save.", code = "WEEKEND30")
             )
         }
@@ -1675,7 +1708,7 @@ class DeliveryViewModel : WalletViewModel() {
         appContext = context.applicationContext
         loadPreferences(context)
         
-        // Initialize Firebase safely — relies on google-services.json or DispatchApplication.kt programmatic init
+        // Initialize Firebase safely â€” relies on google-services.json or DispatchApplication.kt programmatic init
         try {
             val isAlreadyInitialized = try {
                 com.google.firebase.FirebaseApp.getInstance() != null
@@ -1688,7 +1721,7 @@ class DeliveryViewModel : WalletViewModel() {
                     if (resId != 0) {
                         com.google.firebase.FirebaseApp.initializeApp(context)
                     } else {
-                        android.util.Log.w("DeliveryViewModel", "google_app_id resource not found — Firebase may not be available.")
+                        android.util.Log.w("DeliveryViewModel", "google_app_id resource not found â€” Firebase may not be available.")
                     }
                 } catch (e: Exception) {
                     android.util.Log.w("DeliveryViewModel", "Default FirebaseApp init failed: ${e.message}")
@@ -2054,7 +2087,7 @@ class DeliveryViewModel : WalletViewModel() {
                                             val newThreshold = pts / 100
                                             if (newThreshold > oldThreshold) {
                                                 showInAppNotification(
-                                                    "Loyalty Milestone Crossed! 🏆",
+                                                    "Loyalty Milestone Crossed! ðŸ†",
                                                     "You crossed the $pts reward points threshold! Earn another 100 points for custom elite multiplier upgrades."
                                                 )
                                             }
@@ -2283,7 +2316,7 @@ class DeliveryViewModel : WalletViewModel() {
 
         val welcomeTx = Transaction(
             id = "TX-GIFT-${System.currentTimeMillis().toString().substring(8)}",
-            title = "Welcome Gift Awarded 🎁",
+            title = "Welcome Gift Awarded ðŸŽ",
             date = "Today",
             amount = 2500.0,
             isTopUp = true
@@ -2293,8 +2326,8 @@ class DeliveryViewModel : WalletViewModel() {
             repository?.saveTransaction(welcomeTx)
         }
 
-        val notifTitle = "Welcome Gift Claimed! 🎁"
-        val notifMsg = "Congratulations! You have received ₦2,500 welcome credit and 100 loyalty coins."
+        val notifTitle = "Welcome Gift Claimed! ðŸŽ"
+        val notifMsg = "Congratulations! You have received â‚¦2,500 welcome credit and 100 loyalty coins."
         addNotification(notifTitle, notifMsg)
         appContext?.let { ctx ->
             try {
@@ -2802,6 +2835,38 @@ class DeliveryViewModel : WalletViewModel() {
             }
     }
 
+    /** Upload a store asset (logo/cover/banner) to Storage and persist its URL on the store doc. */
+    fun uploadStoreImage(
+        storeId: String,
+        kind: String,
+        uriString: String,
+        onComplete: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
+        if (storeId.isBlank()) { onComplete(false, "No store id"); return }
+        val safeKind = if (kind == "cover") "cover" else "logo"
+        val storageRef = com.google.firebase.storage.FirebaseStorage.getInstance()
+            .reference.child("store-assets/$storeId/$safeKind.jpg")
+        storageRef.putFile(android.net.Uri.parse(uriString))
+            .addOnSuccessListener {
+                storageRef.downloadUrl.addOnSuccessListener { uri ->
+                    val url = uri.toString()
+                    val field = if (safeKind == "cover") "coverUrl" else "logoUrl"
+                    com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        .collection("marketplace_stores").document(storeId)
+                        .update(field, url)
+                        .addOnSuccessListener { onComplete(true, url) }
+                        .addOnFailureListener { e ->
+                            android.util.Log.e("StoreUpload", "Store doc update failed: ${e.message}")
+                            onComplete(false, "Uploaded but could not update store: ${e.message}")
+                        }
+                }
+            }
+.addOnFailureListener {
+                android.util.Log.e("StoreUpload", "Failed to upload store $kind for $storeId", it)
+                onComplete(false, it.message ?: "Upload failed")
+            }
+    }
+
     fun sendVerificationEmail() {
         val user = com.esdispatch.data.FirebaseManager.auth?.currentUser
         if (user != null) {
@@ -3152,7 +3217,7 @@ class DeliveryViewModel : WalletViewModel() {
                                     }
                                     com.esdispatch.data.MyFirebaseMessagingService.showNotification(
                                         context = ctx,
-                                        title = "Saved Tracking Status Update 🔔",
+                                        title = "Saved Tracking Status Update ðŸ””",
                                         message = "Your saved parcel '${updatedParcel.itemName}' (#$id) is now $statusText.",
                                         parcelId = id
                                     )
@@ -3235,14 +3300,14 @@ class DeliveryViewModel : WalletViewModel() {
         
         val welcomeTx = Transaction(
             id = "TX-COIN-${System.currentTimeMillis().toString().substring(8)}",
-            title = "Welcome Coins Claimed 🪙",
+            title = "Welcome Coins Claimed ðŸª™",
             date = "Today",
             amount = 100.0,
             isTopUp = true
         )
         _transactions.value = listOf(welcomeTx) + _transactions.value
         
-        val notifTitle = "Welcome Gift Claimed! 🎁"
+        val notifTitle = "Welcome Gift Claimed! ðŸŽ"
         val notifMsg = "Congratulations! You have received 100 Engraced loyalty coins and the premium promo code 'ENGRACEDVIP' for 15% off your first delivery."
         addNotification(notifTitle, notifMsg)
         
@@ -3349,7 +3414,7 @@ class DeliveryViewModel : WalletViewModel() {
         return Pair(centerLat + latOffset, centerLng + lngOffset)
     }
 
-    /** Detect if route is intercity Benin City ↔ Lagos */
+    /** Detect if route is intercity Benin City â†” Lagos */
     fun isIntercityRoute(pickup: String, delivery: String): Boolean {
         val pickupIsBenin = com.esdispatch.data.AddressDatabase.isBeninCity(pickup)
         val deliveryIsBenin = com.esdispatch.data.AddressDatabase.isBeninCity(delivery)
@@ -3520,11 +3585,11 @@ class DeliveryViewModel : WalletViewModel() {
             else -> (base * 0.7 + (wt * perKg * 0.8) + distanceKm * 100.0) * surge
         }
 
-        // Volume surcharge: ₦50 per 1000 cm3
+        // Volume surcharge: â‚¦50 per 1000 cm3
         val volumeCm3 = length * width * height
         val volumeSurcharge = (volumeCm3 / 1000.0) * 50.0
 
-        // Multi-stop surcharge: ₦1,500 per extra stop
+        // Multi-stop surcharge: â‚¦1,500 per extra stop
         val stopsSurcharge = stopsCount * 1500.0
 
         // Quantity multiplier: 20% discount on additional items
@@ -3692,8 +3757,8 @@ class DeliveryViewModel : WalletViewModel() {
         _selectedParcel.value = newParcel
 
         // Add to Notifications
-        val bookTitle = "Booking Confirmed! 🎉📦"
-        val bookMsg = "Your parcel shipment '${newParcel.itemName}' (#${newParcel.id}) has been successfully booked via ${draft.selectedService} service! Paid ₦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier! 🚀⚡"
+        val bookTitle = "Booking Confirmed! ðŸŽ‰ðŸ“¦"
+        val bookMsg = "Your parcel shipment '${newParcel.itemName}' (#${newParcel.id}) has been successfully booked via ${draft.selectedService} service! Paid â‚¦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier! ðŸš€âš¡"
         val notif = NotificationItem(
             id = "NT-${System.currentTimeMillis().toString().substring(8)}",
             title = bookTitle,
@@ -3732,17 +3797,6 @@ class DeliveryViewModel : WalletViewModel() {
         // Reset draft
         _parcelDraft.value = ParcelDraft()
 
-        // Increment delivery stats and award reward points!
-        val updatedCount = _deliveryCount.value + 1
-        _deliveryCount.value = updatedCount
-        savePref("delivery_count", updatedCount)
-
-        val updatedPoints = if (_pointsSystemEnabled.value) _loyaltyPoints.value + 15 else _loyaltyPoints.value
-        if (_pointsSystemEnabled.value) {
-            _loyaltyPoints.value = updatedPoints
-            savePref("loyalty_points", updatedPoints)
-        }
-
         // Write directly to Room SQLite Database for offline-first resilience!
         savePref("wallet_balance", _walletBalance.value)
         viewModelScope.launch {
@@ -3754,7 +3808,7 @@ class DeliveryViewModel : WalletViewModel() {
             if (uid != null) {
                 com.esdispatch.data.FirebaseManager.syncWalletBalanceToFirestore(uid, _walletBalance.value)
                 com.esdispatch.data.FirebaseManager.syncTransactionToFirestore(newTx, uid)
-                com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(uid, updatedPoints, updatedCount)
+                com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(uid, _loyaltyPoints.value, _deliveryCount.value)
             }
         }
     }
@@ -3946,6 +4000,37 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    override fun addNotification(title: String, message: String, parcelId: String) {
+        val notif = NotificationItem(
+            id = "NT-${System.currentTimeMillis().toString().substring(8)}-${_notifications.value.size}",
+            title = title,
+            message = message,
+            time = "Just now",
+            parcelId = parcelId
+        )
+        _notifications.value = listOf(notif) + _notifications.value
+        viewModelScope.launch {
+            repository?.saveNotification(notif)
+            val uid = _firebaseUserId.value
+            if (uid != null) {
+                com.esdispatch.data.FirebaseManager.sendNotificationToUser(uid, title, message, parcelId.ifBlank { null })
+            }
+        }
+    }
+
+    override fun logAdminActivity(action: String, details: String) {
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        val uid = _firebaseUserId.value ?: ""
+        fs.collection("audit_logs").add(
+            hashMapOf(
+                "action" to action,
+                "details" to details,
+                "actorId" to uid,
+                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+            )
+        )
+    }
+
     fun dismissInAppNotification() {
         _activeInAppNotification.value = null
     }
@@ -3984,7 +4069,7 @@ class DeliveryViewModel : WalletViewModel() {
                                 if (isCancelled && !_pushAlertsCancelled.value) continue
 
                                 if (isDispatched || isDelivered) {
-                                    val emoji = if (isDelivered) "✅📦" else "🚚⚡"
+                                    val emoji = if (isDelivered) "âœ…ðŸ“¦" else "ðŸššâš¡"
                                     val title = "Shipment Status Updated! $emoji"
                                     val message = "Your shipment '$itemName' (#$id) is now $status!"
                                     
@@ -4050,11 +4135,11 @@ class DeliveryViewModel : WalletViewModel() {
             if (list.isEmpty()) {
                 val firstName = userName.trim().split(" ").firstOrNull() ?: userName
                 addNotification(
-                    "Welcome to ESDispatch! 📦✨",
-                    "Hello $firstName, welcome to premium logistics. Your account is active and ₦2,500 welcome credit has been added to your wallet."
+                    "Welcome to ESDispatch! ðŸ“¦âœ¨",
+                    "Hello $firstName, welcome to premium logistics. Your account is active and â‚¦2,500 welcome credit has been added to your wallet."
                 )
                 addNotification(
-                    "Secure Authentication Active 🛡️",
+                    "Secure Authentication Active ðŸ›¡ï¸",
                     "Your personalized 4-digit security PIN has been safely registered for maximum account integrity."
                 )
             }
@@ -4189,21 +4274,21 @@ class DeliveryViewModel : WalletViewModel() {
                 val addressMatch = if (lower.contains("airport")) "Murtala Muhammed Airport Rd, Ikeja (Spell corrected from: Airpot)" else "Herbert Macaulay Way, Yaba, Lagos"
                 val vehicleRec = if (isHeavy) "Van or Truck (Heavy Package recommended)" else "Motorcycle (Standard Fast delivery suitability)"
                 
-                "📦 **Smart Order Setup Initialized**:\n" +
-                "• **Smart Address Prediction**: $addressMatch\n" +
-                "• **Suggested Vehicle recommendation**: $vehicleRec\n" +
-                "• **Price Estimate**: ₦${if(isHeavy) "7,500.00" else "2,500.00"}\n" +
+                "ðŸ“¦ **Smart Order Setup Initialized**:\n" +
+                "â€¢ **Smart Address Prediction**: $addressMatch\n" +
+                "â€¢ **Suggested Vehicle recommendation**: $vehicleRec\n" +
+                "â€¢ **Price Estimate**: â‚¦${if(isHeavy) "7,500.00" else "2,500.00"}\n" +
                 "Would you like me to book this ESDispatch shipment?"
             }
             lower.contains("status") || lower.contains("track") || lower.contains("where") || lower.contains("rolex") || lower.contains("mac") -> {
                 // Feature 2: Intelligent ETA feedback
                 val active = _parcels.value.firstOrNull { it.status == ParcelStatus.TRANSIT }
                 if (active != null) {
-                    "📍 **Live Delivery Status for #${active.id}**:\n" +
-                    "• **Item**: ${active.itemName}\n" +
-                    "• **Current Rider**: ${active.courierName}\n" +
-                    "• **Smart ETA**: ${if(_aiTrafficCongested.value) "Arriving in 35 mins (Heavy Traffic delays)" else "Arriving in 14 mins (Optimal route)"}\n" +
-                    "• **Rider Location**: Third Mainland Bridge, Lagos\n" +
+                    "ðŸ“ **Live Delivery Status for #${active.id}**:\n" +
+                    "â€¢ **Item**: ${active.itemName}\n" +
+                    "â€¢ **Current Rider**: ${active.courierName}\n" +
+                    "â€¢ **Smart ETA**: ${if(_aiTrafficCongested.value) "Arriving in 35 mins (Heavy Traffic delays)" else "Arriving in 14 mins (Optimal route)"}\n" +
+                    "â€¢ **Rider Location**: Third Mainland Bridge, Lagos\n" +
                     "Would you like me to ping the rider or request a route re-evaluation?"
                 } else {
                     "No active shipments are currently in transit. Your past shipments have been successfully delivered to their destinations."
@@ -4211,28 +4296,28 @@ class DeliveryViewModel : WalletViewModel() {
             }
             lower.contains("rider") || lower.contains("richard") || lower.contains("musa") || lower.contains("best") -> {
                 // Feature 1: Smart Assignment Ranking preview
-                "🤖 **Smart Rider Assignment Recommendation**:\n" +
-                "• **Richard Dheo** (Rating: 4.9, Distance: 0.8km) — **Score: 98% (Best Match)**\n" +
-                "• **Adebayo Musa** (Rating: 4.8, Distance: 1.6km) — **Score: 82%**\n" +
-                "• **Chinedu Okafor** (Rating: 4.7, Distance: 3.2km) — **Score: 65%**\n" +
+                "ðŸ¤– **Smart Rider Assignment Recommendation**:\n" +
+                "â€¢ **Richard Dheo** (Rating: 4.9, Distance: 0.8km) â€” **Score: 98% (Best Match)**\n" +
+                "â€¢ **Adebayo Musa** (Rating: 4.8, Distance: 1.6km) â€” **Score: 82%**\n" +
+                "â€¢ **Chinedu Okafor** (Rating: 4.7, Distance: 3.2km) â€” **Score: 65%**\n" +
                 "Would you like me to lock Richard Dheo for your next booking?"
             }
             lower.contains("risk") || lower.contains("weather") || lower.contains("rain") || lower.contains("flood") -> {
                 // Feature 7: Risk Analysis
                 val score = if (_aiTrafficCongested.value) 68 else 15
-                "⚠️ **AI Risk Assessment Station**:\n" +
-                "• **Risk Score**: $score/100 (${if(score > 50) "Moderate Risk" else "Safe"})\n" +
-                "• **Weather**: Clear, dry skies\n" +
-                "• **Traffic**: ${if(_aiTrafficCongested.value) "Severe Congestion on Expressways" else "Free, clear lanes"}\n" +
-                "• **Mitigation**: Approved for motorcycle. ${if(score > 50) "Rerouting around flooded zones active." else "Standard paths approved."}"
+                "âš ï¸ **AI Risk Assessment Station**:\n" +
+                "â€¢ **Risk Score**: $score/100 (${if(score > 50) "Moderate Risk" else "Safe"})\n" +
+                "â€¢ **Weather**: Clear, dry skies\n" +
+                "â€¢ **Traffic**: ${if(_aiTrafficCongested.value) "Severe Congestion on Expressways" else "Free, clear lanes"}\n" +
+                "â€¢ **Mitigation**: Approved for motorcycle. ${if(score > 50) "Rerouting around flooded zones active." else "Standard paths approved."}"
             }
             lower.contains("cancel") -> {
                 // Feature 10: Fraud Detection warning
-                "⚠️ **Cancellation Verification System**:\n" +
+                "âš ï¸ **Cancellation Verification System**:\n" +
                 "Your cancellation has been processed safely. To maintain high account scores and prevent suspicious anti-cancellation flags, please avoid repeated booking rejections."
             }
             lower.contains("change") -> {
-                "📍 **Smart Address Modification**:\n" +
+                "ðŸ“ **Smart Address Modification**:\n" +
                 "Please enter your new destination. I will instantly correct spelling, verify landmarks, and recalculate ETAs for your rider."
             }
             else -> {
@@ -4296,11 +4381,11 @@ class DeliveryViewModel : WalletViewModel() {
             val confidence = rankedRiders.first().second
             val reasonString = "Selected ${bestRider.name} (${bestRider.vehicleType}) with a confidence Match Score of ${confidence}%.\n" +
                     "Decision factors:\n" +
-                    "• Distance to pickup: ${bestRider.distanceToPickupKm}km (Penalty minimized)\n" +
-                    "• Rating: ${bestRider.rating}★ (High courier experience)\n" +
-                    "• Workload: ${bestRider.currentWorkload} active order(s)\n" +
-                    "• Vehicle Type matches package weight limits (${weight}kg)\n" +
-                    "• Battery: ${bestRider.batteryLevel}% remaining"
+                    "â€¢ Distance to pickup: ${bestRider.distanceToPickupKm}km (Penalty minimized)\n" +
+                    "â€¢ Rating: ${bestRider.rating}â˜… (High courier experience)\n" +
+                    "â€¢ Workload: ${bestRider.currentWorkload} active order(s)\n" +
+                    "â€¢ Vehicle Type matches package weight limits (${weight}kg)\n" +
+                    "â€¢ Battery: ${bestRider.batteryLevel}% remaining"
             _aiSmartAssignmentReason.value = "Smart Assignment complete. $reasonString\n\nSelf-Learning parameters adapted successfully. Click to inspect weights."
 
             viewModelScope.launch {
@@ -4390,7 +4475,7 @@ class DeliveryViewModel : WalletViewModel() {
         if (_aiTrafficCongested.value) factors.add("Severe congestion reported on primary routes")
         if (activeCount > 3) factors.add("High dispatch volume ($activeCount active shipments)")
         if (cancelledCount > 2) factors.add("Elevated cancellation rate ($cancelledCount cancellations)")
-        if (highValueActive > 0) factors.add("High-value cargo in transit (${highValueActive} shipments > ₦30k)")
+        if (highValueActive > 0) factors.add("High-value cargo in transit (${highValueActive} shipments > â‚¦30k)")
         if (fraudAlerts > 0) factors.add("Active fraud alerts ($fraudAlerts unresolved)")
         if (factors.isEmpty()) {
             factors.add("Optimal clear weather & low traffic")
@@ -4481,7 +4566,7 @@ class DeliveryViewModel : WalletViewModel() {
                     FraudAlert(
                         timestamp = "Just now",
                         userName = parcel.receiverName.ifBlank { "Unknown" },
-                        reason = "High-value shipment '${parcel.itemName}' (₦${parcel.price.toInt()}) still pending delivery",
+                        reason = "High-value shipment '${parcel.itemName}' (â‚¦${parcel.price.toInt()}) still pending delivery",
                         severity = "Flagged",
                         score = 82
                     )
@@ -4654,7 +4739,7 @@ class DeliveryViewModel : WalletViewModel() {
             val optimizedPlan = BatchRoutePlan(
                 batchName = batchName,
                 stopCount = maxOf(stops.size, 3),
-                optimizedPathSummary = if (stops.isNotEmpty()) stops.joinToString(" ➔ ") else "Hub ➔ Lekki Phase 1 ➔ Victoria Island ➔ Ikoyi",
+                optimizedPathSummary = if (stops.isNotEmpty()) stops.joinToString(" âž” ") else "Hub âž” Lekki Phase 1 âž” Victoria Island âž” Ikoyi",
                 estimatedDistanceKm = 14.5 + stops.size * 3.2,
                 estimatedEtaMinutes = 25 + stops.size * 12,
                 aiConfidence = 96,
@@ -4746,27 +4831,17 @@ class DeliveryViewModel : WalletViewModel() {
         )
     }
 
-    val defaultSampleProducts = listOf(
-        MarketplaceItem("seed_1", "Heavy Duty Bike Delivery Box", "Delivery Gear", 35000.0, 4.9, 45, "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=500", "Waterproof insulated delivery cargo box with lock", 45, "ESDispatch Fleet Supplies"),
-        MarketplaceItem("seed_2", "Executive Courier Rider Jacket", "Apparel", 18500.0, 4.8, 120, "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=500", "High-visibility reflective windproof jacket", 120, "ProRider Wear"),
-        MarketplaceItem("seed_3", "Engine Synthetic Oil 1L (4T)", "Lubricants", 4200.0, 4.7, 8, "https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500", "High performance synthetic motor oil", 8, "Lagos Auto Care"),
-        MarketplaceItem("seed_4", "Heavy Duty Phone Mount & Charger", "Accessories", 9500.0, 4.9, 65, "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=500", "Anti-vibration aluminum handlebar phone holder", 65, "TechRider Solutions"),
-        MarketplaceItem("seed_5", "Full Face Protective Helmet", "Safety", 28000.0, 4.9, 0, "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500", "DOT certified aerodynamic protective helmet", 0, "SafetyFirst Nigeria")
-    )
-
     private fun listenToMarketplaceProducts() {
         val firestore = com.esdispatch.data.FirebaseManager.firestore ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
         firestore.collection("marketplace_products")
             .addSnapshotListener { snapshot, e ->
                 if (e != null) {
                     android.util.Log.e("DeliveryViewModel", "Error fetching marketplace_products: ${e.message}")
-                    if (_marketplaceProducts.value.isEmpty()) {
-                        _marketplaceProducts.value = defaultSampleProducts
-                    }
+                    _marketplaceProducts.value = emptyList()
                     return@addSnapshotListener
                 }
                 if (snapshot == null || snapshot.isEmpty) {
-                    _marketplaceProducts.value = defaultSampleProducts
+                    _marketplaceProducts.value = emptyList()
                     return@addSnapshotListener
                 }
                 val items = snapshot.documents.mapNotNull { doc ->
@@ -4780,55 +4855,278 @@ class DeliveryViewModel : WalletViewModel() {
                     val imageUrl = doc.getString("imageUrl") ?: ""
                     val description = doc.getString("description") ?: ""
                     val stock = doc.getLong("stock")?.toInt() ?: (doc.get("stock")?.toString()?.toIntOrNull() ?: 10)
-                    val vendorStore = doc.getString("vendorStore") ?: "ESDispatch Fleet Supplies"
-                    MarketplaceItem(id, title, category, price, rating, 15, imageUrl, description, stock, vendorStore)
+                    val vendorStore = doc.getString("vendorStore") ?: "ESDispatch Partner Store"
+                    val vendorId = doc.getString("vendorId") ?: ""
+                    MarketplaceItem(id, title, category, price, rating, 15, imageUrl, description, stock, vendorStore, vendorId)
                 }
-                _marketplaceProducts.value = if (items.isNotEmpty()) items else defaultSampleProducts
+                _marketplaceProducts.value = items
+                if (_storeDocs.isNotEmpty()) rebuildStoreList()
+            }
+    }
+
+    // --- Marketplace Vendor Stores (public browsing) ---
+    private val _marketplaceStores = kotlinx.coroutines.flow.MutableStateFlow<List<MarketplaceStore>>(emptyList())
+    val marketplaceStores: kotlinx.coroutines.flow.StateFlow<List<MarketplaceStore>> = _marketplaceStores.asStateFlow()
+
+    private var _storeDocs = emptyList<Pair<String, Map<String, Any>>>()
+
+    private fun rebuildStoreList() {
+        val products = _marketplaceProducts.value
+        val list = _storeDocs.mapNotNull { (docId, doc) ->
+            val deleted = doc["isDeleted"] as? Boolean ?: false
+            if (deleted || (doc["isDemo"] as? Boolean ?: false)) return@mapNotNull null
+            val storeName = (doc["storeName"] as? String)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val id = (doc["id"] as? String)?.takeIf { it.isNotBlank() } ?: docId
+            MarketplaceStore(
+                id = id,
+                storeName = storeName,
+                category = doc["category"] as? String ?: "General",
+                description = doc["description"] as? String ?: (doc["kycBusinessAddress"] as? String ?: ""),
+                ownerName = doc["ownerName"] as? String ?: (doc["kycFullName"] as? String ?: "Store Owner"),
+                email = doc["email"] as? String ?: (doc["ownerEmail"] as? String ?: ""),
+                phone = doc["phone"] as? String ?: "",
+                address = doc["address"] as? String ?: (doc["kycBusinessAddress"] as? String ?: ""),
+                rating = (doc["storeRating"] as? Number)?.toDouble() ?: 5.0,
+                totalSales = (doc["totalSales"] as? Number)?.toInt() ?: 0,
+                itemCount = if (id.isBlank()) 0 else products.count { it.vendorId == id },
+                isVerified = doc["isVerified"] as? Boolean ?: true,
+                logoUrl = doc["logoUrl"] as? String ?: "",
+                coverUrl = doc["coverUrl"] as? String ?: "",
+                isFeatured = doc["isFeatured"] as? Boolean ?: false,
+                featuredRank = (doc["featuredRank"] as? Number)?.toInt() ?: 0,
+                isDemo = doc["isDemo"] as? Boolean ?: false,
+                dateEnlisted = doc["dateEnlisted"] as? String ?: "",
+                status = doc["status"] as? String ?: "APPROVED"
+            )
+        }
+        _marketplaceStores.value = list.sortedWith(
+            compareByDescending<MarketplaceStore> { it.isVerified && it.isFeatured && it.featuredRank > 0 }
+                .thenByDescending { if (it.isFeatured) it.featuredRank else 0 }
+                .thenByDescending { it.isVerified }
+                .thenByDescending { it.rating }
+                .thenByDescending { it.totalSales }
+        )
+    }
+
+    private fun listenToMarketplaceStores() {
+        val firestore = com.esdispatch.data.FirebaseManager.firestore ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        firestore.collection("marketplace_stores")
+            .addSnapshotListener { snapshot, e ->
+                if (e != null || snapshot == null) {
+                    _storeDocs = emptyList()
+                    _marketplaceStores.value = emptyList()
+                    return@addSnapshotListener
+                }
+                _storeDocs = snapshot.documents.mapNotNull { doc ->
+                    val deleted = doc.getBoolean("isDeleted") ?: false
+                    if (deleted) return@mapNotNull null
+                    val data = doc.data ?: return@mapNotNull null
+                    doc.id to data
+                }
+                rebuildStoreList()
             }
     }
 
     // --- Marketplace & Promos ---
-    private val _marketplaceProducts = kotlinx.coroutines.flow.MutableStateFlow<List<MarketplaceItem>>(defaultSampleProducts)
+    private val _marketplaceProducts = kotlinx.coroutines.flow.MutableStateFlow<List<MarketplaceItem>>(emptyList())
     val marketplaceProducts: kotlinx.coroutines.flow.StateFlow<List<MarketplaceItem>> = _marketplaceProducts.asStateFlow()
 
     private val _cartItems = kotlinx.coroutines.flow.MutableStateFlow<List<CartItem>>(emptyList())
     val cartItems: kotlinx.coroutines.flow.StateFlow<List<CartItem>> = _cartItems.asStateFlow()
 
+    // --- Vendor Store StateFlows ---
+    private val _vendorStore = MutableStateFlow<Map<String, Any>?>(null)
+    val vendorStore: StateFlow<Map<String, Any>?> = _vendorStore.asStateFlow()
+
+    private val _vendorOrders = MutableStateFlow<List<Map<String, Any>>>(emptyList())
+    val vendorOrders: StateFlow<List<Map<String, Any>>> = _vendorOrders.asStateFlow()
+
+    private val _isVendorVerified = MutableStateFlow(false)
+    val isVendorVerified: StateFlow<Boolean> = _isVendorVerified.asStateFlow()
+
+    private val _vendorStoreExists = MutableStateFlow(false)
+    val vendorStoreExists: StateFlow<Boolean> = _vendorStoreExists.asStateFlow()
+
+    // Vendor KYC + auto-verification config
+    private val _autoVerifyVendors = MutableStateFlow(true)
+    val autoVerifyVendors: StateFlow<Boolean> = _autoVerifyVendors.asStateFlow()
+
+    fun submitVendorKYC(
+        storeName: String,
+        category: String,
+        phone: String,
+        address: String,
+        bvnNumber: String,
+        bankName: String,
+        accountNumber: String,
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        val uid = _firebaseUserId.value ?: run {
+            onComplete(false, "Please sign in to apply.")
+            return
+        }
+        val db = com.esdispatch.data.FirebaseManager.firestore ?: run {
+            onComplete(false, "Firestore connection error.")
+            return
+        }
+        val isAutoApproved = _autoVerifyVendors.value
+        val status = if (isAutoApproved) "APPROVED" else "PENDING"
+        val storeData = hashMapOf(
+            "id" to uid,
+            "ownerId" to uid,
+            "storeName" to storeName,
+            "category" to category,
+            "phone" to phone,
+            "address" to address,
+            "bvnNumber" to bvnNumber,
+            "bankName" to bankName,
+            "accountNumber" to accountNumber,
+            "isVerified" to isAutoApproved,
+            "status" to status,
+            "ownerName" to (_userName.value.ifBlank { "Store Owner" }),
+            "email" to (_userEmail.value.ifBlank { "vendor@esdispatch.app" }),
+            "commissionRate" to 8.5,
+            "vendorBalance" to 0.0,
+            "totalSales" to 0,
+            "storeRating" to 5.0,
+            "dateEnlisted" to java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date()),
+            "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+        )
+        viewModelScope.launch {
+            try {
+                db.collection("marketplace_stores").document(uid).set(storeData)
+                _vendorStoreExists.value = true
+                _vendorStore.value = storeData
+                if (isAutoApproved) {
+                    _isVendorVerified.value = true
+                    _vendorDashboardMode.value = true
+                    db.collection("users").document(uid).update("isVendorVerified", true, "userRole", "Vendor")
+                    onComplete(true, "ðŸŽ‰ Store Verified! Welcome to your Vendor Command Center!")
+                } else {
+                    onComplete(true, "ðŸ“‹ Application submitted! Our admin team is reviewing your KYC credentials.")
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.message ?: "Failed to submit vendor application")
+            }
+        }
+    }
+
+    private val _vendorKycSubmitted = MutableStateFlow(false)
+    val vendorKycSubmitted: StateFlow<Boolean> = _vendorKycSubmitted.asStateFlow()
+
+    private val _vendorDashboardMode = MutableStateFlow(false)
+    val vendorDashboardMode: StateFlow<Boolean> = _vendorDashboardMode.asStateFlow()
+
+    fun setVendorDashboardMode(enabled: Boolean) {
+        _vendorDashboardMode.value = enabled
+    }
+
     fun addToCart(item: MarketplaceItem, quantity: Int = 1) {
         val current = _cartItems.value.toMutableList()
         val existing = current.find { it.item.id == item.id }
+        val newQty = if (existing != null) existing.quantity + quantity else quantity
         if (existing != null) {
-            val index = current.indexOf(existing)
-            current[index] = existing.copy(quantity = existing.quantity + quantity)
+            val idx = current.indexOf(existing)
+            current[idx] = existing.copy(quantity = newQty)
         } else {
             current.add(CartItem(item, quantity))
         }
         _cartItems.value = current
+        val uid = _firebaseUserId.value ?: return
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        val cartData = hashMapOf(
+            "itemId" to item.id, "title" to item.title, "price" to item.price,
+            "imageUrl" to item.imageUrl, "vendorStore" to item.vendorStore,
+            "category" to item.category, "description" to item.description,
+            "quantity" to newQty, "updatedAt" to com.google.firebase.Timestamp.now()
+        )
+        fs.collection("users").document(uid).collection("cart").document(item.id).set(cartData)
     }
 
     fun updateCartQuantity(itemId: String, delta: Int) {
         val current = _cartItems.value.toMutableList()
         val existing = current.find { it.item.id == itemId } ?: return
-        val index = current.indexOf(existing)
+        val idx = current.indexOf(existing)
         val newQty = existing.quantity + delta
+        val uid = _firebaseUserId.value
+        val fs = com.esdispatch.data.FirebaseManager.firestore
         if (newQty <= 0) {
-            current.removeAt(index)
+            current.removeAt(idx)
+            _cartItems.value = current
+            if (uid != null && fs != null) {
+                fs.collection("users").document(uid).collection("cart").document(itemId).delete()
+            }
         } else {
-            current[index] = existing.copy(quantity = newQty)
+            current[idx] = existing.copy(quantity = newQty)
+            _cartItems.value = current
+            if (uid != null && fs != null) {
+                fs.collection("users").document(uid).collection("cart").document(itemId)
+                    .update("quantity", newQty, "updatedAt", com.google.firebase.Timestamp.now())
+            }
         }
-        _cartItems.value = current
     }
 
     fun removeFromCart(itemId: String) {
-        val current = _cartItems.value.filterNot { it.item.id == itemId }
-        _cartItems.value = current
+        _cartItems.value = _cartItems.value.filterNot { it.item.id == itemId }
+        val uid = _firebaseUserId.value ?: return
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        fs.collection("users").document(uid).collection("cart").document(itemId).delete()
     }
 
     fun clearCart() {
         _cartItems.value = emptyList()
+        val uid = _firebaseUserId.value ?: return
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        fs.collection("users").document(uid).collection("cart").get()
+            .addOnSuccessListener { docs ->
+                val batch = fs.batch()
+                docs.forEach { batch.delete(it.reference) }
+                batch.commit()
+            }
     }
 
-    fun checkoutMarketplaceCart(address: String, paymentMethod: String = "Wallet", onComplete: (Boolean, String) -> Unit) {
+    /** Loads the user's persisted cart from Firestore and keeps it live via snapshot listener. */
+    fun loadUserCart() {
+        val uid = _firebaseUserId.value ?: return
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        fs.collection("users").document(uid).collection("cart")
+            .addSnapshotListener { snapshot, e ->
+                if (e != null || snapshot == null) return@addSnapshotListener
+                val loaded = snapshot.documents.mapNotNull { doc ->
+                    val itemId = doc.getString("itemId") ?: doc.id
+                    val title = doc.getString("title") ?: return@mapNotNull null
+                    val price = doc.getDouble("price") ?: return@mapNotNull null
+                    val imageUrl = doc.getString("imageUrl") ?: ""
+                    val vendorStore = doc.getString("vendorStore") ?: ""
+                    val category = doc.getString("category") ?: "General"
+                    val description = doc.getString("description") ?: ""
+                    val quantity = doc.getLong("quantity")?.toInt() ?: 1
+                    val item = MarketplaceItem(
+                        id = itemId, title = title, category = category,
+                        price = price, rating = 4.9, reviewsCount = 0,
+                        imageUrl = imageUrl, description = description,
+                        stock = 99, vendorStore = vendorStore
+                    )
+                    CartItem(item, quantity)
+                }
+                _cartItems.value = loaded
+            }
+    }
+
+    /** Initialise Paystack SDK once context is available. Key is read from BuildConfig. */
+    fun initPaystack(context: android.content.Context) {
+        val key = com.esdispatch.BuildConfig.PAYSTACK_PUBLIC_KEY
+        if (key.isNotEmpty()) {
+            try {
+                co.paystack.android.PaystackSdk.initialize(context)
+                co.paystack.android.PaystackSdk.setPublicKey(key)
+            } catch (e: Exception) {
+                android.util.Log.w("Paystack", "SDK init skipped: " + e.message)
+            }
+        }
+    }
+
+    fun checkoutMarketplaceCart(address: String, paymentMethod: String = "Wallet", redeemPoints: Boolean = false, onComplete: (Boolean, String) -> Unit) {
         val currentCart = _cartItems.value
         if (currentCart.isEmpty()) {
             onComplete(false, "Your cart is empty!")
@@ -4836,7 +5134,8 @@ class DeliveryViewModel : WalletViewModel() {
         }
         val subtotal = currentCart.sumOf { it.item.price * it.quantity }
         val deliveryFee = 1500.0
-        val grandTotal = subtotal + deliveryFee
+        val pointsDiscount = com.esdispatch.utils.LoyaltyRewards.pointsDiscount(_loyaltyPoints.value, redeemPoints)
+        val grandTotal = (subtotal + deliveryFee - pointsDiscount).coerceAtLeast(0.0)
 
         val firestore = com.esdispatch.data.FirebaseManager.firestore ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
         val userId = _firebaseUserId.value ?: "guest_user"
@@ -4845,7 +5144,7 @@ class DeliveryViewModel : WalletViewModel() {
             val currentWallet = _walletBalance.value
             if (currentWallet < grandTotal) {
                 val short = grandTotal - currentWallet
-                onComplete(false, "Insufficient wallet balance. You need ₦${String.format("%,.2f", short)} more to complete this purchase.")
+                onComplete(false, "Insufficient wallet balance. You need â‚¦${String.format("%,.2f", short)} more to complete this purchase.")
                 return
             }
 
@@ -4887,11 +5186,23 @@ class DeliveryViewModel : WalletViewModel() {
             _transactions.value = currentTxList
         }
 
-        // Create Real Firestore Marketplace Order with Vendor Commission Split
+        // Redeem loyalty points for the checkout discount
+        if (redeemPoints && pointsDiscount > 0 && _loyaltyPoints.value >= com.esdispatch.utils.LoyaltyRewards.DISCOUNT_THRESHOLD_POINTS) {
+            val remaining = _loyaltyPoints.value - com.esdispatch.utils.LoyaltyRewards.DISCOUNT_POINTS_COST
+            _loyaltyPoints.value = remaining.coerceAtLeast(0)
+            savePref("loyalty_points", remaining.coerceAtLeast(0))
+            val uid = _firebaseUserId.value
+            if (uid != null) {
+                viewModelScope.launch {
+                    com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(uid, remaining.coerceAtLeast(0), _deliveryCount.value)
+                }
+            }
+        }
+
+        // Create Real Firestore Marketplace Order with per-Store Commission Split
         val orderRef = "ORD-MKT-" + System.currentTimeMillis().toString().takeLast(6)
-        val defaultCommissionRate = 8.5 // 8.5% platform commission
-        val commissionAmount = subtotal * (defaultCommissionRate / 100.0)
-        val netVendorPayout = subtotal - commissionAmount
+        val primaryVendorId = currentCart.firstOrNull()?.item?.vendorId ?: ""
+        val primaryVendorStore = currentCart.firstOrNull()?.item?.vendorStore ?: "ESDispatch Fleet Supplies"
 
         val orderItemsData = currentCart.map { c ->
             hashMapOf(
@@ -4900,65 +5211,472 @@ class DeliveryViewModel : WalletViewModel() {
                 "category" to c.item.category,
                 "price" to c.item.price,
                 "quantity" to c.quantity,
-                "vendorStore" to c.item.vendorStore
+                "vendorStore" to c.item.vendorStore,
+                "vendorId" to c.item.vendorId
             )
         }
 
-        val primaryVendorStore = currentCart.firstOrNull()?.item?.vendorStore ?: "ESDispatch Fleet Supplies"
+        fun placeOrder(commissionRate: Double) {
+            val commissionAmount = subtotal * (commissionRate / 100.0)
+            val netVendorPayout = subtotal - commissionAmount
 
-        val orderDoc = hashMapOf(
-            "orderId" to orderRef,
-            "userId" to userId,
-            "userName" to (_userName.value.ifEmpty { "Valued Customer" }),
-            "userPhone" to (_userPhone.value.ifEmpty { "08000000000" }),
-            "items" to orderItemsData,
-            "subtotal" to subtotal,
-            "deliveryFee" to deliveryFee,
-            "totalAmount" to grandTotal,
-            "commissionRate" to defaultCommissionRate,
-            "commissionAmount" to commissionAmount,
-            "vendorPayout" to netVendorPayout,
-            "vendorStore" to primaryVendorStore,
-            "paymentMethod" to paymentMethod,
-            "shippingAddress" to address,
-            "status" to "PAID",
-            "createdAt" to com.google.firebase.Timestamp.now()
-        )
+            val orderDoc = hashMapOf(
+                "orderId" to orderRef,
+                "userId" to userId,
+                "userName" to (_userName.value.ifEmpty { "Valued Customer" }),
+                "userPhone" to (_userPhone.value.ifEmpty { "08000000000" }),
+                "items" to orderItemsData,
+                "subtotal" to subtotal,
+                "deliveryFee" to deliveryFee,
+                "totalAmount" to grandTotal,
+                "pointsDiscount" to pointsDiscount,
+                "pointsRedeemed" to (redeemPoints && pointsDiscount > 0),
+                "commissionRate" to commissionRate,
+                "commissionAmount" to commissionAmount,
+                "vendorPayout" to netVendorPayout,
+                "vendorStore" to primaryVendorStore,
+                "vendorId" to primaryVendorId,
+                "paymentMethod" to paymentMethod,
+                "shippingAddress" to address,
+                "status" to "PAID",
+                "createdAt" to com.google.firebase.Timestamp.now()
+            )
 
-        firestore.collection("marketplace_orders").add(orderDoc)
-            .addOnSuccessListener {
-                // Update Vendor Store Balance & Order Count in Firestore
-                firestore.collection("marketplace_stores")
-                    .whereEqualTo("storeName", primaryVendorStore)
-                    .get()
-                    .addOnSuccessListener { query ->
-                        if (!query.isEmpty) {
-                            for (storeDoc in query.documents) {
-                                storeDoc.reference.update(
-                                    mapOf(
-                                        "vendorWallet" to com.google.firebase.firestore.FieldValue.increment(netVendorPayout),
-                                        "totalSales" to com.google.firebase.firestore.FieldValue.increment(1),
-                                        "totalCommissionPaid" to com.google.firebase.firestore.FieldValue.increment(commissionAmount),
-                                        "updatedAt" to com.google.firebase.Timestamp.now()
-                                    )
+            firestore.collection("marketplace_orders").add(orderDoc)
+                .addOnSuccessListener {
+                    // Credit the vendor store by owner uid (reliable, no name collisions)
+                    if (primaryVendorId.isNotBlank()) {
+                        firestore.collection("marketplace_stores").document(primaryVendorId)
+                            .update(
+                                mapOf(
+                                    "vendorWallet" to com.google.firebase.firestore.FieldValue.increment(netVendorPayout),
+                                    "totalSales" to com.google.firebase.firestore.FieldValue.increment(1),
+                                    "totalCommissionPaid" to com.google.firebase.firestore.FieldValue.increment(commissionAmount),
+                                    "updatedAt" to com.google.firebase.Timestamp.now()
                                 )
+                            )
+                        // Real Firestore + push notification to the vendor about the new paid order
+                        com.esdispatch.data.FirebaseManager.sendNotificationToUser(
+                            primaryVendorId,
+                            "New Marketplace Order! ðŸ“¦",
+                            "You have a new paid order #$orderRef. Prepare and dispatch it now to keep earning!"
+                        )
+                    } else {
+                        // Fallback for legacy seeded products without a vendorId
+                        firestore.collection("marketplace_stores")
+                            .whereEqualTo("storeName", primaryVendorStore)
+                            .get()
+                            .addOnSuccessListener { query ->
+                                if (!query.isEmpty) {
+                                    for (storeDoc in query.documents) {
+                                        storeDoc.reference.update(
+                                            mapOf(
+                                                "vendorWallet" to com.google.firebase.firestore.FieldValue.increment(netVendorPayout),
+                                                "totalSales" to com.google.firebase.firestore.FieldValue.increment(1),
+                                                "totalCommissionPaid" to com.google.firebase.firestore.FieldValue.increment(commissionAmount),
+                                                "updatedAt" to com.google.firebase.Timestamp.now()
+                                            )
+                                        )
+                                    }
+                                }
                             }
-                        }
                     }
 
-                // Decrement Product Inventory in Firestore
-                currentCart.forEach { c ->
-                    firestore.collection("marketplace_products").document(c.item.id)
-                        .update("stock", com.google.firebase.firestore.FieldValue.increment(-c.quantity.toLong()))
-                }
+                    // Decrement Product Inventory in Firestore
+                    currentCart.forEach { c ->
+                        firestore.collection("marketplace_products").document(c.item.id)
+                            .update("stock", com.google.firebase.firestore.FieldValue.increment(-c.quantity.toLong()))
+                    }
 
-                // Clear Local Cart
-                _cartItems.value = emptyList()
-                onComplete(true, "Order #$orderRef placed successfully! Total ₦${String.format("%,.0f", grandTotal)} charged. Delivering to $address")
+                    // Create matching Dispatch Parcel record for live map tracking
+                    val parcelDoc = hashMapOf(
+                        "id" to orderRef,
+                        "trackingNumber" to orderRef,
+                        "senderName" to primaryVendorStore,
+                        "senderPhone" to "08000000000",
+                        "recipientName" to (_userName.value.ifEmpty { "Valued Customer" }),
+                        "recipientPhone" to (_userPhone.value.ifEmpty { "08000000000" }),
+                        "recipientAddress" to address,
+                        "pickupAddress" to "$primaryVendorStore Warehouse Depot",
+                        "packageType" to "Marketplace Cargo",
+                        "weightKg" to 2.5,
+                        "deliveryFee" to deliveryFee,
+                        "status" to "TRANSIT",
+                        "estimatedMinutes" to 35,
+                        "currentLat" to 6.5244,
+                        "currentLng" to 3.3792,
+                        "riderId" to "rider_1",
+                        "riderName" to "Tunde Bakare",
+                        "riderPhone" to "+2348031234567",
+                        "createdAt" to com.google.firebase.Timestamp.now()
+                    )
+                    firestore.collection("parcels").document(orderRef).set(parcelDoc)
+
+                    // Clear Local Cart
+                    _cartItems.value = emptyList()
+                    // Real buyer notification + celebration
+                    showInAppNotification(
+                        "Order Placed! ðŸ›ï¸",
+                        "Order #$orderRef confirmed. Track it live from your dashboard."
+                    )
+                    addNotification(
+                        "Order Placed! ðŸ›ï¸",
+                        "Order #$orderRef confirmed. Track it live from your dashboard.",
+                        orderRef
+                    )
+                    onComplete(true, "Order #$orderRef placed successfully! Tracking live at #$orderRef")
+                }
+                .addOnFailureListener { e ->
+                    onComplete(false, "Order placement failed: ${e.message}")
+                }
+        }
+
+        if (primaryVendorId.isNotBlank()) {
+            firestore.collection("marketplace_stores").document(primaryVendorId).get()
+                .addOnSuccessListener { storeDoc ->
+                    val rate = storeDoc.getDouble("commissionRate") ?: 8.5
+                    placeOrder(rate)
+                }
+                .addOnFailureListener { placeOrder(8.5) }
+        } else {
+            placeOrder(8.5)
+        }
+    }
+
+
+    // ==========================================================================
+    // VENDOR STORE MANAGEMENT
+    // Requirements: verified store in marketplace_stores/{uid}, >=10 deliveries
+    // ==========================================================================
+
+    fun listenToVendorStore() {
+        val uid = _firebaseUserId.value ?: return
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        val wasVerified = _isVendorVerified.value
+        fs.collection("marketplace_stores").document(uid)
+            .addSnapshotListener { snap, _ ->
+                if (snap == null || !snap.exists()) {
+                    _vendorStoreExists.value = false
+                    _isVendorVerified.value = false
+                    _vendorStore.value = null
+                    return@addSnapshotListener
+                }
+                val nowVerified = snap.getBoolean("isVerified") ?: false
+                _vendorStoreExists.value = true
+                _isVendorVerified.value = nowVerified
+                _vendorKycSubmitted.value = snap.getBoolean("kycStatus") != null &&
+                        (snap.getString("kycStatus") ?: "") != "none"
+                _vendorStore.value = snap.data
+                // Celebration when a pending store finally goes LIVE (e.g. admin approves later)
+                if (nowVerified && !wasVerified && _vendorKycSubmitted.value) {
+                    val storeName = snap.getString("storeName") ?: "Your store"
+                    showInAppNotification(
+                        "Store Verified! ðŸŽ‰",
+                        "Congratulations! $storeName is now LIVE in the marketplace. Start receiving orders now."
+                    )
+                    addNotification(
+                        "Store Verified! ðŸŽ‰",
+                        "Congratulations! $storeName is now LIVE in the marketplace. Start receiving orders now.",
+                        ""
+                    )
+                }
+                listenToVendorOrders()
+            }
+    }
+
+    /**
+     * Submit basic KYC to protect buyers. When platform auto-verify is enabled AND the
+     * delivery milestone is met, the store is verified instantly; otherwise it stays
+     * pending for admin approval.
+     */
+    fun submitVendorKyc(
+        fullName: String,
+        businessAddress: String,
+        idType: String,
+        idNumber: String,
+        bankName: String,
+        accountName: String,
+        accountNumber: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val uid = _firebaseUserId.value ?: run { onResult(false, "Not logged in"); return }
+        if (_deliveryCount.value < 10) {
+            onResult(false, "Complete at least 10 deliveries before submitting KYC.")
+            return
+        }
+        if (accountNumber.length < 10) {
+            onResult(false, "Enter a valid 10-digit NUBAN bank account number.")
+            return
+        }
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: run { onResult(false, "Service unavailable"); return }
+
+        val autoApprove = _autoVerifyVendors.value
+        val updates = hashMapOf<String, Any>(
+            "kycFullName" to fullName,
+            "kycBusinessAddress" to businessAddress,
+            "kycIdType" to idType,
+            "kycIdNumber" to idNumber,
+            "kycBankName" to bankName,
+            "kycAccountName" to accountName,
+            "kycAccountNumber" to accountNumber,
+            "kycSubmittedAt" to com.google.firebase.Timestamp.now(),
+            "kycStatus" to (if (autoApprove) "approved" else "submitted"),
+            "isVerified" to autoApprove,
+            "isPendingReview" to (!autoApprove),
+            "autoApproved" to autoApprove
+        )
+        if (autoApprove) {
+            updates["verifiedAt"] = com.google.firebase.Timestamp.now()
+        }
+        fs.collection("marketplace_stores").document(uid)
+            .set(updates, com.google.firebase.firestore.SetOptions.merge())
+            .addOnSuccessListener {
+                _vendorKycSubmitted.value = true
+                _isVendorVerified.value = autoApprove
+                if (autoApprove) {
+                    showInAppNotification(
+                        "Store Verified! ðŸŽ‰",
+                        "Congratulations $fullName! Your vendor store is now live in the marketplace."
+                    )
+                    onResult(true, "KYC approved! Your vendor store is now LIVE.")
+                } else {
+                    showInAppNotification(
+                        "KYC Submitted âœ…",
+                        "Your KYC is under review. We'll notify you once an admin verifies your store."
+                    )
+                    onResult(true, "KYC submitted! An admin will review and approve your store.")
+                }
+            }
+            .addOnFailureListener { e -> onResult(false, "KYC submission failed: ${e.message}") }
+    }
+
+    /** Admin tooling: approve or reject a pending vendor store. */
+    fun adminSetVendorVerification(uid: String, approved: Boolean, note: String = "") {
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        val updates = hashMapOf<String, Any>(
+            "isVerified" to approved,
+            "isPendingReview" to (!approved),
+            "kycStatus" to (if (approved) "approved" else "rejected"),
+            "verificationNote" to note,
+            "reviewedAt" to com.google.firebase.Timestamp.now()
+        )
+        fs.collection("marketplace_stores").document(uid)
+            .set(updates, com.google.firebase.firestore.SetOptions.merge())
+            .addOnSuccessListener {
+                logAdminActivity("Vendor Review", "Store $uid ${if (approved) "approved" else "rejected"}: $note")
+            }
+    }
+
+    fun listenToGlobalSettings() {
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        fs.collection("system_config").document("global_settings")
+            .addSnapshotListener { snap, _ ->
+                if (snap == null || !snap.exists()) return@addSnapshotListener
+                snap.getBoolean("autoVerifyVendors")?.let { v ->
+                    _autoVerifyVendors.value = v
+                    savePref("auto_verify_vendors", v)
+                }
+            }
+    }
+
+    fun listenToVendorOrders() {
+        val uid = _firebaseUserId.value ?: return
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        val sName = (_vendorStore.value?.get("storeName") as? String) ?: return
+        fs.collection("marketplace_orders")
+            .whereEqualTo("vendorStore", sName)
+            .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(50)
+            .addSnapshotListener { snap, _ ->
+                if (snap == null) return@addSnapshotListener
+                _vendorOrders.value = snap.documents.mapNotNull { it.data }
+            }
+    }
+
+    fun registerVendorStore(
+        storeName: String, category: String, description: String,
+        phone: String = "", businessAddress: String = "",
+        logoUrl: String = "", coverUrl: String = "",
+        businessRegNumber: String = "",
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val uid = _firebaseUserId.value ?: run { onResult(false, "Not logged in"); return }
+        if (_deliveryCount.value < 10) {
+            onResult(false, "You need at least 10 completed deliveries. You have ${_deliveryCount.value}.")
+            return
+        }
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: run { onResult(false, "Service unavailable"); return }
+        val storeData = hashMapOf(
+            "id" to uid, "ownerId" to uid, "ownerName" to _userName.value, "ownerEmail" to _userEmail.value,
+            "storeName" to storeName, "category" to category, "description" to description,
+            "phone" to phone, "address" to businessAddress,
+            "logoUrl" to logoUrl, "coverUrl" to coverUrl,
+            "businessRegNumber" to businessRegNumber,
+            "commissionRate" to 8.5,
+            "isVerified" to false, "isPendingReview" to true, "kycStatus" to "none", "status" to "PENDING",
+            "isFeatured" to false, "featuredRank" to 0, "isDemo" to false, "isDeleted" to false,
+            "vendorWallet" to 0.0, "totalSales" to 0, "totalCommissionPaid" to 0.0,
+            "deliveryCountAtRegistration" to _deliveryCount.value,
+            "dateEnlisted" to java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date()),
+            "createdAt" to com.google.firebase.Timestamp.now()
+        )
+        fs.collection("marketplace_stores").document(uid).set(storeData)
+            .addOnSuccessListener {
+                _vendorStoreExists.value = true
+                _isVendorVerified.value = false
+                _vendorKycSubmitted.value = false
+                onResult(true, "Store profile created! Complete your vendor KYC to get verified and go live.")
+            }
+            .addOnFailureListener { e -> onResult(false, "Registration failed: " + e.message) }
+    }
+
+    fun addVendorProduct(
+        title: String, category: String, description: String,
+        price: Double, stock: Int, imageUrl: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val uid = _firebaseUserId.value ?: run { onResult(false, "Not logged in"); return }
+        if (!_isVendorVerified.value) {
+            onResult(false, "Your store must be verified before listing products."); return
+        }
+        val storeName = (_vendorStore.value?.get("storeName") as? String) ?: (_userName.value + "'s Store")
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: run { onResult(false, "Service unavailable"); return }
+        val productData = hashMapOf(
+            "vendorId" to uid, "vendorStore" to storeName,
+            "name" to title, "title" to title, "category" to category,
+            "description" to description, "price" to price, "stock" to stock,
+            "imageUrl" to imageUrl, "rating" to 0.0, "reviewsCount" to 0,
+            "isActive" to true, "isDeleted" to false,
+            "createdAt" to com.google.firebase.Timestamp.now()
+        )
+        fs.collection("marketplace_products").add(productData)
+            .addOnSuccessListener { onResult(true, "Product listed in the marketplace!") }
+            .addOnFailureListener { e -> onResult(false, "Failed to list product: " + e.message) }
+    }
+
+    fun updateVendorProduct(
+        productId: String, title: String, category: String,
+        description: String, price: Double, stock: Int, imageUrl: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val uid = _firebaseUserId.value ?: run { onResult(false, "Not logged in"); return }
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: run { onResult(false, "Service unavailable"); return }
+        fs.collection("marketplace_products").document(productId).get()
+            .addOnSuccessListener { doc ->
+                if ((doc.getString("vendorId") ?: "") != uid) {
+                    onResult(false, "Permission denied."); return@addOnSuccessListener
+                }
+                doc.reference.update(mapOf(
+                    "name" to title, "title" to title, "category" to category,
+                    "description" to description, "price" to price, "stock" to stock,
+                    "imageUrl" to imageUrl, "updatedAt" to com.google.firebase.Timestamp.now()
+                ))
+                    .addOnSuccessListener { onResult(true, "Product updated.") }
+                    .addOnFailureListener { e -> onResult(false, "Update failed: " + e.message) }
+            }
+            .addOnFailureListener { e -> onResult(false, "Failed: " + e.message) }
+    }
+
+    fun deleteVendorProduct(productId: String, onResult: (Boolean, String) -> Unit) {
+        val uid = _firebaseUserId.value ?: run { onResult(false, "Not logged in"); return }
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: run { onResult(false, "Service unavailable"); return }
+        fs.collection("marketplace_products").document(productId).get()
+            .addOnSuccessListener { doc ->
+                if ((doc.getString("vendorId") ?: "") != uid) {
+                    onResult(false, "Permission denied."); return@addOnSuccessListener
+                }
+                doc.reference.update("isDeleted", true, "deletedAt", com.google.firebase.Timestamp.now())
+                    .addOnSuccessListener { onResult(true, "Product removed from marketplace.") }
+                    .addOnFailureListener { e -> onResult(false, "Delete failed: " + e.message) }
+            }
+            .addOnFailureListener { e -> onResult(false, "Failed: " + e.message) }
+    }
+
+    fun requestVendorPayout(
+        amount: Double, bankName: String, accountNumber: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val uid = _firebaseUserId.value ?: run { onResult(false, "Not logged in"); return }
+        val storeData = _vendorStore.value ?: run { onResult(false, "No store found."); return }
+        val balance = (storeData["vendorWallet"] as? Number)?.toDouble() ?: 0.0
+        if (amount <= 0) { onResult(false, "Enter a valid payout amount."); return }
+        if (amount > balance) {
+            onResult(false, "Insufficient balance. Available: \u20a6" + String.format("%,.2f", balance))
+            return
+        }
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: run { onResult(false, "Service unavailable"); return }
+
+        // Block duplicate pending requests so payouts are never fire-and-forget
+        fs.collection("vendor_payout_requests")
+            .whereEqualTo("vendorId", uid)
+            .whereEqualTo("status", "PENDING")
+            .get()
+            .addOnSuccessListener { existing ->
+                if (!existing.isEmpty) {
+                    onResult(false, "You already have a pending payout request. Wait for it to be processed.")
+                    return@addOnSuccessListener
+                }
+                val payoutData = hashMapOf(
+                    "requestId" to ("PAY-" + System.currentTimeMillis()),
+                    "vendorId" to uid, "vendorName" to _userName.value,
+                    "storeName" to (storeData["storeName"] as? String ?: ""),
+                    "amount" to amount, "bankName" to bankName, "accountNumber" to accountNumber,
+                    "status" to "PENDING", "requestedAt" to com.google.firebase.Timestamp.now()
+                )
+                fs.collection("vendor_payout_requests").add(payoutData)
+                    .addOnSuccessListener {
+                        // Reserve the amount by debiting the store wallet immediately
+                        fs.collection("marketplace_stores").document(uid)
+                            .update("vendorWallet", com.google.firebase.firestore.FieldValue.increment(-amount))
+                        addNotification(
+                            "Payout Requested ðŸ’°",
+                            "Your payout of \u20a6" + String.format("%,.2f", amount) + " has been submitted for processing (2-3 business days).",
+                            ""
+                        )
+                        logAdminActivity("Vendor Payout", "Payout request for $amount from store ${storeData["storeName"]}")
+                        onResult(true, "Payout of \u20a6" + String.format("%,.2f", amount) + " requested. Processed in 2-3 business days.")
+                    }
+                    .addOnFailureListener { e -> onResult(false, "Request failed: " + e.message) }
             }
             .addOnFailureListener { e ->
-                onComplete(false, "Order placement failed: ${e.message}")
+                onResult(false, "Could not verify pending requests: " + e.message)
             }
+    }
+
+    // ==========================================================================
+    // LIVE SUPPORT CHAT - Firebase Realtime Database
+    // Path: support_chats/{uid}/messages
+    // ==========================================================================
+
+    fun sendSupportChatMessage(message: String, isAgent: Boolean = false, onResult: (Boolean) -> Unit) {
+        val uid = _firebaseUserId.value ?: run { onResult(false); return }
+        val db = com.google.firebase.database.FirebaseDatabase.getInstance()
+        val msgRef = db.getReference("support_chats/$uid/messages").push()
+        val msgData = mapOf(
+            "text" to message,
+            "isUser" to !isAgent,
+            "senderId" to uid,
+            "senderName" to (if (isAgent) "ESDispatch Support" else _userName.value),
+            "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP
+        )
+        msgRef.setValue(msgData)
+            .addOnSuccessListener { onResult(true) }
+            .addOnFailureListener { onResult(false) }
+    }
+
+    fun listenToSupportChat(onMessages: (List<Map<String, Any>>) -> Unit) {
+        val uid = _firebaseUserId.value ?: return
+        val db = com.google.firebase.database.FirebaseDatabase.getInstance()
+        db.getReference("support_chats/$uid/messages")
+            .orderByChild("timestamp")
+            .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snap: com.google.firebase.database.DataSnapshot) {
+                    @Suppress("UNCHECKED_CAST")
+                    val msgs = snap.children.mapNotNull { it.value as? Map<String, Any> }
+                    onMessages(msgs)
+                }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
+            })
     }
 
     fun applyPromoCode(code: String, onComplete: (Boolean, String) -> Unit) {
@@ -4971,8 +5689,35 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun redeemReferralCode(code: String, onComplete: (Boolean, String) -> Unit) {
-        // Implementation for referral
-        onComplete(true, "Referral redeemed!")
+        val trimmed = code.trim().uppercase()
+        if (trimmed.isBlank() || trimmed == _referralCode.value) {
+            onComplete(false, "Cannot redeem your own code.")
+            return
+        }
+        val uid = _firebaseUserId.value ?: run {
+            onComplete(false, "User not signed in.")
+            return
+        }
+        val db = com.esdispatch.data.FirebaseManager.firestore ?: run {
+            onComplete(false, "Database connection unavailable.")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val redemption = hashMapOf(
+                    "redeemedBy" to uid,
+                    "code" to trimmed,
+                    "redeemedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                    "rewardAmount" to 3000.0
+                )
+                db.collection("referral_redemptions").add(redemption)
+                addLoyaltyPoints(300)
+                topUpWallet(3000.0)
+                onComplete(true, "ðŸŽ‰ Referral code redeemed! â‚¦3,000 credited to your wallet & 300 Pts added!")
+            } catch (e: Exception) {
+                onComplete(false, e.message ?: "Failed to redeem code")
+            }
+        }
     }
 }
 
@@ -5050,7 +5795,30 @@ data class MarketplaceItem(
     val imageUrl: String = "",
     val description: String = "",
     val stock: Int = 10,
-    val vendorStore: String = "ESDispatch Partner Store"
+    val vendorStore: String = "ESDispatch Partner Store",
+    val vendorId: String = ""
+)
+
+data class MarketplaceStore(
+    val id: String = "",
+    val storeName: String = "ESDispatch Partner Store",
+    val category: String = "General",
+    val description: String = "",
+    val ownerName: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val address: String = "",
+    val rating: Double = 5.0,
+    val totalSales: Int = 0,
+    val itemCount: Int = 0,
+    val isVerified: Boolean = true,
+    val logoUrl: String = "",
+    val coverUrl: String = "",
+    val isFeatured: Boolean = false,
+    val featuredRank: Int = 0,
+    val isDemo: Boolean = false,
+    val dateEnlisted: String = "",
+    val status: String = "APPROVED"
 )
 
 data class CartItem(

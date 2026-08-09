@@ -43,6 +43,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -199,6 +200,10 @@ fun DashboardScreen(
     val deliveryCount by viewModel.deliveryCount.collectAsState()
     val welcomeGiftClaimed by viewModel.welcomeGiftClaimed.collectAsState()
     val isNewRegistration by viewModel.isNewRegistration.collectAsState()
+
+    val vendorStoreExists by viewModel.vendorStoreExists.collectAsState()
+    val isVendorVerified by viewModel.isVendorVerified.collectAsState()
+    val vendorKycSubmitted by viewModel.vendorKycSubmitted.collectAsState()
 
     var showWelcomeGiftDialog by remember { mutableStateOf(false) }
     val showOnboardingTooltip by viewModel.showOnboardingTooltip.collectAsState()
@@ -1541,27 +1546,11 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.height(24.dp))
                     
                     val bonusClaimed by viewModel.dailyBonusClaimed.collectAsState()
-                
-                val currentTier = when {
-                    loyaltyPoints < 100 -> "Bronze Club"
-                    loyaltyPoints < 500 -> "Silver Tier"
-                    loyaltyPoints < 1000 -> "Gold Elite"
-                    else -> "Platinum VIP"
-                }
-                
-                val tierProgress = when {
-                    loyaltyPoints < 100 -> (loyaltyPoints / 100f).coerceIn(0f, 1f)
-                    loyaltyPoints < 500 -> ((loyaltyPoints - 100) / 400f).coerceIn(0f, 1f)
-                    loyaltyPoints < 1000 -> ((loyaltyPoints - 500) / 500f).coerceIn(0f, 1f)
-                    else -> 1f
-                }
-                
-                val nextTierDesc = when {
-                    loyaltyPoints < 100 -> "100 Pts for Silver Tier"
-                    loyaltyPoints < 500 -> "500 Pts for Gold Elite"
-                    loyaltyPoints < 1000 -> "1,000 Pts for Platinum VIP"
-                    else -> "Max Level Achieved 👑"
-                }
+
+                val currentTierInfo = com.esdispatch.utils.LoyaltyRewards.tierFor(loyaltyPoints)
+                val currentTier = currentTierInfo.name
+                val tierProgress = currentTierInfo.progress
+                val nextTierDesc = currentTierInfo.nextLabel
 
                 Surface(
                     modifier = Modifier
@@ -1776,6 +1765,97 @@ fun DashboardScreen(
                     }
                 }
             }
+            }
+
+            // 3.75 BECOMING A VENDOR (transformation progress card)
+            if (userRole != "rider" && !isVendorVerified) {
+                item {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    val isSystemDark = MaterialTheme.colorScheme.background == BackgroundDark
+                    val meetsDeliveryReq = deliveryCount >= 10
+                    val stepProgress = when {
+                        isVendorVerified -> 1f
+                        vendorKycSubmitted -> 0.85f
+                        vendorStoreExists -> 0.6f
+                        meetsDeliveryReq -> 0.45f
+                        else -> (deliveryCount / 10f).coerceIn(0f, 0.4f)
+                    }
+                    val statusText = when {
+                        isVendorVerified -> "Store LIVE — you're selling on the Marketplace! 🎉"
+                        vendorKycSubmitted -> "KYC submitted — awaiting final verification"
+                        vendorStoreExists -> "Store created — complete your KYC to go live"
+                        meetsDeliveryReq -> "Milestone unlocked! Register your store now"
+                        else -> "Complete ${10 - deliveryCount} deliveries to unlock vendor access"
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp)
+                            .clip(RoundedCornerShape(28.dp))
+                            .clickable { onNavigate("VendorPortal") },
+                        shape = RoundedCornerShape(28.dp),
+                        color = Obsidian,
+                        border = BorderStroke(1.2.dp, Gold.copy(alpha = 0.35f)),
+                        shadowElevation = 0.dp
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(22.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Becoming a Vendor",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.White
+                                )
+                                Icon(
+                                    imageVector = Icons.Filled.Storefront,
+                                    contentDescription = null,
+                                    tint = Gold,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Sell on the ESDispatch Marketplace to thousands of customers.",
+                                fontSize = 11.sp,
+                                color = TextGray
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            LinearProgressIndicator(
+                                progress = { stepProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp)),
+                                color = Gold,
+                                trackColor = if (isSystemDark) Color.White.copy(alpha = 0.12f) else Charcoal
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = statusText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (meetsDeliveryReq) Gold else Color.White.copy(alpha = 0.8f)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Step: ${if (vendorStoreExists) "Store" else "Milestone"} ${if (vendorKycSubmitted) "→ KYC" else ""} ${if (isVendorVerified) "→ LIVE 🎉" else "→ verified"}" +
+                                        "  |  Deliveries $deliveryCount/10",
+                                fontSize = 10.sp,
+                                color = TextGray
+                            )
+                        }
+                    }
+                }
             }
 
             // 4. REFERRAL CARD
@@ -2224,10 +2304,11 @@ fun DashboardScreen(
                                     Text("ID: ${parcel.id} • ${parcel.dateString}", fontSize = 11.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "${parcel.pickupAddress.substringBefore(",")} ➔ ${parcel.deliveryAddress.substringBefore(",")}",
+                                        text = "${parcel.pickupAddress} ➔ ${parcel.deliveryAddress}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = TextGray
+                                        color = TextGray,
+                                        lineHeight = 15.sp
                                     )
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
@@ -3117,10 +3198,11 @@ fun ParcelCard(
                         }
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = parcel.pickupAddress.substringBefore(","),
+                            text = parcel.pickupAddress,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TextGray
+                            color = TextGray,
+                            lineHeight = 15.sp
                         )
                     }
 
@@ -3232,10 +3314,11 @@ fun ParcelCard(
                         }
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = parcel.deliveryAddress.substringBefore(","),
+                            text = parcel.deliveryAddress,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TextGray
+                            color = TextGray,
+                            lineHeight = 15.sp
                         )
                     }
                 }
@@ -3729,8 +3812,7 @@ fun InteractivePlaceholderMap(
                     color = TextGray,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    maxLines = 2
                 )
             }
             if (deliveryAddress.isNotEmpty()) {
@@ -3744,8 +3826,7 @@ fun InteractivePlaceholderMap(
                         color = TextGray,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 2
                     )
                 }
             }
@@ -3873,30 +3954,32 @@ fun ParcelDetailBottomSheet(
                 }
 
                 // Pickup
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text("Pickup Address", fontSize = 13.sp, color = TextGray)
                     Text(
-                        text = if (parcel.pickupAddress.length > 25) parcel.pickupAddress.take(25) + "..." else parcel.pickupAddress,
+                        text = parcel.pickupAddress.ifBlank { "Address pending" },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color.White else Obsidian
+                        color = if (isDark) Color.White else Obsidian,
+                        lineHeight = 18.sp
                     )
                 }
 
                 // Delivery
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text("Delivery Address", fontSize = 13.sp, color = TextGray)
                     Text(
-                        text = if (parcel.deliveryAddress.length > 25) parcel.deliveryAddress.take(25) + "..." else parcel.deliveryAddress,
+                        text = parcel.deliveryAddress.ifBlank { "Address pending" },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color.White else Obsidian
+                        color = if (isDark) Color.White else Obsidian,
+                        lineHeight = 18.sp
                     )
                 }
 

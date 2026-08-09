@@ -13,7 +13,12 @@ data class SearchResultItem(
     val lng: Double? = null
 ) {
     val displayInput: String
-        get() = if (title.isBlank() || title == fullAddress || fullAddress.startsWith(title)) fullAddress else "$title, $fullAddress"
+        get() {
+            if (title.isBlank() || title.equals("Current Location", ignoreCase = true) || title == fullAddress || fullAddress.startsWith(title)) {
+                return fullAddress
+            }
+            return "$title, $fullAddress"
+        }
 }
 
 object GeocoderUtils {
