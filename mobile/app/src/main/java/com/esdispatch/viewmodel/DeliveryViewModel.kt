@@ -628,6 +628,9 @@ class DeliveryViewModel : WalletViewModel() {
             permission = permission
         )
         _subAdminUsers.update { listOf(newUser) + it }
+        com.esdispatch.data.FirebaseManager.firestore?.collection("sub_admins")
+            ?.document(newUser.id)
+            ?.set(mapOf("name" to name, "email" to email, "permission" to permission, "createdAt" to System.currentTimeMillis()))
         logAdminActivity("Add Sub-Admin", "Added sub-admin $name ($permission)")
     }
 
@@ -635,12 +638,35 @@ class DeliveryViewModel : WalletViewModel() {
         _subAdminUsers.update { list ->
             list.map { if (it.id == id) it.copy(permission = newPermission) else it }
         }
+        com.esdispatch.data.FirebaseManager.firestore?.collection("sub_admins")
+            ?.document(id)
+            ?.update("permission", newPermission)
         logAdminActivity("Update Permissions", "Updated sub-admin ID $id permission to $newPermission")
     }
 
     fun deleteSubAdmin(id: String) {
         _subAdminUsers.update { list -> list.filter { it.id != id } }
+        com.esdispatch.data.FirebaseManager.firestore?.collection("sub_admins")
+            ?.document(id)
+            ?.delete()
         logAdminActivity("Remove Sub-Admin", "Removed sub-admin ID $id")
+    }
+
+    fun listenToSubAdmins() {
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        fs.collection("sub_admins").addSnapshotListener { snap, error ->
+            if (error != null || snap == null) return@addSnapshotListener
+            if (snap.documents.isNotEmpty()) {
+                _subAdminUsers.value = snap.documents.mapNotNull { d ->
+                    SubAdminUser(
+                        id = d.id,
+                        name = d.getString("name") ?: "",
+                        email = d.getString("email") ?: "",
+                        permission = d.getString("permission") ?: "View Only"
+                    )
+                }
+            }
+        }
     }
 
     
@@ -1831,6 +1857,9 @@ class DeliveryViewModel : WalletViewModel() {
                                 if (role == "rider") {
                                     startRiderListeners(currentUser.uid)
                                 }
+                                if (role == "admin" || role == "super_admin") {
+                                    listenToSubAdmins()
+                                }
                             }
                             .addOnFailureListener {
                                 _userRole.value = localRole
@@ -1898,6 +1927,9 @@ class DeliveryViewModel : WalletViewModel() {
                                         startShipmentsTriggerListener(user.uid)
                                         if (role == "rider") {
                                             startRiderListeners(user.uid)
+                                        }
+                                        if (role == "admin" || role == "super_admin") {
+                                            listenToSubAdmins()
                                         }
                                     }
                                     .addOnFailureListener {

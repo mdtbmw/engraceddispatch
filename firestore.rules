@@ -187,6 +187,11 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Sub-admin role/permission records managed by admins
+    match /sub_admins/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // =========================================================
     // CMS COLLECTIONS (service cards, team, testimonials, blog, portfolio)
     // =========================================================
