@@ -1514,6 +1514,46 @@ object FirebaseManager {
     }
 
     /**
+     * Persist an admin/dispatcher driver (re)assignment for one or more parcel docs
+     */
+    fun updateParcelAssignment(parcelId: String, riderId: String, riderBikeNumber: String, onComplete: (Boolean, String?) -> Unit) {
+        val db = firestore
+        if (db == null) {
+            onComplete(false, "Firestore not available")
+            return
+        }
+        val docRef = db.collection("deliveries").document(parcelId)
+        docRef.get().addOnSuccessListener { snapshot ->
+            if (snapshot.exists()) {
+                db.runTransaction { transaction ->
+                    transaction.update(docRef, "riderId", riderId)
+                    transaction.update(docRef, "riderBikeNumber", riderBikeNumber)
+                    transaction.update(docRef, "lastUpdated", System.currentTimeMillis())
+                }.addOnSuccessListener {
+                    val parcelUserId = snapshot.getString("userId") ?: ""
+                    if (parcelUserId.isNotEmpty()) {
+                        val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
+                        userDocRef.update(
+                            mapOf(
+                                "riderId" to riderId,
+                                "riderBikeNumber" to riderBikeNumber,
+                                "lastUpdated" to System.currentTimeMillis()
+                            )
+                        )
+                    }
+                    onComplete(true, null)
+                }.addOnFailureListener { e ->
+                    onComplete(false, e.message ?: "Failed to update assignment.")
+                }
+            } else {
+                onComplete(false, "Parcel not found.")
+            }
+        }.addOnFailureListener { e ->
+            onComplete(false, e.message ?: "Failed to fetch parcel.")
+        }
+    }
+
+    /**
      * Update real-time GPS courier coordinates during transit/delivery simulation
      */
     fun updateCourierLocationByRider(parcelId: String, lat: Double, lng: Double, onComplete: (Boolean, String?) -> Unit) {

@@ -574,6 +574,13 @@ fun ProfileScreen(
                                 onNavigate("Dashboard")
                             }
                         )
+                    } else {
+                        ProfileMenuRow(
+                            icon = Icons.Filled.DirectionsBike,
+                            title = "Become a Dispatch Rider",
+                            subtitle = "Register your motorbike & start earning on deliveries",
+                            onClick = { showRiderOnboardDialog = true }
+                        )
                     }
 
                     if (userRole == "admin" || userRole == "super_admin") {

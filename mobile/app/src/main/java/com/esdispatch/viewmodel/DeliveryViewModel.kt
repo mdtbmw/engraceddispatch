@@ -646,6 +646,9 @@ class DeliveryViewModel : WalletViewModel() {
     
 
     fun bulkUpdateDeliveryStatus(parcelIds: List<String>, newStatus: ParcelStatus) {
+        parcelIds.forEach { parcelId ->
+            com.esdispatch.data.FirebaseManager.updateParcelStatusByRider(parcelId, newStatus, 1.0f) { _, _ -> }
+        }
         _parcels.update { current ->
             current.map { parcel ->
                 if (parcelIds.contains(parcel.id)) parcel.copy(status = newStatus) else parcel
@@ -655,6 +658,9 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun bulkReassignDriver(parcelIds: List<String>, riderId: String, bikeNumber: String) {
+        parcelIds.forEach { parcelId ->
+            com.esdispatch.data.FirebaseManager.updateParcelAssignment(parcelId, riderId, bikeNumber) { _, _ -> }
+        }
         _parcels.update { current ->
             current.map { parcel ->
                 if (parcelIds.contains(parcel.id)) parcel.copy(riderId = riderId, riderBikeNumber = bikeNumber) else parcel
