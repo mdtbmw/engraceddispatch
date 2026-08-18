@@ -141,15 +141,31 @@ service cloud.firestore {
     // =========================================================
 
     match /deliveries/{deliveryId} {
-      allow read: if isDispatcher() || isAdmin() || isOwner(resource.data.userId)
-        || isOwner(resource.data.riderId);
+      // Publicly trackable by direct shipment ID (for SMS/web recipients)
+      allow read: if true;
       allow create: if isAuth() && isReasonableWrite() && request.resource.data.userId == request.auth.uid
         || isDispatcher() || isAdmin();
       // Riders are permitted to advance their own deliveries (status/OTP/POD);
       // dispatchers and admins manage everything.
       allow update: if isDispatcher() || isAdmin()
-        || (isAuth() && isOwner(resource.data.riderId));
+        || (isAuth() && (isOwner(resource.data.riderId) || isOwner(resource.data.userId)));
       allow delete: if isAdmin();
+    }
+
+    // =========================================================
+    // FLEET COMPLIANCE & ATTENDANCE
+    // =========================================================
+
+    match /rider_attendance/{docId} {
+      allow read: if isAuth() && (isAdmin() || isDispatcher() || request.auth.uid == resource.data.riderId);
+      allow create: if isAuth() && isReasonableWrite() && request.resource.data.riderId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /vehicle_inspections/{docId} {
+      allow read: if isAuth() && (isAdmin() || isDispatcher() || request.auth.uid == resource.data.riderId);
+      allow create: if isAuth() && isReasonableWrite() && request.resource.data.riderId == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
 
     // =========================================================

@@ -30,7 +30,7 @@ function useOnlineStatus() {
 import { auth, db } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment } from "firebase/firestore";
-import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat } from "lucide-react";
+import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer } from "lucide-react";
 import CMSTab from "./CMSTab";
 import dynamic from "next/dynamic";
 const LiveTrackingMap = dynamic(() => import("./LiveTrackingMap"), { ssr: false });
@@ -1275,6 +1275,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
     const [showNew, setShowNew] = useState(false);
     const [assignModal, setAssignModal] = useState<{ delivery: Delivery; show: boolean }>({ delivery: null as any, show: false });
     const [detailsModal, setDetailsModal] = useState<{ delivery: Delivery; show: boolean }>({ delivery: null as any, show: false });
+    const [waybillModal, setWaybillModal] = useState<{ delivery: Delivery; show: boolean }>({ delivery: null as any, show: false });
     const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
     const [creating, setCreating] = useState(false);
     const perPage = 15;
@@ -1546,13 +1547,22 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                         {d.tipAmount > 0 && <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">+{fmt(d.tipAmount)} tip</p>}
                       </td>
                       <td className="p-3.5 text-center">
-                        <button
-                          onClick={() => setDetailsModal({ delivery: d, show: true })}
-                          className="p-1.5 rounded-lg text-black/40 dark:text-white/40 hover:text-[#FFC542] hover:bg-black/5 dark:hover:bg-white/5 transition-all"
-                          title="View Details"
-                        >
-                          <Eye size={15} />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => setDetailsModal({ delivery: d, show: true })}
+                            className="p-1.5 rounded-lg text-black/40 dark:text-white/40 hover:text-[#FFC542] hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                            title="View Details"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            onClick={() => setWaybillModal({ delivery: d, show: true })}
+                            className="p-1.5 rounded-lg text-black/40 dark:text-white/40 hover:text-[#FFC542] hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                            title="Print Waybill / Thermal Receipt"
+                          >
+                            <Printer size={15} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1581,7 +1591,19 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                 <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
                   <Package className="w-5 h-5 text-[#FFC542]" /> Shipment Details
                 </h3>
-                <button onClick={() => setDetailsModal({ delivery: null as any, show: false })} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500">Close</button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const d = detailsModal.delivery;
+                      setDetailsModal({ delivery: null as any, show: false });
+                      setWaybillModal({ delivery: d, show: true });
+                    }}
+                    className="px-3 py-1 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] font-bold text-xs rounded-xl flex items-center gap-1 transition-all"
+                  >
+                    <Printer size={12} /> Waybill
+                  </button>
+                  <button onClick={() => setDetailsModal({ delivery: null as any, show: false })} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500 ml-1">Close</button>
+                </div>
               </div>
 
               <div className="space-y-3 text-xs">
@@ -1623,6 +1645,105 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                       Assign
                     </button>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Printable Waybill & Thermal Receipt Modal */}
+        {waybillModal.show && waybillModal.delivery && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={() => setWaybillModal({ delivery: null as any, show: false })}>
+            <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 my-8" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
+                <div className="flex items-center gap-2">
+                  <Printer className="w-5 h-5 text-[#FFC542]" />
+                  <h3 className="text-base font-black text-[#111] dark:text-white">Waybill & Thermal Receipt</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => window.print()}
+                    className="px-3.5 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] font-black text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                  >
+                    <Printer size={13} /> Print
+                  </button>
+                  <button onClick={() => setWaybillModal({ delivery: null as any, show: false })} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500 ml-2 cursor-pointer">Close</button>
+                </div>
+              </div>
+
+              {/* Waybill Document Container */}
+              <div className="bg-white text-black p-6 rounded-2xl border-2 border-black/80 font-sans shadow-inner text-xs space-y-4">
+                {/* Header */}
+                <div className="text-center border-b-2 border-black pb-3">
+                  <h2 className="text-xl font-black tracking-widest text-[#111]">ESDISPATCH</h2>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-black/60">PREMIUM LOGISTICS & DISPATCH</p>
+                  <div className="mt-2 inline-block px-3 py-1 bg-black text-white font-mono text-[11px] font-bold rounded">
+                    WAYBILL #{waybillModal.delivery.id}
+                  </div>
+                </div>
+
+                {/* Routing / Addresses */}
+                <div className="grid grid-cols-2 gap-3 border-b border-black/20 pb-3">
+                  <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+                    <p className="text-[9px] font-black uppercase text-gray-500">Shipper / Sender</p>
+                    <p className="font-bold text-sm text-[#111]">{waybillModal.delivery.senderName || "Sender"}</p>
+                    <p className="text-[11px] font-semibold text-gray-700">{waybillModal.delivery.senderPhone || "—"}</p>
+                    <p className="text-[10px] text-gray-600 mt-1 leading-tight">{waybillModal.delivery.pickupAddress}</p>
+                  </div>
+                  <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+                    <p className="text-[9px] font-black uppercase text-gray-500">Consignee / Receiver</p>
+                    <p className="font-bold text-sm text-[#111]">{waybillModal.delivery.receiverName || "Receiver"}</p>
+                    <p className="text-[11px] font-semibold text-gray-700">{waybillModal.delivery.receiverPhone || "—"}</p>
+                    <p className="text-[10px] text-gray-600 mt-1 leading-tight">{waybillModal.delivery.deliveryAddress}</p>
+                  </div>
+                </div>
+
+                {/* Parcel Particulars */}
+                <div className="space-y-1.5 border-b border-black/20 pb-3 text-[11px]">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-bold">Consignment Item:</span>
+                    <span className="font-bold text-black">{waybillModal.delivery.itemName || "Standard Parcel"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-bold">Weight & Quantity:</span>
+                    <span>{waybillModal.delivery.weight || 1} kg &bull; {waybillModal.delivery.quantity || 1} unit(s)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-bold">Category & Tier:</span>
+                    <span className="uppercase font-semibold">{waybillModal.delivery.category || "Standard"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-bold">Assigned Courier:</span>
+                    <span className="font-bold">{waybillModal.delivery.courierName || waybillModal.delivery.driverName || "Assigned Unit"} ({waybillModal.delivery.riderBikeNumber || "Fleet 01"})</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-bold">Delivery Handover OTP:</span>
+                    <span className="font-mono font-black text-black tracking-widest bg-gray-100 px-2 py-0.5 rounded">{waybillModal.delivery.otpCode || "----"}</span>
+                  </div>
+                </div>
+
+                {/* Payment Breakdown */}
+                <div className="bg-gray-100 p-3 rounded-xl space-y-1 text-xs">
+                  <div className="flex justify-between text-gray-600">
+                    <span>Base Delivery Charge:</span>
+                    <span>{fmt(waybillModal.delivery.price || 0)}</span>
+                  </div>
+                  {waybillModal.delivery.tipAmount > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Driver Tip:</span>
+                      <span>{fmt(waybillModal.delivery.tipAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-black text-sm pt-1 border-t border-gray-300 text-black">
+                    <span>Total Paid:</span>
+                    <span>{fmt((waybillModal.delivery.price || 0) + (waybillModal.delivery.tipAmount || 0))}</span>
+                  </div>
+                </div>
+
+                {/* Sign-off Box */}
+                <div className="pt-2 grid grid-cols-2 gap-4 text-[10px] text-gray-500">
+                  <div className="border-t border-dashed border-gray-400 pt-1 text-center">Courier Signature / Stamp</div>
+                  <div className="border-t border-dashed border-gray-400 pt-1 text-center">Consignee Handover Signature</div>
                 </div>
               </div>
             </div>

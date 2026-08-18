@@ -16,7 +16,9 @@ import {
   ArrowRight,
   Navigation,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Printer,
+  FileText
 } from "lucide-react";
 
 interface DeliveryDetails {
@@ -295,6 +297,73 @@ export default function PublicTrackingPage() {
                   <div className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Delivery Destination</div>
                   <div className="text-xs font-semibold text-white mt-0.5">{delivery.deliveryAddress}</div>
                 </div>
+              </div>
+            </div>
+
+            {/* Quick Actions & Waybill Receipt */}
+            <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-3xl bg-[#141414] border border-white/10 print:hidden">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#FFC542]/10 text-[#FFC542] flex items-center justify-center">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white">Official Shipment Waybill</h4>
+                  <p className="text-[10px] text-white/50">Print or export thermal receipt for records</p>
+                </div>
+              </div>
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2.5 rounded-xl bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black text-xs flex items-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer"
+              >
+                <Printer size={15} /> Print / Save Waybill
+              </button>
+            </div>
+
+            {/* Printable Waybill Voucher (Only visible when printing) */}
+            <div className="hidden print:block p-8 bg-white text-black font-sans max-w-xl mx-auto border-2 border-black rounded-lg">
+              <div className="text-center border-b-2 border-black pb-4 mb-4">
+                <h1 className="text-2xl font-black tracking-wider">ESDISPATCH</h1>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-700">PREMIUM LOGISTICS & DISPATCH</p>
+                <p className="text-xs font-mono mt-1 font-bold">WAYBILL / RECEIPT: #{delivery.id}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 border-b border-black pb-4 mb-4 text-xs">
+                <div>
+                  <p className="font-bold uppercase text-gray-600">Sender / Origin</p>
+                  <p className="font-bold text-sm">{delivery.senderName || "Sender"}</p>
+                  <p className="text-gray-700">{delivery.pickupAddress}</p>
+                </div>
+                <div>
+                  <p className="font-bold uppercase text-gray-600">Consignee / Destination</p>
+                  <p className="font-bold text-sm">{delivery.receiverName || "Receiver"}</p>
+                  <p className="text-gray-700">{delivery.deliveryAddress}</p>
+                </div>
+              </div>
+
+              <div className="border-b border-black pb-4 mb-4 text-xs space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="font-bold text-gray-600">Item Description:</span>
+                  <span className="font-semibold">{delivery.itemName || "General Parcel"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-bold text-gray-600">Status:</span>
+                  <span className="font-bold uppercase">{delivery.status}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-bold text-gray-600">Assigned Courier:</span>
+                  <span>{delivery.courierName || "Assigned Courier"} ({delivery.riderBikeNumber || "Fleet Unit"})</span>
+                </div>
+                {delivery.price && (
+                  <div className="flex justify-between text-sm font-black pt-2 border-t border-dashed border-gray-300">
+                    <span>Total Amount Paid:</span>
+                    <span>₦{delivery.price.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center text-[10px] text-gray-600 pt-3">
+                <p>Thank you for choosing ESDISPATCH.</p>
+                <p>Official Support: support@esdispatch.com | https://esdispatch.com</p>
               </div>
             </div>
           </div>

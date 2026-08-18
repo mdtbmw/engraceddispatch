@@ -73,6 +73,7 @@ fun RiderDashboardScreen(
 
     var selectedFilter by remember { mutableStateOf("Available") } // "Available", "Active", "Delivered", "All"
     var selectedParcelForUpdate by remember { mutableStateOf<Parcel?>(null) }
+    var selectedParcelForWaybill by remember { mutableStateOf<Parcel?>(null) }
     var showUpdateBottomSheet by remember { mutableStateOf(false) }
     var showSupportDialog by remember { mutableStateOf(false) }
 
@@ -679,6 +680,63 @@ fun RiderDashboardScreen(
                     }
                 }
 
+                // Multi-Stop Batch Trip Manifest Card (shown when 2+ active dispatches assigned)
+                if (filteredAssignments.size >= 2 && selectedFilter != "Delivered") {
+                    item {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            color = Charcoal,
+                            border = BorderStroke(1.2.dp, Gold.copy(alpha = 0.4f))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(
+                                            imageVector = Icons.Default.AltRoute,
+                                            contentDescription = "Batch Manifest",
+                                            tint = Gold,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = "MULTI-STOP TRIP MANIFEST",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDark) Gold else Obsidian
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Gold.copy(alpha = 0.2f)
+                                    ) {
+                                        Text(
+                                            text = "${filteredAssignments.size} STOPS ACTIVE",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Gold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Optimal dispatch sequence active. Follow order stops below to minimize transit distance and fuel consumption.",
+                                    fontSize = 10.sp,
+                                    color = TextGray,
+                                    lineHeight = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Assigned Deliveries List
                 if (filteredAssignments.isEmpty()) {
                     item {
@@ -733,6 +791,9 @@ fun RiderDashboardScreen(
                             onUpdateStatus = {
                                 selectedParcelForUpdate = parcel
                                 showUpdateBottomSheet = true
+                            },
+                            onViewWaybill = {
+                                selectedParcelForWaybill = parcel
                             }
                         )
                     }
@@ -758,6 +819,14 @@ fun RiderDashboardScreen(
                 onNavigateToPOD = onNavigate
             )
         }
+    }
+
+    // Bottom Sheet for digital waybill
+    if (selectedParcelForWaybill != null) {
+        RiderWaybillBottomSheet(
+            parcel = selectedParcelForWaybill!!,
+            onDismiss = { selectedParcelForWaybill = null }
+        )
     }
 
     if (showSupportDialog) {
@@ -796,7 +865,8 @@ fun RiderDashboardScreen(
 @Composable
 fun RiderParcelCard(
     parcel: Parcel,
-    onUpdateStatus: () -> Unit
+    onUpdateStatus: () -> Unit,
+    onViewWaybill: () -> Unit = {}
 ) {
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
     val innerBgColor = if (isDark) Color(0xFF1D1D1D) else GoldenWhiteLight
@@ -872,45 +942,67 @@ fun RiderParcelCard(
                     }
                 }
 
-                // Status Badge
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            when (parcel.status) {
-                                ParcelStatus.PENDING -> Gold.copy(alpha = 0.15f)
-                                ParcelStatus.ASSIGNED -> Gold.copy(alpha = 0.15f)
-                                ParcelStatus.TRANSIT -> {
-                                    if (parcel.progress <= 0.35f) Gold.copy(alpha = 0.15f) else SuccessGreen.copy(alpha = 0.15f)
-                                }
-                                ParcelStatus.OUT_FOR_DELIVERY -> WarningOrange.copy(alpha = 0.15f)
-                                else -> SuccessGreen.copy(alpha = 0.15f)
-                            }
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = when (parcel.status) {
-                            ParcelStatus.PENDING -> "AVAILABLE"
-                            ParcelStatus.ASSIGNED -> "ASSIGNED"
-                            ParcelStatus.TRANSIT -> {
-                                if (parcel.progress <= 0.35f) "PICKUP" else "PICKED UP"
-                            }
-                            ParcelStatus.OUT_FOR_DELIVERY -> "OUT FOR DELIVERY"
-                            else -> "DELIVERED"
-                        },
-                        color = when (parcel.status) {
-                            ParcelStatus.PENDING -> Gold
-                            ParcelStatus.ASSIGNED -> Gold
-                            ParcelStatus.TRANSIT -> {
-                                if (parcel.progress <= 0.35f) Gold else SuccessGreen
-                            }
-                            ParcelStatus.OUT_FOR_DELIVERY -> WarningOrange
-                            else -> SuccessGreen
-                        },
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Black
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isDark) Color(0xFF2C2C2C) else GoldenWhiteLight)
+                            .border(BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate))
+                            .clickable { onViewWaybill() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ReceiptLong,
+                            contentDescription = "Waybill",
+                            tint = if (isDark) Gold else Obsidian,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+
+                    // Status Badge
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                when (parcel.status) {
+                                    ParcelStatus.PENDING -> Gold.copy(alpha = 0.15f)
+                                    ParcelStatus.ASSIGNED -> Gold.copy(alpha = 0.15f)
+                                    ParcelStatus.TRANSIT -> {
+                                        if (parcel.progress <= 0.35f) Gold.copy(alpha = 0.15f) else SuccessGreen.copy(alpha = 0.15f)
+                                    }
+                                    ParcelStatus.OUT_FOR_DELIVERY -> WarningOrange.copy(alpha = 0.15f)
+                                    else -> SuccessGreen.copy(alpha = 0.15f)
+                                }
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = when (parcel.status) {
+                                ParcelStatus.PENDING -> "AVAILABLE"
+                                ParcelStatus.ASSIGNED -> "ASSIGNED"
+                                ParcelStatus.TRANSIT -> {
+                                    if (parcel.progress <= 0.35f) "PICKUP" else "PICKED UP"
+                                }
+                                ParcelStatus.OUT_FOR_DELIVERY -> "OUT FOR DELIVERY"
+                                else -> "DELIVERED"
+                            },
+                            color = when (parcel.status) {
+                                ParcelStatus.PENDING -> Gold
+                                ParcelStatus.ASSIGNED -> Gold
+                                ParcelStatus.TRANSIT -> {
+                                    if (parcel.progress <= 0.35f) Gold else SuccessGreen
+                                }
+                                ParcelStatus.OUT_FOR_DELIVERY -> WarningOrange
+                                else -> SuccessGreen
+                            },
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
                 }
             }
 
@@ -2660,5 +2752,161 @@ fun calculateDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Doub
             Math.sin(dLon / 2) * Math.sin(dLon / 2)
     val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
     return r * c
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RiderWaybillBottomSheet(
+    parcel: Parcel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Charcoal,
+        contentColor = AppTextColor,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .navigationBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Document Header
+            Text(
+                text = "ESDISPATCH",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                color = if (isDark) Gold else Obsidian,
+                letterSpacing = 2.sp
+            )
+            Text(
+                text = "PREMIUM LOGISTICS & DISPATCH",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextGray,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = if (isDark) Color(0xFF1E1E1E) else GoldenWhiteLight,
+                border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
+            ) {
+                Text(
+                    text = "WAYBILL #${parcel.id.take(12).uppercase()}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    color = AppTextColor,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Origin & Destination Card
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = if (isDark) Color(0xFF1A1A1A) else GoldenWhiteLight,
+                border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column {
+                        Text(text = "SENDER / PICKUP", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = TextGray)
+                        Text(text = parcel.senderName.ifBlank { "Sender" }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                        Text(text = parcel.pickupAddress, fontSize = 11.sp, color = TextGray)
+                    }
+                    HorizontalDivider(color = if (isDark) BorderDark else Slate.copy(alpha = 0.5f))
+                    Column {
+                        Text(text = "CONSIGNEE / DESTINATION", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = TextGray)
+                        Text(text = parcel.receiverName, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                        Text(text = parcel.deliveryAddress, fontSize = 11.sp, color = TextGray)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Particulars & Handover OTP
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = if (isDark) Color(0xFF1A1A1A) else GoldenWhiteLight,
+                border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Item:", fontSize = 11.sp, color = TextGray)
+                        Text(parcel.itemName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Weight:", fontSize = 11.sp, color = TextGray)
+                        Text("${parcel.weight} kg", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Total Fare:", fontSize = 11.sp, color = TextGray)
+                        Text("₦${String.format(java.util.Locale.getDefault(), "%,.2f", parcel.price)}", fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isDark) Gold else Obsidian)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Security OTP:", fontSize = 11.sp, color = TextGray)
+                        Surface(shape = RoundedCornerShape(6.dp), color = Gold.copy(alpha = 0.2f), border = BorderStroke(1.dp, Gold)) {
+                            Text(
+                                text = parcel.otpCode.ifBlank { "••••" },
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Gold,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Share & Close Buttons
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(
+                                android.content.Intent.EXTRA_TEXT,
+                                "ESDISPATCH WAYBILL\nTracking ID: ${parcel.id}\nItem: ${parcel.itemName}\nRecipient: ${parcel.receiverName}\nLive Status: https://esdispatch.com/track/${parcel.id}"
+                            )
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Waybill Receipt"))
+                    },
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Gold),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isDark) Gold else Obsidian)
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = "Share", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Share", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
+                ) {
+                    Text("Close", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
 }
 
