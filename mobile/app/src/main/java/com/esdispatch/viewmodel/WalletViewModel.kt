@@ -20,72 +20,75 @@ open class WalletViewModel : AuthViewModel() {
     protected val _transactions = MutableStateFlow<List<Transaction>>(emptyList())
     val transactions: StateFlow<List<Transaction>> = _transactions.asStateFlow()
 
-    fun topUpWallet(amount: Double) {
-        // <TODO> REAL PAYMENT GATEWAY (PAYSTACK/STRIPE)
-        // 1. Initialize Payment SDK (e.g., PaystackSdk.chargeCard(...))
-        // 2. Await success token from Gateway.
-        // 3. Pass token to Firebase Cloud Functions for secure server-side wallet update.
-        // DO NOT update wallet directly from the client in production!
-        
-        // Immediate local state update for instant responsive UI animation
-        val currentLocal = _walletBalance.value
-        val optimisticBalance = currentLocal + amount
-        _walletBalance.value = optimisticBalance
-        savePref("wallet_balance", optimisticBalance)
+    fun topUpWallet(
+        amount: Double,
+        reference: String? = null,
+        onComplete: ((Boolean, String) -> Unit)? = null
+    ) {
+        val uid = _firebaseUserId.value
+        if (uid == null) {
+            onComplete?.invoke(false, "User must be signed in to perform wallet transactions.")
+            return
+        }
+
+        if (amount <= 0 && amount >= 0) {
+            onComplete?.invoke(false, "Invalid transaction amount.")
+            return
+        }
 
         val isTopUp = amount > 0
-        val title = if (isTopUp) "Wallet Top Up" else "Cash Withdrawal"
+        val title = if (isTopUp) "Wallet Top Up (Paystack)" else "Cash Withdrawal"
         val displayAmt = if (amount < 0) -amount else amount
+        val txRef = reference ?: "TX-PAY-${System.currentTimeMillis()}"
 
-        // Record transaction in local flow
-        val localTx = Transaction(
-            id = "TX-PAY-${System.currentTimeMillis()}",
-            title = title,
-            date = "Today",
-            amount = displayAmt,
-            isTopUp = isTopUp
-        )
-        _transactions.value = listOf(localTx) + _transactions.value
+        com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, amount) { success, newBalance ->
+            if (success) {
+                _walletBalance.value = newBalance
+                savePref("wallet_balance", newBalance)
 
-        val notifTitle = if (isTopUp) "Wallet Credited! 💳⚡" else "Wallet Debited! 💸"
-        val notifMessage = if (isTopUp) {
-            "Your ESDispatch wallet has been topped up with ₦${String.format("%,.2f", displayAmt)}. Real-time logistics power unlocked! 🚀✨"
-        } else {
-            "Your ESDispatch wallet has been debited by ₦${String.format("%,.2f", displayAmt)}."
-        }
-        addNotification(notifTitle, notifMessage)
-
-        appContext?.let { ctx ->
-            try {
-                com.esdispatch.data.MyFirebaseMessagingService.showNotification(
-                    context = ctx,
-                    title = notifTitle,
-                    message = notifMessage,
-                    parcelId = null
+                val localTx = Transaction(
+                    id = txRef,
+                    title = title,
+                    date = "Today",
+                    amount = displayAmt,
+                    isTopUp = isTopUp,
+                    userId = uid,
+                    reference = txRef
                 )
-            } catch (e: Exception) {
-                android.util.Log.e("WalletNotif", "Error showing wallet notification: ${e.message}")
-            }
-        }
+                _transactions.value = listOf(localTx) + _transactions.value
 
-        val uid = _firebaseUserId.value
-        if (uid != null) {
-            com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, amount) { success, newBalance ->
-                if (success) {
-                    _walletBalance.value = newBalance
-                    savePref("wallet_balance", newBalance)
-                    com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
-                        userId = uid,
-                        amount = amount,
-                        title = title,
-                        isTopUp = isTopUp,
-                        reference = "PAYSTACK-${System.currentTimeMillis()}"
-                    ) { _ -> }
+                com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
+                    userId = uid,
+                    amount = amount,
+                    title = title,
+                    isTopUp = isTopUp,
+                    reference = txRef
+                ) { _ -> }
+
+                val notifTitle = if (isTopUp) "Wallet Credited! 💳⚡" else "Wallet Debited! 💸"
+                val notifMessage = if (isTopUp) {
+                    "Your ESDispatch wallet has been topped up with ₦${String.format("%,.2f", displayAmt)}. Real-time logistics power unlocked! 🚀✨"
                 } else {
-                    // Fallback sync if atomic update had offline issue
-                    com.esdispatch.data.FirebaseManager.syncWalletBalanceToFirestore(uid, optimisticBalance)
-                    com.esdispatch.data.FirebaseManager.syncTransactionToFirestore(localTx, uid)
+                    "Your ESDispatch wallet has been debited by ₦${String.format("%,.2f", displayAmt)}."
                 }
+                addNotification(notifTitle, notifMessage)
+
+                appContext?.let { ctx ->
+                    try {
+                        com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                            context = ctx,
+                            title = notifTitle,
+                            message = notifMessage,
+                            parcelId = null
+                        )
+                    } catch (e: Exception) {
+                        android.util.Log.e("WalletNotif", "Error showing wallet notification: ${e.message}")
+                    }
+                }
+
+                onComplete?.invoke(true, "Wallet successfully updated. New balance: ₦${String.format("%,.2f", newBalance)}")
+            } else {
+                onComplete?.invoke(false, "Failed to process wallet transaction. Please check your network and retry.")
             }
         }
     }

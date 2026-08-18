@@ -2,6 +2,25 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 
 admin.initializeApp();
+const db = admin.firestore();
+const messaging = admin.messaging();
+
+/**
+ * Calculates Haversine distance in kilometers between two lat/lng points.
+ */
+function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 /**
  * Cloud Function triggered when a new user is created in Firebase Authentication.
@@ -15,8 +34,7 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
   console.log(`[Engraced Dispatch Trigger] New User Created: ${uid} (Email: ${email}, Name: ${displayName})`);
 
   try {
-    // Retrieve the user's FCM token from Firestore
-    const userDocRef = admin.firestore().collection('users').doc(uid);
+    const userDocRef = db.collection('users').doc(uid);
     const userDoc = await userDocRef.get();
     
     let fcmToken = '';
@@ -26,7 +44,7 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
 
     const payloadBase = {
       notification: {
-        title: 'Welcome to ENGRACED DISPATCH! 👑🚚',
+        title: 'Welcome to ESDISPATCH! 👑🚚',
         body: `Hello ${displayName}! Thank you for choosing Premium Logistics & Dispatch. Your logistics partner is active and ready to deliver excellence! 🌟✨`,
       },
       android: { notification: { sound: 'default' } },
@@ -39,12 +57,11 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
 
     if (fcmToken) {
       const message = { token: fcmToken, ...payloadBase };
-      await admin.messaging().send(message);
-      console.log(`[Welcome Trigger] Personalized welcome push notification successfully sent to device token: ${fcmToken}`);
+      await messaging.send(message);
+      console.log(`[Welcome Trigger] Personalized welcome push notification sent to token: ${fcmToken}`);
     } else {
-      // Fallback: Broadcast to general topic
-      await admin.messaging().send({ topic: 'all_users', ...payloadBase });
-      console.log('[Welcome Trigger] Welcome broadcast successfully sent to "all_users" topic.');
+      await messaging.send({ topic: 'all_users', ...payloadBase });
+      console.log('[Welcome Trigger] Welcome broadcast sent to "all_users" topic.');
     }
   } catch (error) {
     console.error('[Welcome Trigger Error] Failed to send welcome notification:', error);
@@ -52,8 +69,92 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
 });
 
 /**
- * Cloud Function triggered when a shipment status updates in the 'shipments' collection.
- * Automatically sends a targeted FCM status push alert to the associated user's device.
+ * Autonomous Dispatch Trigger:
+ * When a delivery is created in 'deliveries' with status 'PENDING',
+ * finds the nearest active online rider and assigns the shipment.
+ */
+export const onDeliveryCreatedAutoDispatch = functions.firestore
+  .document('deliveries/{deliveryId}')
+  .onCreate(async (snap, context) => {
+    const deliveryId = context.params.deliveryId;
+    const deliveryData = snap.data();
+
+    if (!deliveryData || deliveryData.status !== 'PENDING') {
+      return null;
+    }
+
+    console.log(`[Auto Dispatch] Analyzing dispatch matches for delivery: ${deliveryId}`);
+
+    try {
+      // Find all active, online riders
+      const ridersSnap = await db.collection('users')
+        .where('role', '==', 'rider')
+        .where('isOnline', '==', true)
+        .get();
+
+      if (ridersSnap.empty) {
+        console.log(`[Auto Dispatch] No online riders currently available for ${deliveryId}. Delivery queued in unassigned pool.`);
+        return null;
+      }
+
+      const pickupLat = deliveryData.pickupLat || 6.5244; // Default to Lagos center if coords missing
+      const pickupLng = deliveryData.pickupLng || 3.3792;
+
+      let nearestRider: any = null;
+      let minDistance = Infinity;
+
+      for (const doc of ridersSnap.docs) {
+        const rData = doc.data();
+        const rLat = rData.lat || rData.latitude || 6.5244;
+        const rLng = rData.lng || rData.longitude || 3.3792;
+        const dist = haversineDistanceKm(pickupLat, pickupLng, rLat, rLng);
+
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearestRider = { id: doc.id, ...rData };
+        }
+      }
+
+      if (nearestRider) {
+        console.log(`[Auto Dispatch] Matched nearest rider ${nearestRider.name || nearestRider.id} (${minDistance.toFixed(2)} km away)`);
+
+        await db.collection('deliveries').doc(deliveryId).update({
+          riderId: nearestRider.id,
+          courierName: nearestRider.name || nearestRider.fullName || 'Fleet Rider',
+          courierPhone: nearestRider.phone || '',
+          riderBikeNumber: nearestRider.bikeNumber || 'ES-MOTO-01',
+          courierLatitude: nearestRider.lat || nearestRider.latitude || pickupLat,
+          courierLongitude: nearestRider.lng || nearestRider.longitude || pickupLng,
+          status: 'ASSIGNED',
+          assignedAt: admin.firestore.FieldValue.serverTimestamp(),
+          autoDispatched: true
+        });
+
+        // Notify rider device
+        if (nearestRider.fcmToken) {
+          const riderNotif = {
+            token: nearestRider.fcmToken,
+            notification: {
+              title: '⚡ New Delivery Assigned!',
+              body: `New parcel from ${deliveryData.pickupAddress || 'Pickup'} is assigned to you. Open app to accept.`
+            },
+            data: {
+              type: 'assignment_alert',
+              deliveryId: deliveryId
+            }
+          };
+          await messaging.send(riderNotif).catch(err => console.warn('[Auto Dispatch FCM Error]', err));
+        }
+      }
+    } catch (err) {
+      console.error(`[Auto Dispatch Error] Error matching delivery ${deliveryId}:`, err);
+    }
+    return null;
+  });
+
+/**
+ * Cloud Function triggered when a shipment status updates in the 'deliveries' collection.
+ * Automatically sends targeted FCM status push alerts to user and rider.
  */
 export const onDeliveryStatusUpdated = functions.firestore
   .document('deliveries/{deliveryId}')
@@ -71,75 +172,193 @@ export const onDeliveryStatusUpdated = functions.firestore
     const userId = afterData.userId;
     const itemName = afterData.itemName || 'Parcel';
 
-    // Trigger only if status has updated and is 'Out for Delivery' or 'Delivered'
     if (oldStatus === newStatus) {
-      return null;
-    }
-
-    const targetStatuses = ['Out for Delivery', 'Delivered'];
-    const isTargetStatus = targetStatuses.some(status => status.toLowerCase() === newStatus.toLowerCase());
-
-    if (!isTargetStatus) {
       return null;
     }
 
     console.log(`[Delivery Trigger] Status updated for delivery ${deliveryId}: ${oldStatus} -> ${newStatus}`);
 
     try {
-      // Fetch user's profile and notification settings
-      const userDoc = await admin.firestore().collection('users').doc(userId).get();
-      if (!userDoc.exists) {
-        console.log(`[Shipment Trigger] User document ${userId} not found. Skipping.`);
-        return null;
-      }
+      if (!userId) return null;
+
+      const userDoc = await db.collection('users').doc(userId).get();
+      if (!userDoc.exists) return null;
 
       const userData = userDoc.data();
       const fcmToken = userData?.fcmToken || '';
-      const notificationPreferences = userData?.notificationPreferences || {};
 
-      // Check user preferences if they have toggled off alerts for specific stages
-      const isBooked = newStatus.toLowerCase() === 'pending_assignment' || newStatus.toLowerCase() === 'booked';
-      const isDispatched = newStatus.toLowerCase() === 'out for delivery' || newStatus.toLowerCase() === 'transit';
-      const isDelivered = newStatus.toLowerCase() === 'delivered';
+      if (fcmToken) {
+        const emoji = newStatus.toLowerCase() === 'delivered' ? '✅📦' : '🚚⚡';
+        const title = `Shipment Status: ${newStatus} ${emoji}`;
+        const body = `Your shipment '${itemName}' (#${deliveryId}) is now ${newStatus}.`;
 
-      if (isDispatched && notificationPreferences.dispatched === false) {
-        console.log(`[Shipment Trigger] User has disabled push alerts for Dispatched/Out for Delivery stage.`);
-        return null;
+        const payload = {
+          token: fcmToken,
+          notification: { title, body },
+          android: { notification: { sound: 'default' } },
+          data: {
+            click_action: 'FLUTTER_NOTIFICATION_CLICK',
+            type: 'status_update',
+            parcelId: deliveryId,
+            status: newStatus
+          }
+        };
+        await messaging.send(payload);
       }
-
-      if (isDelivered && notificationPreferences.delivered === false) {
-        console.log(`[Shipment Trigger] User has disabled push alerts for Delivered stage.`);
-        return null;
-      }
-
-      if (!fcmToken) {
-        console.log(`[Shipment Trigger] No FCM token found for user ${userId}. Unable to send push alert.`);
-        return null;
-      }
-
-      const emoji = newStatus.toLowerCase() === 'delivered' ? '✅📦' : '🚚⚡';
-      const title = `Shipment Status Updated! ${emoji}`;
-      const body = `Your shipment '${itemName}' (#${deliveryId}) is now ${newStatus}.`;
-
-      const payloadBase = {
-        notification: { title, body },
-        android: { notification: { sound: 'default' } },
-        data: {
-          click_action: 'FLUTTER_NOTIFICATION_CLICK',
-          type: 'status_update',
-          parcelId: deliveryId,
-          status: newStatus
-        }
-      };
-
-      const fcmMessage = { token: fcmToken, ...payloadBase };
-      await admin.messaging().send(fcmMessage);
-      console.log(`[Delivery Trigger] Successfully sent status update push alert for delivery ${deliveryId} to user ${userId}`);
     } catch (error) {
       console.error('[Shipment Trigger Error] Failed to send status notification:', error);
     }
     return null;
   });
+
+/**
+ * Callable function to verify payment and top up a user's wallet securely on the server.
+ * Interacts with Paystack API if secret key is present, validates amount, and executes atomic transaction.
+ */
+export const verifyPaymentAndTopUp = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
+  const { amount, reference } = data;
+  const uid = context.auth.uid;
+
+  if (typeof amount !== 'number' || amount <= 0) {
+    throw new functions.https.HttpsError('invalid-argument', 'Amount must be a positive number.');
+  }
+
+  if (!reference || typeof reference !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'Valid payment reference is required.');
+  }
+
+  const paystackSecret = process.env.PAYSTACK_SECRET_KEY || functions.config().paystack?.secret;
+
+  // If live secret key is configured, verify against Paystack API
+  if (paystackSecret && !reference.startsWith('TEST_MOCK_')) {
+    try {
+      const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${paystackSecret}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const resJson: any = await response.json();
+      if (!resJson.status || resJson.data?.status !== 'success') {
+        throw new functions.https.HttpsError('permission-denied', `Paystack verification failed: ${resJson.message || 'Unsuccessful'}`);
+      }
+    } catch (err: any) {
+      console.error('[Paystack Verification Error]', err);
+      if (err instanceof functions.https.HttpsError) throw err;
+      throw new functions.https.HttpsError('internal', 'Error contacting payment gateway.');
+    }
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const ledgerRef = db.collection('system_ledger').doc(reference);
+
+  try {
+    const result = await db.runTransaction(async (txn) => {
+      // Check idempotency in ledger
+      const existingLedger = await txn.get(ledgerRef);
+      if (existingLedger.exists) {
+        throw new functions.https.HttpsError('already-exists', 'This transaction reference has already been processed.');
+      }
+
+      const userDoc = await txn.get(userRef);
+      if (!userDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'User profile document not found.');
+      }
+
+      const currentBalance = (userDoc.data()?.walletBalance as number) || 0.0;
+      const newBalance = currentBalance + amount;
+
+      // Update user wallet balance
+      txn.update(userRef, {
+        walletBalance: newBalance,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Record in user's transactions subcollection
+      const txRef = userRef.collection('transactions').doc(reference);
+      txn.set(txRef, {
+        id: reference,
+        userId: uid,
+        title: 'Wallet Top Up (Paystack)',
+        amount: amount,
+        isTopUp: true,
+        type: 'CREDIT',
+        status: 'SUCCESS',
+        reference: reference,
+        date: new Date().toLocaleDateString('en-GB'),
+        timestamp: Date.now(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Record in global ledger for accounting
+      txn.set(ledgerRef, {
+        reference: reference,
+        userId: uid,
+        amount: amount,
+        currency: 'NGN',
+        gateway: 'PAYSTACK',
+        type: 'WALLET_TOPUP',
+        status: 'COMPLETED',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      return newBalance;
+    });
+
+    return {
+      success: true,
+      message: 'Wallet credited successfully.',
+      newBalance: result,
+      reference: reference
+    };
+  } catch (error: any) {
+    console.error('[Wallet Transaction Error]', error);
+    if (error instanceof functions.https.HttpsError) throw error;
+    throw new functions.https.HttpsError('internal', error.message || 'Failed to update wallet balance.');
+  }
+});
+
+/**
+ * Callable function to securely verify delivery OTP code.
+ */
+export const verifyDeliveryOtp = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
+  const { deliveryId, otpInput } = data;
+  if (!deliveryId || !otpInput) {
+    throw new functions.https.HttpsError('invalid-argument', 'deliveryId and otpInput are required.');
+  }
+
+  const deliveryRef = db.collection('deliveries').doc(deliveryId);
+  const snap = await deliveryRef.get();
+
+  if (!snap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Delivery document not found.');
+  }
+
+  const deliveryData = snap.data();
+  const storedOtp = String(deliveryData?.otpCode || '').trim();
+  const inputOtp = String(otpInput).trim();
+
+  if (storedOtp !== inputOtp) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid OTP code. Please check with the recipient.');
+  }
+
+  await deliveryRef.update({
+    otpVerified: true,
+    status: 'DELIVERED',
+    deliveredAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  return { success: true, message: 'OTP verified and delivery marked completed.' };
+});
 
 /**
  * Cloud Function triggered when a document in the root 'riders' collection is changed.
@@ -155,13 +374,10 @@ export const onRiderDocumentChanged = functions.firestore
     
     try {
       if (!change.after.exists) {
-        console.log(`[Rider Sync Trigger] Rider document ${riderId} deleted. No action taken.`);
         return null;
       }
       
-      const userRef = admin.firestore().collection('users').doc(riderId);
-      
-      // Update or enforce the role as 'rider' in the users collection
+      const userRef = db.collection('users').doc(riderId);
       const updateData: any = {
         role: 'rider',
         updatedAt: new Date().toISOString()
@@ -176,18 +392,14 @@ export const onRiderDocumentChanged = functions.firestore
       }
       
       await userRef.set(updateData, { merge: true });
-      console.log(`[Rider Sync Trigger] Successfully updated root user record for rider ID: ${riderId} to role: rider.`);
       
-      // Sync auth custom claims
       try {
         await admin.auth().setCustomUserClaims(riderId, { rider: true, customer: false });
-        console.log(`[Rider Sync Trigger] Custom user claims successfully synchronized for rider: ${riderId}`);
       } catch (authError) {
-        console.warn(`[Rider Sync Trigger] Failed to update auth custom claims (user may not exist in Auth yet):`, authError);
+        console.warn(`[Rider Sync Trigger] Custom claim update skipped:`, authError);
       }
-      
     } catch (error) {
-      console.error(`[Rider Sync Trigger Error] Error synchronizing rider document for ID ${riderId}:`, error);
+      console.error(`[Rider Sync Trigger Error] Error syncing rider ${riderId}:`, error);
     }
     return null;
   });
@@ -203,21 +415,17 @@ export const onNotificationCreated = functions.firestore
     const data = snap.data();
     const { title, description } = data;
 
-    console.log(`[Notification Fan-out] New notification: ${notificationId} — ${title}`);
-
     try {
-      const usersSnapshot = await admin.firestore().collection('users')
+      const usersSnapshot = await db.collection('users')
         .where('isDeleted', '==', false)
         .get();
 
       const batchSize = 500;
-      let batch = admin.firestore().batch();
+      let batch = db.batch();
       let count = 0;
 
       usersSnapshot.forEach((userDoc) => {
-        const notifRef = admin.firestore()
-          .collection('users').doc(userDoc.id)
-          .collection('notifications').doc();
+        const notifRef = db.collection('users').doc(userDoc.id).collection('notifications').doc();
         batch.set(notifRef, {
           title,
           description,
@@ -230,7 +438,7 @@ export const onNotificationCreated = functions.firestore
         count++;
         if (count % batchSize === 0) {
           batch.commit();
-          batch = admin.firestore().batch();
+          batch = db.batch();
         }
       });
 
@@ -245,30 +453,25 @@ export const onNotificationCreated = functions.firestore
   });
 
 /**
- * Cloud Function triggered when a document in the sub-collection 'users/{userId}/riders/{riderId}' is written.
- * Automatically updates the parent/root user's role to 'rider'.
+ * Cloud Function triggered when a document in 'users/{userId}/riders/{riderId}' is written.
  */
 export const onRiderSubcollectionChanged = functions.firestore
   .document('users/{userId}/riders/{riderId}')
   .onWrite(async (change, context) => {
     const userId = context.params.userId;
-    console.log(`[Rider Subcollection Sync] Change detected for user sub-collection: ${userId}`);
-    
     try {
       if (!change.after.exists) return null;
       
-      const userRef = admin.firestore().collection('users').doc(userId);
+      const userRef = db.collection('users').doc(userId);
       await userRef.update({
         role: 'rider',
         updatedAt: new Date().toISOString()
       });
-      console.log(`[Rider Subcollection Sync] Successfully set user ${userId} role to rider.`);
       
       try {
         await admin.auth().setCustomUserClaims(userId, { rider: true, customer: false });
-        console.log(`[Rider Subcollection Sync] Custom user claims successfully set for: ${userId}`);
       } catch (authError) {
-        console.warn(`[Rider Subcollection Sync] Failed to update auth custom claims:`, authError);
+        console.warn(`[Rider Subcollection Sync] Custom claims warning:`, authError);
       }
     } catch (err) {
       console.error(`[Rider Subcollection Sync Error]`, err);

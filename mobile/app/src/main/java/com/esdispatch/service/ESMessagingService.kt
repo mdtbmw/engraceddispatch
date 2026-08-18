@@ -18,7 +18,12 @@ class ESMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.d("FCM", "New token generated: $token")
-        // <TODO> Send token to Firestore user document so the backend can push to this device
+        val prefs = getSharedPreferences("esdispatch_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("fcm_token", token).apply()
+        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+        if (uid != null) {
+            com.esdispatch.data.FirebaseManager.updateFcmTokenInFirestore(uid, token)
+        }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

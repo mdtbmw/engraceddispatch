@@ -4791,17 +4791,24 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun aiCorrectAddress(rawInput: String): String {
-        val lower = rawInput.trim().lowercase()
-        return when {
-            lower.contains("airport") || lower.contains("murtala") -> "Murtala Muhammed International Airport Cargo Terminal, Lagos"
-            lower.contains("victoria") || lower.contains("vi") -> "Victoria Island Admiralty Way, Lagos"
-            lower.contains("ikoyi") -> "Ikoyi Club 1938, Kingsway Rd, Ikoyi, Lagos"
-            lower.contains("lekki") -> "Lekki Phase 1 Gate, Admiralty Way, Lagos"
-            lower.contains("ikeja") || lower.contains("computer") -> "Computer Village, Isaac John St, Ikeja, Lagos"
-            lower.contains("eko") || lower.contains("atlantic") -> "Eko Atlantic City Marina, Victoria Island"
-            lower.isBlank() -> "The Palms Shopping Mall, Bisway Road, Lekki, Lagos"
-            else -> rawInput.replaceFirstChar { it.uppercase() } + ", Lagos Landmark Zone"
+        val trimmed = rawInput.trim()
+        if (trimmed.isBlank()) return "Lagos Central Dispatch Hub, Victoria Island, Lagos"
+        val dbMatch = com.esdispatch.data.AddressDatabase.search(trimmed).firstOrNull()
+        if (dbMatch != null) return dbMatch.displayName
+        return trimmed.split(" ").joinToString(" ") { word ->
+            word.lowercase().replaceFirstChar { it.uppercase() }
         }
+    }
+
+    private fun calculateHaversineDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
     }
 
     suspend fun searchAddressAutocompleteItems(query: String): List<com.esdispatch.utils.SearchResultItem> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -4829,29 +4836,49 @@ class DeliveryViewModel : WalletViewModel() {
 
     fun optimizeBatchRoute(batchName: String, stops: List<String>, onResult: (BatchRoutePlan) -> Unit) {
         viewModelScope.launch {
-            kotlinx.coroutines.delay(600)
+            kotlinx.coroutines.delay(300)
+            val distinctStops = stops.filter { it.isNotBlank() }.distinct()
+            val pathSummary = if (distinctStops.isNotEmpty()) distinctStops.joinToString(" ➔ ") else "Main Hub ➔ Delivery Points"
+            val stopCount = maxOf(distinctStops.size, 1)
             val optimizedPlan = BatchRoutePlan(
                 batchName = batchName,
-                stopCount = maxOf(stops.size, 3),
-                optimizedPathSummary = if (stops.isNotEmpty()) stops.joinToString(" âž” ") else "Hub âž” Lekki Phase 1 âž” Victoria Island âž” Ikoyi",
-                estimatedDistanceKm = 14.5 + stops.size * 3.2,
-                estimatedEtaMinutes = 25 + stops.size * 12,
-                aiConfidence = 96,
+                stopCount = stopCount,
+                optimizedPathSummary = pathSummary,
+                estimatedDistanceKm = 8.5 + (stopCount * 2.8),
+                estimatedEtaMinutes = 15 + (stopCount * 10),
+                aiConfidence = 98,
                 status = "AI_OPTIMIZED_LOW_FUEL"
             )
             onResult(optimizedPlan)
         }
     }
 
+    fun checkProximityArrival(
+        currentLat: Double,
+        currentLng: Double,
+        destLat: Double,
+        destLng: Double,
+        onArrived: () -> Unit
+    ) {
+        if (destLat == 0.0 && destLng == 0.0) return
+        val distanceKm = calculateHaversineDistanceKm(
+            currentLat, currentLng, destLat, destLng
+        )
+        // 50-meter threshold (0.05 km)
+        if (distanceKm <= 0.05) {
+            onArrived()
+        }
+    }
+
     fun checkGeofenceBreach(riderName: String, lat: Double, lng: Double, onBreachDetected: (GeofenceAlert?) -> Unit) {
-        // Assume boundary is lat between 6.40 and 6.55, lng between 3.35 and 3.50 (Lagos Zone)
-        val isOutside = lat < 6.35 || lat > 6.60 || lng < 3.25 || lng > 3.60
+        val isOutside = lat < 6.20 || lat > 6.80 || lng < 3.10 || lng > 3.80
+        val activeRiderId = _firebaseUserId.value ?: "RIDER-ACTIVE"
         if (isOutside) {
             val alert = GeofenceAlert(
-                riderId = "RIDER-CORP-01",
-                riderName = riderName,
+                riderId = activeRiderId,
+                riderName = riderName.ifBlank { "Assigned Rider" },
                 breachType = "ZONE_EXIT_DETECTED",
-                locationName = "Lat: $lat, Lng: $lng (Outside Corporate Perimeter)",
+                locationName = "Lat: ${String.format("%.4f", lat)}, Lng: ${String.format("%.4f", lng)} (Outside Operational Perimeter)",
                 timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date()),
                 severity = "HIGH"
             )
@@ -4867,17 +4894,19 @@ class DeliveryViewModel : WalletViewModel() {
                 val report = IncidentReport(
                     title = title,
                     timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date()),
-                    customerName = "Corporate Dispatch Client",
-                    riderName = "Assigned Fleet Rider",
+                    customerName = _userName.value.ifBlank { "Corporate Dispatch Client" },
+                    riderName = "Fleet Dispatch Unit",
                     severity = severity,
-                    gpsLocation = "Lagos Central Hub Zone",
+                    gpsLocation = "Active Operational Sector",
                     description = description,
-                    suggestedAction = "Dispatch Safety Supervisor & Log Insurance Ticket",
+                    suggestedAction = "Dispatch Safety Supervisor & Log Audit Ticket",
                     evidenceUploaded = true
                 )
-                // Add to dynamic incident report flow so it instantly updates Admin / Insights
                 _aiIncidentReports.value = listOf(report) + _aiIncidentReports.value
-                // Local simulation / sync queue success
+                val db = com.esdispatch.data.FirebaseManager.firestore
+                if (db != null) {
+                    db.collection("incident_reports").document(report.id).set(report)
+                }
                 onResult(true, report.id)
             } catch (e: Exception) {
                 onResult(false, "")
@@ -4886,16 +4915,17 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun calculateDriverBonus(totalDeliveries: Int, onTimePct: Double, avgRating: Double): DriverBonusCalculation {
-        val baseBonus = totalDeliveries * 250.0 // 250 NGN per delivery bonus pool
+        val baseBonus = totalDeliveries * 300.0
         val multiplier = if (onTimePct >= 95.0 && avgRating >= 4.8) 1.5 else if (onTimePct >= 90.0) 1.2 else 1.0
         val projected = baseBonus * multiplier
         val tier = when {
-            projected > 50000.0 -> "PLATINUM"
-            projected > 25000.0 -> "GOLD"
+            projected > 60000.0 -> "PLATINUM"
+            projected > 30000.0 -> "GOLD"
             else -> "SILVER"
         }
+        val activeRiderId = _firebaseUserId.value ?: "RIDER-ACTIVE"
         return DriverBonusCalculation(
-            riderId = "CORP-RIDER-01",
+            riderId = activeRiderId,
             totalDeliveries = totalDeliveries,
             onTimePercentage = onTimePct,
             averageRating = avgRating,
@@ -4914,14 +4944,14 @@ class DeliveryViewModel : WalletViewModel() {
             diff <= 1000 -> "DUE_SOON"
             else -> "UP TO DATE"
         }
-        val serviceType = if (currentMileage % 10000 == 0) "Full Synthetic Oil & Brake Pad Replacement" else "Routine Tire Alignment & Fluid Check"
+        val serviceType = if (currentMileage % 10000 == 0) "Full Synthetic Oil & Brake Pad Replacement" else "Routine Tire Alignment & Safety Inspection"
         return VehicleMaintenanceSchedule(
-            vehicleNumber = vehicleNumber,
-            lastServiceMileage = currentMileage - 3500,
+            vehicleNumber = vehicleNumber.ifBlank { "ES-MOTO-FLEET" },
+            lastServiceMileage = maxOf(0, currentMileage - 3500),
             nextServiceMileageDue = nextDue,
             serviceType = serviceType,
             status = status,
-            technicianNote = if (status == "OVERDUE") "Schedule service immediately at corporate depot workshop." else "Vehicle operating within safety compliance limits."
+            technicianNote = if (status == "OVERDUE") "Schedule service immediately at authorized maintenance depot." else "Vehicle operating within certified safety standards."
         )
     }
 
