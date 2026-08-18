@@ -5153,8 +5153,112 @@ class DeliveryViewModel : WalletViewModel() {
     private val _vendorDashboardMode = MutableStateFlow(false)
     val vendorDashboardMode: StateFlow<Boolean> = _vendorDashboardMode.asStateFlow()
 
+    private val _vendorPayoutRequests = MutableStateFlow<List<Map<String, Any>>>(emptyList())
+    val vendorPayoutRequests: StateFlow<List<Map<String, Any>>> = _vendorPayoutRequests.asStateFlow()
+
     fun setVendorDashboardMode(enabled: Boolean) {
         _vendorDashboardMode.value = enabled
+    }
+
+    fun requestVendorPayout(
+        amount: Double,
+        bankName: String,
+        accountNumber: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val uid = _firebaseUserId.value ?: run {
+            onResult(false, "Authentication required.")
+            return
+        }
+        val currentBalance = (_vendorStore.value?.get("vendorBalance") as? Number)?.toDouble() ?: 0.0
+        if (amount <= 0 || amount > currentBalance) {
+            onResult(false, "Invalid amount. Max withdrawable is ₦$currentBalance")
+            return
+        }
+        val db = com.esdispatch.data.FirebaseManager.firestore ?: run {
+            onResult(false, "Database connection error.")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val reqId = "PAY-" + System.currentTimeMillis()
+                val reqData = hashMapOf(
+                    "id" to reqId,
+                    "vendorId" to uid,
+                    "storeName" to ((_vendorStore.value?.get("storeName") as? String) ?: "Vendor Store"),
+                    "amount" to amount,
+                    "bankName" to bankName,
+                    "accountNumber" to accountNumber,
+                    "status" to "PENDING",
+                    "requestedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                )
+                db.runTransaction { txn ->
+                    val storeRef = db.collection("marketplace_stores").document(uid)
+                    txn.update(storeRef, "vendorBalance", com.google.firebase.firestore.FieldValue.increment(-amount))
+                    txn.set(db.collection("vendor_payout_requests").document(reqId), reqData)
+                }
+                onResult(true, "Payout request submitted! Transfer will be processed after review.")
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Failed to submit payout request")
+            }
+        }
+    }
+
+    fun listenToVendorPayoutRequests() {
+        val uid = _firebaseUserId.value ?: return
+        val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
+        fs.collection("vendor_payout_requests")
+            .whereEqualTo("vendorId", uid)
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot == null) return@addSnapshotListener
+                _vendorPayoutRequests.value = snapshot.documents.mapNotNull { it.data }
+            }
+    }
+
+    fun submitDriverClockIn(lat: Double, lng: Double, onResult: (Boolean, String) -> Unit) {
+        val uid = _firebaseUserId.value ?: run { onResult(false, "Sign in required"); return }
+        val db = com.esdispatch.data.FirebaseManager.firestore ?: run { onResult(false, "Database error"); return }
+        val data = hashMapOf(
+            "riderId" to uid,
+            "riderName" to _userName.value,
+            "latitude" to lat,
+            "longitude" to lng,
+            "clockInTime" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+            "date" to java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date()),
+            "status" to "ACTIVE"
+        )
+        viewModelScope.launch {
+            try {
+                db.collection("rider_attendance").add(data)
+                db.collection("users").document(uid).update("isOnline", true, "status", "online")
+                onResult(true, "Clocked in successfully! You are now online for dispatch.")
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Failed to clock in")
+            }
+        }
+    }
+
+    fun submitVehicleInspection(vehicleType: String, mileage: Int, passed: Boolean, notes: String, onResult: (Boolean, String) -> Unit) {
+        val uid = _firebaseUserId.value ?: run { onResult(false, "Sign in required"); return }
+        val db = com.esdispatch.data.FirebaseManager.firestore ?: run { onResult(false, "Database error"); return }
+        val data = hashMapOf(
+            "riderId" to uid,
+            "vehicleType" to vehicleType,
+            "mileage" to mileage,
+            "passed" to passed,
+            "notes" to notes,
+            "inspectionDate" to java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date()),
+            "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+        )
+        viewModelScope.launch {
+            try {
+                db.collection("vehicle_inspections").add(data)
+                onResult(true, "Vehicle checklist submitted to fleet safety team.")
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Failed to submit checklist")
+            }
+        }
     }
 
     fun addToCart(item: MarketplaceItem, quantity: Int = 1) {
@@ -5830,57 +5934,6 @@ class DeliveryViewModel : WalletViewModel() {
                     .addOnFailureListener { e -> onResult(false, "Delete failed: " + e.message) }
             }
             .addOnFailureListener { e -> onResult(false, "Failed: " + e.message) }
-    }
-
-    fun requestVendorPayout(
-        amount: Double, bankName: String, accountNumber: String,
-        onResult: (Boolean, String) -> Unit
-    ) {
-        val uid = _firebaseUserId.value ?: run { onResult(false, "Not logged in"); return }
-        val storeData = _vendorStore.value ?: run { onResult(false, "No store found."); return }
-        val balance = (storeData["vendorWallet"] as? Number)?.toDouble() ?: 0.0
-        if (amount <= 0) { onResult(false, "Enter a valid payout amount."); return }
-        if (amount > balance) {
-            onResult(false, "Insufficient balance. Available: \u20a6" + String.format("%,.2f", balance))
-            return
-        }
-        val fs = com.esdispatch.data.FirebaseManager.firestore ?: run { onResult(false, "Service unavailable"); return }
-
-        // Block duplicate pending requests so payouts are never fire-and-forget
-        fs.collection("vendor_payout_requests")
-            .whereEqualTo("vendorId", uid)
-            .whereEqualTo("status", "PENDING")
-            .get()
-            .addOnSuccessListener { existing ->
-                if (!existing.isEmpty) {
-                    onResult(false, "You already have a pending payout request. Wait for it to be processed.")
-                    return@addOnSuccessListener
-                }
-                val payoutData = hashMapOf(
-                    "requestId" to ("PAY-" + System.currentTimeMillis()),
-                    "vendorId" to uid, "vendorName" to _userName.value,
-                    "storeName" to (storeData["storeName"] as? String ?: ""),
-                    "amount" to amount, "bankName" to bankName, "accountNumber" to accountNumber,
-                    "status" to "PENDING", "requestedAt" to com.google.firebase.Timestamp.now()
-                )
-                fs.collection("vendor_payout_requests").add(payoutData)
-                    .addOnSuccessListener {
-                        // Reserve the amount by debiting the store wallet immediately
-                        fs.collection("marketplace_stores").document(uid)
-                            .update("vendorWallet", com.google.firebase.firestore.FieldValue.increment(-amount))
-                        addNotification(
-                            "Payout Requested ðŸ’°",
-                            "Your payout of \u20a6" + String.format("%,.2f", amount) + " has been submitted for processing (2-3 business days).",
-                            ""
-                        )
-                        logAdminActivity("Vendor Payout", "Payout request for $amount from store ${storeData["storeName"]}")
-                        onResult(true, "Payout of \u20a6" + String.format("%,.2f", amount) + " requested. Processed in 2-3 business days.")
-                    }
-                    .addOnFailureListener { e -> onResult(false, "Request failed: " + e.message) }
-            }
-            .addOnFailureListener { e ->
-                onResult(false, "Could not verify pending requests: " + e.message)
-            }
     }
 
     // ==========================================================================

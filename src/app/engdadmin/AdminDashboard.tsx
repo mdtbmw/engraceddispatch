@@ -88,8 +88,19 @@ interface MarketplaceOrder {
   storeName: string;
   itemsCount: number;
   totalPrice: number;
-  status: "PAID" | "FULFILLED" | "CANCELLED";
+  status: "PAID" | "FULFILLED" | "CANCELLED" | "SETTLED";
   date: string;
+}
+
+interface VendorPayoutRequest {
+  id: string;
+  vendorId: string;
+  storeName?: string;
+  amount: number;
+  bankName: string;
+  accountNumber: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  requestedAt?: any;
 }
 
 interface AppContent { id: string; key: string; title: string; description: string; imageUrl: string; ctaText: string; ctaLink: string; order: number; active: boolean; }
@@ -709,6 +720,7 @@ function AdminDashboardPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<VendorStore[]>([]);
   const [marketplaceOrders, setMarketplaceOrders] = useState<MarketplaceOrder[]>([]);
+  const [payoutRequests, setPayoutRequests] = useState<VendorPayoutRequest[]>([]);
 
   const [connected, setConnected] = useState(false);
   const [refreshT, setRefreshT] = useState("");
@@ -916,6 +928,23 @@ function AdminDashboardPage() {
         });
       });
       setMarketplaceOrders(list);
+    }, console.error));
+    unsubs.push(onSnapshot(collection(db, "vendor_payout_requests"), snap => {
+      const list: VendorPayoutRequest[] = [];
+      snap.forEach(d => {
+        const x = d.data();
+        list.push({
+          id: d.id,
+          vendorId: x.vendorId || "",
+          storeName: x.storeName || "Vendor Store",
+          amount: x.amount || 0,
+          bankName: x.bankName || "",
+          accountNumber: x.accountNumber || "",
+          status: x.status || "PENDING",
+          requestedAt: x.requestedAt,
+        });
+      });
+      setPayoutRequests(list);
     }, console.error));
     getDoc(doc(db, "system_config", "global_settings")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => { addToast("error", "Failed to load system settings. Using defaults."); });
     getDoc(doc(db, "system_config", "pricing")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => { addToast("error", "Failed to load pricing config. Using defaults."); });
@@ -2084,12 +2113,12 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
 }
 
 
-function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMarketplace }: {
-  products: Product[]; stores: VendorStore[]; orders: MarketplaceOrder[];
+function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, addToast, seedMarketplace }: {
+  products: Product[]; stores: VendorStore[]; orders: MarketplaceOrder[]; payoutRequests: VendorPayoutRequest[];
   db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void;
   seedMarketplace: () => Promise<void>;
 }) {
-  const [activeSubTab, setActiveSubTab] = useState<"products" | "stores" | "orders">("products");
+  const [activeSubTab, setActiveSubTab] = useState<"products" | "stores" | "orders" | "payouts">("products");
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAddStoreModal, setShowAddStoreModal] = useState(false);
@@ -2404,6 +2433,14 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
         <button onClick={() => setActiveSubTab("orders")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "orders" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
           🛒 Sales & Cart Orders ({orders.length})
         </button>
+        <button onClick={() => setActiveSubTab("payouts")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all relative " + (activeSubTab === "payouts" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
+          💳 Payout Requests ({payoutRequests.length})
+          {payoutRequests.filter(p => p.status === "PENDING").length > 0 && (
+            <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">
+              {payoutRequests.filter(p => p.status === "PENDING").length}
+            </span>
+          )}
+        </button>
       </div>
       <div className="w-full sm:w-64">
         <SearchInput value={search} onChange={setSearch} placeholder="Search product, category, store..." />
@@ -2593,6 +2630,88 @@ function MarketplaceTab({ products, stores, orders, db, addLog, addToast, seedMa
                       <span className="px-3 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-full font-bold text-[10px]">{o.status}</span>
                     </td>
                     <td className="p-4 text-black/50 dark:text-white/50">{o.date}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* Vendor Payout Requests View */}
+    {activeSubTab === "payouts" && (
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm">
+        {payoutRequests.length === 0 ? (
+          <div className="text-center py-12 text-black/40 dark:text-white/40">
+            <DollarSign className="w-12 h-12 mx-auto mb-3 text-[#FFC542]/50" />
+            <p className="font-extrabold text-base">No vendor payout requests</p>
+            <p className="text-xs mt-1">Vendor balance withdrawal applications will stream here for review.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Vendor Store</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Amount (₦)</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Bank Details</th>
+                  <th className="text-left font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Status</th>
+                  <th className="text-right font-extrabold text-black/50 dark:text-white/50 p-4 border-b border-black/10 dark:border-white/10">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {payoutRequests.map(p => (
+                  <tr key={p.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    <td className="p-4 font-extrabold text-[#111] dark:text-white">{p.storeName}</td>
+                    <td className="p-4 font-black text-sm text-[#FFC542]">₦{p.amount.toLocaleString()}</td>
+                    <td className="p-4">
+                      <div className="font-bold text-[#111] dark:text-white">{p.bankName}</div>
+                      <div className="text-[10px] text-black/40 dark:text-white/40">{p.accountNumber}</div>
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-3 py-1 rounded-full font-bold text-[10px] ${
+                        p.status === "APPROVED"
+                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                          : p.status === "REJECTED"
+                          ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                          : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                      }`}>
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="p-4 text-right">
+                      {p.status === "PENDING" && (
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await updateDoc(doc(db, "vendor_payout_requests", p.id), { status: "APPROVED", processedAt: Timestamp.now() });
+                                addLog("Approve Payout", `Approved ₦${p.amount.toLocaleString()} for ${p.storeName}`);
+                                addToast("success", `Approved ₦${p.amount.toLocaleString()} payout`);
+                              } catch (err: any) { addToast("error", err.message); }
+                            }}
+                            className="px-3 py-1.5 bg-emerald-500 text-white font-black text-[10px] rounded-xl hover:bg-emerald-600 transition-colors"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await updateDoc(doc(db, "vendor_payout_requests", p.id), { status: "REJECTED", processedAt: Timestamp.now() });
+                                const storeRef = doc(db, "marketplace_stores", p.vendorId);
+                                await updateDoc(storeRef, { vendorBalance: increment(p.amount) });
+                                addLog("Reject Payout", `Rejected ₦${p.amount.toLocaleString()} for ${p.storeName}`);
+                                addToast("info", "Payout rejected and funds returned to vendor");
+                              } catch (err: any) { addToast("error", err.message); }
+                            }}
+                            className="px-3 py-1.5 bg-red-500/10 text-red-500 border border-red-500/20 font-bold text-[10px] rounded-xl hover:bg-red-500/20 transition-colors"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -3040,7 +3159,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
         setMobileSidebar={setMobileSidebar} notifications={notifications} markNotifRead={markNotifRead} 
       />
       <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 pb-10 pt-6">
-         {tab === "marketplace" && <MarketplaceTab products={products} stores={stores} orders={marketplaceOrders} db={db} addLog={addLog} addToast={addToast} seedMarketplace={seedMarketplaceWrapper} />}
+         {tab === "marketplace" && <MarketplaceTab products={products} stores={stores} orders={marketplaceOrders} payoutRequests={payoutRequests} db={db} addLog={addLog} addToast={addToast} seedMarketplace={seedMarketplaceWrapper} />}
         {tab === "dashboard" && <DashboardTab 
             deliveries={deliveries} 
             activeUsers={activeUsers} 

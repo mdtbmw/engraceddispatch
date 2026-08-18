@@ -23,6 +23,6 @@
       "~/*": ["./src/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", ".next/types/**/*.ts"],
+  "include": ["next-env.d.ts", "src/app/**/*.ts", "src/app/**/*.tsx", "src/lib/**/*.ts", "src/lib/**/*.tsx", "src/types/**/*.ts", ".next/types/**/*.ts"],
   "exclude": ["node_modules", "functions", "mobile", "HeyTek", "landing page"]
 }

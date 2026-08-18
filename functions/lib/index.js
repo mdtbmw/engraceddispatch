@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onRiderSubcollectionChanged = exports.onNotificationCreated = exports.onRiderDocumentChanged = exports.verifyDeliveryOtp = exports.verifyPaymentAndTopUp = exports.onDeliveryStatusUpdated = exports.onDeliveryCreatedAutoDispatch = exports.onUserCreatedSendWelcome = void 0;
+exports.onRiderSubcollectionChanged = exports.onNotificationCreated = exports.onRiderDocumentChanged = exports.processVendorPayout = exports.verifyDeliveryOtp = exports.verifyPaymentAndTopUp = exports.onDeliveryStatusUpdated = exports.onDeliveryCreatedAutoDispatch = exports.onUserCreatedSendWelcome = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 admin.initializeApp();
@@ -172,7 +172,7 @@ exports.onDeliveryCreatedAutoDispatch = functions.firestore
 });
 /**
  * Cloud Function triggered when a shipment status updates in the 'deliveries' collection.
- * Automatically sends targeted FCM status push alerts to user and rider.
+ * Automatically sends targeted FCM status push alerts to user and rider, and handles escrow settlement on completion.
  */
 exports.onDeliveryStatusUpdated = functions.firestore
     .document('deliveries/{deliveryId}')
@@ -186,11 +186,73 @@ exports.onDeliveryStatusUpdated = functions.firestore
     const oldStatus = beforeData.status;
     const newStatus = afterData.status;
     const userId = afterData.userId;
+    const riderId = afterData.riderId;
     const itemName = afterData.itemName || 'Parcel';
     if (oldStatus === newStatus) {
         return null;
     }
     console.log(`[Delivery Trigger] Status updated for delivery ${deliveryId}: ${oldStatus} -> ${newStatus}`);
+    // --- Automated Escrow Release on Delivery ---
+    if (newStatus.toUpperCase() === 'DELIVERED') {
+        try {
+            // 1. If linked to a marketplace order, settle vendor split amounts
+            const orderSnap = await db.collection('marketplace_orders').doc(deliveryId).get();
+            if (orderSnap.exists) {
+                const orderData = orderSnap.data();
+                const splits = (orderData === null || orderData === void 0 ? void 0 : orderData.vendorSplits) || [];
+                for (const s of splits) {
+                    if (s.storeId && s.vendorPayout > 0) {
+                        const storeRef = db.collection('marketplace_stores').doc(s.storeId);
+                        await storeRef.update({
+                            vendorBalance: admin.firestore.FieldValue.increment(s.vendorPayout),
+                            totalSales: admin.firestore.FieldValue.increment(1),
+                            totalSettled: admin.firestore.FieldValue.increment(s.vendorPayout),
+                            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                        }).catch(err => console.warn(`[Escrow Release] Failed store balance credit for ${s.storeId}:`, err));
+                    }
+                }
+                await orderSnap.ref.update({
+                    status: 'SETTLED',
+                    settledAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                console.log(`[Escrow Release] Marketplace order ${deliveryId} settled successfully.`);
+            }
+            // 2. Credit rider delivery earnings / tip if riderId present
+            if (riderId) {
+                const tipAmount = Number(afterData.tipAmount) || 0;
+                const deliveryFee = Number(afterData.deliveryFee) || (afterData.type === 'EXPRESS' ? 2500 : 1500);
+                const riderPayout = (deliveryFee * 0.70) + tipAmount; // 70% rider split + 100% customer tip
+                if (riderPayout > 0) {
+                    const riderRef = db.collection('users').doc(riderId);
+                    await riderRef.update({
+                        walletBalance: admin.firestore.FieldValue.increment(riderPayout),
+                        deliveryCount: admin.firestore.FieldValue.increment(1),
+                        totalEarned: admin.firestore.FieldValue.increment(riderPayout),
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                    // Ledger log
+                    const riderTxRef = riderRef.collection('transactions').doc(`EARN-${deliveryId}`);
+                    await riderTxRef.set({
+                        id: `EARN-${deliveryId}`,
+                        userId: riderId,
+                        title: `Delivery Earnings & Tip (#${deliveryId})`,
+                        amount: riderPayout,
+                        isTopUp: true,
+                        type: 'CREDIT',
+                        status: 'SUCCESS',
+                        reference: deliveryId,
+                        date: new Date().toLocaleDateString('en-GB'),
+                        timestamp: Date.now(),
+                        createdAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                    console.log(`[Escrow Release] Rider ${riderId} credited ₦${riderPayout} for delivery ${deliveryId}`);
+                }
+            }
+        }
+        catch (escrowErr) {
+            console.error(`[Escrow Release Error] Error settling delivery ${deliveryId}:`, escrowErr);
+        }
+    }
     try {
         if (!userId)
             return null;
@@ -224,7 +286,6 @@ exports.onDeliveryStatusUpdated = functions.firestore
 });
 /**
  * Callable function to verify payment and top up a user's wallet securely on the server.
- * Interacts with Paystack API if secret key is present, validates amount, and executes atomic transaction.
  */
 exports.verifyPaymentAndTopUp = functions.https.onCall(async (data, context) => {
     var _a, _b;
@@ -267,7 +328,6 @@ exports.verifyPaymentAndTopUp = functions.https.onCall(async (data, context) => 
     try {
         const result = await db.runTransaction(async (txn) => {
             var _a;
-            // Check idempotency in ledger
             const existingLedger = await txn.get(ledgerRef);
             if (existingLedger.exists) {
                 throw new functions.https.HttpsError('already-exists', 'This transaction reference has already been processed.');
@@ -278,12 +338,10 @@ exports.verifyPaymentAndTopUp = functions.https.onCall(async (data, context) => 
             }
             const currentBalance = ((_a = userDoc.data()) === null || _a === void 0 ? void 0 : _a.walletBalance) || 0.0;
             const newBalance = currentBalance + amount;
-            // Update user wallet balance
             txn.update(userRef, {
                 walletBalance: newBalance,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
-            // Record in user's transactions subcollection
             const txRef = userRef.collection('transactions').doc(reference);
             txn.set(txRef, {
                 id: reference,
@@ -298,7 +356,6 @@ exports.verifyPaymentAndTopUp = functions.https.onCall(async (data, context) => 
                 timestamp: Date.now(),
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
-            // Record in global ledger for accounting
             txn.set(ledgerRef, {
                 reference: reference,
                 userId: uid,
@@ -355,19 +412,80 @@ exports.verifyDeliveryOtp = functions.https.onCall(async (data, context) => {
     return { success: true, message: 'OTP verified and delivery marked completed.' };
 });
 /**
+ * Callable function for Admins to approve or reject vendor payout requests.
+ */
+exports.processVendorPayout = functions.https.onCall(async (data, context) => {
+    var _a;
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+    }
+    const callerUid = context.auth.uid;
+    const callerDoc = await db.collection('users').doc(callerUid).get();
+    const role = (_a = callerDoc.data()) === null || _a === void 0 ? void 0 : _a.role;
+    if (role !== 'admin' && role !== 'super_admin') {
+        throw new functions.https.HttpsError('permission-denied', 'Only administrators can process payout requests.');
+    }
+    const { payoutId, action, rejectionReason } = data;
+    if (!payoutId || (action !== 'APPROVE' && action !== 'REJECT')) {
+        throw new functions.https.HttpsError('invalid-argument', 'Valid payoutId and action (APPROVE/REJECT) are required.');
+    }
+    const payoutRef = db.collection('vendor_payout_requests').doc(payoutId);
+    const payoutSnap = await payoutRef.get();
+    if (!payoutSnap.exists) {
+        throw new functions.https.HttpsError('not-found', 'Payout request not found.');
+    }
+    const payoutData = payoutSnap.data();
+    const vendorId = payoutData === null || payoutData === void 0 ? void 0 : payoutData.vendorId;
+    const amount = Number(payoutData === null || payoutData === void 0 ? void 0 : payoutData.amount) || 0;
+    if ((payoutData === null || payoutData === void 0 ? void 0 : payoutData.status) !== 'PENDING') {
+        throw new functions.https.HttpsError('failed-precondition', `This payout request is already ${payoutData === null || payoutData === void 0 ? void 0 : payoutData.status}.`);
+    }
+    if (action === 'APPROVE') {
+        await payoutRef.update({
+            status: 'APPROVED',
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+            processedBy: callerUid
+        });
+        // Record in global ledger
+        await db.collection('system_ledger').doc(`PAYOUT-${payoutId}`).set({
+            reference: `PAYOUT-${payoutId}`,
+            userId: vendorId,
+            amount: amount,
+            currency: 'NGN',
+            gateway: 'PAYSTACK_TRANSFER',
+            type: 'VENDOR_PAYOUT',
+            status: 'COMPLETED',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return { success: true, message: `Payout request of ₦${amount} approved successfully.` };
+    }
+    else {
+        // Return funds back to store balance
+        const storeRef = db.collection('marketplace_stores').doc(vendorId);
+        await storeRef.update({
+            vendorBalance: admin.firestore.FieldValue.increment(amount),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        await payoutRef.update({
+            status: 'REJECTED',
+            rejectionReason: rejectionReason || 'Information mismatch',
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+            processedBy: callerUid
+        });
+        return { success: true, message: `Payout rejected and ₦${amount} returned to vendor balance.` };
+    }
+});
+/**
  * Cloud Function triggered when a document in the root 'riders' collection is changed.
- * Updates the root 'users' collection document's role and permissions to keep them synchronized.
  */
 exports.onRiderDocumentChanged = functions.firestore
     .document('riders/{riderId}')
     .onWrite(async (change, context) => {
     const riderId = context.params.riderId;
     const afterData = change.after.data();
-    console.log(`[Rider Sync Trigger] Change detected for rider: ${riderId}`);
     try {
-        if (!change.after.exists) {
+        if (!change.after.exists)
             return null;
-        }
         const userRef = db.collection('users').doc(riderId);
         const updateData = {
             role: 'rider',
@@ -400,7 +518,6 @@ exports.onRiderDocumentChanged = functions.firestore
 });
 /**
  * Cloud Function triggered when a document is created in the root 'notifications' collection.
- * Fans out the notification to every active user's 'users/{uid}/notifications/' subcollection.
  */
 exports.onNotificationCreated = functions.firestore
     .document('notifications/{notificationId}')
