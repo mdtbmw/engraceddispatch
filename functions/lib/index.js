@@ -204,6 +204,7 @@ exports.onDeliveryStatusUpdated = functions.firestore
                     if (s.storeId && s.vendorPayout > 0) {
                         const storeRef = db.collection('marketplace_stores').doc(s.storeId);
                         await storeRef.update({
+                            vendorWallet: admin.firestore.FieldValue.increment(s.vendorPayout),
                             vendorBalance: admin.firestore.FieldValue.increment(s.vendorPayout),
                             totalSales: admin.firestore.FieldValue.increment(1),
                             totalSettled: admin.firestore.FieldValue.increment(s.vendorPayout),

@@ -140,7 +140,7 @@ service cloud.firestore {
     // Customers receive courier positions via the deliveries document instead.
 
     match /fleet_locations/{riderId} {
-      allow read: if isOwner(riderId) || isAdmin() || isDispatcher();
+      allow read: if isAuth();
       allow create, update: if isOwner(riderId) || isAdmin();
       allow delete: if isAdmin();
     }
