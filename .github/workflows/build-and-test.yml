@@ -47,7 +47,7 @@ jobs:
           path: mobile/app/build/outputs/apk/release/app-release.apk
 
   web-admin-build:
-    name: Next.js Web Admin & Tracking Portal
+    name: Web Admin & Tracking Portal (Vite SPA)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -65,11 +65,11 @@ jobs:
       - name: TypeScript Typecheck
         run: npx tsc --noEmit
 
-      - name: Next.js Production Build
+      - name: Production Build
         run: npm run build
 
   cloud-functions-build:
-    name: Firebase Cloud Functions TypeScript
+    name: Firebase Cloud Functions (TypeScript)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -78,7 +78,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Install Functions Dependencies
         working-directory: functions

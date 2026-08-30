@@ -28,6 +28,12 @@ mobile/.gradle/
 # Firebase service account (private key - never commit)
 functions/service-account.json
 
+# Scratch & temporary logs
+*.log
+part*.txt
+509
+mobile/backend/
+
 # Reference design folders
 HeyTek/
 HeyTek.zip

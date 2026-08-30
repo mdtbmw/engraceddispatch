@@ -11,8 +11,16 @@
 .idea/
 local.properties
 
+# Scratch files & temporary logs
+*.log
+*.txt
+search_results*.json
+*.py
+backend/
+
 # Keystore
 debug.keystore
 
 # OS
 .DS_Store
+Thumbs.db
