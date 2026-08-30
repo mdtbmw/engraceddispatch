@@ -111,6 +111,13 @@ open class WalletViewModel : AuthViewModel() {
                             "isTopUp" to true, "timestamp" to System.currentTimeMillis()
                         )
                         db.collection("users").document(userId).collection("transactions").document(txRef).set(txMap)
+                        com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
+                            userId = userId,
+                            amount = amount,
+                            title = "Admin Credit",
+                            isTopUp = true,
+                            reference = txRef
+                        ) { _ -> }
                         logAdminActivity("Wallet Credit", "Credited $amount to $userName ($userId)")
                         onResult(true, "Wallet credited successfully")
                     }.addOnFailureListener { e ->

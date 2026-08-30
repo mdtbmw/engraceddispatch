@@ -951,7 +951,7 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     /** Upload a proof-of-delivery (photo/signature) to Storage, stamp the delivery doc, then pay the rider. */
-    fun uploadPodAndCompleteParcel(parcelId: String, podBytes: ByteArray, podType: String) {
+    fun uploadPodAndCompleteParcel(parcelId: String, podBytes: ByteArray, podType: String, onComplete: ((Boolean) -> Unit)? = null) {
         try {
             val ref = com.google.firebase.storage.FirebaseStorage.getInstance()
                 .reference.child("pod/$parcelId/$podType-${System.currentTimeMillis()}.jpg")
@@ -970,17 +970,21 @@ class DeliveryViewModel : WalletViewModel() {
                                 android.util.Log.e("POD", "Failed to stamp podUrl on delivery: ${e.message}")
                             }
                         markParcelDelivered(parcelId)
+                        onComplete?.invoke(true)
                     }.addOnFailureListener {
                         markParcelDelivered(parcelId)
+                        onComplete?.invoke(true)
                     }
                 }
                 .addOnFailureListener { e ->
                     android.util.Log.e("DeliveryViewModel", "POD upload failed: ${e.message}")
                     markParcelDelivered(parcelId)
+                    onComplete?.invoke(false)
                 }
         } catch (e: Exception) {
             android.util.Log.e("POD", "POD upload error: ${e.message}")
             markParcelDelivered(parcelId)
+            onComplete?.invoke(false)
         }
     }
 
@@ -5531,6 +5535,10 @@ class DeliveryViewModel : WalletViewModel() {
                                 }
                                 txn.update(userRef, "walletBalance", com.google.firebase.firestore.FieldValue.increment(-effectiveGrandTotal))
                             }
+                            if (redeemPoints && pointsDiscount > 0 && userId != "guest_user") {
+                                val userRef = firestore.collection("users").document(userId)
+                                txn.update(userRef, "loyaltyPoints", com.google.firebase.firestore.FieldValue.increment(-_loyaltyPoints.value.toLong().coerceAtLeast(0L)))
+                            }
                             for (split in splits) {
                                 if (split.storeId.isBlank() || split.vendorPayout <= 0) continue
                                 val storeRef = firestore.collection("marketplace_stores").document(split.storeId)
@@ -5547,6 +5555,7 @@ class DeliveryViewModel : WalletViewModel() {
                                     )
                                 }
                             }
+                            val primaryVendorId = splits.firstOrNull()?.storeId?.ifBlank { currentCart.firstOrNull()?.item?.vendorId } ?: ""
                             txn.set(
                                 firestore.collection("marketplace_orders").document(orderRef),
                                 mapOf<String, Any>(
@@ -5557,6 +5566,8 @@ class DeliveryViewModel : WalletViewModel() {
                                     "shippingAddress" to address,
                                     "paymentMethod" to paymentMethod,
                                     "status" to "PAID",
+                                    "vendorId" to primaryVendorId,
+                                    "storeId" to primaryVendorId,
                                     "subtotal" to effectiveSubtotal,
                                     "deliveryFee" to deliveryFee,
                                     "pointsDiscount" to pointsDiscount,

@@ -2,6 +2,7 @@ package com.esdispatch.ui.screens
 
 import android.graphics.Bitmap
 import android.util.Log
+import android.widget.Toast
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -64,6 +65,8 @@ fun ProofOfDeliveryScreen(
         },
         containerColor = Color(0xFF121212)
     ) { padding ->
+        var isUploading by remember { mutableStateOf(false) }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -84,14 +87,16 @@ fun ProofOfDeliveryScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 Button(
-                    onClick = { isSignatureMode = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (!isSignatureMode) Gold else Color.DarkGray)
+                    onClick = { if (!isUploading) isSignatureMode = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (!isSignatureMode) Gold else Color.DarkGray),
+                    enabled = !isUploading
                 ) {
                     Text("Take Photo", color = if (!isSignatureMode) Obsidian else Color.White)
                 }
                 Button(
-                    onClick = { isSignatureMode = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isSignatureMode) Gold else Color.DarkGray)
+                    onClick = { if (!isUploading) isSignatureMode = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isSignatureMode) Gold else Color.DarkGray),
+                    enabled = !isUploading
                 ) {
                     Text("Get Signature", color = if (isSignatureMode) Obsidian else Color.White)
                 }
@@ -99,10 +104,15 @@ fun ProofOfDeliveryScreen(
 
             if (isSignatureMode) {
                 SignaturePadView { bitmap ->
+                    if (isUploading) return@SignaturePadView
+                    isUploading = true
                     val stream = java.io.ByteArrayOutputStream()
                     bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, stream)
-                    viewModel.uploadPodAndCompleteParcel(parcelId, stream.toByteArray(), "SIGNATURE")
-                    navController.popBackStack()
+                    viewModel.uploadPodAndCompleteParcel(parcelId, stream.toByteArray(), "SIGNATURE") { success ->
+                        isUploading = false
+                        Toast.makeText(context, if (success) "Signature uploaded & delivery completed!" else "Delivery updated.", Toast.LENGTH_SHORT).show()
+                        navController.popBackStack()
+                    }
                 }
             } else {
                 Box(
@@ -125,7 +135,9 @@ fun ProofOfDeliveryScreen(
                 
                 Button(
                     onClick = {
+                        if (isUploading) return@Button
                         val executor = ContextCompat.getMainExecutor(context)
+                        isUploading = true
                         cameraController.takePicture(
                             executor,
                             object : ImageCapture.OnImageCapturedCallback() {
@@ -146,23 +158,37 @@ fun ProofOfDeliveryScreen(
                                     if (rotated != null) {
                                         val stream = java.io.ByteArrayOutputStream()
                                         rotated.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, stream)
-                                        viewModel.uploadPodAndCompleteParcel(parcelId, stream.toByteArray(), "PHOTO")
+                                        viewModel.uploadPodAndCompleteParcel(parcelId, stream.toByteArray(), "PHOTO") { success ->
+                                            isUploading = false
+                                            Toast.makeText(context, if (success) "POD photo uploaded & delivery completed!" else "Delivery updated.", Toast.LENGTH_SHORT).show()
+                                            navController.popBackStack()
+                                        }
                                     } else {
                                         viewModel.markParcelDelivered(parcelId)
+                                        isUploading = false
+                                        navController.popBackStack()
                                     }
-                                    navController.popBackStack()
                                 }
                                 override fun onError(exception: ImageCaptureException) {
                                     Log.e("POD", "Photo capture failed: ${exception.message}")
+                                    isUploading = false
+                                    Toast.makeText(context, "Photo capture failed: ${exception.message}", Toast.LENGTH_LONG).show()
                                 }
                             }
                         )
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Gold),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    enabled = !isUploading
                 ) {
-                    Text("Capture & Complete", color = Obsidian, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    if (isUploading) {
+                        CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Uploading Proof...", color = Obsidian, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("Capture & Complete", color = Obsidian, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
