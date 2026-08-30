@@ -3,15 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
-    "start": "next start -p 3000",
-    "deploy": "next build && next start -p 3000"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "vite",
+    "next:dev": "next dev -p 3000",
+    "next:build": "next build"
   },
   "dependencies": {
     "@firebase/app": "^0.15.1",
     "@firebase/auth": "^1.13.3",
     "@firebase/firestore": "^4.16.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "firebase": "^10.14.1",
     "firebase-admin": "^14.2.0",
     "framer-motion": "^12.43.0",
@@ -25,7 +28,9 @@
     "react-dom": "^18.2.0",
     "react-fast-marquee": "^1.6.5",
     "react-icons": "^5.7.0",
-    "react-intersection-observer": "^10.1.0"
+    "react-intersection-observer": "^10.1.0",
+    "react-router-dom": "^7.18.3",
+    "vite": "^8.2.2"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

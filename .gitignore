@@ -17,6 +17,7 @@ Thumbs.db
 .idea/
 
 # Build outputs
+dist/
 /build
 mobile/app/build/
 mobile/.gradle/

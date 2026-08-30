@@ -122,7 +122,7 @@ fun SplashScreen(
         animateIn = true
         delay(2200) // Beautiful brand viewing delay
         animateOut = true
-        delay(550) // Wait for animate out to finish
+        delay(950) // Wait for the full 900ms zoom-out to finish before navigating
         
         val prefs = context.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
         val hasLocalUser = !prefs.getString("local_uid", "").isNullOrEmpty() && !prefs.getString("local_email", "").isNullOrEmpty()

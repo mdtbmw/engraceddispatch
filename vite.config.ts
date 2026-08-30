@@ -1,22 +1,38 @@
-import tailwindcss from '@tailwindcss/vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
-import {defineConfig} from 'vite';
+﻿import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
 
-export default defineConfig(() => {
+function jsonDefaultPlugin() {
   return {
-    plugins: [react(), tailwindcss()],
-    resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
-      },
-    },
-    server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    name: "json-default-plugin",
+    transform(code: string, id: string) {
+      if (id.endsWith(".json")) {
+        return {
+          code: `export default ${code};`,
+          map: null,
+        };
+      }
     },
   };
+}
+
+export default defineConfig({
+  plugins: [
+    jsonDefaultPlugin(),
+    react({
+      include: "**/*.{jsx,tsx,js,ts}",
+    }),
+  ],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      "~": path.resolve(__dirname, "./src"),
+    },
+  },
+  server: {
+    port: 3000,
+  },
+  build: {
+    outDir: "dist",
+  },
 });
