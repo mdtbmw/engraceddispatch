@@ -1,4 +1,4 @@
-﻿package com.esdispatch.ui.screens
+package com.esdispatch.ui.screens
 
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
@@ -951,6 +951,11 @@ fun BookingSelectionScreen(
             else -> priceExpressSameDay
         }
     }
+    val animatedFare by animateFloatAsState(
+        targetValue = calculatedAmt.toFloat(),
+        animationSpec = SpringPhysics.TouchPress,
+        label = "fareTicker"
+    )
 
     var showCheckoutSheet by remember { mutableStateOf(false) }
     var showPaystackSheet by remember { mutableStateOf(false) }
@@ -1431,7 +1436,7 @@ fun BookingSelectionScreen(
                 Column {
                     Text("Total Amount", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Bold)
                     Text(
-                        text = "â‚¦${String.format("%,.2f", calculatedAmt)}",
+                        text = "₦${String.format("%,.2f", animatedFare)}",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Black,
                         color = accentTextColor
@@ -1455,7 +1460,8 @@ fun BookingSelectionScreen(
                     },
                     modifier = Modifier
                         .width(160.dp)
-                        .height(56.dp),
+                        .height(56.dp)
+                        .tactilePress(scaleDown = 0.94f),
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Obsidian),
                     border = BorderStroke(1.2.dp, Gold)

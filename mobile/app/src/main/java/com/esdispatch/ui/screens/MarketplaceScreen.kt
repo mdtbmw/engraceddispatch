@@ -1,6 +1,8 @@
 package com.esdispatch.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -95,7 +97,15 @@ fun MarketplaceScreen(
                 onBack = { onNavigate("Dashboard") },
                 rightContent = {
                     Box(modifier = Modifier.padding(end = 8.dp)) {
-                        IconButton(onClick = { showCheckoutSheet = true }) {
+                        val badgeScale by animateFloatAsState(
+                            targetValue = if (cartCount > 0) 1.0f else 0.0f,
+                            animationSpec = SpringPhysics.TouchPress,
+                            label = "cartBadgeScale"
+                        )
+                        IconButton(
+                            onClick = { showCheckoutSheet = true },
+                            modifier = Modifier.tactilePress(scaleDown = 0.90f) { showCheckoutSheet = true }
+                        ) {
                             Icon(
                                 Icons.Filled.ShoppingCart,
                                 contentDescription = "Cart",
@@ -106,7 +116,13 @@ fun MarketplaceScreen(
                             Badge(
                                 containerColor = Color(0xFFEF4444),
                                 contentColor = Color.White,
-                                modifier = Modifier.align(Alignment.TopEnd).offset(x = (-4).dp)
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = (-4).dp)
+                                    .graphicsLayer {
+                                        scaleX = badgeScale
+                                        scaleY = badgeScale
+                                    }
                             ) {
                                 Text("$cartCount", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
@@ -798,7 +814,7 @@ private fun MarketplaceProductCard(
         border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onTap)
+            .tactilePress(scaleDown = 0.97f) { onTap() }
     ) {
         Row(
             modifier = Modifier
@@ -840,16 +856,16 @@ private fun MarketplaceProductCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     item.title,
-                    color = AppTextColor, fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold, maxLines = 1
+                    color = if (isDark) Color.White else Obsidian,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    maxLines = 1
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(item.vendorStore, color = Gold, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    item.description,
-                    color = TextGray, fontSize = 10.sp,
-                    maxLines = 2, lineHeight = 13.sp
+                    item.vendorStore,
+                    color = Gold,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -884,6 +900,7 @@ private fun MarketplaceProductCard(
                                 if (item.stock > 0) Gold else Gold.copy(alpha = 0.3f),
                                 RoundedCornerShape(10.dp)
                             )
+                            .tactilePress(scaleDown = 0.88f) { if (item.stock > 0) onAddToCart() }
                     ) {
                         Icon(
                             Icons.Filled.AddShoppingCart, null,

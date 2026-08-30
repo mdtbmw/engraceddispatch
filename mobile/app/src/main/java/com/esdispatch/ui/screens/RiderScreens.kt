@@ -281,7 +281,8 @@ fun RiderDashboardScreen(
                                         modifier = Modifier
                                             .size(40.dp)
                                             .clip(CircleShape)
-                                            .background(if (isOnlineState) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color.Gray.copy(alpha = 0.15f)),
+                                            .background(if (isOnlineState) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color.Gray.copy(alpha = 0.15f))
+                                            .breathingPulse(active = isOnlineState, minScale = 0.95f, maxScale = 1.08f, durationMs = 1500),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
@@ -1085,7 +1086,9 @@ fun RiderParcelCard(
                         ),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                        modifier = Modifier.height(36.dp)
+                        modifier = Modifier
+                            .height(36.dp)
+                            .tactilePress(scaleDown = 0.94f) { onUpdateStatus() }
                     ) {
                         Text(
                             text = when (parcel.status) {
