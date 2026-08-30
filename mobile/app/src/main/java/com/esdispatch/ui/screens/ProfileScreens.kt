@@ -101,8 +101,7 @@ fun ProfileScreen(
     var showAboutProfileSheet by remember { mutableStateOf(false) }
     var showAvatarSheet by remember { mutableStateOf(false) }
     var showVerificationSheet by remember { mutableStateOf(false) }
-    var showRiderOnboardDialog by remember { mutableStateOf(false) }
-    var bikeInput by remember { mutableStateOf("") }
+    var showRiderInquirySheet by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -577,9 +576,9 @@ fun ProfileScreen(
                     } else {
                         ProfileMenuRow(
                             icon = Icons.Filled.DirectionsBike,
-                            title = "Become a Dispatch Rider",
-                            subtitle = "Register your motorbike & start earning on deliveries",
-                            onClick = { showRiderOnboardDialog = true }
+                            title = "Dispatch Careers & Fleet Inquiries",
+                            subtitle = "Learn about joining our professional corporate rider fleet",
+                            onClick = { showRiderInquirySheet = true }
                         )
                     }
 
@@ -629,65 +628,68 @@ fun ProfileScreen(
     }
 
     // --- Profile Modal Sheets ---
-    if (showRiderOnboardDialog) {
-        AlertDialog(
-            onDismissRequest = { showRiderOnboardDialog = false },
-            title = {
-                Text(
-                    "Register as Dispatch Rider",
-                    fontWeight = FontWeight.Bold,
-                    color = if (isDark) Color.White else Obsidian
-                )
-            },
-            text = {
-                Column {
-                    Text(
-                        "Become part of the premium logistics team. Earn up to 80% split on every delivery gig you complete.",
-                        fontSize = 13.sp,
-                        color = TextGray
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = bikeInput,
-                        onValueChange = { bikeInput = it },
-                        label = { Text("Enter Motorbike License Number") },
-                        placeholder = { Text("e.g. ESD-RIDER-992") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Gold,
-                            focusedLabelColor = Gold,
-                            unfocusedBorderColor = if (isDark) BorderDark else BorderLight
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+    if (showRiderInquirySheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showRiderInquirySheet = false },
+            containerColor = if (isDark) Charcoal else GoldenWhite,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(24.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(Gold.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.DirectionsBike, null, tint = Gold, modifier = Modifier.size(32.dp))
                 }
-            },
-            confirmButton = {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "Corporate Dispatch Fleet",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = AppTextColor
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "All ESDispatch couriers are full-time corporate staff managed through our central dispatch operations center. We provide verified company motorbikes, comprehensive insurance, protective gear, and structured monthly compensation.",
+                    fontSize = 13.sp,
+                    color = AppTextColor.copy(alpha = 0.7f),
+                    lineHeight = 19.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = if (isDark) Obsidian else Slate.copy(alpha = 0.3f)),
+                    border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Fleet Recruitment Hotline", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Gold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("+234 800 ESDISPATCH (373-472)", fontSize = 14.sp, fontWeight = FontWeight.Black, color = AppTextColor)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("Email: careers@esdispatch.com", fontSize = 12.sp, color = TextGray)
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
                 Button(
-                    onClick = {
-                        if (bikeInput.trim().isBlank()) {
-                            Toast.makeText(context, "Please enter your motorbike license number", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        viewModel.setBikeNumber(bikeInput)
-                        viewModel.setUserRole("rider")
-                        showRiderOnboardDialog = false
-                        Toast.makeText(context, "Welcome to the ESDispatch Rider team!", Toast.LENGTH_LONG).show()
-                        viewModel.setActiveViewMode("rider")
-                        onNavigate("Dashboard")
-                    },
+                    onClick = { showRiderInquirySheet = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
                 ) {
-                    Text("ACTIVATE ACCOUNT", fontWeight = FontWeight.Black)
+                    Text("Close", fontWeight = FontWeight.Bold)
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRiderOnboardDialog = false }) {
-                    Text("CANCEL", color = TextGray)
-                }
-            },
-            containerColor = if (isDark) BackgroundDark else Color.White
-        )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
     }
 
     if (showEditSheet) {

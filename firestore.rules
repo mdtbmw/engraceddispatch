@@ -39,10 +39,11 @@ service cloud.firestore {
       return isAuth() && request.auth.uid == userId;
     }
 
-    // Prevent non-admin from setting admin/super_admin role
-    function notElevatingToAdmin() {
+    // Prevent non-admin from changing their assigned role or elevating themselves
+    function notElevatingRole() {
       return !request.resource.data.keys().hasAny(['role'])
-        || request.resource.data.role in ['customer', 'rider', 'dispatcher', 'vendor'];
+        || (resource == null && request.resource.data.role == 'customer')
+        || (resource != null && request.resource.data.role == resource.data.role);
     }
 
     // Read size limit: deny reads of documents over 256 KiB
@@ -88,12 +89,12 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin() || isDispatcher();
-      // Owner self-signup OR admin/dispatcher creating accounts for others
-      allow create: if (isOwner(userId) && notElevatingToAdmin() && isReasonableWrite())
+      // Owner self-signup (default role customer) OR admin/dispatcher creating accounts for others
+      allow create: if (isOwner(userId) && notElevatingRole() && isReasonableWrite())
         || isAdmin()
         || isDispatcher();
-      // Update: owner (cannot self-elevate), admin (can promote), dispatcher (non-role fields only), or customer updating driver rating summary
-      allow update: if (isOwner(userId) && notElevatingToAdmin())
+      // Update: owner (cannot change role), admin (can promote), dispatcher (non-role fields only), or customer updating driver rating summary
+      allow update: if (isOwner(userId) && notElevatingRole())
         || isAdmin()
         || (isDispatcher() && !request.resource.data.keys().hasAny(['role', 'isOnline', 'walletBalance', 'loyaltyPoints']))
         || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingCount']));

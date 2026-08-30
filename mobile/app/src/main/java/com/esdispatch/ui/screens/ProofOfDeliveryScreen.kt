@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
-import com.esdispatch.ui.theme.Gold
+import com.esdispatch.ui.theme.*
 import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.viewmodel.DeliveryViewModel
 

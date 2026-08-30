@@ -325,9 +325,11 @@ fun BookingFormScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .imePadding()
+                        .navigationBarsPadding()
                         .verticalScroll(scrollState)
                         .padding(horizontal = 0.dp, vertical = 24.dp)
-                        .padding(bottom = 120.dp)
+                        .padding(bottom = 140.dp)
                 ) {
                     // --- Book Again suggestions using delivery history ---
                     val userParcels by viewModel.parcels.collectAsState()

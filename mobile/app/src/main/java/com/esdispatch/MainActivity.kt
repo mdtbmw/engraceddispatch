@@ -505,7 +505,7 @@ class MainActivity : FragmentActivity() {
 
                 }
 
-                if (!isFirebaseConfigured || maintenanceMode) {
+                if (maintenanceMode) {
                     ConfigurationErrorScreen(isDark = darkModeEnabled)
                     return@Box
                 }

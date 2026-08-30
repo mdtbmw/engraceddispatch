@@ -422,11 +422,15 @@ fun ActiveTrackingScreen(
     }
     var isGoingUp by remember { mutableStateOf(true) }
 
+    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+    val dynamicExpandedHeight = (screenHeight * 0.70f).coerceIn(320.dp, 560.dp)
+    val dynamicCollapsedHeight = (screenHeight * 0.42f).coerceIn(220.dp, 360.dp)
+
     val bottomCardHeight by animateDpAsState(
         targetValue = when (drawerState) {
             DrawerState.CLOSED -> if (hasNoBooking) 40.dp else 120.dp
-            DrawerState.COLLAPSED -> if (hasNoBooking) 140.dp else 360.dp
-            DrawerState.EXPANDED -> if (hasNoBooking) 140.dp else 560.dp
+            DrawerState.COLLAPSED -> if (hasNoBooking) 140.dp else dynamicCollapsedHeight
+            DrawerState.EXPANDED -> if (hasNoBooking) 140.dp else dynamicExpandedHeight
         },
         label = "bottomCardHeight"
     )

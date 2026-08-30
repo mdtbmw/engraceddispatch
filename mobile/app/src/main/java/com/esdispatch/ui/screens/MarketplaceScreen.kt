@@ -38,7 +38,7 @@ import com.esdispatch.viewmodel.DeliveryViewModel
 import com.esdispatch.viewmodel.MarketplaceItem
 import com.esdispatch.viewmodel.MarketplaceStore
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun MarketplaceScreen(
     viewModel: DeliveryViewModel,
@@ -116,118 +116,139 @@ fun MarketplaceScreen(
             )
 
             RoundedSheet(modifier = Modifier.weight(1f)) {
-
-                // Vendor Portal Banner
-                Card(
-                    onClick = { onNavigate("VendorPortal") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Gold.copy(alpha = 0.12f)),
-                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f)),
-                    elevation = CardDefaults.cardElevation(0.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Storefront, null, tint = Gold, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text("Vendor Control Hub", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                Text("Manage store, products & payouts", fontSize = 10.sp, color = AppTextColor.copy(alpha = 0.6f))
-                            }
-                        }
-                        Icon(Icons.Filled.ChevronRight, null, tint = Gold)
-                    }
+                val verifiedStores = remember(marketplaceStores, stores) {
+                    (marketplaceStores + stores).filter { it.isVerified }.distinctBy { it.id }
                 }
 
-                // Featured Verified Vendors Carousel
-                val featuredVerified = stores.filter { it.isVerified }.distinctBy { it.id }
-                if (featuredVerified.isNotEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 14.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 160.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // ── 1. Hero & Verified Stores (Scrolls Away Naturally) ──
+                    item(key = "vendor_hub_banner") {
+                        Card(
+                            onClick = { onNavigate("VendorPortal") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 4.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Gold.copy(alpha = 0.12f)),
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f)),
+                            elevation = CardDefaults.cardElevation(0.dp)
                         ) {
-                            Text(
-                                text = "Featured Verified Vendors",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = AppTextColor
-                            )
-                            Text(
-                                text = "${featuredVerified.size} Stores",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Gold
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.Storefront, null, tint = Gold, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text("Vendor Control Hub", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                                        Text("Manage store, products & payouts", fontSize = 10.sp, color = AppTextColor.copy(alpha = 0.6f))
+                                    }
+                                }
+                                Icon(Icons.Filled.ChevronRight, null, tint = Gold)
+                            }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(featuredVerified) { store ->
-                                Card(
-                                    onClick = { onNavigate("VendorStorefront/${store.id}") },
-                                    modifier = Modifier.width(180.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isDark) Charcoal else GoldenWhite
-                                    ),
-                                    border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
+                    }
+
+                    if (verifiedStores.isNotEmpty()) {
+                        item(key = "verified_stores_section") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .clip(CircleShape)
-                                                .background(AppSurface)
-                                                .border(1.dp, Gold, CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (store.logoUrl.isNotBlank()) {
-                                                Image(
-                                                    painter = rememberAsyncImagePainter(store.logoUrl),
-                                                    contentDescription = "Logo",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            } else {
-                                                Icon(Icons.Filled.Storefront, null, tint = Gold, modifier = Modifier.size(18.dp))
+                                    Text(
+                                        text = "Featured Verified Stores",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = AppTextColor
+                                    )
+                                    Text(
+                                        text = "${verifiedStores.size} Stores",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Gold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    items(verifiedStores, key = { it.id }) { store ->
+                                        VendorStoreCard(
+                                            store = store,
+                                            isDark = isDark,
+                                            onTap = { onNavigate("VendorStorefront/${store.id}") }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── 2. Sticky Search Bar & Category Filter Header ──
+                    stickyHeader(key = "sticky_filter_bar") {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = if (isDark) Charcoal else GoldenWhiteLight,
+                            shadowElevation = 2.dp
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text("Search catalog…", color = TextGray, fontSize = 13.sp) },
+                                    leadingIcon = { Icon(Icons.Filled.Search, null, tint = TextGray, modifier = Modifier.size(18.dp)) },
+                                    trailingIcon = {
+                                        if (searchQuery.isNotEmpty()) {
+                                            IconButton(onClick = { searchQuery = "" }) {
+                                                Icon(Icons.Filled.Clear, null, tint = TextGray, modifier = Modifier.size(18.dp))
                                             }
                                         }
+                                    },
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Gold,
+                                        unfocusedBorderColor = if (isDark) BorderDark else Slate,
+                                        focusedContainerColor = if (isDark) Obsidian else GoldenWhite,
+                                        unfocusedContainerColor = if (isDark) Obsidian else GoldenWhite
+                                    ),
+                                    singleLine = true
+                                )
 
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
 
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = store.storeName,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = AppTextColor,
-                                                    maxLines = 1,
-                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                )
-                                                if (store.isVerified) {
-                                                    Spacer(modifier = Modifier.width(2.dp))
-                                                    Icon(Icons.Filled.Verified, null, tint = Color(0xFF10B981), modifier = Modifier.size(12.dp))
-                                                }
-                                            }
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(categories) { cat ->
+                                        val isSelected = cat == selectedCategory
+                                        Surface(
+                                            onClick = { selectedCategory = cat },
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (isSelected) Gold else if (isDark) Obsidian else GoldenWhite,
+                                            border = if (!isSelected) BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)) else null
+                                        ) {
                                             Text(
-                                                text = store.category,
-                                                fontSize = 9.sp,
-                                                color = TextGray
+                                                cat,
+                                                color = if (isSelected) Obsidian else AppTextColor,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 11.sp,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                             )
                                         }
                                     }
@@ -235,110 +256,51 @@ fun MarketplaceScreen(
                             }
                         }
                     }
-                }
 
-                // Search Bar
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    placeholder = { Text("Search catalog…", color = TextGray) },
-                    leadingIcon = { Icon(Icons.Filled.Search, null, tint = TextGray) },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Filled.Clear, null, tint = TextGray)
+                    // ── 3. Products List ──
+                    if (displayItems.isEmpty()) {
+                        item(key = "empty_state") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        Icons.Filled.Inventory2,
+                                        contentDescription = null,
+                                        tint = Gold.copy(alpha = 0.4f),
+                                        modifier = Modifier.size(56.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        "No products found",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AppTextColor
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "Try adjusting your search or category filter",
+                                        fontSize = 12.sp,
+                                        color = TextGray
+                                    )
+                                }
                             }
                         }
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = if (isDark) BorderDark else Slate,
-                        focusedContainerColor = if (isDark) Charcoal else GoldenWhite,
-                        unfocusedContainerColor = if (isDark) Charcoal else GoldenWhite
-                    ),
-                    singleLine = true
-                )
-
-                // Explore Stores — vendor storefront carousel
-                val verifiedStores = marketplaceStores.filter { it.isVerified }.distinctBy { it.id }
-                if (verifiedStores.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "EXPLORE STORES",
-                            fontSize = 12.sp, fontWeight = FontWeight.Black, color = Gold,
-                            letterSpacing = 1.sp
-                        )
-                        Text(
-                            "${verifiedStores.size} verified",
-                            fontSize = 10.sp, color = TextGray
-                        )
-                    }
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(verifiedStores, key = { it.id }) { store ->
-                            VendorStoreCard(
-                                store = store,
+                    } else {
+                        items(displayItems, key = { it.id }) { item ->
+                            MarketplaceProductCard(
+                                item = item,
                                 isDark = isDark,
-                                onTap = { onNavigate("VendorStorefront/${store.id}") }
+                                onTap = { showItemDetails = item },
+                                onAddToCart = {
+                                    viewModel.addToCart(item)
+                                    Toast.makeText(context, "${item.title} added to cart", Toast.LENGTH_SHORT).show()
+                                }
                             )
                         }
-                    }
-                }
-
-                // Category Chips
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(categories) { cat ->
-                        val isSelected = cat == selectedCategory
-                        Surface(
-                            onClick = { selectedCategory = cat },
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (isSelected) Gold else if (isDark) Charcoal else GoldenWhite,
-                            border = if (!isSelected) BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)) else null
-                        ) {
-                            Text(
-                                cat,
-                                color = if (isSelected) Obsidian else AppTextColor,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                            )
-                        }
-                    }
-                }
-
-                // Products grid — extra bottom padding so floating bar doesn't hide items
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentPadding = PaddingValues(bottom = 140.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(displayItems, key = { it.id }) { item ->
-                        MarketplaceProductCard(
-                            item = item,
-                            isDark = isDark,
-                            onTap = { showItemDetails = item },
-                            onAddToCart = {
-                                viewModel.addToCart(item)
-                                Toast.makeText(context, "${item.title} added to cart", Toast.LENGTH_SHORT).show()
-                            }
-                        )
                     }
                 }
             }

@@ -47,6 +47,7 @@ fun VendorPortalScreen(
 
     // Live Firestore states
     val userName by viewModel.userName.collectAsState()
+    val userRole by viewModel.userRole.collectAsState()
     val deliveryCount by viewModel.deliveryCount.collectAsState()
     val vendorStoreExists by viewModel.vendorStoreExists.collectAsState()
     val isVendorVerified by viewModel.isVendorVerified.collectAsState()
@@ -142,6 +143,7 @@ fun VendorPortalScreen(
                 if (!vendorStoreExists) {
                     VendorGateContent(
                         deliveryCount = deliveryCount,
+                        userRole = userRole,
                         isDark = isDark,
                         onRegister = { showRegisterSheet = true }
                     )
@@ -566,10 +568,12 @@ fun VendorPortalScreen(
 @Composable
 private fun VendorGateContent(
     deliveryCount: Int,
+    userRole: String,
     isDark: Boolean,
     onRegister: () -> Unit
 ) {
-    val meetsDeliveryReq = deliveryCount >= 10
+    val isPrivilegedVendor = userRole == "vendor" || userRole == "admin" || userRole == "super_admin"
+    val meetsDeliveryReq = deliveryCount >= 10 || isPrivilegedVendor
     var triggerConfetti by remember { mutableStateOf(false) }
 
     LaunchedEffect(meetsDeliveryReq) {
@@ -604,14 +608,16 @@ private fun VendorGateContent(
             }
             Spacer(modifier = Modifier.height(20.dp))
             Text(
-                text = if (meetsDeliveryReq) "🎉 Vendor Milestone Unlocked!" else "Become a Vendor",
+                text = if (isPrivilegedVendor) "Official Vendor Access" else if (meetsDeliveryReq) "🎉 Vendor Milestone Unlocked!" else "Become a Vendor",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Black,
                 color = AppTextColor
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = if (meetsDeliveryReq)
+                text = if (isPrivilegedVendor)
+                    "Your account has been provisioned with official vendor access. Open your store profile to begin listing products."
+                else if (meetsDeliveryReq)
                     "Congratulations! You completed 10 deliveries and earned your VIP Vendor Qualification Badge. Open your store now."
                 else
                     "List your products on the ESDispatch Marketplace and reach thousands of logistics professionals.",
@@ -637,9 +643,9 @@ private fun VendorGateContent(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Qualification Progress", fontSize = 13.sp, fontWeight = FontWeight.Black, color = AppTextColor)
+                        Text("Qualification Status", fontSize = 13.sp, fontWeight = FontWeight.Black, color = AppTextColor)
                         Text(
-                            "$deliveryCount / 10 Deliveries",
+                            if (isPrivilegedVendor) "Authorized Vendor" else "$deliveryCount / 10 Deliveries",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (meetsDeliveryReq) Gold else AppTextColor.copy(alpha = 0.7f)
@@ -647,7 +653,7 @@ private fun VendorGateContent(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     LinearProgressIndicator(
-                        progress = { (deliveryCount / 10f).coerceIn(0f, 1f) },
+                        progress = { if (isPrivilegedVendor) 1f else (deliveryCount / 10f).coerceIn(0f, 1f) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(8.dp)
@@ -657,9 +663,9 @@ private fun VendorGateContent(
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     RequirementRow(
-                        label = "Min. 10 completed deliveries",
+                        label = if (isPrivilegedVendor) "Account verified as official Vendor" else "Min. 10 completed deliveries",
                         met = meetsDeliveryReq,
-                        detail = if (meetsDeliveryReq) "Unlocked!" else "Need ${10 - deliveryCount} more deliveries"
+                        detail = if (isPrivilegedVendor) "Enterprise Partner" else if (meetsDeliveryReq) "Unlocked!" else "Need ${10 - deliveryCount} more deliveries"
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     RequirementRow(
