@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -101,7 +101,7 @@ export const PublicTrackingPage: React.FC = () => {
     const s = (statusStr || "").toUpperCase();
     if (s.includes("DELIVERED") || s.includes("COMPLETED")) return 4;
     if (s.includes("ARRIVED")) return 3;
-    if (s.includes("TRANSIT") || s.includes("OUT FOR DELIVERY") || s.includes("DISPATCHED")) return 2;
+    if (s.includes("TRANSIT") || s.includes("OUT FOR DELIVERY") || s.includes("OUT_FOR_DELIVERY") || s.includes("DISPATCHED") || s.includes("PICKED_UP") || s.includes("PICKED UP")) return 2;
     if (s.includes("ASSIGNED") || s.includes("ACCEPTED")) return 1;
     return 0;
   };

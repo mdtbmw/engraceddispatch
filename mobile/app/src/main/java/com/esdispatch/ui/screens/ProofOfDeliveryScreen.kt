@@ -35,8 +35,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.esdispatch.ui.theme.Gold
-import com.esdispatch.ui.theme.Obsidian
-import com.esdispatch.ui.theme.TextGray
+import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.viewmodel.DeliveryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,9 +57,9 @@ fun ProofOfDeliveryScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Proof of Delivery", color = Gold, fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Obsidian)
+            ScreenHeader(
+                title = "Proof of Delivery",
+                onBack = { navController.popBackStack() }
             )
         },
         containerColor = Color(0xFF121212)

@@ -299,8 +299,12 @@ export const verifyPaymentAndTopUp = functions.https.onCall(async (data, context
 
   const paystackSecret = process.env.PAYSTACK_SECRET_KEY || functions.config().paystack?.secret;
 
-  // If live secret key is configured, verify against Paystack API
-  if (paystackSecret && !reference.startsWith('TEST_MOCK_')) {
+  if (reference.startsWith('TEST_MOCK_')) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new functions.https.HttpsError('failed-precondition', 'Mock payments are strictly disallowed in production environment.');
+    }
+  } else if (paystackSecret) {
+    // If live secret key is configured, verify against Paystack API
     try {
       const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
         method: 'GET',
@@ -318,6 +322,8 @@ export const verifyPaymentAndTopUp = functions.https.onCall(async (data, context
       if (err instanceof functions.https.HttpsError) throw err;
       throw new functions.https.HttpsError('internal', 'Error contacting payment gateway.');
     }
+  } else {
+    throw new functions.https.HttpsError('failed-precondition', 'Payment gateway configuration is missing.');
   }
 
   const userRef = db.collection('users').doc(uid);

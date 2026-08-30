@@ -1,7 +1,10 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "next build",
-  "installCommand": "npm install",
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

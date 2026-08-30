@@ -1803,13 +1803,15 @@ class DeliveryViewModel : WalletViewModel() {
             _firebaseConnected.value = com.esdispatch.data.FirebaseManager.isFirebaseAvailable()
             _isSandboxEnvironment.value = !hasFirebaseInstance
 
-            // Listen to remote maintenance mode from Firestore config
+            // Listen to remote maintenance mode from Firestore system_config
             val firestoreDb = com.esdispatch.data.FirebaseManager.firestore
             if (firestoreDb != null) {
-                firestoreDb.collection("config").document("app_config")
+                firestoreDb.collection("system_config").document("global_settings")
                     .addSnapshotListener { snapshot, error ->
                         if (error == null && snapshot != null && snapshot.exists()) {
-                            _maintenanceMode.value = snapshot.getBoolean("maintenance_mode") ?: false
+                            _maintenanceMode.value = snapshot.getBoolean("maintenanceMode") 
+                                ?: snapshot.getBoolean("maintenance_mode") 
+                                ?: false
                         } else if (error != null) {
                             android.util.Log.e("DeliveryViewModel", "Error fetching maintenance mode config: ${error.message}")
                         }

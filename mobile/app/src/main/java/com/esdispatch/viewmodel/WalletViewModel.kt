@@ -31,7 +31,7 @@ open class WalletViewModel : AuthViewModel() {
             return
         }
 
-        if (amount <= 0 && amount >= 0) {
+        if (amount == 0.0) {
             onComplete?.invoke(false, "Invalid transaction amount.")
             return
         }
