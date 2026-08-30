@@ -366,7 +366,8 @@ fun BottomNav(
                 .size(60.dp)
                 .clip(CircleShape)
                 .background(GoldGradient)
-                .clickable { onNavigate("SendParcel") },
+                .breathingPulse(active = true, minScale = 0.97f, maxScale = 1.05f, durationMs = 2400)
+                .tactilePress(scaleDown = 0.90f) { onNavigate("SendParcel") },
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -390,12 +391,19 @@ fun BottomNavItem(
     val selectedColor = Gold
     val unselectedColor = GoldenWhiteLight.copy(alpha = 0.75f)
 
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isSelected) 1.05f else 1.0f,
+        animationSpec = SpringPhysics.TouchPress,
+        label = "navItemScale"
+    )
+
     Column(
         modifier = modifier
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onClick() },
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .tactilePress(scaleDown = 0.88f) { onClick() },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

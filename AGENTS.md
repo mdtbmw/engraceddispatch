@@ -73,3 +73,43 @@ The production project spans an **Android app (`mobile/`)** and a **Next.js web 
 ### Full-stack data consistency
 - Vendor storefronts (`marketplace_stores`) and products (`marketplace_products` → `vendorId`) must stay schema-compatible between mobile and admin. When adding fields to store/product docs, update BOTH `DeliveryViewModel` (mobile listeners) and `AdminDashboard.tsx` (seed + create/upgrade handlers).
 
+---
+
+# ESDISPATCH INTERACTION PHYSICS & MOTION LANGUAGE
+
+This section defines the official motion engineering, tactile feedback, and interaction physics standards for ESDispatch across Android Jetpack Compose and Web.
+
+## 1. The 6-Stage Response Model
+Every interactive element must follow this physical causality loop:
+$$\text{REST} \longrightarrow \text{TOUCH CONTACT} \longrightarrow \text{PRESS ENGAGEMENT} \longrightarrow \text{ACTIVE} \longrightarrow \text{RELEASE} \longrightarrow \text{SETTLE / EQUILIBRIUM}$$
+
+- **Zero-Lag Tactile Feedback**: Down-press acknowledgment must render on frame 0 (< 16ms) via `Modifier.tactilePress()` or CSS active transforms.
+- **No Abrupt Snapping**: Elements never jump between states; they settle with spring physics.
+
+## 2. Standardized Spring Tokens
+
+| Token Name | Stiffness | Damping Ratio | Application Domain |
+| :--- | :--- | :--- | :--- |
+| **`TouchPress`** | `400f` | `0.70f` (Low Bouncy) | Quick action chips, primary buttons, bottom bar icons |
+| **`SoftElastic`** | `280f` | `0.75f` (Smooth Settle) | Shipment cards, bottom sheets, modal dialogs |
+| **`SnappyPill`** | `450f` | `0.85f` (No Overshoot) | Floating capsule dock traveling indicator, filter tabs |
+| **`RubberBand`** | `220f` | `0.60f` (Elastic Boundary) | List overscroll, geofence boundary resistance |
+| **`SignatureMoment`**| `180f` | `0.65f` (Resonant Pulse) | Dispatch broadcast send, 50m arrival alert, escrow settlement |
+
+## 3. Domain Interaction Specifications
+1. **Bottom Capsule Floating Dock**:
+   - The indicator capsule must travel continuously with momentum, stretching slightly along the movement axis and settling cleanly around the target icon.
+   - Inactive icons softly compress (`scale 0.88f`) and release upon touch.
+2. **Live GPS Telemetry & Courier Marker**:
+   - Continuous interpolation without coordinate jumping.
+   - Ambient breathing beacon pulse (`Modifier.breathingPulse(1800ms)`) signals active GPS telemetry.
+3. **Proof of Delivery (POD) & OTP**:
+   - Signature canvas renders vector curves with velocity-responsive stroke widths.
+   - Camera shutter contracts mechanically (`scale 1.0 -> 0.92 -> 1.0`).
+   - OTP boxes spring-advance on digit input with horizontal tension on error.
+4. **Booking Fare Live Ticker**:
+   - Fare cost counters animate smoothly with spring interpolation as package weight or distance sliders move.
+5. **Pure Web Audio Synthesizer**:
+   - Zero external `.mp3` dependencies; pure Web Audio API oscillators for dispatch sweeps, geofence pings, and escrow settlement arpeggios. Toggle developer lab via `Ctrl+Shift+E`.
+
+
