@@ -225,6 +225,22 @@ class DeliveryViewModel : WalletViewModel() {
                     (snap.get("tipSystemEnabled") as? Boolean)?.let { _tipSystemEnabled.value = it }
                     (snap.get("emailVerificationRequired") as? Boolean)?.let { _emailVerificationRequired.value = it }
                     (snap.get("phoneVerificationRequired") as? Boolean)?.let { _phoneVerificationRequired.value = it }
+                    (snap.get("maintenanceMode") as? Boolean)?.let { _maintenanceMode.value = it }
+                    
+                    ((snap.get("surgeMultiplier") as? Number)?.toDouble() ?: (snap.get("surgePriceMultiplier") as? Number)?.toDouble())?.let { 
+                        _surgeMultiplier.value = it 
+                    }
+                    (snap.get("baseFare") as? Number)?.toDouble()?.let { _baseFare.value = it }
+                    (snap.get("perKgRate") as? Number)?.toDouble()?.let { _perKgRate.value = it }
+                    (snap.get("expressSurcharge") as? Number)?.toDouble()?.let { _expressSurcharge.value = it }
+                    
+                    val dEnabled = snap.get("discountEnabled")
+                    if (dEnabled is Boolean) _adminDiscountEnabled.value = dEnabled
+                    else if (dEnabled is String) _adminDiscountEnabled.value = dEnabled.toBoolean()
+
+                    val dPercent = snap.get("discountPercent")
+                    if (dPercent is Number) _adminDiscountPercent.value = dPercent.toInt()
+                    else if (dPercent is String) _adminDiscountPercent.value = dPercent.toIntOrNull() ?: 0
                     
                     val rawSections = snap.get("dashboardSectionsEnabled") as? Map<*, *>
                     if (rawSections != null) {
@@ -3084,8 +3100,11 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    private var riderLocationJob: kotlinx.coroutines.Job? = null
+
     fun startRealTimeTrackingListener(parcelId: String) {
         trackingJob?.cancel()
+        riderLocationJob?.cancel()
         if (!_firebaseConnected.value) return
 
         trackingJob = viewModelScope.launch {
@@ -3099,7 +3118,8 @@ class DeliveryViewModel : WalletViewModel() {
 
                     val rId = updatedParcel.riderId
                     if (rId.isNotEmpty()) {
-                        launch {
+                        riderLocationJob?.cancel()
+                        riderLocationJob = launch {
                             com.esdispatch.data.FirebaseManager.listenToRiderLocation(rId).collect { coords ->
                                 if (coords != null) {
                                     val current = _selectedParcel.value

@@ -334,7 +334,7 @@ service cloud.firestore {
     }
 
     match /marketplace_orders/{docId} {
-      allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.vendorId == request.auth.uid);
+      allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.vendorId == request.auth.uid || resource.data.storeId == request.auth.uid);
       allow create: if isAuth() && isReasonableWrite() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
