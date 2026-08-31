@@ -10,6 +10,10 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddShoppingCart
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,52 +23,87 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.rememberAsyncImagePainter
 import com.esdispatch.ui.theme.*
+import com.esdispatch.viewmodel.MarketplaceItem
 import kotlinx.coroutines.launch
-
-data class CarouselSlide(
-    val title: String,
-    val desc: String,
-    val imageUrl: String
-)
+import java.text.NumberFormat
+import java.util.Locale
 
 @Composable
-fun HeroCarousel() {
+fun HeroCarousel(
+    products: List<MarketplaceItem> = emptyList(),
+    onAddToCart: (MarketplaceItem) -> Unit = {},
+    onProductClick: (MarketplaceItem) -> Unit = {}
+) {
+    val fallbackItems = remember {
+        listOf(
+            MarketplaceItem(
+                id = "feat_1",
+                title = "Heavy-Duty Courier Box 65L",
+                category = "Packaging",
+                price = 18500.0,
+                rating = 4.9,
+                reviewsCount = 42,
+                imageUrl = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=800&auto=format&fit=crop",
+                description = "Waterproof reinforced thermal delivery box for bikes and motorbikes.",
+                stock = 25,
+                vendorStore = "ESDispatch Official Gear"
+            ),
+            MarketplaceItem(
+                id = "feat_2",
+                title = "Reflective Rider Safety Vest",
+                category = "Safety",
+                price = 6500.0,
+                rating = 4.8,
+                reviewsCount = 56,
+                imageUrl = "https://images.unsplash.com/photo-1512418491527-6f55e1112fb1?q=80&w=800&auto=format&fit=crop",
+                description = "High-visibility dual-stripe weather-resistant reflective safety vest.",
+                stock = 40,
+                vendorStore = "Apex Courier Supplies"
+            ),
+            MarketplaceItem(
+                id = "feat_3",
+                title = "Thermal Insulated Food Bag",
+                category = "Packaging",
+                price = 12000.0,
+                rating = 5.0,
+                reviewsCount = 31,
+                imageUrl = "https://images.unsplash.com/photo-1516541196182-6bdd0514013b?q=80&w=800&auto=format&fit=crop",
+                description = "Triple-layer insulation keeps meals and packages at optimal temperature.",
+                stock = 18,
+                vendorStore = "Swift Logistics Gear"
+            )
+        )
+    }
+
+    val displayItems = remember(products) {
+        if (products.size >= 3) {
+            products.take(5)
+        } else if (products.isNotEmpty()) {
+            (products + fallbackItems).distinctBy { it.id }.take(3)
+        } else {
+            fallbackItems
+        }
+    }
+
     var currentHeroPage by remember { mutableStateOf(0) }
     var isHeroCarouselIdle by remember { mutableStateOf(true) }
-    
-    val carouselSlides = listOf(
-        CarouselSlide(
-            title = "Move Anything,\nAnywhere",
-            desc = "Premium, instant delivery at your doorstep.",
-            imageUrl = "https://images.unsplash.com/photo-1512418491527-6f55e1112fb1?q=80&w=800&auto=format&fit=crop"
-        ),
-        CarouselSlide(
-            title = "Supercharged\nExpress Network",
-            desc = "City-wide delivery in under 45 minutes.",
-            imageUrl = "https://images.unsplash.com/photo-1516541196182-6bdd0514013b?q=80&w=800&auto=format&fit=crop"
-        ),
-        CarouselSlide(
-            title = "Fully Protected\nIn-Transit Guarantee",
-            desc = "Live map tracking and automatic insurance.",
-            imageUrl = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=800&auto=format&fit=crop"
-        )
-    )
 
-    LaunchedEffect(isHeroCarouselIdle) {
+    LaunchedEffect(isHeroCarouselIdle, displayItems.size) {
         if (!isHeroCarouselIdle) return@LaunchedEffect
         while (true) {
-            kotlinx.coroutines.delay(4000)
+            kotlinx.coroutines.delay(4500)
             if (!isHeroCarouselIdle) break
-            currentHeroPage = (currentHeroPage + 1) % carouselSlides.size
+            currentHeroPage = (currentHeroPage + 1) % displayItems.size
         }
     }
 
@@ -76,17 +115,24 @@ fun HeroCarousel() {
     )
     val coroutineScope = rememberCoroutineScope()
 
+    val currencyFormatter = remember {
+        NumberFormat.getNumberInstance(Locale.US).apply {
+            maximumFractionDigits = 0
+            minimumFractionDigits = 0
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(260.dp)
-            .pointerInput(Unit) {
+            .pointerInput(displayItems.size) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
-                        if (dragOffset > 100f) {
-                            currentHeroPage = (currentHeroPage - 1 + carouselSlides.size) % carouselSlides.size
-                        } else if (dragOffset < -100f) {
-                            currentHeroPage = (currentHeroPage + 1) % carouselSlides.size
+                        if (dragOffset > 80f) {
+                            currentHeroPage = (currentHeroPage - 1 + displayItems.size) % displayItems.size
+                        } else if (dragOffset < -80f) {
+                            currentHeroPage = (currentHeroPage + 1) % displayItems.size
                         }
                         dragOffset = 0f
                         coroutineScope.launch {
@@ -109,12 +155,12 @@ fun HeroCarousel() {
             },
         contentAlignment = Alignment.TopCenter
     ) {
-        val sortedIndices = carouselSlides.indices.toList().sortedByDescending { idx ->
-            (idx - currentHeroPage + carouselSlides.size) % carouselSlides.size
+        val sortedIndices = displayItems.indices.toList().sortedByDescending { idx ->
+            (idx - currentHeroPage + displayItems.size) % displayItems.size
         }
 
         sortedIndices.forEach { index ->
-            val relativeIndex = (index - currentHeroPage + carouselSlides.size) % carouselSlides.size
+            val relativeIndex = (index - currentHeroPage + displayItems.size) % displayItems.size
             val scaleFactor = when (relativeIndex) {
                 0 -> 1.0f
                 1 -> 0.92f
@@ -144,7 +190,7 @@ fun HeroCarousel() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .height(210.dp)
+                    .height(215.dp)
                     .zIndex(zIndexVal)
                     .graphicsLayer {
                         scaleX = animatedScale
@@ -153,65 +199,182 @@ fun HeroCarousel() {
                         translationY = animatedYShift.toPx()
                         alpha = animatedAlpha
                     },
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(26.dp),
                 color = if (relativeIndex == 0) Obsidian else Gold,
                 border = BorderStroke(
-                    width = 1.dp,
-                    color = if (relativeIndex == 0) (if (isDarkTheme) BorderDark else Slate) else Gold.copy(alpha = 0.5f)
+                    width = 1.2.dp,
+                    color = if (relativeIndex == 0) BorderDark else Gold.copy(alpha = 0.5f)
                 ),
-                shadowElevation = if (relativeIndex == 0) 6.dp else 1.dp
+                shadowElevation = if (relativeIndex == 0) 8.dp else 2.dp
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (relativeIndex == 0) {
-                        val slide = carouselSlides[index]
+                        val product = displayItems[index]
                         Image(
-                            painter = rememberAsyncImagePainter(slide.imageUrl),
-                            contentDescription = slide.title,
+                            painter = rememberAsyncImagePainter(
+                                model = product.imageUrl.ifBlank { "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=800" }
+                            ),
+                            contentDescription = product.title,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp))
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(26.dp))
+                                .clickable { onProductClick(product) }
                         )
+
+                        // Rich dark luxury vignette
                         Box(
-                            modifier = Modifier.fillMaxSize().background(
-                                Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.2f), Color.Black.copy(alpha = 0.85f)))
-                            )
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color.Black.copy(alpha = 0.35f),
+                                            Color.Black.copy(alpha = 0.88f)
+                                        )
+                                    )
+                                )
                         )
+
                         Column(
-                            modifier = Modifier.fillMaxSize().padding(20.dp),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(18.dp),
                             verticalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Gold,
-                                modifier = Modifier.align(Alignment.Start)
+                            // Top Row: Featured store badge & Rating
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "ES",
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Obsidian,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Gold,
+                                    shadowElevation = 2.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Storefront,
+                                            contentDescription = null,
+                                            tint = Obsidian,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = product.vendorStore.take(22).uppercase(),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Obsidian,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color.Black.copy(alpha = 0.6f),
+                                    border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.4f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Star,
+                                            contentDescription = null,
+                                            tint = Gold,
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "${product.rating}",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
                             }
+
+                            // Bottom Section: Product Title, Price & Add To Cart Button
                             Column {
                                 Text(
-                                    text = slide.title,
-                                    fontSize = 18.sp,
-                                    lineHeight = 22.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color.White
+                                    text = product.title,
+                                    fontSize = 16.sp,
+                                    lineHeight = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = slide.desc,
+                                    text = product.description.ifBlank { "High-demand dispatch & logistics equipment." },
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontWeight = FontWeight.Normal,
                                     color = TextGray.copy(alpha = 0.9f),
-                                    modifier = Modifier.padding(top = 4.dp)
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "PRICE",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Gold,
+                                            letterSpacing = 0.8.sp
+                                        )
+                                        Text(
+                                            text = "₦${currencyFormatter.format(product.price)}",
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color.White
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = { onAddToCart(product) },
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Gold,
+                                            contentColor = Obsidian
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                        modifier = Modifier.height(38.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.AddShoppingCart,
+                                            contentDescription = null,
+                                            tint = Obsidian,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Add to Cart",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                    }
+                                }
                             }
                         }
                     } else {
                         Box(
-                            modifier = Modifier.fillMaxSize().background(Gold),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Gold),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -226,21 +389,23 @@ fun HeroCarousel() {
             }
         }
 
+        // Indicator dots
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(top = 230.dp)
                 .wrapContentWidth(Alignment.CenterHorizontally),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            for (i in 0 until 3) {
+            for (i in displayItems.indices.take(5)) {
                 val isSelected = i == currentHeroPage
                 val width = if (isSelected) 24.dp else 8.dp
                 Box(
                     modifier = Modifier
                         .size(width = width, height = 8.dp)
                         .background(
-                            color = if (isSelected) Gold else (if (isDarkTheme) Color(0xFF333333) else Color(0xFFE0E0E0)),
+                            color = if (isSelected) Gold else Charcoal,
                             shape = RoundedCornerShape(4.dp)
                         )
                 )

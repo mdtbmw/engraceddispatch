@@ -213,21 +213,25 @@ fun MarketplaceScreen(
                     // ── 2. Sticky Search Bar & Category Filter Header ──
                     stickyHeader(key = "sticky_filter_bar") {
                         Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = if (isDark) Charcoal else GoldenWhiteLight,
-                            shadowElevation = 2.dp
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            shape = RoundedCornerShape(22.dp),
+                            color = if (isDark) Charcoal else Color.White,
+                            border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
+                            shadowElevation = 3.dp
                         ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 6.dp)
+                                    .padding(horizontal = 14.dp, vertical = 12.dp)
                             ) {
                                 OutlinedTextField(
                                     value = searchQuery,
                                     onValueChange = { searchQuery = it },
                                     modifier = Modifier.fillMaxWidth(),
-                                    placeholder = { Text("Search catalog…", color = TextGray, fontSize = 13.sp) },
-                                    leadingIcon = { Icon(Icons.Filled.Search, null, tint = TextGray, modifier = Modifier.size(18.dp)) },
+                                    placeholder = { Text("Search catalog, equipment, parts…", color = TextGray, fontSize = 13.sp) },
+                                    leadingIcon = { Icon(Icons.Filled.Search, null, tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(20.dp)) },
                                     trailingIcon = {
                                         if (searchQuery.isNotEmpty()) {
                                             IconButton(onClick = { searchQuery = "" }) {
@@ -235,17 +239,19 @@ fun MarketplaceScreen(
                                             }
                                         }
                                     },
-                                    shape = RoundedCornerShape(14.dp),
+                                    shape = RoundedCornerShape(24.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = Gold,
-                                        unfocusedBorderColor = if (isDark) BorderDark else Slate,
+                                        unfocusedBorderColor = if (isDark) BorderDark else BorderLight,
                                         focusedContainerColor = if (isDark) Obsidian else GoldenWhite,
-                                        unfocusedContainerColor = if (isDark) Obsidian else GoldenWhite
+                                        unfocusedContainerColor = if (isDark) Obsidian else GoldenWhite,
+                                        focusedTextColor = if (isDark) Color.White else Obsidian,
+                                        unfocusedTextColor = if (isDark) Color.White else Obsidian
                                     ),
                                     singleLine = true
                                 )
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(10.dp))
 
                                 LazyRow(
                                     modifier = Modifier.fillMaxWidth(),
@@ -255,16 +261,16 @@ fun MarketplaceScreen(
                                         val isSelected = cat == selectedCategory
                                         Surface(
                                             onClick = { selectedCategory = cat },
-                                            shape = RoundedCornerShape(16.dp),
+                                            shape = RoundedCornerShape(20.dp),
                                             color = if (isSelected) Gold else if (isDark) Obsidian else GoldenWhite,
-                                            border = if (!isSelected) BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)) else null
+                                            border = if (!isSelected) BorderStroke(1.dp, if (isDark) BorderDark else BorderLight) else null
                                         ) {
                                             Text(
                                                 cat,
-                                                color = if (isSelected) Obsidian else AppTextColor,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) Obsidian else (if (isDark) Color.White else Obsidian),
+                                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
                                                 fontSize = 11.sp,
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                                             )
                                         }
                                     }

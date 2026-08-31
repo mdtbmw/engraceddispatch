@@ -4211,6 +4211,22 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    fun clearAllNotifications() {
+        _notifications.value = emptyList()
+        val uid = _firebaseUserId.value
+        if (uid != null) {
+            com.esdispatch.data.FirebaseManager.clearAllUserNotifications(uid)
+        }
+    }
+
+    fun deleteNotificationItem(notificationId: String) {
+        _notifications.value = _notifications.value.filter { it.id != notificationId }
+        val uid = _firebaseUserId.value
+        if (uid != null) {
+            com.esdispatch.data.FirebaseManager.deleteUserNotification(uid, notificationId)
+        }
+    }
+
     override fun logAdminActivity(action: String, details: String) {
         val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
         val uid = _firebaseUserId.value ?: ""

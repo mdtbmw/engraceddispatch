@@ -5,6 +5,7 @@ import androidx.compose.animation.*
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
+import com.esdispatch.ui.screens.dashboard.HeroCarousel
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -248,32 +249,8 @@ fun DashboardScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    // Infinite Auto-scroll state for Hero Carousel
-    var currentHeroPage by remember { mutableStateOf(0) }
-    val carouselSlides = listOf(
-        CarouselSlide(
-            title = "Move Anything,\nAnywhere",
-            desc = "Premium, instant delivery at your doorstep.",
-            imageUrl = "https://images.unsplash.com/photo-1512418491527-6f55e1112fb1?q=80&w=800&auto=format&fit=crop"
-        ),
-        CarouselSlide(
-            title = "Supercharged\nExpress Network",
-            desc = "City-wide delivery in under 45 minutes.",
-            imageUrl = "https://images.unsplash.com/photo-1516541196182-6bdd0514013b?q=80&w=800&auto=format&fit=crop"
-        ),
-        CarouselSlide(
-            title = "Fully Protected\nIn-Transit Guarantee",
-            desc = "Live map tracking and automatic insurance.",
-            imageUrl = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=800&auto=format&fit=crop"
-        )
-    )
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(4000)
-            currentHeroPage = (currentHeroPage + 1) % carouselSlides.size
-        }
-    }
+    val marketplaceProducts by viewModel.marketplaceProducts.collectAsState()
+    val marketplaceStores by viewModel.marketplaceStores.collectAsState()
 
     val density = LocalDensity.current
     val maxScrollDistancePx = with(density) { 235.dp.toPx() }
@@ -791,6 +768,9 @@ fun DashboardScreen(
             )
 
             val isSandbox by viewModel.isSandboxEnvironment.collectAsState()
+            val verifiedStores = remember(marketplaceStores) {
+                marketplaceStores.filter { it.isVerified || it.rating >= 4.5 }.take(6)
+            }
 
             LazyColumn(
                 state = listState,
@@ -800,237 +780,137 @@ fun DashboardScreen(
                     .nestedScroll(nestedScrollConnection),
                 contentPadding = PaddingValues(top = headerHeightDp + 16.dp, bottom = 140.dp)
             ) {
-
-                // 1. HERO CAROUSEL CARD WITH STACKED CARD SLIDER DESIGN
+                // 1. HERO CAROUSEL CARD - SMART 3-STACK FEATURED PRODUCTS
                 if (sections["promo_banner"] != false) {
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    var dragOffset by remember { mutableFloatStateOf(0f) }
-                    val animatedDragOffset by animateFloatAsState(
-                        targetValue = dragOffset,
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                        label = "dragOffsetAnimation"
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(260.dp)
-                            .pointerInput(Unit) {
-                                detectHorizontalDragGestures(
-                                    onDragEnd = {
-                                        if (dragOffset > 100f) {
-                                            // Swipe Right -> Prev
-                                            currentHeroPage = (currentHeroPage - 1 + carouselSlides.size) % carouselSlides.size
-                                        } else if (dragOffset < -100f) {
-                                            // Swipe Left -> Next
-                                            currentHeroPage = (currentHeroPage + 1) % carouselSlides.size
-                                        }
-                                        dragOffset = 0f
-                                    },
-                                    onDragCancel = {
-                                        dragOffset = 0f
-                                    },
-                                    onHorizontalDrag = { _, dragAmount ->
-                                        dragOffset += dragAmount
-                                    }
-                                )
+                    item {
+                        Spacer(modifier = Modifier.height(20.dp))
+                        HeroCarousel(
+                            products = marketplaceProducts,
+                            onAddToCart = { item ->
+                                viewModel.addToCart(item)
+                                Toast.makeText(context, "Added ${item.title} to cart", Toast.LENGTH_SHORT).show()
                             },
-                        contentAlignment = Alignment.TopCenter
-                    ) {
-                        // Sort slides so the top one (relativeIndex == 0) is drawn last (on top)
-                        val sortedIndices = carouselSlides.indices.toList().sortedByDescending { idx ->
-                            (idx - currentHeroPage + carouselSlides.size) % carouselSlides.size
-                        }
+                            onProductClick = { item ->
+                                onNavigate("Marketplace")
+                            }
+                        )
+                    }
+                }
 
-                        sortedIndices.forEach { index ->
-                            val relativeIndex = (index - currentHeroPage + carouselSlides.size) % carouselSlides.size
-                            
-                            // Layout scaling and shifting
-                            val scaleFactor = when (relativeIndex) {
-                                0 -> 1.0f
-                                1 -> 0.92f
-                                else -> 0.84f
-                            }
-                            val yShift = when (relativeIndex) {
-                                0 -> 0.dp
-                                1 -> 18.dp
-                                else -> 36.dp
-                            }
-                            val zIndexVal = when (relativeIndex) {
-                                0 -> 3f
-                                1 -> 2f
-                                else -> 1f
-                            }
-                            val opacityVal = when (relativeIndex) {
-                                0 -> 1.0f
-                                1 -> 0.9f
-                                else -> 0.8f
-                            }
-
-                            // Horizontal swipe shift only on the top foreground card
-                            val xShift = if (relativeIndex == 0) {
-                                animatedDragOffset.dp
-                            } else {
-                                0.dp
-                            }
-
-                            val animatedScale by animateFloatAsState(targetValue = scaleFactor, label = "scale_$index")
-                            val animatedYShift by animateDpAsState(targetValue = yShift, label = "yShift_$index")
-                            val animatedAlpha by animateFloatAsState(targetValue = opacityVal, label = "alpha_$index")
-
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 24.dp)
-                                    .height(210.dp)
-                                    .zIndex(zIndexVal)
-                                    .graphicsLayer {
-                                        scaleX = animatedScale
-                                        scaleY = animatedScale
-                                        translationX = xShift.toPx()
-                                        translationY = animatedYShift.toPx()
-                                        alpha = animatedAlpha
-                                    },
-                                shape = RoundedCornerShape(24.dp), // NO SHAPE MODIFICATIONS: Keep strictly at 24.dp
-                                color = if (relativeIndex == 0) Obsidian else Gold,
-                                border = BorderStroke(
-                                    width = 1.dp,
-                                    color = if (relativeIndex == 0) (if (isDark) BorderDark else Slate) else Gold.copy(alpha = 0.5f)
-                                ),
-                                shadowElevation = 0.dp
+                // 1.5 TOP RECOMMENDED VENDOR SHOPS (Dashboard Marketplace Browsing)
+                if (verifiedStores.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(modifier = Modifier.fillMaxSize()) {
-                                    if (relativeIndex == 0) {
-                                        // Top active card: Full high-quality photo & typography
-                                        val slide = carouselSlides[index]
-                                        Image(
-                                            painter = rememberAsyncImagePainter(slide.imageUrl),
-                                            contentDescription = slide.title,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(RoundedCornerShape(24.dp))
-                                        )
-                                        // Dark gradient overlay
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(
-                                                    Brush.verticalGradient(
-                                                        listOf(
-                                                            Color.Black.copy(alpha = 0.2f),
-                                                            Color.Black.copy(alpha = 0.85f)
-                                                        )
-                                                    )
-                                                )
-                                        )
-                                        // Content overlay
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Storefront,
+                                        contentDescription = null,
+                                        tint = if (isDark) Gold else Obsidian,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Top Recommended Shops",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = AppTextColor
+                                    )
+                                }
+                                Text(
+                                    text = "All Stores",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Gold else Obsidian,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { onNavigate("Marketplace") }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(verifiedStores, key = { it.id }) { store ->
+                                    Surface(
+                                        onClick = { onNavigate("VendorStorefront/${store.id}") },
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = if (isDark) Charcoal else Color.White,
+                                        border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
+                                        shadowElevation = 1.dp,
+                                        modifier = Modifier.width(160.dp)
+                                    ) {
                                         Column(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(20.dp),
-                                            verticalArrangement = Arrangement.SpaceBetween
+                                            modifier = Modifier.padding(12.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = Gold,
-                                                modifier = Modifier.align(Alignment.Start)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(52.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Gold.copy(alpha = 0.15f)),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Text(
-                                                    text = "ESDISPATCH",
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Obsidian,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                )
-                                            }
-                                            Column {
-                                                Text(
-                                                    text = slide.title,
-                                                    fontSize = 18.sp,
-                                                    lineHeight = 22.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.White
-                                                )
-                                                Text(
-                                                    text = slide.desc,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = TextGray.copy(alpha = 0.9f),
-                                                    modifier = Modifier.padding(top = 4.dp, bottom = 14.dp)
-                                                )
-                                                // Book Delivery Now CTA
-                                                Surface(
-                                                    onClick = { onNavigate("SendParcel") },
-                                                    shape = RoundedCornerShape(50.dp),
-                                                    color = Color.White
-                                                ) {
-                                                    Row(
-                                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = "Book Delivery Now",
-                                                            fontSize = 12.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Obsidian
-                                                        )
-                                                        Icon(
-                                                            imageVector = Icons.Filled.KeyboardArrowRight,
-                                                            contentDescription = null,
-                                                            tint = Obsidian,
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                    }
+                                                if (store.logoUrl.isNotBlank()) {
+                                                    Image(
+                                                        painter = rememberAsyncImagePainter(store.logoUrl),
+                                                        contentDescription = store.storeName,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Storefront,
+                                                        contentDescription = null,
+                                                        tint = Gold,
+                                                        modifier = Modifier.size(26.dp)
+                                                    )
                                                 }
                                             }
-                                        }
-                                    } else {
-                                        // Behind inactive cards: styled with absolute luxury Gold theme (No Gradient)
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(Gold),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(id = com.esdispatch.R.drawable.ic_logo),
-                                                contentDescription = "Inactive slide logo",
-                                                tint = Obsidian.copy(alpha = 0.15f),
-                                                modifier = Modifier.size(80.dp)
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = store.storeName,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDark) Color.White else Obsidian,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Star,
+                                                    contentDescription = null,
+                                                    tint = Gold,
+                                                    modifier = Modifier.size(11.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                                Text(
+                                                    text = "${store.rating} (${store.itemCount} items)",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = TextGray
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .wrapContentWidth(Alignment.CenterHorizontally),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        for (i in 0 until 3) {
-                            val isSelected = i == currentHeroPage
-                            val width = if (isSelected) 24.dp else 8.dp
-                            Box(
-                                modifier = Modifier
-                                    .size(width = width, height = 8.dp)
-                                    .background(
-                                        color = if (isSelected) Gold else (if (isDark) Color(0xFF333333) else Color(0xFFE0E0E0)),
-                                        shape = CircleShape
-                                    )
-                            )
-                        }
-                    }
-                }
                 }
 
             // 2. STATS GRID
@@ -1514,527 +1394,31 @@ fun DashboardScreen(
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .wrapContentWidth(Alignment.CenterHorizontally),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        for (i in 0 until 3) {
-                            val isSelected = i == currentIndex
-                            val width = if (isSelected) 24.dp else 8.dp
-                            Box(
-                                modifier = Modifier
-                                    .size(width = width, height = 8.dp)
-                                    .background(
-                                        color = if (isSelected) Gold else (if (isDark) Color(0xFF333333) else Color(0xFFE0E0E0)),
-                                        shape = CircleShape
-                                    )
-                            )
-                        }
-                    }
                 }
-            }
-            }
 
-            // 3.5 LOYALTY & REWARDS DASHBOARD
-            if (userRole != "rider" && sections["loyalty_rewards"] != false) {
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    val bonusClaimed by viewModel.dailyBonusClaimed.collectAsState()
-
-                val currentTierInfo = com.esdispatch.utils.LoyaltyRewards.tierFor(loyaltyPoints)
-                val currentTier = currentTierInfo.name
-                val tierProgress = currentTierInfo.progress
-                val nextTierDesc = currentTierInfo.nextLabel
-
-                Surface(
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    color = Obsidian, // Locked Obsidian background for premium high-contrast Gold details
-                    border = BorderStroke(1.2.dp, Gold.copy(alpha = 0.3f)),
-                    shadowElevation = 0.dp
+                        .wrapContentWidth(Alignment.CenterHorizontally),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(22.dp)
-                    ) {
-                        // Title Bar
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Filled.EmojiEvents,
-                                    contentDescription = "VIP Status",
-                                    tint = Gold,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "ESDispatch VIP Rewards",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White
-                                )
-                            }
-                            Surface(
-                                color = Gold.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.padding(2.dp)
-                            ) {
-                                Text(
-                                    text = currentTier.uppercase(),
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Gold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Large Points Counter
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.Bottom,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Accumulated Points",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextGray
-                                )
-                                Text(
-                                    text = "$loyaltyPoints PTS",
-                                    fontSize = 32.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Gold,
-                                    lineHeight = 36.sp
-                                )
-                            }
-                            
-                            // Interactive Bonus claim button
-                            Button(
-                                onClick = {
-                                    if (!bonusClaimed) {
-                                        viewModel.claimDailyBonus()
-                                        viewModel.showInAppNotification(
-                                            "VIP Bonus Awarded! 🏆", 
-                                            "100 Loyalty Points successfully added. Keep up the high dispatch count!"
-                                        )
-                                        Toast.makeText(context, "🏆 100 VIP Points Claimed!", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                enabled = !bonusClaimed,
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Gold,
-                                    contentColor = Obsidian,
-                                    disabledContainerColor = BorderDark,
-                                    disabledContentColor = TextGray
-                                ),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Text(
-                                    text = if (bonusClaimed) "Claimed" else "Claim Daily",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Progress Bar to next tier
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Tier Progress",
-                                    fontSize = 10.sp,
-                                    color = TextGray,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = nextTierDesc,
-                                    fontSize = 10.sp,
-                                    color = Gold,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            LinearProgressIndicator(
-                                progress = { tierProgress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(6.dp)
-                                    .clip(CircleShape),
-                                color = Gold,
-                                trackColor = Charcoal
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(18.dp))
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Milestone Achievements
-                        Text(
-                            text = "Milestone Achievements",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            letterSpacing = 1.sp,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-
-                        // Milestone checklist
-                        val milestones = listOf(
-                            Triple("First Dispatch", "Complete your 1st delivery", deliveryCount >= 1),
-                            Triple("Dispatcher Veteran", "Complete 10 deliveries", deliveryCount >= 10),
-                            Triple("VIP Logistics Legend", "Complete 50 deliveries", deliveryCount >= 50)
-                        )
-
-                        milestones.forEach { (name, desc, achieved) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable(enabled = achieved) {
-                                        triggerConfetti = true
-                                    }
-                                    .padding(vertical = 6.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = if (achieved) Icons.Filled.CheckCircle else Icons.Filled.Lock,
-                                        contentDescription = null,
-                                        tint = if (achieved) Gold else TextGray,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = name,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (achieved) Color.White else TextGray
-                                        )
-                                        Text(
-                                            text = desc,
-                                            fontSize = 10.sp,
-                                            color = TextGray
-                                        )
-                                    }
-                                }
-                                if (achieved) {
-                                    Text(
-                                        text = "UNLOCKED",
-                                        fontSize = 8.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Gold
-                                    )
-                                } else {
-                                    Text(
-                                        text = "LOCKED",
-                                        fontSize = 8.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextGray
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            }
-
-            // 3.75 BECOMING A VENDOR (transformation progress card)
-            if (userRole != "rider" && !isVendorVerified) {
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    val isSystemDark = MaterialTheme.colorScheme.background == BackgroundDark
-                    val meetsDeliveryReq = deliveryCount >= 10
-                    val stepProgress = when {
-                        isVendorVerified -> 1f
-                        vendorKycSubmitted -> 0.85f
-                        vendorStoreExists -> 0.6f
-                        meetsDeliveryReq -> 0.45f
-                        else -> (deliveryCount / 10f).coerceIn(0f, 0.4f)
-                    }
-                    val statusText = when {
-                        isVendorVerified -> "Store LIVE — you're selling on the Marketplace! 🎉"
-                        vendorKycSubmitted -> "KYC submitted — awaiting final verification"
-                        vendorStoreExists -> "Store created — complete your KYC to go live"
-                        meetsDeliveryReq -> "Milestone unlocked! Register your store now"
-                        else -> "Complete ${10 - deliveryCount} deliveries to unlock vendor access"
-                    }
-
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp)
-                            .clip(RoundedCornerShape(28.dp))
-                            .clickable { onNavigate("VendorPortal") },
-                        shape = RoundedCornerShape(28.dp),
-                        color = Obsidian,
-                        border = BorderStroke(1.2.dp, Gold.copy(alpha = 0.35f)),
-                        shadowElevation = 0.dp
-                    ) {
-                        Column(
+                    for (i in 0 until 3) {
+                        val isSelected = i == currentIndex
+                        val width = if (isSelected) 24.dp else 8.dp
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(22.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Becoming a Vendor",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color.White
+                                .size(width = width, height = 8.dp)
+                                .background(
+                                    color = if (isSelected) Gold else (if (isDark) Color(0xFF333333) else Color(0xFFE0E0E0)),
+                                    shape = CircleShape
                                 )
-                                Icon(
-                                    imageVector = Icons.Filled.Storefront,
-                                    contentDescription = null,
-                                    tint = Gold,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Sell on the ESDispatch Marketplace to thousands of customers.",
-                                fontSize = 11.sp,
-                                color = TextGray
-                            )
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            LinearProgressIndicator(
-                                progress = { stepProgress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp)
-                                    .clip(RoundedCornerShape(4.dp)),
-                                color = Gold,
-                                trackColor = if (isSystemDark) Color.White.copy(alpha = 0.12f) else Charcoal
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = statusText,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (meetsDeliveryReq) Gold else Color.White.copy(alpha = 0.8f)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Step: ${if (vendorStoreExists) "Store" else "Milestone"} ${if (vendorKycSubmitted) "→ KYC" else ""} ${if (isVendorVerified) "→ LIVE 🎉" else "→ verified"}" +
-                                        "  |  Deliveries $deliveryCount/10",
-                                fontSize = 10.sp,
-                                color = TextGray
-                            )
-                        }
+                        )
                     }
                 }
             }
-
-            // 4. REFERRAL CARD
-            if (userRole != "rider") {
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    val isSystemDark = MaterialTheme.colorScheme.background == BackgroundDark
-                    val cardBorderColor = if (isSystemDark) Gold.copy(alpha = 0.3f) else Slate
-                    // Use Gold color elements always on the Obsidian card to fix visibility!
-                    val iconBgColor = Gold.copy(alpha = 0.15f)
-                    val iconTintColor = Gold
-                    val codeRowBorderColor = if (isSystemDark) Gold.copy(alpha = 0.3f) else Slate.copy(alpha = 0.5f)
-                    val codeRowBgColor = if (isSystemDark) Charcoal else Color.White.copy(alpha = 0.05f)
-                    val codeTextColor = if (isSystemDark) Gold else Color.White
-
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    color = Obsidian,
-                    border = BorderStroke(1.dp, if (isSystemDark) BorderDark else Slate),
-                    shadowElevation = 0.dp
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp)
-                    ) {
-                        Text(
-                            text = "Refer & Earn Credits",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = "Get ₦3,000 for every friend who signs up using your code.",
-                            fontSize = 12.sp,
-                            color = TextGray,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(iconBgColor),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Filled.Redeem, null, tint = iconTintColor, modifier = Modifier.size(18.dp))
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .border(
-                                        width = 1.dp,
-                                        color = codeRowBorderColor,
-                                        shape = RoundedCornerShape(14.dp)
-                                    )
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(codeRowBgColor)
-                                    .clickable {
-                                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                            type = "text/plain"
-                                            putExtra(android.content.Intent.EXTRA_SUBJECT, "Join ESDispatch!")
-                                            putExtra(android.content.Intent.EXTRA_TEXT, "Use my referral code ${referralCode.value} to sign up for ESDispatch! https://esdispatch.app/refer?code=${referralCode.value}")
-                                        }
-                                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Referral Code"))
-                                    }
-                                    .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = referralCode.value,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = codeTextColor
-                                )
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Gold,
-                                    modifier = Modifier.padding(2.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text(
-                                            text = "Copy Code",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Obsidian
-                                        )
-                                        Icon(
-                                            Icons.Filled.ContentCopy,
-                                            contentDescription = null,
-                                            tint = Obsidian,
-                                            modifier = Modifier.size(10.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Enter friend's code + Redeem row
-                        Spacer(modifier = Modifier.height(14.dp))
-                        var friendCode by remember { mutableStateOf("") }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = friendCode,
-                                onValueChange = { friendCode = it },
-                                placeholder = {
-                                    Text(
-                                        text = "Enter friend's code",
-                                        fontSize = 13.sp,
-                                        color = TextGray
-                                    )
-                                },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Gold.copy(alpha = 0.6f),
-                                    unfocusedBorderColor = if (isDark) BorderDark else Slate,
-                                    focusedTextColor = if (isDark) Color.White else Obsidian,
-                                    unfocusedTextColor = if (isDark) Color.White else Obsidian,
-                                    cursorColor = Gold,
-                                    focusedContainerColor = if (isDark) Charcoal else GoldenWhite,
-                                    unfocusedContainerColor = if (isDark) Charcoal else GoldenWhite
-                                ),
-                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            )
-                            Surface(
-                                onClick = {
-                                    if (friendCode.isNotBlank()) {
-                                        viewModel.redeemReferralCode(friendCode.trim()) { success, message ->
-                                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                            if (success) {
-                                                friendCode = ""
-                                            }
-                                        }
-                                    }
-                                },
-                                shape = RoundedCornerShape(14.dp),
-                                color = Gold
-                            ) {
-                                Text(
-                                    text = "Redeem",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Obsidian,
-                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            }
-
-            // Delivery Summary visual breakdown card
-            item {
-                DeliverySummaryCard(
-                    parcels = parcels,
-                    isDark = isDark
-                )
-            }
+        }
 
             // 5. ACTIVE DELIVERIES SECTION
             if (sections["active_shipments"] != false) {
@@ -2247,8 +1631,8 @@ fun DashboardScreen(
                         )
                     }
                 }
-                }
             }
+        }
 
             // 6. RECENT DELIVERIES (Last 3)
             val recentParcels = completedParcels.take(3)
@@ -2882,13 +2266,13 @@ fun StatsTile(
     }
 }
 
-private data class CarouselSlide(
+data class CarouselSlide(
     val title: String,
     val desc: String,
     val imageUrl: String
 )
 
-private data class PromoMock(
+data class PromoMock(
     val title: String,
     val code: String,
     val discount: String,
@@ -4071,16 +3455,17 @@ fun ParcelDetailBottomSheet(
                             }
                         }
                     }
+                }
 
-                    // Delivery OTP Handover Shield (if out for delivery)
-                    if (parcel.status == ParcelStatus.OUT_FOR_DELIVERY) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (isDark) Gold.copy(alpha = 0.1f) else Obsidian.copy(alpha = 0.1f),
-                            border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Obsidian.copy(alpha = 0.3f))
-                        ) {
+                // Delivery OTP Handover Shield (if out for delivery)
+                if (parcel.status == ParcelStatus.OUT_FOR_DELIVERY) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isDark) Gold.copy(alpha = 0.1f) else Obsidian.copy(alpha = 0.1f),
+                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Obsidian.copy(alpha = 0.3f))
+                    ) {
                             Column(
                                 modifier = Modifier.padding(12.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
@@ -4131,7 +3516,6 @@ fun ParcelDetailBottomSheet(
             }
         }
     }
-}
 
 @Composable
 fun AnimatedParcelIllustration() {

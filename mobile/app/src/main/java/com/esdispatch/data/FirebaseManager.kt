@@ -357,6 +357,46 @@ object FirebaseManager {
     }
 
     /**
+     * Clear all notifications for a specific user from Firestore
+     */
+    fun clearAllUserNotifications(userId: String, onComplete: ((Boolean) -> Unit)? = null) {
+        val db = firestore ?: run {
+            onComplete?.invoke(false)
+            return
+        }
+        if (userId.isBlank()) return
+        db.collection("users").document(userId)
+            .collection("notifications")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val batch = db.batch()
+                snapshot.documents.forEach { doc ->
+                    batch.delete(doc.reference)
+                }
+                batch.commit()
+                    .addOnSuccessListener { onComplete?.invoke(true) }
+                    .addOnFailureListener { onComplete?.invoke(false) }
+            }
+            .addOnFailureListener { onComplete?.invoke(false) }
+    }
+
+    /**
+     * Delete a single notification for a specific user from Firestore
+     */
+    fun deleteUserNotification(userId: String, notificationId: String, onComplete: ((Boolean) -> Unit)? = null) {
+        val db = firestore ?: run {
+            onComplete?.invoke(false)
+            return
+        }
+        if (userId.isBlank() || notificationId.isBlank()) return
+        db.collection("users").document(userId)
+            .collection("notifications").document(notificationId)
+            .delete()
+            .addOnSuccessListener { onComplete?.invoke(true) }
+            .addOnFailureListener { onComplete?.invoke(false) }
+    }
+
+    /**
      * Update User Wallet Balance using an Atomic Transaction to prevent race conditions.
      */
     fun updateUserWalletBalance(userId: String, amountDelta: Double, onComplete: (Boolean, Double) -> Unit) {

@@ -14,6 +14,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -91,6 +92,11 @@ fun ProfileScreen(
     val memberSince by viewModel.memberSince.collectAsState()
     val isDark by viewModel.darkModeEnabled.collectAsState()
     val userRole by viewModel.userRole.collectAsState()
+    val referralCode = viewModel.referralCode
+    val bonusClaimed by viewModel.dailyBonusClaimed.collectAsState()
+    val vendorStoreExists by viewModel.vendorStoreExists.collectAsState()
+    val isVendorVerified by viewModel.isVendorVerified.collectAsState()
+    val vendorKycSubmitted by viewModel.vendorKycSubmitted.collectAsState()
     var showMarketplaceSheet by remember { mutableStateOf(false) }
     val activeViewMode by viewModel.activeViewMode.collectAsState()
     val bikeNumber by viewModel.bikeNumber.collectAsState()
@@ -526,7 +532,359 @@ fun ProfileScreen(
                         }
                     }
 
+                    // --- REWARDS & GROWTH HUB ---
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = "REWARDS & VENDOR PROGRAM",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isDark) Gold else Obsidian,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 1. VIP Rewards & Bonus Claim Card
+                    val currentTierInfo = com.esdispatch.utils.LoyaltyRewards.tierFor(loyaltyPoints)
+                    val tierProgress = currentTierInfo.progress
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        color = if (isDark) Charcoal else Color.White,
+                        border = BorderStroke(1.2.dp, if (isDark) Gold.copy(alpha = 0.35f) else BorderLight),
+                        shadowElevation = 0.dp
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(18.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Filled.EmojiEvents,
+                                        contentDescription = "VIP Status",
+                                        tint = if (isDark) Gold else Obsidian,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "VIP Rewards Hub",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isDark) Color.White else Obsidian
+                                    )
+                                }
+                                Surface(
+                                    color = if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = currentTierInfo.name.uppercase(),
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (isDark) Gold else Obsidian,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.Bottom,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "Loyalty Balance",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextGray
+                                    )
+                                    Text(
+                                        text = "$loyaltyPoints PTS",
+                                        fontSize = 24.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (isDark) Gold else Obsidian
+                                    )
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (!bonusClaimed) {
+                                            viewModel.claimDailyBonus()
+                                            viewModel.showInAppNotification(
+                                                "VIP Bonus Awarded! 🏆",
+                                                "100 Loyalty Points successfully added."
+                                            )
+                                            Toast.makeText(context, "🏆 100 VIP Points Claimed!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    enabled = !bonusClaimed,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Gold,
+                                        contentColor = Obsidian,
+                                        disabledContainerColor = if (isDark) BorderDark else Color(0xFFE2E8F0),
+                                        disabledContentColor = TextGray
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.height(34.dp)
+                                ) {
+                                    Text(
+                                        text = if (bonusClaimed) "Claimed" else "Claim Daily",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+                            LinearProgressIndicator(
+                                progress = { tierProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(CircleShape),
+                                color = if (isDark) Gold else Obsidian,
+                                trackColor = if (isDark) BorderDark else Color(0xFFE2E8F0)
+                            )
+                        }
+                    }
+
+                    // 2. Becoming a Vendor Card (if not rider)
+                    if (userRole != "rider") {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        val meetsDeliveryReq = deliveryCount >= 10
+                        val stepProgress = when {
+                            isVendorVerified -> 1f
+                            vendorKycSubmitted -> 0.85f
+                            vendorStoreExists -> 0.6f
+                            meetsDeliveryReq -> 0.45f
+                            else -> (deliveryCount / 10f).coerceIn(0f, 0.4f)
+                        }
+                        val statusText = when {
+                            isVendorVerified -> "Store LIVE on Marketplace! 🎉"
+                            vendorKycSubmitted -> "KYC submitted — awaiting review"
+                            vendorStoreExists -> "Store created — complete KYC"
+                            meetsDeliveryReq -> "Milestone unlocked! Register store"
+                            else -> "Complete ${10 - deliveryCount} more deliveries to unlock"
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(24.dp))
+                                .clickable { onNavigate("VendorPortal") },
+                            shape = RoundedCornerShape(24.dp),
+                            color = if (isDark) Charcoal else Color.White,
+                            border = BorderStroke(1.2.dp, if (isDark) Gold.copy(alpha = 0.35f) else BorderLight),
+                            shadowElevation = 0.dp
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(18.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Storefront,
+                                            contentDescription = null,
+                                            tint = if (isDark) Gold else Obsidian,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Vendor Program",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDark) Color.White else Obsidian
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Filled.ChevronRight,
+                                        contentDescription = null,
+                                        tint = TextGray,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = statusText,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (meetsDeliveryReq) (if (isDark) Gold else Obsidian) else TextGray
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                LinearProgressIndicator(
+                                    progress = { stepProgress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
+                                    color = if (isDark) Gold else Obsidian,
+                                    trackColor = if (isDark) BorderDark else Color(0xFFE2E8F0)
+                                )
+                            }
+                        }
+                    }
+
+                    // 3. Refer & Earn Card
+                    if (userRole != "rider") {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        var friendCode by remember { mutableStateOf("") }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            color = if (isDark) Charcoal else Color.White,
+                            border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else BorderLight),
+                            shadowElevation = 0.dp
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(18.dp)
+                            ) {
+                                Text(
+                                    text = "Refer & Earn Credits",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDark) Color.White else Obsidian
+                                )
+                                Text(
+                                    text = "Earn ₦3,000 credit for every friend who signs up.",
+                                    fontSize = 11.sp,
+                                    color = TextGray,
+                                    modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+                                )
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (isDark) Gold.copy(alpha = 0.3f) else BorderLight,
+                                            shape = RoundedCornerShape(14.dp)
+                                        )
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(if (isDark) Obsidian else GoldenWhite)
+                                        .clickable {
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_SUBJECT, "Join ESDispatch!")
+                                                putExtra(Intent.EXTRA_TEXT, "Use my referral code ${referralCode.value} to sign up for ESDispatch! https://esdispatch.app/refer?code=${referralCode.value}")
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, "Share Referral Code"))
+                                        }
+                                        .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = referralCode.value,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (isDark) Gold else Obsidian
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Gold,
+                                        modifier = Modifier.padding(2.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "Copy",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Obsidian
+                                            )
+                                            Icon(
+                                                Icons.Filled.ContentCopy,
+                                                contentDescription = null,
+                                                tint = Obsidian,
+                                                modifier = Modifier.size(10.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = friendCode,
+                                        onValueChange = { friendCode = it },
+                                        placeholder = {
+                                            Text("Friend's code", fontSize = 12.sp, color = TextGray)
+                                        },
+                                        modifier = Modifier.weight(1f).height(46.dp),
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = if (isDark) Gold else Obsidian,
+                                            unfocusedBorderColor = if (isDark) BorderDark else BorderLight,
+                                            focusedTextColor = if (isDark) Color.White else Obsidian,
+                                            unfocusedTextColor = if (isDark) Color.White else Obsidian,
+                                            cursorColor = Gold,
+                                            focusedContainerColor = if (isDark) Obsidian else GoldenWhite,
+                                            unfocusedContainerColor = if (isDark) Obsidian else GoldenWhite
+                                        ),
+                                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (friendCode.isNotBlank()) {
+                                                viewModel.redeemReferralCode(friendCode.trim()) { success, message ->
+                                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                                    if (success) {
+                                                        friendCode = ""
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Gold,
+                                            contentColor = Obsidian
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                        modifier = Modifier.height(46.dp)
+                                    ) {
+                                        Text("Redeem", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(24.dp))
+                    Text(
+                        text = "ACCOUNT & SERVICES",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isDark) Gold else Obsidian,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // D. Menu Rows
                     ProfileMenuRow(
@@ -1793,6 +2151,7 @@ fun AddressBookScreen(
 }
 
 // --- NOTIFICATIONS SCREEN ---
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationsScreen(
     viewModel: DeliveryViewModel,
@@ -1802,27 +2161,118 @@ fun NotificationsScreen(
     val loadingNotifications by viewModel.loadingNotifications.collectAsState()
     val isDark by viewModel.darkModeEnabled.collectAsState()
     val parcels by viewModel.parcels.collectAsState()
-    val riders by viewModel.aiRiders.collectAsState()
     val context = LocalContext.current
 
-    var selectedTab by remember { mutableStateOf(0) } // 0 = Inbox, 1 = System Monitor
+    var selectedCategory by remember { mutableStateOf("All") }
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
     var currentPage by remember { mutableStateOf(0) }
-    val itemsPerPage = 4
-    var broadcastTitle by remember { mutableStateOf("") }
-    var broadcastMessage by remember { mutableStateOf("") }
+    val itemsPerPage = 6
 
-    val totalPages = remember(list) {
-        ((list.size + itemsPerPage - 1) / itemsPerPage).coerceAtLeast(1)
+    val filteredList = remember(list, selectedCategory) {
+        when (selectedCategory) {
+            "Deliveries" -> list.filter {
+                it.parcelId.isNotBlank() ||
+                        it.title.contains("delivery", ignoreCase = true) ||
+                        it.title.contains("shipment", ignoreCase = true) ||
+                        it.title.contains("rider", ignoreCase = true) ||
+                        it.title.contains("dispatch", ignoreCase = true) ||
+                        it.title.contains("transit", ignoreCase = true) ||
+                        it.message.contains("delivery", ignoreCase = true) ||
+                        it.message.contains("shipment", ignoreCase = true) ||
+                        it.message.contains("rider", ignoreCase = true)
+            }
+            "Wallet" -> list.filter {
+                it.title.contains("wallet", ignoreCase = true) ||
+                        it.title.contains("payout", ignoreCase = true) ||
+                        it.title.contains("top-up", ignoreCase = true) ||
+                        it.title.contains("payment", ignoreCase = true) ||
+                        it.title.contains("₦", ignoreCase = true) ||
+                        it.message.contains("wallet", ignoreCase = true) ||
+                        it.message.contains("credit", ignoreCase = true) ||
+                        it.message.contains("₦", ignoreCase = true)
+            }
+            "Promos" -> list.filter {
+                it.title.contains("reward", ignoreCase = true) ||
+                        it.title.contains("bonus", ignoreCase = true) ||
+                        it.title.contains("promo", ignoreCase = true) ||
+                        it.title.contains("gift", ignoreCase = true) ||
+                        it.title.contains("referral", ignoreCase = true) ||
+                        it.title.contains("vip", ignoreCase = true) ||
+                        it.message.contains("reward", ignoreCase = true) ||
+                        it.message.contains("bonus", ignoreCase = true) ||
+                        it.message.contains("promo", ignoreCase = true)
+            }
+            "Account" -> list.filter {
+                it.title.contains("security", ignoreCase = true) ||
+                        it.title.contains("pin", ignoreCase = true) ||
+                        it.title.contains("login", ignoreCase = true) ||
+                        it.title.contains("profile", ignoreCase = true) ||
+                        it.title.contains("verified", ignoreCase = true) ||
+                        it.message.contains("pin", ignoreCase = true) ||
+                        it.message.contains("security", ignoreCase = true) ||
+                        it.message.contains("authentication", ignoreCase = true)
+            }
+            else -> list
+        }
     }
 
-    val paginatedList = remember(list, currentPage) {
+    LaunchedEffect(selectedCategory) {
+        currentPage = 0
+    }
+
+    val totalPages = remember(filteredList) {
+        ((filteredList.size + itemsPerPage - 1) / itemsPerPage).coerceAtLeast(1)
+    }
+
+    val paginatedList = remember(filteredList, currentPage) {
         val startIndex = currentPage * itemsPerPage
-        val endIndex = minOf(startIndex + itemsPerPage, list.size)
-        if (startIndex < list.size) {
-            list.subList(startIndex, endIndex)
+        val endIndex = minOf(startIndex + itemsPerPage, filteredList.size)
+        if (startIndex < filteredList.size) {
+            filteredList.subList(startIndex, endIndex)
         } else {
             emptyList()
         }
+    }
+
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            title = {
+                Text(
+                    "Clear All Notifications?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = if (isDark) Color.White else Obsidian
+                )
+            },
+            text = {
+                Text(
+                    "This will remove all notification records from your account history.",
+                    fontSize = 13.sp,
+                    color = TextGray
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearAllNotifications()
+                        showClearConfirmDialog = false
+                        Toast.makeText(context, "Notifications cleared", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444), contentColor = Color.White),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Clear All", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmDialog = false }) {
+                    Text("Cancel", color = if (isDark) Gold else Obsidian, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            containerColor = if (isDark) Charcoal else Color.White,
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 
     Column(
@@ -1832,760 +2282,355 @@ fun NotificationsScreen(
     ) {
         ScreenHeader(
             title = "Notifications Hub",
-            onBack = { onNavigate("Profile") }
+            onBack = { onNavigate("Profile") },
+            rightContent = {
+                if (list.isNotEmpty()) {
+                    TextButton(
+                        onClick = { showClearConfirmDialog = true },
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        Text(
+                            text = "Clear All",
+                            color = if (isDark) Obsidian else Gold,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         )
 
         RoundedSheet(
             modifier = Modifier.weight(1f)
         ) {
-            // Tab buttons inside RoundedSheet
-            val activeTabColor = if (isDark) Gold else Obsidian
-            val inactiveTabColor = if (isDark) TextGray else Color(0xFF4B5563)
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            Column(
+                modifier = Modifier.fillMaxSize()
             ) {
-                Button(
-                    onClick = { selectedTab = 0 },
+                // Category Filter Pills
+                val categories = listOf("All", "Deliveries", "Wallet", "Promos", "Account")
+                LazyRow(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTab == 0) Gold else (if (isDark) Charcoal else Color.White),
-                        contentColor = if (selectedTab == 0) Obsidian else inactiveTabColor
-                    ),
-                    border = if (selectedTab == 0) null else BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
-                    contentPadding = PaddingValues(0.dp)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Inbox,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "INBOX (${list.size})",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-                }
+                    items(categories) { category ->
+                        val isSelected = selectedCategory == category
+                        val count = when (category) {
+                            "Deliveries" -> list.count { it.parcelId.isNotBlank() || it.title.contains("delivery", ignoreCase = true) || it.title.contains("shipment", ignoreCase = true) }
+                            "Wallet" -> list.count { it.title.contains("wallet", ignoreCase = true) || it.title.contains("₦", ignoreCase = true) || it.message.contains("credit", ignoreCase = true) }
+                            "Promos" -> list.count { it.title.contains("reward", ignoreCase = true) || it.title.contains("bonus", ignoreCase = true) || it.title.contains("promo", ignoreCase = true) }
+                            "Account" -> list.count { it.title.contains("security", ignoreCase = true) || it.title.contains("pin", ignoreCase = true) }
+                            else -> list.size
+                        }
 
-                Button(
-                    onClick = { selectedTab = 1 },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTab == 1) Gold else (if (isDark) Charcoal else Color.White),
-                        contentColor = if (selectedTab == 1) Obsidian else inactiveTabColor
-                    ),
-                    border = if (selectedTab == 1) null else BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.SendToMobile,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "SYSTEM MONITOR",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-                }
-            }
-            // Tab content
-                if (selectedTab == 0) {
-                    // --- TAB 0: INBOX HISTORY ---
-                    Column(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        if (list.isEmpty() && loadingNotifications) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .weight(1f),
-                                contentAlignment = Alignment.Center
+                        Surface(
+                            onClick = { selectedCategory = category },
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isSelected) Gold else (if (isDark) Charcoal else Color.White),
+                            border = if (isSelected) null else BorderStroke(1.dp, if (isDark) BorderDark else BorderLight)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                CircularProgressIndicator(color = Gold, modifier = Modifier.size(40.dp))
-                            }
-                        } else if (list.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .weight(1f),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
-                                    modifier = Modifier.padding(24.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Notifications,
-                                        contentDescription = "No Notifications",
-                                        tint = if (isDark) Gold.copy(alpha = 0.6f) else Obsidian.copy(alpha = 0.3f),
-                                        modifier = Modifier.size(64.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(
-                                        text = "All Caught Up! ✨",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AppOnSurface
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = "Your premium notifications hub is empty. Switch to the SYSTEM MONITOR tab to view fleet alerts and real-time status.",
-                                        fontSize = 12.sp,
-                                        color = TextGray,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(horizontal = 16.dp)
-                                    )
-                                }
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                contentPadding = PaddingValues(bottom = 16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                items(paginatedList) { item ->
-                                    val cardBg = if (isDark) Charcoal else Color.White
-                                    val textPrimary = if (isDark) Color.White else Obsidian
-                                    val textSecondary = if (isDark) TextGray else Color(0xFF4B5563)
-                                    val linkedParcel = remember(item.parcelId, parcels) {
-                                        parcels.find { it.id == item.parcelId }
-                                    }
-                                    val liveProgress = linkedParcel?.progress ?: 0f
-
+                                Text(
+                                    text = category,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                    color = if (isSelected) Obsidian else (if (isDark) Color.White else Obsidian)
+                                )
+                                if (count > 0) {
                                     Surface(
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = cardBg,
-                                        border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
-                                        modifier = Modifier.fillMaxWidth()
+                                        shape = CircleShape,
+                                        color = if (isSelected) Obsidian else Gold.copy(alpha = 0.2f)
                                     ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .drawBehind {
-                                                    drawRect(
-                                                        color = Gold,
-                                                        size = Size(10f, size.height)
-                                                    )
-                                                }
-                                                .padding(16.dp)
-                                        ) {
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text(
-                                                        text = item.title,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        fontSize = 14.sp,
-                                                        color = textPrimary
-                                                    )
-                                                    Text(
-                                                        text = item.time,
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = TextGray
-                                                    )
-                                                }
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Text(
-                                                    text = item.message,
-                                                    fontSize = 12.sp,
-                                                    color = textSecondary,
-                                                    lineHeight = 15.sp,
-                                                    fontWeight = FontWeight.Medium
-                                                )
-                                                if (linkedParcel != null) {
-                                                    Spacer(modifier = Modifier.height(10.dp))
-                                                    LinearProgressIndicator(
-                                                        progress = { liveProgress.coerceIn(0f, 1f) },
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .height(6.dp)
-                                                            .clip(RoundedCornerShape(3.dp)),
-                                                        color = if (isDark) Gold else Obsidian,
-                                                        trackColor = if (isDark) BorderDark else BorderLight
-                                                    )
-                                                    Spacer(modifier = Modifier.height(4.dp))
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.SpaceBetween
-                                                    ) {
-                                                        Text(
-                                                            text = linkedParcel.itemName,
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = textSecondary
-                                                        )
-                                                        Text(
-                                                            text = "${(liveProgress * 100).toInt()}%",
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = if (isDark) Gold else Obsidian
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        Text(
+                                            text = "$count",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = if (isSelected) Gold else (if (isDark) Gold else Obsidian),
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                        )
                                     }
                                 }
                             }
                         }
+                    }
+                }
 
-                        // Dynamic Notification Pagination Controls
-                        if (totalPages > 1) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Row(
+                if (loadingNotifications && list.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Gold, modifier = Modifier.size(36.dp))
+                    }
+                } else if (filteredList.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(24.dp)
+                        ) {
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 12.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .size(68.dp)
+                                    .clip(CircleShape)
+                                    .background(Gold.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                val activeColor = if (isDark) Gold else Obsidian
-                                val activeTextColor = if (isDark) Obsidian else Gold
-                                val inactiveBg = if (isDark) Charcoal else Color(0xFFF1F5F9)
-                                val inactiveTextColor = TextGray
-                                val borderColor = if (isDark) Color(0xFF2C2C2C) else Color(0xFFE2E8F0)
-
-                                // Previous button
-                                IconButton(
-                                    onClick = { if (currentPage > 0) currentPage-- },
-                                    enabled = currentPage > 0,
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(if (currentPage > 0) inactiveBg else inactiveBg.copy(alpha = 0.5f))
-                                        .border(1.dp, borderColor, CircleShape)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.ArrowBack,
-                                        contentDescription = "Previous Page",
-                                        tint = if (currentPage > 0) (if (isDark) Gold else Obsidian) else TextGray,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                // Page Numbers
-                                for (i in 0 until totalPages) {
-                                    val isSelected = i == currentPage
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isSelected) activeColor else inactiveBg)
-                                            .border(1.dp, if (isSelected) activeColor else borderColor, CircleShape)
-                                            .clickable { currentPage = i },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "${i + 1}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isSelected) activeTextColor else inactiveTextColor
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                }
-
-                                Spacer(modifier = Modifier.width(6.dp))
-
-                                // Next button
-                                IconButton(
-                                    onClick = { if (currentPage < totalPages - 1) currentPage++ },
-                                    enabled = currentPage < totalPages - 1,
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(if (currentPage < totalPages - 1) inactiveBg else inactiveBg.copy(alpha = 0.5f))
-                                        .border(1.dp, borderColor, CircleShape)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.ArrowForward,
-                                        contentDescription = "Next Page",
-                                        tint = if (currentPage < totalPages - 1) (if (isDark) Gold else Obsidian) else TextGray,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Filled.NotificationsNone,
+                                    contentDescription = null,
+                                    tint = Gold,
+                                    modifier = Modifier.size(32.dp)
+                                )
                             }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = if (selectedCategory == "All") "All Caught Up! ✨" else "No $selectedCategory Alerts",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDark) Color.White else Obsidian
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = if (selectedCategory == "All")
+                                    "You don't have any unread dispatch, wallet, or delivery notifications at this time."
+                                else
+                                    "No notifications recorded under the $selectedCategory category.",
+                                fontSize = 12.sp,
+                                color = TextGray,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp)
+                            )
                         }
                     }
                 } else {
-                    // --- TAB 1: SYSTEM MONITOR & ALERTS DASHBOARD ---
-                    Column(
+                    LazyColumn(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(20.dp)
+                            .weight(1f)
+                            .padding(horizontal = 16.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        val cardBg = if (isDark) Charcoal else Color.White
-                        val textColor = if (isDark) Color.White else Obsidian
-                        val secondaryText = if (isDark) TextGray else Color(0xFF4B5563)
-                        val borderColor = if (isDark) BorderDark else BorderLight
-
-                        val pendingCount = parcels.count { it.status == ParcelStatus.PENDING }
-                        val transitCount = parcels.count { it.status == ParcelStatus.TRANSIT || it.status == ParcelStatus.ASSIGNED || it.status == ParcelStatus.OUT_FOR_DELIVERY }
-                        val deliveredCount = parcels.count { it.status == ParcelStatus.DELIVERED }
-                        val onlineRiders = riders.count { it.status == RiderStatus.ONLINE }
-                        val busyRiders = riders.count { it.status == RiderStatus.BUSY }
-                        val offlineRiders = riders.count { it.status == RiderStatus.OFFLINE }
-
-                        // ===== SECTION 1: SHIPMENT METRICS =====
-                        Text(
-                            text = "SHIPMENT OVERVIEW",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = if (isDark) Gold else Obsidian,
-                            letterSpacing = 1.2.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                color = cardBg,
-                                border = BorderStroke(1.dp, borderColor)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Schedule, null,
-                                        tint = if (isDark) Gold else Obsidian,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "$pendingCount",
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = textColor
-                                    )
-                                    Text("Pending", fontSize = 9.sp, color = secondaryText)
-                                }
+                        items(paginatedList, key = { it.id }) { item ->
+                            val cardBg = if (isDark) Charcoal else Color.White
+                            val textPrimary = if (isDark) Color.White else Obsidian
+                            val textSecondary = if (isDark) TextGray else Color(0xFF4B5563)
+                            val linkedParcel = remember(item.parcelId, parcels) {
+                                if (item.parcelId.isNotBlank()) parcels.find { it.id == item.parcelId } else null
                             }
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                color = cardBg,
-                                border = BorderStroke(1.dp, borderColor)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        Icons.Filled.LocalShipping, null,
-                                        tint = if (isDark) Gold else Obsidian,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "$transitCount",
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = textColor
-                                    )
-                                    Text("Active", fontSize = 9.sp, color = secondaryText)
-                                }
-                            }
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                color = cardBg,
-                                border = BorderStroke(1.dp, borderColor)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Done, null,
-                                        tint = if (isDark) Gold else Obsidian,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "$deliveredCount",
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = textColor
-                                    )
-                                    Text("Delivered", fontSize = 9.sp, color = secondaryText)
-                                }
-                            }
-                        }
+                            val liveProgress = linkedParcel?.progress ?: 0f
 
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        // ===== SECTION 2: RIDER FLEET STATUS =====
-                        Text(
-                            text = "FLEET STATUS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = if (isDark) Gold else Obsidian,
-                            letterSpacing = 1.2.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                color = cardBg,
-                                border = BorderStroke(1.dp, borderColor)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Person, null,
-                                        tint = Color(0xFF22C55E),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "$onlineRiders",
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = textColor
-                                    )
-                                    Text("Online", fontSize = 9.sp, color = secondaryText)
-                                }
+                            val iconData = when {
+                                item.parcelId.isNotBlank() || item.title.contains("delivery", true) || item.title.contains("shipment", true) ->
+                                    Icons.Filled.LocalShipping to Gold
+                                item.title.contains("wallet", true) || item.title.contains("credit", true) || item.title.contains("₦", true) ->
+                                    Icons.Filled.AccountBalanceWallet to Color(0xFF22C55E)
+                                item.title.contains("reward", true) || item.title.contains("bonus", true) || item.title.contains("gift", true) ->
+                                    Icons.Filled.CardGiftcard to Gold
+                                item.title.contains("security", true) || item.title.contains("pin", true) || item.title.contains("login", true) ->
+                                    Icons.Filled.Shield to Color(0xFF3B82F6)
+                                else ->
+                                    Icons.Filled.Notifications to Gold
                             }
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                color = cardBg,
-                                border = BorderStroke(1.dp, borderColor)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        Icons.Filled.LocalShipping, null,
-                                        tint = Color(0xFFF59E0B),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "$busyRiders",
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = textColor
-                                    )
-                                    Text("Busy", fontSize = 9.sp, color = secondaryText)
-                                }
-                            }
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                color = cardBg,
-                                border = BorderStroke(1.dp, borderColor)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Person, null,
-                                        tint = Color(0xFFEF4444),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "$offlineRiders",
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = textColor
-                                    )
-                                    Text("Offline", fontSize = 9.sp, color = secondaryText)
-                                }
-                            }
-                        }
 
-                        if (riders.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(10.dp))
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(18.dp),
                                 color = cardBg,
-                                border = BorderStroke(1.dp, borderColor),
+                                border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(
-                                        text = "ACTIVE RIDERS",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = secondaryText,
-                                        letterSpacing = 1.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    riders.take(5).forEach { rider ->
-                                        val statusColor = when (rider.status) {
-                                            RiderStatus.ONLINE -> Color(0xFF22C55E)
-                                            RiderStatus.BUSY -> Color(0xFFF59E0B)
-                                            RiderStatus.OFFLINE -> Color(0xFFEF4444)
-                                        }
-                                        val statusText = when (rider.status) {
-                                            RiderStatus.ONLINE -> "Online"
-                                            RiderStatus.BUSY -> "Busy"
-                                            RiderStatus.OFFLINE -> "Offline"
-                                        }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(iconData.second.copy(alpha = 0.12f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = iconData.first,
+                                            contentDescription = null,
+                                            tint = iconData.second,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(8.dp)
-                                                        .clip(CircleShape)
-                                                        .background(statusColor)
-                                                )
-                                                Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = item.title,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 13.sp,
+                                                color = textPrimary,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            Text(
+                                                text = item.time,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = TextGray
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        Text(
+                                            text = item.message,
+                                            fontSize = 12.sp,
+                                            color = textSecondary,
+                                            lineHeight = 16.sp,
+                                            fontWeight = FontWeight.Normal
+                                        )
+
+                                        if (linkedParcel != null) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            LinearProgressIndicator(
+                                                progress = { liveProgress.coerceIn(0f, 1f) },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(5.dp)
+                                                    .clip(RoundedCornerShape(3.dp)),
+                                                color = Gold,
+                                                trackColor = if (isDark) BorderDark else BorderLight
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
                                                 Text(
-                                                    text = rider.name,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = textColor
+                                                    text = linkedParcel.itemName.ifBlank { "Parcel #${linkedParcel.id.takeLast(6)}" },
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = textSecondary
+                                                )
+                                                Text(
+                                                    text = "${(liveProgress * 100).toInt()}% • ${linkedParcel.status.name}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isDark) Gold else Obsidian
                                                 )
                                             }
-                                            Text(
-                                                text = "${rider.vehicleType} • $statusText",
-                                                fontSize = 10.sp,
-                                                color = secondaryText
-                                            )
                                         }
-                                        if (rider != riders.take(5).last()) {
-                                            HorizontalDivider(
-                                                thickness = 0.5.dp,
-                                                color = borderColor
-                                            )
-                                        }
+                                    }
+
+                                    IconButton(
+                                        onClick = { viewModel.deleteNotificationItem(item.id) },
+                                        modifier = Modifier.size(24.dp).padding(start = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Close,
+                                            contentDescription = "Dismiss",
+                                            tint = TextGray.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(14.dp)
+                                        )
                                     }
                                 }
                             }
                         }
+                    }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                    // Pagination row
+                    if (totalPages > 1) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val activeColor = if (isDark) Gold else Obsidian
+                            val activeTextColor = if (isDark) Obsidian else Gold
+                            val inactiveBg = if (isDark) Charcoal else Color(0xFFF1F5F9)
+                            val borderColor = if (isDark) Color(0xFF2C2C2C) else Color(0xFFE2E8F0)
 
-                        // ===== SECTION 3: SYSTEM EVENTS FEED =====
-                        Text(
-                            text = "SYSTEM EVENTS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = if (isDark) Gold else Obsidian,
-                            letterSpacing = 1.2.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Recent system-level notifications and activity alerts:",
-                            fontSize = 12.sp,
-                            color = secondaryText
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        if (list.isEmpty()) {
-                            Box(
+                            IconButton(
+                                onClick = { if (currentPage > 0) currentPage-- },
+                                enabled = currentPage > 0,
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(100.dp),
-                                contentAlignment = Alignment.Center
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(if (currentPage > 0) inactiveBg else inactiveBg.copy(alpha = 0.4f))
+                                    .border(1.dp, borderColor, CircleShape)
                             ) {
-                                Text(
-                                    text = "No recent events",
-                                    fontSize = 12.sp,
-                                    color = secondaryText
+                                Icon(
+                                    imageVector = Icons.Filled.ArrowBack,
+                                    contentDescription = "Previous",
+                                    tint = if (currentPage > 0) (if (isDark) Gold else Obsidian) else TextGray,
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
-                        } else {
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = cardBg,
-                                border = BorderStroke(1.dp, borderColor),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    list.take(8).forEachIndexed { index, item ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 6.dp),
-                                            verticalAlignment = Alignment.Top
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .padding(top = 2.dp)
-                                                    .size(6.dp)
-                                                    .clip(CircleShape)
-                                                    .background(if (isDark) Gold else Obsidian)
-                                            )
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = item.title,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = textColor
-                                                )
-                                                Text(
-                                                    text = item.message,
-                                                    fontSize = 10.sp,
-                                                    color = secondaryText,
-                                                    lineHeight = 13.sp
-                                                )
-                                                Text(
-                                                    text = item.time,
-                                                    fontSize = 8.sp,
-                                                    color = secondaryText.copy(alpha = 0.6f)
-                                                )
-                                            }
-                                        }
-                                        if (index < list.take(8).size - 1) {
-                                            HorizontalDivider(
-                                                thickness = 0.5.dp,
-                                                color = borderColor
-                                            )
-                                        }
-                                    }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            for (i in 0 until totalPages) {
+                                val isSelected = i == currentPage
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSelected) activeColor else inactiveBg)
+                                        .border(1.dp, if (isSelected) activeColor else borderColor, CircleShape)
+                                        .clickable { currentPage = i },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "${i + 1}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) activeTextColor else TextGray
+                                    )
                                 }
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            IconButton(
+                                onClick = { if (currentPage < totalPages - 1) currentPage++ },
+                                enabled = currentPage < totalPages - 1,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(if (currentPage < totalPages - 1) inactiveBg else inactiveBg.copy(alpha = 0.4f))
+                                    .border(1.dp, borderColor, CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.ArrowForward,
+                                    contentDescription = "Next",
+                                    tint = if (currentPage < totalPages - 1) (if (isDark) Gold else Obsidian) else TextGray,
+                                    modifier = Modifier.size(14.dp)
+                                )
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        // ===== SECTION 4: BROADCAST SYSTEM ALERT (REAL) =====
-                        Text(
-                            text = "BROADCAST SYSTEM ALERT",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = if (isDark) Gold else Obsidian,
-                            letterSpacing = 1.2.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Compose & send a real-time alert to the entire fleet via Firestore.",
-                            fontSize = 12.sp,
-                            color = secondaryText
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        OutlinedTextField(
-                            value = broadcastTitle,
-                            onValueChange = { broadcastTitle = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Alert title", color = secondaryText) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = textColor, fontSize = 13.sp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Gold,
-                                unfocusedBorderColor = borderColor,
-                                focusedTextColor = textColor,
-                                unfocusedTextColor = textColor,
-                                focusedContainerColor = cardBg,
-                                unfocusedContainerColor = cardBg,
-                                focusedPlaceholderColor = secondaryText,
-                                unfocusedPlaceholderColor = secondaryText
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = broadcastMessage,
-                            onValueChange = { broadcastMessage = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Alert message", color = secondaryText) },
-                            minLines = 2,
-                            maxLines = 3,
-                            shape = RoundedCornerShape(12.dp),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = textColor, fontSize = 13.sp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Gold,
-                                unfocusedBorderColor = borderColor,
-                                focusedTextColor = textColor,
-                                unfocusedTextColor = textColor,
-                                focusedContainerColor = cardBg,
-                                unfocusedContainerColor = cardBg,
-                                focusedPlaceholderColor = secondaryText,
-                                unfocusedPlaceholderColor = secondaryText
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = {
-                                if (broadcastTitle.isBlank() || broadcastMessage.isBlank()) {
-                                    Toast.makeText(context, "Enter a title and message to broadcast", Toast.LENGTH_SHORT).show()
-                                    return@Button
-                                }
-                                viewModel.adminSendBroadcastNotification(broadcastTitle.trim(), broadcastMessage.trim()) { ok, msg ->
-                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                                    if (ok) {
-                                        broadcastTitle = ""
-                                        broadcastMessage = ""
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Gold,
-                                contentColor = Obsidian
-                            )
-                        ) {
-                            Icon(Icons.Filled.Campaign, null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Send Broadcast to Fleet", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             }
         }
+    }
 }
 
 // --- PROMOTIONS VOUCHER SCREEN ---

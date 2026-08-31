@@ -145,6 +145,13 @@ fun OrderLogsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
+                    item {
+                        DeliverySummaryCard(
+                            parcels = parcels,
+                            isDark = isDark
+                        )
+                    }
+
                     if (paginatedParcels.isEmpty() && loadingParcels) {
                         item {
                             Box(modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
