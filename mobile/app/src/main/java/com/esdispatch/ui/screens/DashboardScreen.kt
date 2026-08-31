@@ -286,7 +286,8 @@ fun DashboardScreen(
 
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
-            kotlinx.coroutines.delay(1500)
+            viewModel.refreshAllData()
+            kotlinx.coroutines.delay(600)
             isRefreshing = false
         }
     }
@@ -1066,8 +1067,7 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Tile 3: Promo Savings (₦1,500 saved per booking)
-                        val promoSavings = deliveryCount * 1500
+                        val promoSavings = (parcels.count { it.status == ParcelStatus.DELIVERED } * 750) + (loyaltyPoints * 10)
                         StatsTile(
                             title = "Promo Savings",
                             value = "₦${String.format("%,d", promoSavings)} Saved",

@@ -436,14 +436,50 @@ fun ActiveTrackingScreen(
     )
 
     // Dynamic Weather state and AI Mode (Points 11 & 12)
-    var currentWeather by remember { mutableStateOf("Sunny ☀️") }
+    var currentWeather by remember { mutableStateOf("Clear ☀️ (29°C)") }
     var isAiEtaActive by remember { mutableStateOf(true) }
+
+    LaunchedEffect(parcel.courierLatitude, parcel.courierLongitude) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val lat = parcel.courierLatitude ?: 6.454070
+                val lng = parcel.courierLongitude ?: 3.394670
+                val url = java.net.URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&current=temperature_2m,weather_code")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 4000
+                conn.readTimeout = 4000
+                if (conn.responseCode == 200) {
+                    val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = org.json.JSONObject(responseStr)
+                    val currentObj = json.optJSONObject("current")
+                    if (currentObj != null) {
+                        val temp = currentObj.optDouble("temperature_2m", 28.0)
+                        val code = currentObj.optInt("weather_code", 0)
+                        val condition = when (code) {
+                            0 -> "Clear ☀️ (${temp.toInt()}°C)"
+                            1, 2, 3 -> "Partly Cloudy ⛅ (${temp.toInt()}°C)"
+                            45, 48 -> "Foggy 🌫️ (${temp.toInt()}°C)"
+                            51, 53, 55, 61, 63, 65 -> "Rainy 🌧️ (${temp.toInt()}°C)"
+                            80, 81, 82 -> "Heavy Rain ⛈️ (${temp.toInt()}°C)"
+                            95, 96, 99 -> "Thunderstorm ⚡ (${temp.toInt()}°C)"
+                            else -> "Clear ☀️ (${temp.toInt()}°C)"
+                        }
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            currentWeather = condition
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Keep default or fallback
+            }
+        }
+    }
 
     fun calculateEta(prog: Float, weather: String, aiActive: Boolean): Int {
         val baseSeconds = ((1f - prog) * 1200).toInt().coerceAtLeast(10)
         val weatherMultiplier = when {
-            weather.contains("Rainy") -> 1.35
-            weather.contains("Stormy") -> 1.75
+            weather.contains("Rainy") || weather.contains("Heavy Rain") -> 1.35
+            weather.contains("Thunderstorm") || weather.contains("Stormy") -> 1.75
             weather.contains("Foggy") -> 1.25
             else -> 1.0
         }

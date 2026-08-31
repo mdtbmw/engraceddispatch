@@ -126,6 +126,16 @@ service cloud.firestore {
         allow read, create, update, delete: if isOwner(userId) && isReasonableWrite();
       }
 
+      // Verification OTP (owned by the user, time-limited)
+      match /verification_otp/{docId} {
+        allow read, write: if isOwner(userId) && isReasonableWrite();
+      }
+
+      // Tokenized payment cards (owned by user only)
+      match /payment_cards/{cardId} {
+        allow read, write, delete: if isOwner(userId) && isReasonableWrite();
+      }
+
       match /deliveries/{deliveryId} {
         allow read: if isOwner(userId) || isAdmin() || (isAuth() && resource.data.riderId == request.auth.uid);
         allow create, delete: if isOwner(userId) || isAdmin();
@@ -289,6 +299,23 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isAdmin();
       allow update, delete: if isAdmin();
+    }
+
+    // =========================================================
+    // CUSTOMER SUPPORT & DISPATCH LIVE CHATS
+    // =========================================================
+
+    match /support_chats/{ticketId} {
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin() || isDispatcher());
+      allow create: if isAuth() && isReasonableWrite();
+      allow update: if isAuth() && isReasonableWrite();
+      allow delete: if isAdmin();
+
+      match /messages/{msgId} {
+        allow read: if isAuth() && (get(/databases/$(database)/documents/support_chats/$(ticketId)).data.userId == request.auth.uid || isAdmin() || isDispatcher());
+        allow create: if isAuth() && isReasonableWrite();
+        allow update, delete: if isAdmin();
+      }
     }
 
     // =========================================================

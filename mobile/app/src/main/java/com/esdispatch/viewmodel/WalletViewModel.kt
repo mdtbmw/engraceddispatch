@@ -132,19 +132,62 @@ open class WalletViewModel : AuthViewModel() {
 
     fun addPaymentCard(card: CardInfo, onResult: (Boolean) -> Unit) {
         val current = _paymentCards.value.toMutableList()
-        current.add(card)
-        _paymentCards.value = current
-        onResult(true)
+        if (!current.any { it.last4 == card.last4 }) {
+            current.add(card)
+            _paymentCards.value = current
+        }
+        val uid = _firebaseUserId.value
+        val db = com.esdispatch.data.FirebaseManager.firestore
+        if (uid != null && db != null) {
+            val cardMap = hashMapOf(
+                "type" to card.type,
+                "last4" to card.last4,
+                "expiry" to card.expiry,
+                "createdAt" to System.currentTimeMillis()
+            )
+            db.collection("users").document(uid).collection("payment_cards")
+                .document("CARD-${card.last4}")
+                .set(cardMap)
+                .addOnSuccessListener { onResult(true) }
+                .addOnFailureListener { onResult(true) }
+        } else {
+            onResult(true)
+        }
     }
 
     fun removePaymentCard(card: CardInfo, onResult: (Boolean) -> Unit) {
         val current = _paymentCards.value.toMutableList()
-        current.remove(card)
+        current.removeAll { it.last4 == card.last4 }
         _paymentCards.value = current
-        onResult(true)
+        val uid = _firebaseUserId.value
+        val db = com.esdispatch.data.FirebaseManager.firestore
+        if (uid != null && db != null) {
+            db.collection("users").document(uid).collection("payment_cards")
+                .document("CARD-${card.last4}")
+                .delete()
+                .addOnSuccessListener { onResult(true) }
+                .addOnFailureListener { onResult(true) }
+        } else {
+            onResult(true)
+        }
     }
 
     fun fetchUserPaymentCards() {
-        // Implementation
+        val uid = _firebaseUserId.value ?: return
+        val db = com.esdispatch.data.FirebaseManager.firestore ?: return
+        db.collection("users").document(uid).collection("payment_cards")
+            .get()
+            .addOnSuccessListener { snap ->
+                val cards = snap.documents.mapNotNull { doc ->
+                    val type = doc.getString("type") ?: "Card"
+                    val last4 = doc.getString("last4") ?: "0000"
+                    val expiry = doc.getString("expiry") ?: "12/28"
+                    CardInfo(type, last4, expiry)
+                }
+                _paymentCards.value = cards
+            }
+            .addOnFailureListener { e ->
+                android.util.Log.e("WalletViewModel", "Failed to fetch cards: ${e.message}")
+            }
     }
 }

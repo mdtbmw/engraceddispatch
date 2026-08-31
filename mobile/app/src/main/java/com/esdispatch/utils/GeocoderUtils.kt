@@ -201,4 +201,44 @@ object GeocoderUtils {
         val fallback = String.format(java.util.Locale.US, "%.5f, %.5f", lat, lng)
         return@withContext fallback
     }
+
+    suspend fun geocodeAddress(context: android.content.Context, address: String): Pair<Double, Double>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (address.isBlank()) return@withContext null
+        try {
+            val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
+            if (!token.isNullOrBlank()) {
+                val encoded = java.net.URLEncoder.encode(address.trim(), "UTF-8")
+                val url = java.net.URL("https://api.mapbox.com/geocoding/v5/mapbox.places/$encoded.json?access_token=$token&limit=1")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 4000
+                conn.readTimeout = 4000
+                if (conn.responseCode == 200) {
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val obj = org.json.JSONObject(jsonStr)
+                    val features = obj.optJSONArray("features")
+                    if (features != null && features.length() > 0) {
+                        val center = features.getJSONObject(0).optJSONArray("center")
+                        if (center != null && center.length() >= 2) {
+                            val lng = center.getDouble(0)
+                            val lat = center.getDouble(1)
+                            return@withContext Pair(lat, lng)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("GeocoderUtils", "Mapbox geocode error: ${e.message}")
+        }
+        try {
+            val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+            val list = getFromLocationNameCompat(geocoder, address, 1)
+            if (!list.isNullOrEmpty()) {
+                return@withContext Pair(list[0].latitude, list[0].longitude)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("GeocoderUtils", "Android geocode error: ${e.message}")
+        }
+        return@withContext null
+    }
 }
+

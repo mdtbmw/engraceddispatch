@@ -56,7 +56,7 @@ fun StatsGrid(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            val promoSavings = deliveryCount * 1500
+            val promoSavings = (deliveryCount * 750) + (loyaltyPoints * 10)
             StatsTile(
                 title = "Promo Savings",
                 value = "₦${String.format("%,d", promoSavings)} Saved",

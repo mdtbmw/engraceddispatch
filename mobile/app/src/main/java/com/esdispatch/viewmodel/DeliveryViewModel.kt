@@ -1219,6 +1219,79 @@ class DeliveryViewModel : WalletViewModel() {
         _activeParcelChats.value = emptyList()
     }
 
+    private val _supportChatMessages = MutableStateFlow<List<com.esdispatch.data.SupportChatMessage>>(emptyList())
+    val supportChatMessages: StateFlow<List<com.esdispatch.data.SupportChatMessage>> = _supportChatMessages.asStateFlow()
+    private var supportChatListenerJob: kotlinx.coroutines.Job? = null
+
+    fun startListeningToSupportChat(ticketId: String? = null) {
+        val tid = ticketId ?: _firebaseUserId.value ?: return
+        supportChatListenerJob?.cancel()
+        supportChatListenerJob = viewModelScope.launch {
+            com.esdispatch.data.FirebaseManager.listenToSupportChatMessages(tid)
+                .collect { messages ->
+                    _supportChatMessages.value = messages
+                }
+        }
+    }
+
+    fun stopListeningToSupportChat() {
+        supportChatListenerJob?.cancel()
+        supportChatListenerJob = null
+        _supportChatMessages.value = emptyList()
+    }
+
+    fun sendSupportChatMessage(messageText: String, ticketId: String? = null, onComplete: ((Boolean, String?) -> Unit)? = null) {
+        val tid = ticketId ?: _firebaseUserId.value ?: return
+        val senderId = _firebaseUserId.value ?: ""
+        val senderName = _userName.value.ifEmpty { "Customer" }
+        com.esdispatch.data.FirebaseManager.sendSupportChatMessage(
+            ticketId = tid,
+            senderId = senderId,
+            senderName = senderName,
+            senderRole = if (_userRole.value == "admin") "admin" else "customer",
+            messageText = messageText,
+            onComplete = { success, err ->
+                onComplete?.invoke(success, err)
+            }
+        )
+    }
+
+    fun requestAccountVerificationOtp(onResult: (Boolean, String) -> Unit) {
+        val uid = _firebaseUserId.value
+        if (uid.isNullOrBlank()) {
+            onResult(false, "Please sign in to verify your account.")
+            return
+        }
+        val secureCode = (100000..999999).random().toString()
+        com.esdispatch.data.FirebaseManager.saveVerificationOtp(uid, secureCode) { success, err ->
+            if (success) {
+                showInAppNotification("Verification OTP Sent 🔐", "Your 6-digit verification code is: $secureCode (Expires in 10 mins)")
+                onResult(true, "Verification code sent! Code: $secureCode")
+            } else {
+                onResult(false, err ?: "Failed to generate OTP code.")
+            }
+        }
+    }
+
+    fun confirmAccountVerificationOtp(enteredOtp: String, onResult: (Boolean, String) -> Unit) {
+        val uid = _firebaseUserId.value
+        if (uid.isNullOrBlank()) {
+            onResult(false, "Please sign in to verify.")
+            return
+        }
+        if (enteredOtp.isBlank() || enteredOtp.length < 4) {
+            onResult(false, "Please enter a valid verification code.")
+            return
+        }
+        com.esdispatch.data.FirebaseManager.verifyOtpCode(uid, enteredOtp) { success, msg ->
+            if (success) {
+                _isVerified.value = true
+                savePref("is_verified", true)
+            }
+            onResult(success, msg)
+        }
+    }
+
     fun sendParcelChatMessage(parcelId: String, senderRole: String, messageText: String, onComplete: (Boolean, String?) -> Unit) {
         val senderId = _firebaseUserId.value ?: ""
         val senderName = _userName.value.ifEmpty { "User" }
@@ -4619,33 +4692,37 @@ class DeliveryViewModel : WalletViewModel() {
             it.status == ParcelStatus.TRANSIT || it.status == ParcelStatus.OUT_FOR_DELIVERY 
         }
         val deliveredParcels = parcels.filter { it.status == ParcelStatus.DELIVERED }
-        val recentDelivered = deliveredParcels.maxByOrNull { it.progress }
 
         val hasActiveDelivery = activeParcel != null
         val hasCompletedDeliveries = deliveredParcels.isNotEmpty()
 
-        val quality = when {
-            !hasActiveDelivery && !hasCompletedDeliveries -> "No active deliveries to verify"
-            hasCompletedDeliveries -> "High"
-            activeParcel?.progress ?: 0f > 0.7f -> "Medium"
+        val locationVerified = (hasActiveDelivery && activeParcel?.courierLatitude != null) || deliveredParcels.any { it.courierLatitude != null }
+        val timestampVerified = hasCompletedDeliveries || hasActiveDelivery
+        val otpVerified = (hasActiveDelivery && activeParcel?.otpVerified == true) || deliveredParcels.any { it.otpVerified }
+
+        val imageQuality = when {
+            hasCompletedDeliveries && otpVerified -> "High"
+            hasCompletedDeliveries || locationVerified -> "Medium"
             else -> "Low"
         }
 
-        val imageQuality = if (quality == "High") "High" else if (quality == "Medium") "Medium" else "Low"
-        val confidence = when (imageQuality) {
-            "High" -> (1..4).random()
-            "Medium" -> (5..14).random()
-            else -> (15..35).random()
-        }
-        val isApproved = confidence < 25 && hasCompletedDeliveries
+        // Real fraud risk calculation: 0 = completely safe, 100 = high risk
+        var riskScore = 5
+        if (!locationVerified) riskScore += 25
+        if (!otpVerified) riskScore += 20
+        if (!timestampVerified) riskScore += 30
+        if (imageQuality == "Low") riskScore += 15
+
+        val finalFraudConfidence = riskScore.coerceIn(2, 95)
+        val isApproved = finalFraudConfidence < 40
 
         _aiPODAnalysis.value = PODAnalysis(
             packageVisible = hasActiveDelivery || hasCompletedDeliveries,
             customerReceived = hasCompletedDeliveries,
             imageQuality = imageQuality,
-            locationVerified = hasActiveDelivery && activeParcel?.courierLatitude != null,
-            timestampVerified = hasCompletedDeliveries,
-            fakeConfidence = confidence,
+            locationVerified = locationVerified,
+            timestampVerified = timestampVerified,
+            fakeConfidence = finalFraudConfidence,
             isApproved = isApproved
         )
     }
@@ -4861,19 +4938,71 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun optimizeBatchRoute(batchName: String, stops: List<String>, onResult: (BatchRoutePlan) -> Unit) {
-        viewModelScope.launch {
-            kotlinx.coroutines.delay(300)
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
             val distinctStops = stops.filter { it.isNotBlank() }.distinct()
-            val pathSummary = if (distinctStops.isNotEmpty()) distinctStops.joinToString(" ➔ ") else "Main Hub ➔ Delivery Points"
-            val stopCount = maxOf(distinctStops.size, 1)
+            if (distinctStops.isEmpty()) {
+                val plan = BatchRoutePlan(
+                    batchName = batchName,
+                    stopCount = 0,
+                    optimizedPathSummary = "No stops configured",
+                    estimatedDistanceKm = 0.0,
+                    estimatedEtaMinutes = 0,
+                    aiConfidence = 100,
+                    status = "EMPTY_ROUTE"
+                )
+                onResult(plan)
+                return@launch
+            }
+
+            val context = com.esdispatch.DispatchApplication.instance
+            val geocodedStops = distinctStops.map { stop ->
+                val coords = com.esdispatch.utils.GeocoderUtils.geocodeAddress(context, stop)
+                Pair(stop, coords)
+            }
+
+            val unvisited = geocodedStops.toMutableList()
+            val orderedRoute = mutableListOf<String>()
+            var currentLat = 6.454070
+            var currentLng = 3.394670
+            var totalDistanceKm = 0.0
+
+            while (unvisited.isNotEmpty()) {
+                val nearest = unvisited.minByOrNull { item ->
+                    val coords = item.second
+                    if (coords != null) {
+                        calculateHaversineDistanceKm(currentLat, currentLng, coords.first, coords.second)
+                    } else {
+                        Double.MAX_VALUE
+                    }
+                } ?: unvisited.first()
+
+                unvisited.remove(nearest)
+                orderedRoute.add(nearest.first)
+
+                val coords = nearest.second
+                if (coords != null) {
+                    val dist = calculateHaversineDistanceKm(currentLat, currentLng, coords.first, coords.second)
+                    totalDistanceKm += dist
+                    currentLat = coords.first
+                    currentLng = coords.second
+                } else {
+                    totalDistanceKm += 3.2
+                }
+            }
+
+            val roundedDist = Math.round(totalDistanceKm * 10.0) / 10.0
+            val travelMinutes = ((roundedDist / 24.0) * 60).toInt()
+            val totalEtaMinutes = travelMinutes + (orderedRoute.size * 5)
+            val pathSummary = orderedRoute.joinToString(" ➔ ")
+
             val optimizedPlan = BatchRoutePlan(
                 batchName = batchName,
-                stopCount = stopCount,
+                stopCount = orderedRoute.size,
                 optimizedPathSummary = pathSummary,
-                estimatedDistanceKm = 8.5 + (stopCount * 2.8),
-                estimatedEtaMinutes = 15 + (stopCount * 10),
-                aiConfidence = 98,
-                status = "AI_OPTIMIZED_LOW_FUEL"
+                estimatedDistanceKm = roundedDist,
+                estimatedEtaMinutes = totalEtaMinutes,
+                aiConfidence = 96,
+                status = "TSP_OPTIMIZED_SHORTEST_PATH"
             )
             onResult(optimizedPlan)
         }

@@ -33,7 +33,7 @@ import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where
 import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
-type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking";
+type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking" | "support";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
 interface Delivery { id: string; status: string; category?: string; receiverName: string; deliveryAddress: string; senderName: string; senderPhone: string; receiverPhone: string; price: number; riderId: string; courierName: string; courierPhone: string; courierLatitude?: number; courierLongitude?: number; itemName: string; pickupAddress: string; quantity: number; weight: number; dateString: string; tipAmount: number; userId: string; otpCode: string; riderBikeNumber?: string; pickupLat?: number; pickupLng?: number; deliveryLat?: number; deliveryLng?: number; driverId?: string; driverName?: string; }
 interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
@@ -1081,6 +1081,7 @@ function AdminDashboardPage() {
     { id: "appcards", label: "App Cards", icon: <Layers size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "settings", label: "Settings", icon: <Settings size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "cms", label: "Site Content", icon: <FileText size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
+    { id: "support", label: "Live Support", icon: <MessageSquare size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "logs", label: "Audit Log", icon: <Headphones size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
   ];
   const navItems = allNavItems.filter(n => n.roles.includes(userRole || "super_admin"));
@@ -3084,6 +3085,235 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
   </div>;
 }
 
+interface SupportTicket {
+  id: string;
+  ticketId: string;
+  userId: string;
+  userName: string;
+  lastMessage: string;
+  lastUpdated: number;
+  status: string;
+}
+
+interface SupportChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: string;
+  messageText: string;
+  timestamp: number;
+}
+
+function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: any }) {
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
+  const [messages, setMessages] = useState<SupportChatMessage[]>([]);
+  const [replyText, setReplyText] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!db) return;
+    const unsub = onSnapshot(collection(db, "support_chats"), (snapshot) => {
+      const list: SupportTicket[] = [];
+      snapshot.forEach((doc) => {
+        const d = doc.data();
+        list.push({
+          id: doc.id,
+          ticketId: d.ticketId || doc.id,
+          userId: d.userId || "",
+          userName: d.userName || "Customer",
+          lastMessage: d.lastMessage || "",
+          lastUpdated: d.lastUpdated || 0,
+          status: d.status || "OPEN"
+        });
+      });
+      list.sort((a, b) => b.lastUpdated - a.lastUpdated);
+      setTickets(list);
+      setLoading(false);
+      if (!selectedTicket && list.length > 0) {
+        setSelectedTicket(list[0]);
+      }
+    });
+    return () => unsub();
+  }, [db]);
+
+  useEffect(() => {
+    if (!db || !selectedTicket) return;
+    const unsub = onSnapshot(
+      collection(db, "support_chats", selectedTicket.id, "messages"),
+      (snapshot) => {
+        const msgs: SupportChatMessage[] = [];
+        snapshot.forEach((doc) => {
+          const d = doc.data();
+          msgs.push({
+            id: doc.id,
+            senderId: d.senderId || "",
+            senderName: d.senderName || "",
+            senderRole: d.senderRole || "customer",
+            messageText: d.messageText || "",
+            timestamp: d.timestamp || 0
+          });
+        });
+        msgs.sort((a, b) => a.timestamp - b.timestamp);
+        setMessages(msgs);
+      }
+    );
+    return () => unsub();
+  }, [db, selectedTicket]);
+
+  const handleSendReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!replyText.trim() || !selectedTicket || !db) return;
+    const text = replyText.trim();
+    setReplyText("");
+    try {
+      const msgId = "MSG-" + Date.now();
+      const now = Date.now();
+      const msgData = {
+        id: msgId,
+        senderId: "ADMIN_HQ",
+        senderName: "HQ Dispatcher",
+        senderRole: "dispatcher",
+        messageText: text,
+        timestamp: now
+      };
+      await setDoc(doc(db, "support_chats", selectedTicket.id, "messages", msgId), msgData);
+      await updateDoc(doc(db, "support_chats", selectedTicket.id), {
+        lastMessage: text,
+        lastUpdated: now
+      });
+      addLog("Support Reply", `Replied to ticket ${selectedTicket.ticketId}`);
+    } catch (err: any) {
+      addToast("error", err.message || "Failed to send reply");
+    }
+  };
+
+  return (
+    <div className="tab-content space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-[#111] dark:text-white flex items-center gap-3">
+            <Headphones className="text-[#FFC542]" size={28} />
+            Live Customer Support & Dispatch Chat
+          </h2>
+          <p className="text-xs text-black/50 dark:text-white/50">
+            Real-time two-way communication channel between customers and central headquarters.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[650px]">
+        <div className="bg-[#f9f9f9] dark:bg-[#141414] rounded-3xl p-4 border border-black/5 dark:border-white/5 flex flex-col overflow-hidden">
+          <h3 className="font-bold text-sm text-[#111] dark:text-white mb-3 px-2">Support Conversations ({tickets.length})</h3>
+          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+            {loading ? (
+              <p className="text-xs text-black/40 dark:text-white/40 p-3">Loading tickets...</p>
+            ) : tickets.length === 0 ? (
+              <p className="text-xs text-black/40 dark:text-white/40 p-3">No support conversations yet.</p>
+            ) : (
+              tickets.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedTicket(t)}
+                  className={`w-full text-left p-3.5 rounded-2xl transition-all border ${
+                    selectedTicket?.id === t.id
+                      ? "bg-[#FFC542] text-[#111] border-[#FFC542] shadow-md"
+                      : "bg-white dark:bg-[#1c1c1c] text-[#111] dark:text-white border-black/5 dark:border-white/5 hover:border-[#FFC542]/50"
+                  }`}
+                >
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-bold text-xs">{t.userName}</span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      selectedTicket?.id === t.id ? "bg-black/10 text-black" : "bg-[#4CAF50]/20 text-[#4CAF50]"
+                    }`}>
+                      {t.status}
+                    </span>
+                  </div>
+                  <p className={`text-xs truncate ${selectedTicket?.id === t.id ? "text-black/80" : "text-black/60 dark:text-white/60"}`}>
+                    {t.lastMessage || "No messages yet"}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="lg:col-span-2 bg-[#f9f9f9] dark:bg-[#141414] rounded-3xl p-5 border border-black/5 dark:border-white/5 flex flex-col overflow-hidden">
+          {selectedTicket ? (
+            <>
+              <div className="pb-3 border-b border-black/5 dark:border-white/5 flex items-center justify-between">
+                <div>
+                  <h4 className="font-black text-sm text-[#111] dark:text-white">{selectedTicket.userName}</h4>
+                  <p className="text-[11px] text-black/40 dark:text-white/40">Ticket: {selectedTicket.ticketId} • User ID: {selectedTicket.userId}</p>
+                </div>
+                <span className="text-[11px] font-bold text-[#4CAF50] bg-[#4CAF50]/10 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#4CAF50] animate-pulse"></span>
+                  Live Connected
+                </span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto py-4 space-y-3 pr-2">
+                {messages.length === 0 ? (
+                  <div className="text-center py-12 text-black/40 dark:text-white/40 text-xs">
+                    No message history in this ticket.
+                  </div>
+                ) : (
+                  messages.map((m) => {
+                    const isStaff = m.senderRole === "dispatcher" || m.senderRole === "admin";
+                    return (
+                      <div key={m.id} className={`flex ${isStaff ? "justify-end" : "justify-start"}`}>
+                        <div className={`max-w-[75%] rounded-2xl p-3.5 text-xs ${
+                          isStaff
+                            ? "bg-[#FFC542] text-[#111] font-medium"
+                            : "bg-white dark:bg-[#242424] text-[#111] dark:text-white border border-black/5 dark:border-white/5"
+                        }`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold text-[10px] opacity-75">
+                              {isStaff ? "HQ Dispatcher" : selectedTicket.userName}
+                            </span>
+                            <span className="text-[9px] opacity-50">
+                              {m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
+                            </span>
+                          </div>
+                          <p>{m.messageText}</p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <form onSubmit={handleSendReply} className="pt-3 border-t border-black/5 dark:border-white/5 flex gap-2">
+                <input
+                  type="text"
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder={`Reply to ${selectedTicket.userName}...`}
+                  className="flex-1 bg-white dark:bg-[#202020] text-[#111] dark:text-white px-4 py-3 rounded-2xl text-xs outline-none border border-black/10 dark:border-white/10 focus:border-[#FFC542]"
+                />
+                <button
+                  type="submit"
+                  disabled={!replyText.trim()}
+                  className="bg-[#FFC542] text-[#111] px-5 py-3 rounded-2xl font-bold text-xs flex items-center gap-2 hover:bg-[#FFC542]/90 disabled:opacity-50 transition-all shadow-md"
+                >
+                  <Send size={14} />
+                  Send
+                </button>
+              </form>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
+              <Headphones size={48} className="text-black/20 dark:text-white/20 mb-3" />
+              <p className="font-bold text-sm text-[#111] dark:text-white">No Support Conversation Selected</p>
+              <p className="text-xs text-black/40 dark:text-white/40 mt-1">Select a ticket from the left panel to begin live chat.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LogsTab({ logs }: LogsTabProps) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [lPage, setLPage] = useState(0);
@@ -3310,6 +3540,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
         {tab === "appcards" && <AppCardsTab appContent={appContent} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "settings" && <SettingsTab db={db} addLog={addLog} />}
         {tab === "cms" && <CMSTab db={db} addLog={addLog} />}
+        {tab === "support" && <SupportTab db={db} addLog={addLog} addToast={addToast} />}
         {tab === "logs" && <LogsTab logs={logs} />}
       </div>
     </main>

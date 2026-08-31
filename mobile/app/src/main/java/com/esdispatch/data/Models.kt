@@ -214,3 +214,12 @@ data class VehicleMaintenanceSchedule(
 
 
 data class CardInfo(val type: String, val last4: String, val expiry: String)
+
+data class SupportChatMessage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val senderId: String = "",
+    val senderName: String = "",
+    val senderRole: String = "customer", // "customer", "dispatcher", "admin"
+    val messageText: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)

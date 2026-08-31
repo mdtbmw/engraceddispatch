@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -708,7 +709,7 @@ fun ProfileScreen(
         )
     }
     if (showLiveChatSheet) {
-        LiveChatSheet { showLiveChatSheet = false }
+        LiveChatSheet(viewModel = viewModel) { showLiveChatSheet = false }
     }
     if (showAboutProfileSheet) {
         AboutProfileSheet(showMinSdk = false) { showAboutProfileSheet = false }
@@ -3169,7 +3170,7 @@ fun PaymentMethodsSheet(
     val cardsList by viewModel.paymentCards.collectAsState()
 
     LaunchedEffect(Unit) {
-        delay(800)
+        viewModel.fetchUserPaymentCards()
         isLoading = false
     }
 
@@ -3565,25 +3566,38 @@ fun HelpSupportSheet(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveChatSheet(
+    viewModel: com.esdispatch.viewmodel.DeliveryViewModel,
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
+    val listState = rememberLazyListState()
 
-    var messages by remember {
-        mutableStateOf(
-            listOf(
-                ChatMessage("Hello, how can we assist you with your ESDispatch order today?", false)
-            )
-        )
-    }
+    val liveSupportMessages by viewModel.supportChatMessages.collectAsState()
     var msgInput by remember { mutableStateOf("") }
 
-    val dismissWithAnim = {
+    LaunchedEffect(Unit) {
+        viewModel.startListeningToSupportChat()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.stopListeningToSupportChat()
+        }
+    }
+
+    LaunchedEffect(liveSupportMessages.size) {
+        if (liveSupportMessages.isNotEmpty()) {
+            listState.animateScrollToItem(liveSupportMessages.size - 1)
+        }
+    }
+
+    val dismissWithAnim: () -> Unit = {
         scope.launch { sheetState.hide() }.invokeOnCompletion {
             if (!sheetState.isVisible) onDismiss()
         }
+        Unit
     }
 
     ModalBottomSheet(
@@ -3600,27 +3614,76 @@ fun LiveChatSheet(
                 .navigationBarsPadding()
                 .padding(24.dp)
         ) {
-            Text("Live Support Conversation", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF4CAF50))
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Live Support Dispatch", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
+                }
+                IconButton(onClick = dismissWithAnim) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = TextGray)
+                }
+            }
+            Text("Real-time direct communication with ESDispatch headquarters operations.", fontSize = 12.sp, color = TextGray)
             Spacer(modifier = Modifier.height(16.dp))
 
             // Chat lists
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(messages) { msg ->
+                if (liveSupportMessages.isEmpty()) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (MaterialTheme.colorScheme.background != BackgroundDark) Color(0xFFF5F5F5) else Color(0xFF2C2C2C),
+                            contentColor = AppOnSurface,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "👋 Hello! You are connected live with the ESDispatch Control Center. Type a message below to reach a live dispatcher immediately.",
+                                modifier = Modifier.padding(14.dp),
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        }
+                    }
+                }
+                items(liveSupportMessages) { msg ->
+                    val isMe = msg.senderRole == "customer"
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start
+                        horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
                     ) {
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = if (msg.isUser) Gold else (if (MaterialTheme.colorScheme.background != BackgroundDark) Color(0xFFF5F5F5) else Color(0xFF2C2C2C)),
-                            contentColor = if (msg.isUser) Obsidian else AppOnSurface
+                            color = if (isMe) Gold else (if (MaterialTheme.colorScheme.background != BackgroundDark) Color(0xFFF5F5F5) else Color(0xFF2C2C2C)),
+                            contentColor = if (isMe) Obsidian else AppOnSurface
                         ) {
-                            Text(msg.text, modifier = Modifier.padding(14.dp), fontSize = 14.sp)
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                if (!isMe) {
+                                    Text(
+                                        text = msg.senderName.ifBlank { "Dispatcher" } + " (HQ)",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Gold
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                }
+                                Text(msg.messageText, fontSize = 14.sp)
+                            }
                         }
                     }
                 }
@@ -3651,14 +3714,12 @@ fun LiveChatSheet(
                 IconButton(
                     onClick = {
                         if (msgInput.isNotBlank()) {
-                            val userMsg = msgInput
-                            messages = messages + ChatMessage(userMsg, true)
+                            val userMsg = msgInput.trim()
                             msgInput = ""
-
-                            // Real support assistant response
-                            scope.launch {
-                                delay(800)
-                                messages = messages + ChatMessage("Understood. Connected to Live Operations Dispatch.", false)
+                            viewModel.sendSupportChatMessage(userMsg) { success, err ->
+                                if (!success) {
+                                    Toast.makeText(context, err ?: "Failed to send message", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
                     },
@@ -3933,16 +3994,20 @@ fun VerificationSheet(
                 Button(
                     onClick = {
                         isSendingOtp = true
-                        scope.launch {
-                            delay(1000)
+                        viewModel.requestAccountVerificationOtp { success, msg ->
                             isSendingOtp = false
-                            otpSent = true
-                            Toast.makeText(context, "Verification code sent to your email!", Toast.LENGTH_SHORT).show()
+                            if (success) {
+                                otpSent = true
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                    enabled = !isSendingOtp
                 ) {
                     if (isSendingOtp) {
                         CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(24.dp))
@@ -3954,7 +4019,7 @@ fun VerificationSheet(
                 OutlinedTextField(
                     value = otpInput,
                     onValueChange = { otpInput = it },
-                    label = { Text("Enter OTP Code") },
+                    label = { Text("Enter 6-Digit OTP Code") },
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     shape = RoundedCornerShape(16.dp),
@@ -3970,24 +4035,29 @@ fun VerificationSheet(
 
                 Button(
                     onClick = {
-                        val currentUser = com.esdispatch.data.FirebaseManager.auth?.currentUser
-                        if (currentUser != null) {
-                            currentUser.getIdToken(true).addOnSuccessListener {
-                                viewModel.refreshVerificationStatus()
-                                Toast.makeText(context, "Verification complete! You are now a verified member.", Toast.LENGTH_LONG).show()
+                        if (otpInput.length < 4) {
+                            Toast.makeText(context, "Please enter your 6-digit OTP code", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        isSendingOtp = true
+                        viewModel.confirmAccountVerificationOtp(otpInput) { success, msg ->
+                            isSendingOtp = false
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            if (success) {
                                 dismissWithAnim()
-                            }.addOnFailureListener {
-                                Toast.makeText(context, "Verification failed. Please try again.", Toast.LENGTH_SHORT).show()
                             }
-                        } else {
-                            Toast.makeText(context, "Please sign in to verify.", Toast.LENGTH_SHORT).show()
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen, contentColor = Obsidian)
+                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen, contentColor = Obsidian),
+                    enabled = !isSendingOtp
                 ) {
-                    Text("Confirm Code", fontWeight = FontWeight.Black)
+                    if (isSendingOtp) {
+                        CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(24.dp))
+                    } else {
+                        Text("Confirm Code", fontWeight = FontWeight.Black)
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -5256,23 +5326,40 @@ fun PinAuthSheet(
 
             LaunchedEffect(pinText) {
                 if (pinText.length == 4) {
-                    kotlinx.coroutines.delay(600)
-                    if (pinText == registeredPin || registeredPin.isBlank()) {
-                        onAuthSuccess()
+                    kotlinx.coroutines.delay(200)
+                    if (registeredPin.isNotBlank()) {
+                        if (pinText == registeredPin) {
+                            onAuthSuccess()
+                        } else {
+                            Toast.makeText(context, "Invalid Security PIN. Access denied.", Toast.LENGTH_SHORT).show()
+                            dismissWithAnim()
+                        }
                     } else {
-                        Toast.makeText(context, "Invalid Security PIN. Access denied.", Toast.LENGTH_SHORT).show()
-                        dismissWithAnim()
+                        // Establish newly registered PIN
+                        viewModel.setUserPin(pinText)
+                        Toast.makeText(context, "Security PIN established successfully!", Toast.LENGTH_SHORT).show()
+                        onAuthSuccess()
                     }
                 }
             }
 
             Button(
                 onClick = {
-                    if (pinText == registeredPin || registeredPin.isBlank()) {
-                        onAuthSuccess()
+                    if (pinText.length != 4) {
+                        Toast.makeText(context, "PIN must be exactly 4 digits", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    if (registeredPin.isNotBlank()) {
+                        if (pinText == registeredPin) {
+                            onAuthSuccess()
+                        } else {
+                            Toast.makeText(context, "Invalid Security PIN. Access denied.", Toast.LENGTH_SHORT).show()
+                            dismissWithAnim()
+                        }
                     } else {
-                        Toast.makeText(context, "Invalid Security PIN. Access denied.", Toast.LENGTH_SHORT).show()
-                        dismissWithAnim()
+                        viewModel.setUserPin(pinText)
+                        Toast.makeText(context, "Security PIN established successfully!", Toast.LENGTH_SHORT).show()
+                        onAuthSuccess()
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp),

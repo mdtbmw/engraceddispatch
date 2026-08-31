@@ -2081,5 +2081,165 @@ object FirebaseManager {
             }
         awaitClose { registration.remove() }
     }
+
+    /**
+     * Send a real-time live support ticket chat message between customer and dispatch center.
+     */
+    fun sendSupportChatMessage(
+        ticketId: String,
+        senderId: String,
+        senderName: String,
+        senderRole: String,
+        messageText: String,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        val db = firestore
+        if (db == null) {
+            onComplete(false, "Firestore is not available")
+            return
+        }
+
+        val msgId = java.util.UUID.randomUUID().toString()
+        val timestamp = System.currentTimeMillis()
+        val msgMap = hashMapOf(
+            "id" to msgId,
+            "senderId" to senderId,
+            "senderName" to senderName,
+            "senderRole" to senderRole,
+            "messageText" to messageText,
+            "timestamp" to timestamp
+        )
+
+        val chatDocRef = db.collection("support_chats").document(ticketId)
+        chatDocRef.set(
+            hashMapOf(
+                "ticketId" to ticketId,
+                "userId" to senderId,
+                "userName" to senderName,
+                "lastMessage" to messageText,
+                "lastUpdated" to timestamp,
+                "status" to "OPEN"
+            ),
+            com.google.firebase.firestore.SetOptions.merge()
+        )
+
+        chatDocRef.collection("messages")
+            .document(msgId)
+            .set(msgMap)
+            .addOnSuccessListener { onComplete(true, null) }
+            .addOnFailureListener { e -> onComplete(false, e.message ?: "Failed to send support message.") }
+    }
+
+    /**
+     * Listen in real-time to support ticket chat messages for a user.
+     */
+    fun listenToSupportChatMessages(ticketId: String): Flow<List<SupportChatMessage>> = callbackFlow {
+        val db = firestore
+        if (db == null) {
+            trySend(emptyList())
+            awaitClose {}
+            return@callbackFlow
+        }
+
+        val query = db.collection("support_chats")
+            .document(ticketId)
+            .collection("messages")
+            .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.ASCENDING)
+
+        val listener = query.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.e(TAG, "Error listening to support chats: ${error.message}")
+                return@addSnapshotListener
+            }
+
+            val list = mutableListOf<SupportChatMessage>()
+            if (snapshot != null) {
+                for (doc in snapshot.documents) {
+                    try {
+                        val id = doc.getString("id") ?: doc.id
+                        val senderId = doc.getString("senderId") ?: ""
+                        val senderName = doc.getString("senderName") ?: ""
+                        val senderRole = doc.getString("senderRole") ?: "customer"
+                        val text = doc.getString("messageText") ?: ""
+                        val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
+
+                        list.add(
+                            SupportChatMessage(
+                                id = id,
+                                senderId = senderId,
+                                senderName = senderName,
+                                senderRole = senderRole,
+                                messageText = text,
+                                timestamp = timestamp
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing support message: ${e.message}")
+                    }
+                }
+            }
+            trySend(list)
+        }
+
+        awaitClose { listener.remove() }
+    }
+
+    fun saveVerificationOtp(userId: String, code: String, onComplete: (Boolean, String?) -> Unit) {
+        val db = firestore ?: run { onComplete(false, "Firestore unavailable"); return }
+        val expiresAt = System.currentTimeMillis() + (10 * 60 * 1000L) // 10 minutes
+        val data = hashMapOf(
+            "code" to code,
+            "expiresAt" to expiresAt,
+            "attempts" to 0,
+            "createdAt" to System.currentTimeMillis()
+        )
+        db.collection("users").document(userId).collection("verification_otp").document("current")
+            .set(data)
+            .addOnSuccessListener { onComplete(true, null) }
+            .addOnFailureListener { e -> onComplete(false, e.message) }
+    }
+
+    fun verifyOtpCode(userId: String, enteredCode: String, onComplete: (Boolean, String) -> Unit) {
+        val db = firestore ?: run { onComplete(false, "Firestore unavailable"); return }
+        val docRef = db.collection("users").document(userId).collection("verification_otp").document("current")
+        docRef.get().addOnSuccessListener { snap ->
+            if (!snap.exists()) {
+                onComplete(false, "No active OTP request found. Please request a new verification code.")
+                return@addOnSuccessListener
+            }
+            val storedCode = snap.getString("code") ?: ""
+            val expiresAt = snap.getLong("expiresAt") ?: 0L
+            val attempts = snap.getLong("attempts") ?: 0L
+
+            if (System.currentTimeMillis() > expiresAt) {
+                onComplete(false, "Verification code has expired. Please request a new code.")
+                return@addOnSuccessListener
+            }
+
+            if (attempts >= 5) {
+                onComplete(false, "Too many failed attempts. Please request a new code.")
+                return@addOnSuccessListener
+            }
+
+            if (enteredCode.trim() == storedCode.trim()) {
+                db.collection("users").document(userId).update(
+                    mapOf(
+                        "isVerified" to true,
+                        "verifiedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                    )
+                ).addOnSuccessListener {
+                    docRef.delete()
+                    onComplete(true, "Verification successful! You are now a verified VIP member.")
+                }.addOnFailureListener { e ->
+                    onComplete(false, e.message ?: "Failed to update verification status.")
+                }
+            } else {
+                docRef.update("attempts", com.google.firebase.firestore.FieldValue.increment(1))
+                onComplete(false, "Invalid verification code. Please check and try again.")
+            }
+        }.addOnFailureListener { e ->
+            onComplete(false, e.message ?: "Failed to verify code.")
+        }
+    }
 }
 
