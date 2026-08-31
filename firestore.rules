@@ -172,6 +172,12 @@ service cloud.firestore {
             && request.resource.data.status == 'ASSIGNED'
             && request.resource.data.riderId == request.auth.uid);
       allow delete: if isAdmin();
+
+      match /chats/{chatId} {
+        allow read: if true;
+        allow create: if isAuth() && isReasonableWrite();
+        allow update, delete: if isAdmin();
+      }
     }
 
     // =========================================================
@@ -389,6 +395,16 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isAuth() && isReasonableWrite();
       allow delete: if isAdmin();
+    }
+
+    match /riders/{riderId} {
+      allow read: if isAuth();
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /system_ledger/{docId} {
+      allow read: if isAdmin();
+      allow write: if false; // System ledger mutations strictly reserved for Cloud Functions
     }
   }
 }

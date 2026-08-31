@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onRiderSubcollectionChanged = exports.onNotificationCreated = exports.onRiderDocumentChanged = exports.processVendorPayout = exports.verifyDeliveryOtp = exports.verifyPaymentAndTopUp = exports.onDeliveryStatusUpdated = exports.onDeliveryCreatedAutoDispatch = exports.onUserCreatedSendWelcome = void 0;
+exports.onContactCreated = exports.onRiderSubcollectionChanged = exports.onNotificationCreated = exports.onRiderDocumentChanged = exports.processVendorPayout = exports.verifyDeliveryOtp = exports.verifyPaymentAndTopUp = exports.onDeliveryStatusUpdated = exports.onDeliveryCreatedAutoDispatch = exports.onUserCreatedSendWelcome = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 admin.initializeApp();
@@ -591,6 +591,31 @@ exports.onRiderSubcollectionChanged = functions.firestore
     }
     catch (err) {
         console.error(`[Rider Subcollection Sync Error]`, err);
+    }
+    return null;
+});
+/**
+ * Cloud Function triggered when a new contact submission is created.
+ * Generates an admin notification automatically.
+ */
+exports.onContactCreated = functions.firestore
+    .document('contacts/{contactId}')
+    .onCreate(async (snap, context) => {
+    const data = snap.data();
+    if (!data)
+        return null;
+    try {
+        await db.collection('notifications').add({
+            type: 'contact',
+            title: 'New contact form submission',
+            body: `${data.name || 'Visitor'} (${data.email || 'No email'}) sent a message: "${(data.message || '').slice(0, 100)}"`,
+            read: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`[Contact Trigger] Notification created for submission ${context.params.contactId}`);
+    }
+    catch (err) {
+        console.error('[Contact Trigger Error]', err);
     }
     return null;
 });

@@ -4454,7 +4454,7 @@ class DeliveryViewModel : WalletViewModel() {
                     }
                 }
             }
-            return "Routing updates successfully logged in Spanner mesh."
+            return "Routing updates successfully logged in database."
         }
     }
 
@@ -4462,59 +4462,54 @@ class DeliveryViewModel : WalletViewModel() {
         val lower = text.lowercase()
         return when {
             lower.contains("send") || lower.contains("book") || lower.contains("deliver") -> {
-                // Features 6 & 8: Address correction and Vehicle recommendation
                 val isHeavy = lower.contains("heavy") || lower.contains("kg") || lower.contains("box") || lower.contains("furniture")
                 val addressMatch = if (lower.contains("airport")) "Murtala Muhammed Airport Rd, Ikeja (Spell corrected from: Airpot)" else "Herbert Macaulay Way, Yaba, Lagos"
                 val vehicleRec = if (isHeavy) "Van or Truck (Heavy Package recommended)" else "Motorcycle (Standard Fast delivery suitability)"
                 
-                "ðŸ“¦ **Smart Order Setup Initialized**:\n" +
-                "â€¢ **Smart Address Prediction**: $addressMatch\n" +
-                "â€¢ **Suggested Vehicle recommendation**: $vehicleRec\n" +
-                "â€¢ **Price Estimate**: â‚¦${if(isHeavy) "7,500.00" else "2,500.00"}\n" +
+                "📦 **Smart Order Setup Initialized**:\n" +
+                "• **Smart Address Prediction**: $addressMatch\n" +
+                "• **Suggested Vehicle recommendation**: $vehicleRec\n" +
+                "• **Price Estimate**: ₦${if(isHeavy) "7,500.00" else "2,500.00"}\n" +
                 "Would you like me to book this ESDispatch shipment?"
             }
             lower.contains("status") || lower.contains("track") || lower.contains("where") || lower.contains("rolex") || lower.contains("mac") -> {
-                // Feature 2: Intelligent ETA feedback
                 val active = _parcels.value.firstOrNull { it.status == ParcelStatus.TRANSIT }
                 if (active != null) {
-                    "ðŸ“ **Live Delivery Status for #${active.id}**:\n" +
-                    "â€¢ **Item**: ${active.itemName}\n" +
-                    "â€¢ **Current Rider**: ${active.courierName}\n" +
-                    "â€¢ **Smart ETA**: ${if(_aiTrafficCongested.value) "Arriving in 35 mins (Heavy Traffic delays)" else "Arriving in 14 mins (Optimal route)"}\n" +
-                    "â€¢ **Rider Location**: Third Mainland Bridge, Lagos\n" +
+                    "📍 **Live Delivery Status for #${active.id}**:\n" +
+                    "• **Item**: ${active.itemName}\n" +
+                    "• **Current Rider**: ${active.courierName}\n" +
+                    "• **Smart ETA**: ${if(_aiTrafficCongested.value) "Arriving in 35 mins (Heavy Traffic delays)" else "Arriving in 14 mins (Optimal route)"}\n" +
+                    "• **Rider Location**: Third Mainland Bridge, Lagos\n" +
                     "Would you like me to ping the rider or request a route re-evaluation?"
                 } else {
                     "No active shipments are currently in transit. Your past shipments have been successfully delivered to their destinations."
                 }
             }
             lower.contains("rider") || lower.contains("richard") || lower.contains("musa") || lower.contains("best") -> {
-                // Feature 1: Smart Assignment Ranking preview
-                "ðŸ¤– **Smart Rider Assignment Recommendation**:\n" +
-                "â€¢ **Richard Dheo** (Rating: 4.9, Distance: 0.8km) â€” **Score: 98% (Best Match)**\n" +
-                "â€¢ **Adebayo Musa** (Rating: 4.8, Distance: 1.6km) â€” **Score: 82%**\n" +
-                "â€¢ **Chinedu Okafor** (Rating: 4.7, Distance: 3.2km) â€” **Score: 65%**\n" +
+                "🤖 **Smart Rider Assignment Recommendation**:\n" +
+                "• **Richard Dheo** (Rating: 4.9, Distance: 0.8km) — **Score: 98% (Best Match)**\n" +
+                "• **Adebayo Musa** (Rating: 4.8, Distance: 1.6km) — **Score: 82%**\n" +
+                "• **Chinedu Okafor** (Rating: 4.7, Distance: 3.2km) — **Score: 65%**\n" +
                 "Would you like me to lock Richard Dheo for your next booking?"
             }
             lower.contains("risk") || lower.contains("weather") || lower.contains("rain") || lower.contains("flood") -> {
-                // Feature 7: Risk Analysis
                 val score = if (_aiTrafficCongested.value) 68 else 15
-                "âš ï¸ **AI Risk Assessment Station**:\n" +
-                "â€¢ **Risk Score**: $score/100 (${if(score > 50) "Moderate Risk" else "Safe"})\n" +
-                "â€¢ **Weather**: Clear, dry skies\n" +
-                "â€¢ **Traffic**: ${if(_aiTrafficCongested.value) "Severe Congestion on Expressways" else "Free, clear lanes"}\n" +
-                "â€¢ **Mitigation**: Approved for motorcycle. ${if(score > 50) "Rerouting around flooded zones active." else "Standard paths approved."}"
+                "⚠️ **AI Risk Assessment Station**:\n" +
+                "• **Risk Score**: $score/100 (${if(score > 50) "Moderate Risk" else "Safe"})\n" +
+                "• **Weather**: Clear, dry skies\n" +
+                "• **Traffic**: ${if(_aiTrafficCongested.value) "Severe Congestion on Expressways" else "Free, clear lanes"}\n" +
+                "• **Mitigation**: Approved for motorcycle. ${if(score > 50) "Rerouting around flooded zones active." else "Standard paths approved."}"
             }
             lower.contains("cancel") -> {
-                // Feature 10: Fraud Detection warning
-                "âš ï¸ **Cancellation Verification System**:\n" +
+                "⚠️ **Cancellation Verification System**:\n" +
                 "Your cancellation has been processed safely. To maintain high account scores and prevent suspicious anti-cancellation flags, please avoid repeated booking rejections."
             }
             lower.contains("change") -> {
-                "ðŸ“ **Smart Address Modification**:\n" +
+                "📍 **Smart Address Modification**:\n" +
                 "Please enter your new destination. I will instantly correct spelling, verify landmarks, and recalculate ETAs for your rider."
             }
             else -> {
-                "I have compiled your operational request. Our AI Dispatch Manager has checked the Spanner database and verifies that our dispatch rider fleet is fully synchronized and running under safe weather conditions. How else can I assist you with logistically advanced route predictions?"
+                "I have compiled your operational request. Our AI Dispatch Manager has verified that our dispatch rider fleet is fully synchronized and running under safe weather conditions. How else can I assist you with logistically advanced route predictions?"
             }
         }
     }

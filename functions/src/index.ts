@@ -616,3 +616,28 @@ export const onRiderSubcollectionChanged = functions.firestore
     }
     return null;
   });
+
+/**
+ * Cloud Function triggered when a new contact submission is created.
+ * Generates an admin notification automatically.
+ */
+export const onContactCreated = functions.firestore
+  .document('contacts/{contactId}')
+  .onCreate(async (snap, context) => {
+    const data = snap.data();
+    if (!data) return null;
+    try {
+      await db.collection('notifications').add({
+        type: 'contact',
+        title: 'New contact form submission',
+        body: `${data.name || 'Visitor'} (${data.email || 'No email'}) sent a message: "${(data.message || '').slice(0, 100)}"`,
+        read: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`[Contact Trigger] Notification created for submission ${context.params.contactId}`);
+    } catch (err) {
+      console.error('[Contact Trigger Error]', err);
+    }
+    return null;
+  });
+

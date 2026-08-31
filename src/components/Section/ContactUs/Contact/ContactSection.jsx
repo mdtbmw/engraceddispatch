@@ -29,13 +29,6 @@ const ContactSection = () => {
         createdAt: serverTimestamp(),
         status: "new",
       });
-      await addDoc(collection(db, "notifications"), {
-        type: "contact",
-        title: "New contact form submission",
-        body: `${name} (${email}) sent a message`,
-        read: false,
-        createdAt: serverTimestamp(),
-      });
       setDone(true);
       setName(""); setEmail(""); setAddress(""); setMessage("");
     } catch (err) {

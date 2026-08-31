@@ -396,6 +396,9 @@ class MainActivity : FragmentActivity() {
                     composable("Referral") {
                         ReferralScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
                     }
+                    composable("RiderDashboard") {
+                        RiderDashboardScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                    }
 
                 }
 
