@@ -1131,6 +1131,107 @@ object FirebaseManager {
     }
 
     /**
+     * Set up a real-time listener for the user's saved addresses in Firestore
+     */
+    fun listenToUserAddresses(userId: String): Flow<List<AddressItem>> = callbackFlow {
+        val db = firestore
+        if (db == null) {
+            trySend(emptyList())
+            close()
+            return@callbackFlow
+        }
+
+        val listener = db.collection("users").document(userId)
+            .collection("addresses")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening to user addresses: ${error.message}")
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null) {
+                    val list = mutableListOf<AddressItem>()
+                    for (doc in snapshot.documents) {
+                        try {
+                            val id = doc.getString("id") ?: doc.id
+                            val label = doc.getString("label") ?: "Saved Address"
+                            val address = doc.getString("address") ?: ""
+                            val isDefault = doc.getBoolean("isDefault") ?: false
+                            if (address.isNotBlank()) {
+                                list.add(AddressItem(id, label, address, isDefault))
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing address: ${e.message}")
+                        }
+                    }
+                    trySend(list)
+                }
+            }
+
+        awaitClose {
+            listener.remove()
+        }
+    }
+
+    /**
+     * Save an address to Firestore under users/{userId}/addresses/{address.id}
+     */
+    fun saveUserAddress(userId: String, address: AddressItem) {
+        val db = firestore ?: return
+        val data = mapOf(
+            "id" to address.id,
+            "label" to address.label,
+            "address" to address.address,
+            "isDefault" to address.isDefault,
+            "updatedAt" to com.google.firebase.Timestamp.now()
+        )
+        db.collection("users").document(userId)
+            .collection("addresses").document(address.id)
+            .set(data, com.google.firebase.firestore.SetOptions.merge())
+            .addOnSuccessListener {
+                Log.d(TAG, "Address ${address.id} synced to Firestore.")
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "Failed to sync address to Firestore: ${e.message}")
+            }
+    }
+
+    /**
+     * Delete an address from Firestore
+     */
+    fun deleteUserAddress(userId: String, addressId: String) {
+        val db = firestore ?: return
+        db.collection("users").document(userId)
+            .collection("addresses").document(addressId)
+            .delete()
+            .addOnSuccessListener {
+                Log.d(TAG, "Address $addressId deleted from Firestore.")
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "Failed to delete address from Firestore: ${e.message}")
+            }
+    }
+
+    /**
+     * Set default address in Firestore: marks target as true, others as false
+     */
+    fun setDefaultUserAddress(userId: String, addressId: String) {
+        val db = firestore ?: return
+        db.collection("users").document(userId)
+            .collection("addresses").get()
+            .addOnSuccessListener { snapshot ->
+                val batch = db.batch()
+                for (doc in snapshot.documents) {
+                    val isTarget = (doc.id == addressId || doc.getString("id") == addressId)
+                    batch.update(doc.reference, "isDefault", isTarget)
+                }
+                batch.commit().addOnFailureListener { e ->
+                    Log.w(TAG, "Failed to commit default address batch: ${e.message}")
+                }
+            }
+    }
+
+    /**
      * Sync wallet balance directly to the user's Firestore document
      */
     fun syncWalletBalanceToFirestore(userId: String, balance: Double) {
@@ -1476,7 +1577,7 @@ object FirebaseManager {
                 // Send push notification to customer
                 sendNotificationToUser(
                     userId = parcelUserId,
-                    title = "Parcel Assigned 🏍️",
+                    title = "Parcel Assigned",
                     message = "Your parcel #$parcelId has been assigned to driver $riderName ($riderBikeNumber).",
                     parcelId = parcelId
                 )
@@ -1485,7 +1586,7 @@ object FirebaseManager {
             if (riderId.isNotEmpty()) {
                 sendNotificationToUser(
                     userId = riderId,
-                    title = "New Delivery Assignment 📦",
+                    title = "New Delivery Assignment",
                     message = "You have been assigned to delivery #$parcelId. Tap to view route.",
                     parcelId = parcelId
                 )
@@ -1527,12 +1628,12 @@ object FirebaseManager {
                             )
                         )
                         val statusTitle = when(nextStatus) {
-                            ParcelStatus.TRANSIT -> "Parcel Out for Delivery 🚀"
-                            ParcelStatus.DELIVERED -> "Parcel Delivered Successfully 🎉"
-                            ParcelStatus.ASSIGNED -> "Parcel Assigned 🏍️"
-                            ParcelStatus.PICKED_UP -> "Parcel Picked Up 📦"
-                            ParcelStatus.ARRIVED -> "Rider Arrived 📍"
-                            else -> "Parcel Status Update 🔄"
+                            ParcelStatus.TRANSIT -> "Parcel Out for Delivery"
+                            ParcelStatus.DELIVERED -> "Parcel Delivered Successfully"
+                            ParcelStatus.ASSIGNED -> "Parcel Assigned"
+                            ParcelStatus.PICKED_UP -> "Parcel Picked Up"
+                            ParcelStatus.ARRIVED -> "Rider Arrived"
+                            else -> "Parcel Status Update"
                         }
                         sendNotificationToUser(
                             userId = parcelUserId,

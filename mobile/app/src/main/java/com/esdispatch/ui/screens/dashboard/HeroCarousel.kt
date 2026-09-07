@@ -122,278 +122,284 @@ fun HeroCarousel(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(260.dp)
-            .pointerInput(displayItems.size) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        if (dragOffset > 80f) {
-                            currentHeroPage = (currentHeroPage - 1 + displayItems.size) % displayItems.size
-                        } else if (dragOffset < -80f) {
-                            currentHeroPage = (currentHeroPage + 1) % displayItems.size
-                        }
-                        dragOffset = 0f
-                        coroutineScope.launch {
-                            kotlinx.coroutines.delay(5000)
-                            isHeroCarouselIdle = true
-                        }
-                    },
-                    onDragCancel = {
-                        dragOffset = 0f
-                        coroutineScope.launch {
-                            kotlinx.coroutines.delay(5000)
-                            isHeroCarouselIdle = true
-                        }
-                    },
-                    onHorizontalDrag = { _, dragAmount ->
-                        if (isHeroCarouselIdle) isHeroCarouselIdle = false
-                        dragOffset += dragAmount
-                    }
-                )
-            },
-        contentAlignment = Alignment.TopCenter
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        val sortedIndices = displayItems.indices.toList().sortedByDescending { idx ->
-            (idx - currentHeroPage + displayItems.size) % displayItems.size
-        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(256.dp)
+                .pointerInput(displayItems.size) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (dragOffset > 80f) {
+                                currentHeroPage = (currentHeroPage - 1 + displayItems.size) % displayItems.size
+                            } else if (dragOffset < -80f) {
+                                currentHeroPage = (currentHeroPage + 1) % displayItems.size
+                            }
+                            dragOffset = 0f
+                            coroutineScope.launch {
+                                kotlinx.coroutines.delay(5000)
+                                isHeroCarouselIdle = true
+                            }
+                        },
+                        onDragCancel = {
+                            dragOffset = 0f
+                            coroutineScope.launch {
+                                kotlinx.coroutines.delay(5000)
+                                isHeroCarouselIdle = true
+                            }
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            if (isHeroCarouselIdle) isHeroCarouselIdle = false
+                            dragOffset += dragAmount
+                        }
+                    )
+                },
+            contentAlignment = Alignment.TopCenter
+        ) {
+            val sortedIndices = displayItems.indices.toList().sortedByDescending { idx ->
+                (idx - currentHeroPage + displayItems.size) % displayItems.size
+            }
 
-        sortedIndices.forEach { index ->
-            val relativeIndex = (index - currentHeroPage + displayItems.size) % displayItems.size
-            val scaleFactor = when (relativeIndex) {
-                0 -> 1.0f
-                1 -> 0.92f
-                else -> 0.84f
-            }
-            val yShift = when (relativeIndex) {
-                0 -> 0.dp
-                1 -> 18.dp
-                else -> 36.dp
-            }
-            val zIndexVal = when (relativeIndex) {
-                0 -> 3f
-                1 -> 2f
-                else -> 1f
-            }
-            val opacityVal = when (relativeIndex) {
-                0 -> 1.0f
-                1 -> 0.9f
-                else -> 0.8f
-            }
-            val xShift = if (relativeIndex == 0) animatedDragOffset.dp else 0.dp
-            val animatedScale by animateFloatAsState(targetValue = scaleFactor, label = "scale_$index")
-            val animatedYShift by animateDpAsState(targetValue = yShift, label = "yShift_$index")
-            val animatedAlpha by animateFloatAsState(targetValue = opacityVal, label = "alpha_$index")
+            sortedIndices.forEach { index ->
+                val relativeIndex = (index - currentHeroPage + displayItems.size) % displayItems.size
+                val scaleFactor = when (relativeIndex) {
+                    0 -> 1.0f
+                    1 -> 0.92f
+                    else -> 0.84f
+                }
+                val yShift = when (relativeIndex) {
+                    0 -> 0.dp
+                    1 -> 18.dp
+                    else -> 36.dp
+                }
+                val zIndexVal = when (relativeIndex) {
+                    0 -> 3f
+                    1 -> 2f
+                    else -> 1f
+                }
+                val opacityVal = when (relativeIndex) {
+                    0 -> 1.0f
+                    1 -> 0.9f
+                    else -> 0.8f
+                }
+                val xShift = if (relativeIndex == 0) animatedDragOffset.dp else 0.dp
+                val animatedScale by animateFloatAsState(targetValue = scaleFactor, label = "scale_$index")
+                val animatedYShift by animateDpAsState(targetValue = yShift, label = "yShift_$index")
+                val animatedAlpha by animateFloatAsState(targetValue = opacityVal, label = "alpha_$index")
 
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .height(215.dp)
-                    .zIndex(zIndexVal)
-                    .graphicsLayer {
-                        scaleX = animatedScale
-                        scaleY = animatedScale
-                        translationX = xShift.toPx()
-                        translationY = animatedYShift.toPx()
-                        alpha = animatedAlpha
-                    },
-                shape = RoundedCornerShape(26.dp),
-                color = if (relativeIndex == 0) Obsidian else Gold,
-                border = BorderStroke(
-                    width = 1.2.dp,
-                    color = if (relativeIndex == 0) BorderDark else Gold.copy(alpha = 0.5f)
-                ),
-                shadowElevation = if (relativeIndex == 0) 8.dp else 2.dp
-            ) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    if (relativeIndex == 0) {
-                        val product = displayItems[index]
-                        Image(
-                            painter = rememberAsyncImagePainter(
-                                model = product.imageUrl.ifBlank { "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=800" }
-                            ),
-                            contentDescription = product.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(26.dp))
-                                .clickable { onProductClick(product) }
-                        )
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .height(215.dp)
+                        .zIndex(zIndexVal)
+                        .graphicsLayer {
+                            scaleX = animatedScale
+                            scaleY = animatedScale
+                            translationX = xShift.toPx()
+                            translationY = animatedYShift.toPx()
+                            alpha = animatedAlpha
+                        },
+                    shape = RoundedCornerShape(26.dp),
+                    color = if (relativeIndex == 0) Obsidian else Gold,
+                    border = BorderStroke(
+                        width = 1.2.dp,
+                        color = if (relativeIndex == 0) BorderDark else Gold.copy(alpha = 0.5f)
+                    ),
+                    shadowElevation = 0.dp
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (relativeIndex == 0) {
+                            val product = displayItems[index]
+                            Image(
+                                painter = rememberAsyncImagePainter(
+                                    model = product.imageUrl.ifBlank { "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=800" }
+                                ),
+                                contentDescription = product.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(26.dp))
+                                    .clickable { onProductClick(product) }
+                            )
 
-                        // Rich dark luxury vignette
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            Color.Black.copy(alpha = 0.35f),
-                                            Color.Black.copy(alpha = 0.88f)
+                            // Rich dark luxury vignette
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                Color.Black.copy(alpha = 0.35f),
+                                                Color.Black.copy(alpha = 0.88f)
+                                            )
                                         )
                                     )
-                                )
-                        )
+                            )
 
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(18.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // Top Row: Featured store badge & Rating
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(18.dp),
+                                verticalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Gold,
-                                    shadowElevation = 2.dp
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Storefront,
-                                            contentDescription = null,
-                                            tint = Obsidian,
-                                            modifier = Modifier.size(12.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = product.vendorStore.take(22).uppercase(),
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Obsidian,
-                                            letterSpacing = 0.5.sp
-                                        )
-                                    }
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color.Black.copy(alpha = 0.6f),
-                                    border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.4f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Star,
-                                            contentDescription = null,
-                                            tint = Gold,
-                                            modifier = Modifier.size(11.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        Text(
-                                            text = "${product.rating}",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Bottom Section: Product Title, Price & Add To Cart Button
-                            Column {
-                                Text(
-                                    text = product.title,
-                                    fontSize = 16.sp,
-                                    lineHeight = 20.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = product.description.ifBlank { "High-demand dispatch & logistics equipment." },
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Normal,
-                                    color = TextGray.copy(alpha = 0.9f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
+                                // Top Row: Featured store badge & Rating
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column {
-                                        Text(
-                                            text = "PRICE",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Gold,
-                                            letterSpacing = 0.8.sp
-                                        )
-                                        Text(
-                                            text = "₦${currencyFormatter.format(product.price)}",
-                                            fontSize = 18.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color.White
-                                        )
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Gold,
+                                        shadowElevation = 0.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Storefront,
+                                                contentDescription = null,
+                                                tint = Obsidian,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = product.vendorStore.take(22).uppercase(),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Obsidian,
+                                                letterSpacing = 0.5.sp
+                                            )
+                                        }
                                     }
 
-                                    Button(
-                                        onClick = { onAddToCart(product) },
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Gold,
-                                            contentColor = Obsidian
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                                        modifier = Modifier.height(38.dp)
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color.Black.copy(alpha = 0.6f),
+                                        border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.4f))
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AddShoppingCart,
-                                            contentDescription = null,
-                                            tint = Obsidian,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Add to Cart",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Black
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Star,
+                                                contentDescription = null,
+                                                tint = Gold,
+                                                modifier = Modifier.size(11.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "${product.rating}",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Bottom Section: Product Title, Price & Add To Cart Button
+                                Column {
+                                    Text(
+                                        text = product.title,
+                                        fontSize = 16.sp,
+                                        lineHeight = 20.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = product.description.ifBlank { "High-demand dispatch & logistics equipment." },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        color = TextGray.copy(alpha = 0.9f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "PRICE",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Gold,
+                                                letterSpacing = 0.8.sp
+                                            )
+                                            Text(
+                                                text = "₦${currencyFormatter.format(product.price)}",
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.White
+                                            )
+                                        }
+
+                                        Button(
+                                            onClick = { onAddToCart(product) },
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Gold,
+                                                contentColor = Obsidian
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                            modifier = Modifier.height(38.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.AddShoppingCart,
+                                                contentDescription = null,
+                                                tint = Obsidian,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Add to Cart",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Black
+                                            )
+                                        }
                                     }
                                 }
                             }
-                        }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Gold),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = com.esdispatch.R.drawable.ic_logo),
-                                contentDescription = "Inactive slide logo",
-                                tint = Obsidian.copy(alpha = 0.15f),
-                                modifier = Modifier.size(80.dp)
-                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Gold),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = com.esdispatch.R.drawable.ic_logo),
+                                    contentDescription = "Inactive slide logo",
+                                    tint = Obsidian.copy(alpha = 0.15f),
+                                    modifier = Modifier.size(80.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Indicator dots
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Indicator dots placed cleanly below the card stack
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 230.dp)
                 .wrapContentWidth(Alignment.CenterHorizontally),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically

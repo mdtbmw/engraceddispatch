@@ -93,7 +93,7 @@ fun AddressAutocompleteField(
                 letterSpacing = 1.sp
             )
 
-            // "📍 Use Current Location" GPS trigger chip
+            // Use Current Location GPS trigger chip
             Surface(
                 onClick = {
                     val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
@@ -126,7 +126,7 @@ fun AddressAutocompleteField(
                                     onAddressSelected(item)
                                     showDropdown = false
                                     isLocatingGPS = false
-                                    Toast.makeText(context, "📍 Address detected via GPS!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Address detected via GPS!", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
                                 isLocatingGPS = false

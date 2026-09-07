@@ -185,10 +185,10 @@ fun LoginScreen(
                 Toast.makeText(context, "Google Sign-In cancelled.", Toast.LENGTH_SHORT).show()
             } else {
                 val msg = when (e.statusCode) {
-                    7 -> "Network error. Check your connection."
-                    10 -> "Google Play Services update required."
-                    12500 -> "Google Sign-In configuration error."
-                    else -> "Google Sign-In failed (code: ${e.statusCode}). Please try again."
+                    7 -> "Network error. Please check your internet connection."
+                    10 -> "Google OAuth setup in progress. Please sign in with Email/Password."
+                    12500 -> "Google configuration mismatch. Please use Email/Password."
+                    else -> "Google Sign-In unavailable (code: ${e.statusCode}). Please sign in with Email."
                 }
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             }
@@ -814,10 +814,10 @@ fun SignUpScreen(
                 Toast.makeText(context, "Google Sign-In cancelled.", Toast.LENGTH_SHORT).show()
             } else {
                 val msg = when (e.statusCode) {
-                    7 -> "Network error. Check your connection."
-                    10 -> "Google Play Services update required."
-                    12500 -> "Google Sign-In configuration error."
-                    else -> "Google Sign-In failed (code: ${e.statusCode}). Please try again."
+                    7 -> "Network error. Please check your internet connection."
+                    10 -> "Google OAuth setup in progress. Please sign in with Email/Password."
+                    12500 -> "Google configuration mismatch. Please use Email/Password."
+                    else -> "Google Sign-In unavailable (code: ${e.statusCode}). Please sign in with Email."
                 }
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             }
@@ -1739,7 +1739,7 @@ fun FingerprintRegisterDialog(
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
-                            if (pinValue == correctPin) {
+                            if (com.esdispatch.viewmodel.SecurityUtils.verifyPin(pinValue, correctPin)) {
                                 isPinVerified = true
                             } else {
                                 isPinError = true
@@ -1975,7 +1975,7 @@ fun FingerprintAuthDialog(
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
-                            if (fallbackPinValue == correctPin) {
+                            if (com.esdispatch.viewmodel.SecurityUtils.verifyPin(fallbackPinValue, correctPin)) {
                                 onSuccess()
                             } else {
                                 fallbackPinError = true

@@ -247,7 +247,7 @@ fun VendorPortalScreen(
                     )
                     VendorStatCard(
                         label = "Store Rating",
-                        value = if (storeRating > 0) "${String.format("%.1f", storeRating)} ★" else "New",
+                        value = if (storeRating > 0) String.format("%.1f", storeRating) else "New",
                         valueColor = Color(0xFFF59E0B),
                         modifier = Modifier.weight(1f),
                         isDark = isDark
@@ -608,7 +608,7 @@ private fun VendorGateContent(
             }
             Spacer(modifier = Modifier.height(20.dp))
             Text(
-                text = if (isPrivilegedVendor) "Official Vendor Access" else if (meetsDeliveryReq) "🎉 Vendor Milestone Unlocked!" else "Become a Vendor",
+                text = if (isPrivilegedVendor) "Official Vendor Access" else if (meetsDeliveryReq) "Vendor Milestone Unlocked!" else "Become a Vendor",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Black,
                 color = AppTextColor

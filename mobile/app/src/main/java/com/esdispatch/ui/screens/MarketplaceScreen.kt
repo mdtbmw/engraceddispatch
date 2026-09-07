@@ -109,7 +109,7 @@ fun MarketplaceScreen(
                             Icon(
                                 Icons.Filled.ShoppingCart,
                                 contentDescription = "Cart",
-                                tint = Gold
+                                tint = if (isDark) Obsidian else Gold
                             )
                         }
                         if (cartCount > 0) {

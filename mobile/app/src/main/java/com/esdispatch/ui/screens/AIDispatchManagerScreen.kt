@@ -689,7 +689,7 @@ fun ControlCenterTab(
                             Text("${rider.rating}", fontSize = 12.sp, color = AppTextColor, fontWeight = FontWeight.Bold)
                         }
                         Text(
-                            text = "🔋 ${rider.batteryLevel}%",
+                            text = "${rider.batteryLevel}%",
                             fontSize = 10.sp,
                             color = if (rider.batteryLevel > 70) Color(0xFF4CAF50) else if (isLight) Obsidian else Color(0xFFFBC02D)
                         )
@@ -734,7 +734,7 @@ fun ControlCenterTab(
 
                     if (availableDeliveries.isEmpty()) {
                         Text(
-                            text = "No pending shipments currently waiting for dispatch. Book real shipments to test end-to-end flow! 📦",
+                            text = "No pending shipments currently waiting for dispatch. Book real shipments to test end-to-end flow!",
                             fontSize = 11.sp,
                             color = subTextColor,
                             modifier = Modifier.padding(bottom = 12.dp)
@@ -847,7 +847,7 @@ fun ControlCenterTab(
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Column {
                                             Text(rider.name, fontSize = 11.sp, color = AppTextColor, fontWeight = FontWeight.Bold)
-                                            Text("(${rider.vehicleType} • Rating: ${rider.rating}★)", fontSize = 9.sp, color = subTextColor)
+                                            Text("(${rider.vehicleType} • Rating: ${rider.rating})", fontSize = 9.sp, color = subTextColor)
                                         }
                                     }
                                     
@@ -1140,7 +1140,7 @@ fun InsightsDashboardTab(
                         border = BorderStroke(1.dp, if (isLight) Color.Transparent else Gold.copy(alpha = 0.15f))
                     ) {
                         Text(
-                            text = "💡 Operational Suggestion: Peak predicted around 16:00 (55 bookings). Restrict rider shift check-outs and prioritize motorcycle dispatch pre-allocations.",
+                            text = "Operational Suggestion: Peak predicted around 16:00 (55 bookings). Restrict rider shift check-outs and prioritize motorcycle dispatch pre-allocations.",
                             fontSize = 10.sp,
                             color = if (isLight) Obsidian else Gold,
                             lineHeight = 14.sp,
@@ -1245,7 +1245,7 @@ fun InsightsDashboardTab(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         ScorecardMetric("Avg Delivery", "${rider.averageDeliveryTimeMin} mins")
-                        ScorecardMetric("Rating Avg", "${rider.rating}★")
+                        ScorecardMetric("Rating Avg", "${rider.rating}")
                         ScorecardMetric("Cancellations", "${rider.cancellationHistoryCount}")
                         ScorecardMetric("Fuel Efficiency", "${rider.fuelEfficiency} km/L")
                     }
@@ -1834,7 +1834,7 @@ fun UserWalletPointsManagement(
                         onClick = {
                             val amt = fundAmount.toDoubleOrNull() ?: return@Button
                             viewModel.adminFundUserWallet(foundUserId, foundUserName, amt) { ok, msg ->
-                                statusMsg = if (ok) "✅ $msg" else "❌ $msg"
+                                statusMsg = msg
                                 fundAmount = ""
                             }
                         },
@@ -1867,7 +1867,7 @@ fun UserWalletPointsManagement(
                         onClick = {
                             val pts = pointsAmount.toIntOrNull() ?: return@Button
                             viewModel.adminSetUserPoints(foundUserId, foundUserName, pts) { ok, msg ->
-                                statusMsg = if (ok) "✅ $msg" else "❌ $msg"
+                                statusMsg = msg
                                 pointsAmount = ""
                             }
                         },
@@ -1927,7 +1927,7 @@ fun BroadcastNotificationSection(
             isSending = true
             statusMsg = ""
             viewModel.adminSendBroadcastNotification(notifTitle, notifBody) { ok, msg ->
-                statusMsg = if (ok) "✅ $msg" else "❌ $msg"
+                statusMsg = if (ok) msg else "Error: $msg"
                 if (ok) { notifTitle = ""; notifBody = "" }
                 isSending = false
             }
@@ -1944,7 +1944,7 @@ fun BroadcastNotificationSection(
     }
     if (statusMsg.isNotEmpty()) {
         Spacer(modifier = Modifier.height(4.dp))
-        Text(statusMsg, fontSize = 10.sp, color = if (statusMsg.startsWith("✅")) Gold else Color.Red.copy(alpha = 0.8f))
+        Text(statusMsg, fontSize = 10.sp, color = if (!statusMsg.startsWith("Error")) Gold else Color.Red.copy(alpha = 0.8f))
     }
 }
 

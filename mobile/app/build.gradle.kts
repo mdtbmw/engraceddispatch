@@ -21,11 +21,29 @@ android {
     targetSdk = 34
     versionCode = 2
     versionName = "1.0.1"
-    val envMapboxToken = System.getenv("MAPBOX_ACCESS_TOKEN") ?: ""
-    val resolvedMapboxToken = if (envMapboxToken.isNotEmpty()) envMapboxToken else ""
+    val envFile = rootProject.file("../.env")
+    val envProps = mutableMapOf<String, String>()
+    if (envFile.exists()) {
+      envFile.readLines().forEach { line ->
+        val trimmed = line.trim()
+        if (trimmed.isNotEmpty() && !trimmed.startsWith("#") && trimmed.contains("=")) {
+          val parts = trimmed.split("=", limit = 2)
+          envProps[parts[0].trim()] = parts[1].trim()
+        }
+      }
+    }
+    fun resolveEnv(key: String, defaultVal: String = ""): String {
+      return System.getenv(key)?.takeIf { it.isNotBlank() } ?: envProps[key]?.takeIf { it.isNotBlank() } ?: defaultVal
+    }
+
+    val resolvedMapboxToken = resolveEnv("MAPBOX_ACCESS_TOKEN")
     buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"$resolvedMapboxToken\"")
-    val paystackKey = System.getenv("PAYSTACK_PUBLIC_KEY") ?: ""
+    val paystackKey = resolveEnv("PAYSTACK_PUBLIC_KEY")
     buildConfigField("String", "PAYSTACK_PUBLIC_KEY", "\"$paystackKey\"")
+    val googleWebClientId = resolveEnv("GOOGLE_WEB_CLIENT_ID", "858437923778-pgdqbbcebljr9jvkjn8tv9ujm905erfa.apps.googleusercontent.com")
+    buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
+    val geminiApiKey = resolveEnv("GEMINI_API_KEY")
+    buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

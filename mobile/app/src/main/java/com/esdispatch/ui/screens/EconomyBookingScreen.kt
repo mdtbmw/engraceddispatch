@@ -77,7 +77,7 @@ fun EconomyBookingScreen(
     ) { permissions ->
         val granted = permissions.values.any { it }
         coroutineScope.launch {
-            Toast.makeText(context, "ðŸŽ¯ Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
             val detected = withContext(Dispatchers.IO) {
                 detectUserLocation(context)
             }
@@ -178,9 +178,9 @@ fun EconomyBookingScreen(
         return if (query.isBlank()) {
             val defaults = mutableListOf<com.esdispatch.utils.SearchResultItem>()
             val home = viewModel.homeAddress.value
-            if (home.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("ðŸ  Saved Home", home))
+            if (home.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("Saved Home", home))
             val work = viewModel.workAddress.value
-            if (work.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("ðŸ’¼ Saved Work", work))
+            if (work.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("Saved Work", work))
             defaults.addAll(com.esdispatch.data.AddressDatabase.getDefaults().take(6).map { it.toSearchResult() })
             defaults.distinctBy { it.displayInput }
         } else {
@@ -340,7 +340,7 @@ fun EconomyBookingScreen(
                                     Icon(Icons.Filled.LocalOffer, contentDescription = null, tint = Color(0xFF2ECC71), modifier = Modifier.size(24.dp))
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
-                                        Text("ðŸŒ¿ ${adminDiscountPercent}% ECO DISCOUNT ACTIVE", color = Color(0xFF2ECC71), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                        Text("${adminDiscountPercent}% ECO DISCOUNT ACTIVE", color = Color(0xFF2ECC71), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
                                         Text("Go green and save money!", color = TextGray, fontSize = 11.sp)
                                     }
                                 }
@@ -401,7 +401,7 @@ fun EconomyBookingScreen(
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text(
-                                        if (isSearchingSuggestions) "ðŸ” Searching places & addresses..." else "ðŸ’¡ Verified Location Matches:",
+                                        if (isSearchingSuggestions) "Searching places & addresses..." else "Verified Location Matches:",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Gold else Obsidian,
@@ -541,7 +541,7 @@ fun EconomyBookingScreen(
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text(
-                                        if (isSearchingSuggestions) "ðŸ” Searching places & addresses..." else "ðŸ’¡ Verified Location Matches:",
+                                        if (isSearchingSuggestions) "Searching places & addresses..." else "Verified Location Matches:",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Gold else Obsidian,
@@ -610,7 +610,7 @@ fun EconomyBookingScreen(
                     shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = "Item Details",
                             fontWeight = FontWeight.ExtraBold,
@@ -676,14 +676,14 @@ fun EconomyBookingScreen(
                     shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         // Sender Info
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("ðŸŒ¿ Sender Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2ECC71))
+                            Text("Sender Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2ECC71))
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -737,7 +737,7 @@ fun EconomyBookingScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("ðŸŒ¿ Receiver Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2ECC71))
+                            Text("Receiver Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2ECC71))
                             Text(
                                 "From Contacts",
                                 fontSize = 10.sp,
@@ -960,8 +960,7 @@ fun EconomyBookingScreen(
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding(),
+                    .fillMaxWidth(),
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                 color = Charcoal,
                 tonalElevation = 8.dp
@@ -969,7 +968,8 @@ fun EconomyBookingScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -978,7 +978,7 @@ fun EconomyBookingScreen(
                     when (val quote = pendingQuote) {
                         is PendingQuote.Success -> {
                             Text(
-                                text = "â‚¦${String.format("%,.2f", quote.price)}",
+                                text = "₦${String.format("%,.2f", quote.price)}",
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Black,
                                 color = accentColor

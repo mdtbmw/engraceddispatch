@@ -362,7 +362,7 @@ fun V2DashboardScreen(
                                         Text("ID: ${parcel.id} • ${parcel.dateString}", fontSize = 11.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "${parcel.pickupAddress.substringBefore(",")} ➔ ${parcel.deliveryAddress.substringBefore(",")}",
+                                            text = "${parcel.pickupAddress.substringBefore(",")} -> ${parcel.deliveryAddress.substringBefore(",")}",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = TextGray

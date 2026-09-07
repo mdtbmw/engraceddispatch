@@ -106,7 +106,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 builder.setProgress(100, 75, false) // Live 75% progress bar on notification layout
             }
 
-            // Interactive Quick Action: Track Live 📍 (Point 18)
+            // Interactive Quick Action: Track Live
             val trackIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 putExtra("action", "track")
@@ -120,7 +120,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 trackIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            builder.addAction(android.R.drawable.ic_menu_compass, "Track Live 📍", trackPendingIntent)
+            builder.addAction(android.R.drawable.ic_menu_compass, "Track Live", trackPendingIntent)
 
             val notificationId = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
             notificationManager.notify(notificationId, builder.build())

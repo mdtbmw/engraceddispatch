@@ -44,12 +44,12 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
 
     const payloadBase = {
       notification: {
-        title: 'Welcome to ESDISPATCH! 👑🚚',
-        body: `Hello ${displayName}! Thank you for choosing Premium Logistics & Dispatch. Your logistics partner is active and ready to deliver excellence! 🌟✨`,
+        title: 'Welcome to ESDISPATCH!',
+        body: `Hello ${displayName}! Thank you for choosing Premium Logistics & Dispatch. Your logistics partner is active and ready to deliver excellence!`,
       },
       android: { notification: { sound: 'default' } },
       data: {
-        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        click_action: 'ESDISPATCH_NOTIFICATION_CLICK',
         type: 'welcome_alert',
         userId: uid
       }
@@ -135,7 +135,7 @@ export const onDeliveryCreatedAutoDispatch = functions.firestore
           const riderNotif = {
             token: nearestRider.fcmToken,
             notification: {
-              title: '⚡ New Delivery Assigned!',
+              title: 'New Delivery Assigned',
               body: `New parcel from ${deliveryData.pickupAddress || 'Pickup'} is assigned to you. Open app to accept.`
             },
             data: {
@@ -256,8 +256,7 @@ export const onDeliveryStatusUpdated = functions.firestore
       const fcmToken = userData?.fcmToken || '';
 
       if (fcmToken) {
-        const emoji = newStatus.toLowerCase() === 'delivered' ? '✅📦' : '🚚⚡';
-        const title = `Shipment Status: ${newStatus} ${emoji}`;
+        const title = `Shipment Status: ${newStatus}`;
         const body = `Your shipment '${itemName}' (#${deliveryId}) is now ${newStatus}.`;
 
         const payload = {
@@ -265,7 +264,7 @@ export const onDeliveryStatusUpdated = functions.firestore
           notification: { title, body },
           android: { notification: { sound: 'default' } },
           data: {
-            click_action: 'FLUTTER_NOTIFICATION_CLICK',
+            click_action: 'ESDISPATCH_NOTIFICATION_CLICK',
             type: 'status_update',
             parcelId: deliveryId,
             status: newStatus

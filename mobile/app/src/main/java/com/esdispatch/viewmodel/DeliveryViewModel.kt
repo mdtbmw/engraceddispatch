@@ -140,6 +140,8 @@ class DeliveryViewModel : WalletViewModel() {
         _pushAlertsCancelled.value = prefs.getBoolean("alerts_cancelled", true)
         _locationEnabled.value = prefs.getBoolean("location_enabled", true)
         _darkModeEnabled.value = prefs.getBoolean("dark_mode_enabled", false)
+        _soundEffectsEnabled.value = prefs.getBoolean("sound_effects_enabled", true)
+        _hapticsEnabled.value = prefs.getBoolean("haptics_enabled", true)
         _dashboardVariant.value = prefs.getString("dashboard_variant", "full") ?: "full"
         _language.value = prefs.getString("language", "English") ?: "English"
         _defaultDeliveryType.value = prefs.getString("default_delivery_type", "Express") ?: "Express"
@@ -155,9 +157,16 @@ class DeliveryViewModel : WalletViewModel() {
         _welcomeGiftClaimed.value = prefs.getBoolean("welcome_gift_claimed", false)
         _dailyBonusClaimed.value = prefs.getBoolean("daily_bonus_claimed", false)
         _userRating.value = prefs.getString("user_rating", "4.9")?.toDoubleOrNull() ?: 4.9
-        _memberSince.value = prefs.getString("member_since", "Jun 2025") ?: "Jun 2025"
-        _userPin.value = getPinSecurely("user_pin", "")
-        _twoFactorEnabled.value = prefs.getBoolean("two_factor_enabled", false)
+        val storedPin = getPinSecurely("user_pin", "")
+        _userPin.value = if (storedPin.isNotEmpty() && (storedPin.length != 64 || !storedPin.all { it in "0123456789abcdefABCDEF" })) {
+            val legacy = SecurityUtils.decryptLegacy(storedPin)
+            val plain = if (legacy.length == 4 && legacy.all { it.isDigit() }) legacy else if (storedPin.length == 4 && storedPin.all { it.isDigit() }) storedPin else storedPin
+            val hashed = SecurityUtils.hashPin(plain)
+            savePinSecurely("user_pin", hashed)
+            hashed
+        } else {
+            storedPin
+        }
         _loginMode.value = prefs.getString("login_mode", "free") ?: "free"
         _biometricRegistered.value = prefs.getBoolean("biometric_registered", false)
         _biometricEnabled.value = prefs.getBoolean("biometric_enabled", false)
@@ -474,10 +483,9 @@ class DeliveryViewModel : WalletViewModel() {
                 db.collection("users").document(uid).get().addOnSuccessListener { snap ->
                     val role = snap.getString("role") ?: ""
                     val rawPin = snap.getString("pin") ?: ""
-                    val decryptedPin = SecurityUtils.decryptPin(rawPin)
-                    val finalPin = if (decryptedPin.length == 4 && decryptedPin.all { it.isDigit() }) decryptedPin else rawPin
+                    val isPinValid = SecurityUtils.verifyPin(passcode, rawPin)
                     
-                    if ((role == "admin" || role == "super_admin") && passcode == finalPin) {
+                    if ((role == "admin" || role == "super_admin") && isPinValid) {
                         _isAdminVerified.value = true
                         logAdminActivity("Admin Auth", "Verified admin role from Firestore for $email")
                         onComplete(true)
@@ -504,7 +512,7 @@ class DeliveryViewModel : WalletViewModel() {
         savePref("pricing_per_kg", perKg.toString())
         savePref("pricing_express", express.toString())
         savePref("pricing_surge", surge.toString())
-        logAdminActivity("Pricing Config", "Updated base: â‚¦$base, perKg: â‚¦$perKg, express: â‚¦$express, surge: ${surge}x")
+        logAdminActivity("Pricing Config", "Updated base: ₦$base, perKg: ₦$perKg, express: ₦$express, surge: ${surge}x")
 
         try {
             val db = FirebaseManager.firestore
@@ -866,7 +874,7 @@ class DeliveryViewModel : WalletViewModel() {
             requireOnline = false,
             onComplete = { success, error ->
                 if (success) {
-                    showCustomToast("Successfully assigned ${rider.name} to Parcel #$parcelId! ðŸ“¦ðŸš€")
+                    showCustomToast("Successfully assigned ${rider.name} to Parcel #$parcelId!")
                     // If it matches a local parcel in our lists, update it
                     val updatedList = _parcels.value.map { parcel ->
                         if (parcel.id == parcelId) {
@@ -942,8 +950,8 @@ class DeliveryViewModel : WalletViewModel() {
                 
                 // Add Notification
                 addNotification(
-                    title = "Parcel Delivered! ðŸðŸ“¦",
-                    message = "Parcel #$parcelId has been successfully delivered and proof of delivery captured. You earned â‚¦${String.format("%,.2f", payout)}",
+                    title = "Parcel Delivered",
+                    message = "Parcel #$parcelId has been successfully delivered and proof of delivery captured. You earned ₦${String.format("%,.2f", payout)}",
                     parcelId = parcelId
                 )
             }
@@ -1148,7 +1156,7 @@ class DeliveryViewModel : WalletViewModel() {
         )
         viewModelScope.launch {
             repository?.saveExpenseClaim(claim)
-            showCustomToast("Expense claim submitted for HR/Payroll review ($amount) ðŸ’¸")
+            showCustomToast("Expense claim submitted for HR/Payroll review ($amount)")
             onComplete(true, "Submitted successfully")
         }
     }
@@ -1171,7 +1179,7 @@ class DeliveryViewModel : WalletViewModel() {
         )
         viewModelScope.launch {
             repository?.saveShiftRoster(roster)
-            showCustomToast("Leave request submitted to operations manager ðŸ“…")
+            showCustomToast("Leave request submitted to operations manager.")
             onComplete(true, "Leave requested")
         }
     }
@@ -1185,7 +1193,7 @@ class DeliveryViewModel : WalletViewModel() {
         )
         viewModelScope.launch {
             repository?.saveOfflineSyncItem(item)
-            showCustomToast("Action cached offline (low-signal sync queue) ðŸ“¡")
+            showCustomToast("Action cached offline (low-signal sync queue)")
         }
     }
 
@@ -1196,7 +1204,7 @@ class DeliveryViewModel : WalletViewModel() {
                 repository?.markSyncItemSynced(item.id)
             }
             if (list.isNotEmpty()) {
-                showCustomToast("Successfully synchronized ${list.size} offline items with corporate server! ðŸ”„")
+                showCustomToast("Successfully synchronized ${list.size} offline items with corporate server!")
             } else {
                 showCustomToast("Offline queue is already fully synchronized.")
             }
@@ -1265,7 +1273,7 @@ class DeliveryViewModel : WalletViewModel() {
         val secureCode = (100000..999999).random().toString()
         com.esdispatch.data.FirebaseManager.saveVerificationOtp(uid, secureCode) { success, err ->
             if (success) {
-                showInAppNotification("Verification OTP Sent 🔐", "Your 6-digit verification code is: $secureCode (Expires in 10 mins)")
+                showInAppNotification("Verification OTP Sent", "Your 6-digit verification code is: $secureCode (Expires in 10 mins)")
                 onResult(true, "Verification code sent! Code: $secureCode")
             } else {
                 onResult(false, err ?: "Failed to generate OTP code.")
@@ -1471,6 +1479,12 @@ class DeliveryViewModel : WalletViewModel() {
     private val _darkModeEnabled = MutableStateFlow(false)
     val darkModeEnabled: StateFlow<Boolean> = _darkModeEnabled.asStateFlow()
 
+    private val _soundEffectsEnabled = MutableStateFlow(true)
+    val soundEffectsEnabled: StateFlow<Boolean> = _soundEffectsEnabled.asStateFlow()
+
+    private val _hapticsEnabled = MutableStateFlow(true)
+    val hapticsEnabled: StateFlow<Boolean> = _hapticsEnabled.asStateFlow()
+
     private val _dashboardVariant = MutableStateFlow("full")
     val dashboardVariant: StateFlow<String> = _dashboardVariant.asStateFlow()
 
@@ -1580,7 +1594,7 @@ class DeliveryViewModel : WalletViewModel() {
         if (_promotions.value.isEmpty()) {
             _promotions.value = listOf(
                 com.esdispatch.data.PromoCode(discountPercent = 25, description = "Enjoy 25% discount on Express bookings.", code = "EID2026"),
-                com.esdispatch.data.PromoCode(discountPercent = 100, description = "Get â‚¦2,500 instant credit on first parcel.", code = "FIRSTFREE", isLimited = false),
+                com.esdispatch.data.PromoCode(discountPercent = 100, description = "Get ₦2,500 instant credit on first parcel.", code = "FIRSTFREE", isLimited = false),
                 com.esdispatch.data.PromoCode(discountPercent = 30, description = "Saturdays & Sundays economy save.", code = "WEEKEND30")
             )
         }
@@ -2241,10 +2255,20 @@ class DeliveryViewModel : WalletViewModel() {
                                     
                                     val rawPin = data["pin"] as? String ?: data["userPin"] as? String
                                     if (!rawPin.isNullOrEmpty()) {
-                                        val decrypted = SecurityUtils.decryptPin(rawPin)
-                                        val finalPin = if (decrypted.length == 4 && decrypted.all { it.isDigit() }) decrypted else rawPin
-                                        _userPin.value = finalPin
-                                        savePref("user_pin", finalPin)
+                                        val finalHash = if (rawPin.length == 64 && rawPin.all { it in "0123456789abcdefABCDEF" }) {
+                                            rawPin
+                                        } else {
+                                            val legacy = SecurityUtils.decryptLegacy(rawPin)
+                                            val plain = if (legacy.length == 4 && legacy.all { it.isDigit() }) legacy else if (rawPin.length == 4 && rawPin.all { it.isDigit() }) rawPin else rawPin
+                                            val hashed = SecurityUtils.hashPin(plain)
+                                            val uid = FirebaseManager.auth?.currentUser?.uid
+                                            if (uid != null && hashed.isNotEmpty()) {
+                                                FirebaseManager.firestore?.collection("users")?.document(uid)?.update("pin", hashed)
+                                            }
+                                            hashed
+                                        }
+                                        _userPin.value = finalHash
+                                        savePinSecurely("user_pin", finalHash)
                                     }
                                     
                                     val pts = (data["loyaltyPoints"] as? Number)?.toInt()
@@ -2255,7 +2279,7 @@ class DeliveryViewModel : WalletViewModel() {
                                             val newThreshold = pts / 100
                                             if (newThreshold > oldThreshold) {
                                                 showInAppNotification(
-                                                    "Loyalty Milestone Crossed! ðŸ†",
+                                                    "Loyalty Milestone Crossed!",
                                                     "You crossed the $pts reward points threshold! Earn another 100 points for custom elite multiplier upgrades."
                                                 )
                                             }
@@ -2307,6 +2331,14 @@ class DeliveryViewModel : WalletViewModel() {
                                 _availableDeliveries.value = list
                             }
                         }
+                        // 7. Listen to real-time address book from Firestore
+                        launch {
+                            com.esdispatch.data.FirebaseManager.listenToUserAddresses(uid).collect { addrList ->
+                                if (addrList.isNotEmpty()) {
+                                    repository?.saveAddresses(addrList)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2318,7 +2350,7 @@ class DeliveryViewModel : WalletViewModel() {
                     if (currentUid.isEmpty()) {
                         emptyList()
                     } else {
-                        list.filter { !it.id.startsWith("ADDR-") }
+                        list
                     }
                 }.collect { filtered ->
                     _addresses.value = filtered
@@ -2484,7 +2516,7 @@ class DeliveryViewModel : WalletViewModel() {
 
         val welcomeTx = Transaction(
             id = "TX-GIFT-${System.currentTimeMillis().toString().substring(8)}",
-            title = "Welcome Gift Awarded ðŸŽ",
+            title = "Welcome Gift Awarded",
             date = "Today",
             amount = 2500.0,
             isTopUp = true
@@ -2494,8 +2526,8 @@ class DeliveryViewModel : WalletViewModel() {
             repository?.saveTransaction(welcomeTx)
         }
 
-        val notifTitle = "Welcome Gift Claimed! ðŸŽ"
-        val notifMsg = "Congratulations! You have received â‚¦2,500 welcome credit and 100 loyalty coins."
+        val notifTitle = "Welcome Gift Claimed!"
+        val notifMsg = "Congratulations! You have received ₦2,500 welcome credit and 100 loyalty coins."
         addNotification(notifTitle, notifMsg)
         appContext?.let { ctx ->
             try {
@@ -3060,8 +3092,19 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun setUserPin(pin: String) {
-        _userPin.value = pin
-        savePinSecurely("user_pin", pin)
+        val cleanPin = pin.trim()
+        val hashed = SecurityUtils.hashPin(cleanPin)
+        _userPin.value = hashed
+        savePinSecurely("user_pin", hashed)
+        val uid = FirebaseManager.auth?.currentUser?.uid
+        if (uid != null && hashed.isNotEmpty()) {
+            FirebaseManager.firestore?.collection("users")?.document(uid)?.update("pin", hashed)
+        }
+    }
+
+    fun verifyUserPin(inputPin: String): Boolean {
+        val stored = _userPin.value.ifEmpty { getPinSecurely("user_pin", "") }
+        return SecurityUtils.verifyPin(inputPin, stored)
     }
 
     
@@ -3391,7 +3434,7 @@ class DeliveryViewModel : WalletViewModel() {
                                     }
                                     com.esdispatch.data.MyFirebaseMessagingService.showNotification(
                                         context = ctx,
-                                        title = "Saved Tracking Status Update ðŸ””",
+                                        title = "Saved Tracking Status Update",
                                         message = "Your saved parcel '${updatedParcel.itemName}' (#$id) is now $statusText.",
                                         parcelId = id
                                     )
@@ -3474,14 +3517,14 @@ class DeliveryViewModel : WalletViewModel() {
         
         val welcomeTx = Transaction(
             id = "TX-COIN-${System.currentTimeMillis().toString().substring(8)}",
-            title = "Welcome Coins Claimed ðŸª™",
+            title = "Welcome Coins Claimed",
             date = "Today",
             amount = 100.0,
             isTopUp = true
         )
         _transactions.value = listOf(welcomeTx) + _transactions.value
         
-        val notifTitle = "Welcome Gift Claimed! ðŸŽ"
+        val notifTitle = "Welcome Gift Claimed!"
         val notifMsg = "Congratulations! You have received 100 Engraced loyalty coins and the premium promo code 'ENGRACEDVIP' for 15% off your first delivery."
         addNotification(notifTitle, notifMsg)
         
@@ -3759,11 +3802,11 @@ class DeliveryViewModel : WalletViewModel() {
             else -> (base * 0.7 + (wt * perKg * 0.8) + distanceKm * 100.0) * surge
         }
 
-        // Volume surcharge: â‚¦50 per 1000 cm3
+        // Volume surcharge: ₦50 per 1000 cm3
         val volumeCm3 = length * width * height
         val volumeSurcharge = (volumeCm3 / 1000.0) * 50.0
 
-        // Multi-stop surcharge: â‚¦1,500 per extra stop
+        // Multi-stop surcharge: ₦1,500 per extra stop
         val stopsSurcharge = stopsCount * 1500.0
 
         // Quantity multiplier: 20% discount on additional items
@@ -3915,8 +3958,8 @@ class DeliveryViewModel : WalletViewModel() {
             _selectedParcel.value = newParcel
 
             // Add to Notifications
-            val bookTitle = "Booking Confirmed! ðŸŽ‰ðŸ“¦"
-            val bookMsg = "Your parcel shipment '${newParcel.itemName}' (#${newParcel.id}) has been booked via ${draft.selectedService} service! Paid â‚¦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier! ðŸš€âš¡"
+            val bookTitle = "Booking Confirmed"
+            val bookMsg = "Your parcel shipment '${newParcel.itemName}' (#${newParcel.id}) has been booked via ${draft.selectedService} service! Paid ₦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier."
             val notif = NotificationItem(
                 id = "NT-${System.currentTimeMillis().toString().substring(8)}",
                 title = bookTitle,
@@ -3958,6 +4001,7 @@ class DeliveryViewModel : WalletViewModel() {
 
             // Write directly to Room SQLite Database for offline-first resilience!
             savePref("wallet_balance", _walletBalance.value)
+            com.esdispatch.util.SoundManager.playDispatchSweep()
             viewModelScope.launch {
                 repository?.saveParcel(newParcel)
                 repository?.saveTransaction(newTx)
@@ -3979,12 +4023,14 @@ class DeliveryViewModel : WalletViewModel() {
 
         if (uid != null) {
             if (_walletBalance.value < cost) {
-                onComplete?.invoke(false, "Insufficient wallet balance (â‚¦${String.format("%,.0f", cost)} needed).")
+                com.esdispatch.util.SoundManager.playErrorBuzz()
+                onComplete?.invoke(false, "Insufficient wallet balance (₦${String.format("%,.0f", cost)} needed).")
                 return
             }
             // Atomic debit; only when the server confirms do we create the booking.
             com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, -cost) { success, newBalance ->
                 if (!success) {
+                    com.esdispatch.util.SoundManager.playErrorBuzz()
                     onComplete?.invoke(false, "Wallet debit failed — booking was NOT created. Please retry.")
                     return@updateUserWalletBalance
                 }
@@ -3996,6 +4042,7 @@ class DeliveryViewModel : WalletViewModel() {
         } else {
             // Unauthenticated / guest fallback: local-only booking (no wallet debit)
             if (_walletBalance.value < cost) {
+                com.esdispatch.util.SoundManager.playErrorBuzz()
                 onComplete?.invoke(false, "Insufficient wallet balance.")
                 return
             }
@@ -4043,17 +4090,53 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     // Address Book Actions
-    fun addAddress(label: String, address: String) {
+    fun addAddress(label: String, address: String, isDefault: Boolean = false) {
         val newAddress = AddressItem(
-            id = "ADDR-${System.currentTimeMillis().toString().substring(8)}",
+            id = "ADDR-${System.currentTimeMillis().toString().takeLast(8)}",
             label = label,
             address = address,
-            isDefault = false
+            isDefault = isDefault
         )
-        _addresses.update { it + newAddress }
+        _addresses.update { current ->
+            if (isDefault) {
+                current.map { it.copy(isDefault = false) } + newAddress
+            } else {
+                current + newAddress
+            }
+        }
 
+        val uid = _firebaseUserId.value ?: ""
         viewModelScope.launch {
             repository?.saveAddress(newAddress)
+            if (uid.isNotBlank()) {
+                com.esdispatch.data.FirebaseManager.saveUserAddress(uid, newAddress)
+            }
+        }
+    }
+
+    fun deleteAddress(id: String) {
+        _addresses.update { it.filter { addr -> addr.id != id } }
+        val uid = _firebaseUserId.value ?: ""
+        viewModelScope.launch {
+            repository?.deleteAddress(id)
+            if (uid.isNotBlank()) {
+                com.esdispatch.data.FirebaseManager.deleteUserAddress(uid, id)
+            }
+        }
+    }
+
+    fun setDefaultAddress(id: String) {
+        _addresses.update { list ->
+            list.map { it.copy(isDefault = (it.id == id)) }
+        }
+        val uid = _firebaseUserId.value ?: ""
+        viewModelScope.launch {
+            _addresses.value.forEach { addr ->
+                repository?.saveAddress(addr)
+            }
+            if (uid.isNotBlank()) {
+                com.esdispatch.data.FirebaseManager.setDefaultUserAddress(uid, id)
+            }
         }
     }
 
@@ -4132,9 +4215,85 @@ class DeliveryViewModel : WalletViewModel() {
         savePref("location_enabled", _locationEnabled.value)
     }
 
+    fun setLocationEnabled(enabled: Boolean) {
+        _locationEnabled.value = enabled
+        savePref("location_enabled", enabled)
+    }
+
     fun toggleDarkMode() {
         _darkModeEnabled.update { !it }
         savePref("dark_mode_enabled", _darkModeEnabled.value)
+    }
+
+    fun toggleSoundEffects() {
+        _soundEffectsEnabled.update { !it }
+        savePref("sound_effects_enabled", _soundEffectsEnabled.value)
+    }
+
+    fun toggleHaptics() {
+        _hapticsEnabled.update { !it }
+        savePref("haptics_enabled", _hapticsEnabled.value)
+    }
+
+    fun sendPasswordResetEmail(email: String, onResult: (Boolean, String?) -> Unit) {
+        val trimmed = email.trim()
+        if (trimmed.isBlank() || !android.util.Patterns.EMAIL_ADDRESS.matcher(trimmed).matches()) {
+            onResult(false, "Please enter a valid email address.")
+            return
+        }
+        val auth = com.esdispatch.data.FirebaseManager.auth
+        if (auth == null) {
+            onResult(false, "Authentication service is currently unavailable.")
+            return
+        }
+        auth.sendPasswordResetEmail(trimmed)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    onResult(true, "Password reset instructions have been dispatched to $trimmed")
+                } else {
+                    onResult(false, task.exception?.localizedMessage ?: "Failed to send password reset email.")
+                }
+            }
+    }
+
+    fun getAppCacheSize(context: Context): String {
+        return try {
+            var size: Long = 0
+            context.cacheDir?.let { size += calculateFolderSize(it) }
+            context.externalCacheDir?.let { size += calculateFolderSize(it) }
+            formatBytes(size)
+        } catch (e: Exception) {
+            "0.0 KB"
+        }
+    }
+
+    private fun calculateFolderSize(dir: java.io.File): Long {
+        var size: Long = 0
+        dir.listFiles()?.forEach { file ->
+            size += if (file.isDirectory) calculateFolderSize(file) else file.length()
+        }
+        return size
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes <= 0) return "0.0 KB"
+        val kb = bytes / 1024.0
+        val mb = kb / 1024.0
+        return if (mb >= 1.0) {
+            String.format(java.util.Locale.US, "%.1f MB", mb)
+        } else {
+            String.format(java.util.Locale.US, "%.1f KB", kb)
+        }
+    }
+
+    fun clearAppCache(context: Context): Boolean {
+        return try {
+            context.cacheDir?.deleteRecursively()
+            context.externalCacheDir?.deleteRecursively()
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun toggleAlertsBooked() {
@@ -4278,8 +4437,7 @@ class DeliveryViewModel : WalletViewModel() {
                                 if (isCancelled && !_pushAlertsCancelled.value) continue
 
                                 if (isDispatched || isDelivered) {
-                                    val emoji = if (isDelivered) "âœ…ðŸ“¦" else "ðŸššâš¡"
-                                    val title = "Shipment Status Updated! $emoji"
+                                    val title = "Shipment Status: $status"
                                     val message = "Your shipment '$itemName' (#$id) is now $status!"
                                     
                                     appContext?.let { ctx ->
@@ -4344,11 +4502,11 @@ class DeliveryViewModel : WalletViewModel() {
             if (list.isEmpty()) {
                 val firstName = userName.trim().split(" ").firstOrNull() ?: userName
                 addNotification(
-                    "Welcome to ESDispatch! ðŸ“¦âœ¨",
-                    "Hello $firstName, welcome to premium logistics. Your account is active and â‚¦2,500 welcome credit has been added to your wallet."
+                    "Welcome to ESDispatch!",
+                    "Hello $firstName, welcome to premium logistics. Your account is active and ₦2,500 welcome credit has been added to your wallet."
                 )
                 addNotification(
-                    "Secure Authentication Active ðŸ›¡ï¸",
+                    "Secure Authentication Active",
                     "Your personalized 4-digit security PIN has been safely registered for maximum account integrity."
                 )
             }
@@ -4482,7 +4640,7 @@ class DeliveryViewModel : WalletViewModel() {
                 val addressMatch = if (lower.contains("airport")) "Murtala Muhammed Airport Rd, Ikeja (Spell corrected from: Airpot)" else "Herbert Macaulay Way, Yaba, Lagos"
                 val vehicleRec = if (isHeavy) "Van or Truck (Heavy Package recommended)" else "Motorcycle (Standard Fast delivery suitability)"
                 
-                "📦 **Smart Order Setup Initialized**:\n" +
+                "**Smart Order Setup Initialized**:\n" +
                 "• **Smart Address Prediction**: $addressMatch\n" +
                 "• **Suggested Vehicle recommendation**: $vehicleRec\n" +
                 "• **Price Estimate**: ₦${if(isHeavy) "7,500.00" else "2,500.00"}\n" +
@@ -4491,7 +4649,7 @@ class DeliveryViewModel : WalletViewModel() {
             lower.contains("status") || lower.contains("track") || lower.contains("where") || lower.contains("rolex") || lower.contains("mac") -> {
                 val active = _parcels.value.firstOrNull { it.status == ParcelStatus.TRANSIT }
                 if (active != null) {
-                    "📍 **Live Delivery Status for #${active.id}**:\n" +
+                    "**Live Delivery Status for #${active.id}**:\n" +
                     "• **Item**: ${active.itemName}\n" +
                     "• **Current Rider**: ${active.courierName}\n" +
                     "• **Smart ETA**: ${if(_aiTrafficCongested.value) "Arriving in 35 mins (Heavy Traffic delays)" else "Arriving in 14 mins (Optimal route)"}\n" +
@@ -4502,7 +4660,7 @@ class DeliveryViewModel : WalletViewModel() {
                 }
             }
             lower.contains("rider") || lower.contains("richard") || lower.contains("musa") || lower.contains("best") -> {
-                "🤖 **Smart Rider Assignment Recommendation**:\n" +
+                "**Smart Rider Assignment Recommendation**:\n" +
                 "• **Richard Dheo** (Rating: 4.9, Distance: 0.8km) — **Score: 98% (Best Match)**\n" +
                 "• **Adebayo Musa** (Rating: 4.8, Distance: 1.6km) — **Score: 82%**\n" +
                 "• **Chinedu Okafor** (Rating: 4.7, Distance: 3.2km) — **Score: 65%**\n" +
@@ -4510,18 +4668,18 @@ class DeliveryViewModel : WalletViewModel() {
             }
             lower.contains("risk") || lower.contains("weather") || lower.contains("rain") || lower.contains("flood") -> {
                 val score = if (_aiTrafficCongested.value) 68 else 15
-                "⚠️ **AI Risk Assessment Station**:\n" +
+                "**AI Risk Assessment Station**:\n" +
                 "• **Risk Score**: $score/100 (${if(score > 50) "Moderate Risk" else "Safe"})\n" +
                 "• **Weather**: Clear, dry skies\n" +
                 "• **Traffic**: ${if(_aiTrafficCongested.value) "Severe Congestion on Expressways" else "Free, clear lanes"}\n" +
                 "• **Mitigation**: Approved for motorcycle. ${if(score > 50) "Rerouting around flooded zones active." else "Standard paths approved."}"
             }
             lower.contains("cancel") -> {
-                "⚠️ **Cancellation Verification System**:\n" +
+                "**Cancellation Verification System**:\n" +
                 "Your cancellation has been processed safely. To maintain high account scores and prevent suspicious anti-cancellation flags, please avoid repeated booking rejections."
             }
             lower.contains("change") -> {
-                "📍 **Smart Address Modification**:\n" +
+                "**Smart Address Modification**:\n" +
                 "Please enter your new destination. I will instantly correct spelling, verify landmarks, and recalculate ETAs for your rider."
             }
             else -> {
@@ -4585,11 +4743,11 @@ class DeliveryViewModel : WalletViewModel() {
             val confidence = rankedRiders.first().second
             val reasonString = "Selected ${bestRider.name} (${bestRider.vehicleType}) with a confidence Match Score of ${confidence}%.\n" +
                     "Decision factors:\n" +
-                    "â€¢ Distance to pickup: ${bestRider.distanceToPickupKm}km (Penalty minimized)\n" +
-                    "â€¢ Rating: ${bestRider.rating}â˜… (High courier experience)\n" +
-                    "â€¢ Workload: ${bestRider.currentWorkload} active order(s)\n" +
-                    "â€¢ Vehicle Type matches package weight limits (${weight}kg)\n" +
-                    "â€¢ Battery: ${bestRider.batteryLevel}% remaining"
+                    " Distance to pickup: ${bestRider.distanceToPickupKm}km (Penalty minimized)\n" +
+                    " Rating: ${bestRider.rating}â˜… (High courier experience)\n" +
+                    " Workload: ${bestRider.currentWorkload} active order(s)\n" +
+                    " Vehicle Type matches package weight limits (${weight}kg)\n" +
+                    " Battery: ${bestRider.batteryLevel}% remaining"
             _aiSmartAssignmentReason.value = "Smart Assignment complete. $reasonString\n\nSelf-Learning parameters adapted successfully. Click to inspect weights."
 
             viewModelScope.launch {
@@ -4679,7 +4837,7 @@ class DeliveryViewModel : WalletViewModel() {
         if (_aiTrafficCongested.value) factors.add("Severe congestion reported on primary routes")
         if (activeCount > 3) factors.add("High dispatch volume ($activeCount active shipments)")
         if (cancelledCount > 2) factors.add("Elevated cancellation rate ($cancelledCount cancellations)")
-        if (highValueActive > 0) factors.add("High-value cargo in transit (${highValueActive} shipments > â‚¦30k)")
+        if (highValueActive > 0) factors.add("High-value cargo in transit (${highValueActive} shipments > ₦30k)")
         if (fraudAlerts > 0) factors.add("Active fraud alerts ($fraudAlerts unresolved)")
         if (factors.isEmpty()) {
             factors.add("Optimal clear weather & low traffic")
@@ -4774,7 +4932,7 @@ class DeliveryViewModel : WalletViewModel() {
                     FraudAlert(
                         timestamp = "Just now",
                         userName = parcel.receiverName.ifBlank { "Unknown" },
-                        reason = "High-value shipment '${parcel.itemName}' (â‚¦${parcel.price.toInt()}) still pending delivery",
+                        reason = "High-value shipment '${parcel.itemName}' (₦${parcel.price.toInt()}) still pending delivery",
                         severity = "Flagged",
                         score = 82
                     )
@@ -5004,7 +5162,7 @@ class DeliveryViewModel : WalletViewModel() {
             val roundedDist = Math.round(totalDistanceKm * 10.0) / 10.0
             val travelMinutes = ((roundedDist / 24.0) * 60).toInt()
             val totalEtaMinutes = travelMinutes + (orderedRoute.size * 5)
-            val pathSummary = orderedRoute.joinToString(" ➔ ")
+            val pathSummary = orderedRoute.joinToString(" -> ")
 
             val optimizedPlan = BatchRoutePlan(
                 batchName = batchName,
@@ -5303,9 +5461,9 @@ class DeliveryViewModel : WalletViewModel() {
                     _isVendorVerified.value = true
                     _vendorDashboardMode.value = true
                     db.collection("users").document(uid).update("isVendorVerified", true, "userRole", "Vendor")
-                    onComplete(true, "ðŸŽ‰ Store Verified! Welcome to your Vendor Command Center!")
+                    onComplete(true, "Store Verified! Welcome to your Vendor Command Center!")
                 } else {
-                    onComplete(true, "ðŸ“‹ Application submitted! Our admin team is reviewing your KYC credentials.")
+                    onComplete(true, "Application submitted! Our admin team is reviewing your KYC credentials.")
                 }
             } catch (e: Exception) {
                 onComplete(false, e.message ?: "Failed to submit vendor application")
@@ -5888,11 +6046,11 @@ class DeliveryViewModel : WalletViewModel() {
                 if (nowVerified && !wasVerified && _vendorKycSubmitted.value) {
                     val storeName = snap.getString("storeName") ?: "Your store"
                     showInAppNotification(
-                        "Store Verified! ðŸŽ‰",
+                        "Store Verified!",
                         "Congratulations! $storeName is now LIVE in the marketplace. Start receiving orders now."
                     )
                     addNotification(
-                        "Store Verified! ðŸŽ‰",
+                        "Store Verified!",
                         "Congratulations! $storeName is now LIVE in the marketplace. Start receiving orders now.",
                         ""
                     )
@@ -5953,13 +6111,13 @@ class DeliveryViewModel : WalletViewModel() {
                 _isVendorVerified.value = autoApprove
                 if (autoApprove) {
                     showInAppNotification(
-                        "Store Verified! ðŸŽ‰",
+                        "Store Verified!",
                         "Congratulations $fullName! Your vendor store is now live in the marketplace."
                     )
                     onResult(true, "KYC approved! Your vendor store is now LIVE.")
                 } else {
                     showInAppNotification(
-                        "KYC Submitted âœ…",
+                        "KYC Submitted",
                         "Your KYC is under review. We'll notify you once an admin verifies your store."
                     )
                     onResult(true, "KYC submitted! An admin will review and approve your store.")
@@ -6223,12 +6381,15 @@ class DeliveryViewModel : WalletViewModel() {
                     .addOnSuccessListener {
                         addLoyaltyPoints(300)
                         topUpWallet(3000.0)
-                        onComplete(true, "ðŸŽ‰ Referral code redeemed! â‚¦3,000 credited to your wallet & 300 Pts added!")
+                        com.esdispatch.util.SoundManager.playSuccessArpeggio()
+                        onComplete(true, "Referral code redeemed! ₦3,000 credited to your wallet & 300 Pts added!")
                     }
                     .addOnFailureListener { e ->
+                        com.esdispatch.util.SoundManager.playErrorBuzz()
                         onComplete(false, e.message ?: "Redemption failed — not credited.")
                     }
             } catch (e: Exception) {
+                com.esdispatch.util.SoundManager.playErrorBuzz()
                 onComplete(false, e.message ?: "Failed to redeem code")
             }
         }
@@ -6277,29 +6438,42 @@ sealed class PendingQuote {
 }
 
 object SecurityUtils {
-    private const val KEY = "ENGRACED_DISPATCH_SECRET_SALT_2026"
+    private const val SALT = "ENGRACED_DISPATCH_PRODUCTION_SALT_2026_SECURE"
+    private const val LEGACY_KEY = "ENGRACED_DISPATCH_SECRET_SALT_2026"
     
-    fun encryptPin(pin: String): String {
+    fun hashPin(pin: String): String {
         if (pin.isEmpty()) return ""
-        try {
-            val sb = StringBuilder()
-            for (i in pin.indices) {
-                sb.append((pin[i].code xor KEY[i % KEY.length].code).toChar())
-            }
-            return android.util.Base64.encodeToString(sb.toString().toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+        return try {
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            val digest = md.digest((pin + SALT).toByteArray(Charsets.UTF_8))
+            digest.joinToString("") { "%02x".format(it) }
         } catch (e: Exception) {
-            return pin
+            pin
         }
     }
+
+    fun verifyPin(inputPin: String, storedPinOrHash: String): Boolean {
+        if (inputPin.isEmpty() || storedPinOrHash.isEmpty()) return false
+        val hashedInput = hashPin(inputPin)
+        if (storedPinOrHash == hashedInput) return true
+        if (storedPinOrHash == inputPin) return true
+        val legacyDecrypted = decryptLegacy(storedPinOrHash)
+        if (legacyDecrypted == inputPin) return true
+        return false
+    }
     
-    fun decryptPin(encrypted: String): String {
+    fun encryptPin(pin: String): String {
+        return hashPin(pin)
+    }
+    
+    internal fun decryptLegacy(encrypted: String): String {
         if (encrypted.isEmpty()) return ""
         try {
             val decodedBytes = android.util.Base64.decode(encrypted, android.util.Base64.NO_WRAP)
             val decodedStr = String(decodedBytes, Charsets.UTF_8)
             val sb = StringBuilder()
             for (i in decodedStr.indices) {
-                sb.append((decodedStr[i].code xor KEY[i % KEY.length].code).toChar())
+                sb.append((decodedStr[i].code xor LEGACY_KEY[i % LEGACY_KEY.length].code).toChar())
             }
             return sb.toString()
         } catch (e: Exception) {

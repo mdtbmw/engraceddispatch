@@ -1,4 +1,4 @@
-﻿package com.esdispatch.ui.screens
+package com.esdispatch.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -78,7 +79,7 @@ fun ExpressBookingScreen(
     ) { permissions ->
         val granted = permissions.values.any { it }
         coroutineScope.launch {
-            Toast.makeText(context, "ðŸŽ¯ Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
             val detected = withContext(Dispatchers.IO) {
                 detectUserLocation(context)
             }
@@ -153,9 +154,9 @@ fun ExpressBookingScreen(
         return if (query.isBlank()) {
             val defaults = mutableListOf<com.esdispatch.utils.SearchResultItem>()
             val home = viewModel.homeAddress.value
-            if (home.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("ðŸ  Saved Home", home))
+            if (home.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("Saved Home", home))
             val work = viewModel.workAddress.value
-            if (work.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("ðŸ’¼ Saved Work", work))
+            if (work.isNotBlank()) defaults.add(com.esdispatch.utils.SearchResultItem("Saved Work", work))
             defaults.addAll(com.esdispatch.data.AddressDatabase.getDefaults().take(6).map { it.toSearchResult() })
             defaults.distinctBy { it.displayInput }
         } else {
@@ -268,11 +269,12 @@ fun ExpressBookingScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 24.dp, vertical = 24.dp)
+                        .padding(horizontal = 14.dp, vertical = 18.dp)
                         .padding(bottom = 140.dp) // extra space for bottom CTA bar
                 ) {
                 // --- Book Again suggestions using delivery history ---
                 val userParcels by viewModel.parcels.collectAsState()
+                val savedAddresses by viewModel.addresses.collectAsState()
                 val bookAgainList = remember(userParcels) {
                     userParcels.filter { it.deliveryAddress.isNotBlank() && it.receiverName.isNotBlank() }
                         .map { Triple(it.deliveryAddress, it.receiverName, it.receiverPhone) }
@@ -337,7 +339,7 @@ fun ExpressBookingScreen(
                     shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         if (adminDiscountEnabled) {
                             Surface(
                                 color = Gold.copy(alpha = 0.15f),
@@ -352,7 +354,7 @@ fun ExpressBookingScreen(
                                     Icon(Icons.Filled.LocalOffer, contentDescription = null, tint = Gold, modifier = Modifier.size(24.dp))
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
-                                        Text("âš¡ ${adminDiscountPercent}% EXPRESS DISCOUNT ACTIVE", color = GoldLight, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                        Text("${adminDiscountPercent}% EXPRESS DISCOUNT ACTIVE", color = GoldLight, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
                                         Text("Prices shown will include your exclusive savings!", color = TextGray, fontSize = 11.sp)
                                     }
                                 }
@@ -413,7 +415,7 @@ fun ExpressBookingScreen(
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text(
-                                        if (isSearchingSuggestions) "ðŸ” Searching places & addresses..." else "ðŸ’¡ Verified Location Matches:",
+                                        if (isSearchingSuggestions) "Searching places & addresses..." else "Verified Location Matches:",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Gold else Obsidian,
@@ -486,16 +488,16 @@ fun ExpressBookingScreen(
                                 }
                         ) {
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Place,
-                                    contentDescription = null,
-                                    tint = Gold,
-                                    modifier = Modifier.size(14.dp)
+                                    imageVector = Icons.Filled.MyLocation,
+                                    contentDescription = "Current Location",
+                                    tint = if (isLight) Obsidian else Gold,
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     "Detect Current Location",
                                     fontSize = 11.sp,
@@ -505,33 +507,49 @@ fun ExpressBookingScreen(
                             }
                         }
 
-                        // Predict frequently used pickup locations (Tap to apply)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(top = 8.dp, bottom = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("âš¡ Frequent:", fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                            listOf("The Palms Mall", "Ikeja City Mall").forEach { freq ->
-                                Surface(
-                                    color = Gold.copy(alpha = 0.12f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.2f)),
-                                    modifier = Modifier.clickable {
-                                        pickup = if (freq == "The Palms Mall") "The Palms Shopping Mall, Bisway Road, Lekki, Lagos" else "Ikeja City Mall, Obafemi Awolowo Way, Ikeja, Lagos"
-                                        focusedField = null
+                        // Real frequently used pickup locations from saved addresses & past bookings
+                        val realFrequentAddresses = remember(savedAddresses, userParcels) {
+                            val fromHistory = userParcels
+                                .mapNotNull { it.pickupAddress.takeIf { a -> a.isNotBlank() } }
+                                .groupingBy { it }
+                                .eachCount()
+                                .entries
+                                .sortedByDescending { it.value }
+                                .map { it.key }
+                            val fromSaved = savedAddresses.map { it.address }
+                            (fromSaved + fromHistory).filter { it.isNotBlank() }.distinct().take(4)
+                        }
+
+                        if (realFrequentAddresses.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(top = 8.dp, bottom = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Frequent:", fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Bold)
+                                realFrequentAddresses.forEach { fullAddr ->
+                                    val shortLabel = fullAddr.split(",").firstOrNull()?.trim() ?: fullAddr
+                                    Surface(
+                                        color = Gold.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.2f)),
+                                        modifier = Modifier.clickable {
+                                            pickup = fullAddr
+                                            focusedField = null
+                                        }
+                                    ) {
+                                        Text(
+                                            shortLabel,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = GoldLight,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            maxLines = 1
+                                        )
                                     }
-                                ) {
-                                    Text(
-                                        freq,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = GoldLight,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
                                 }
                             }
                         }
@@ -584,7 +602,7 @@ fun ExpressBookingScreen(
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text(
-                                        if (isSearchingSuggestions) "ðŸ” Searching places & addresses..." else "ðŸ’¡ Verified Location Matches:",
+                                        if (isSearchingSuggestions) "Searching places & addresses..." else "Verified Location Matches:",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Gold else Obsidian,
@@ -653,14 +671,14 @@ fun ExpressBookingScreen(
                     shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         // Sender Info
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("âš¡ Sender Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
+                            Text("Sender Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -714,7 +732,7 @@ fun ExpressBookingScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("âš¡ Receiver Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
+                            Text("Receiver Info", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
                             Text(
                                 "From Contacts",
                                 fontSize = 10.sp,
@@ -785,7 +803,7 @@ fun ExpressBookingScreen(
                     shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = "Item Details",
                             fontWeight = FontWeight.ExtraBold,
@@ -886,7 +904,7 @@ fun ExpressBookingScreen(
                     shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = "Select Delivery Date",
                             fontWeight = FontWeight.ExtraBold,
@@ -942,8 +960,7 @@ fun ExpressBookingScreen(
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding(),
+                    .fillMaxWidth(),
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                 color = Charcoal,
                 tonalElevation = 8.dp
@@ -951,7 +968,8 @@ fun ExpressBookingScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -960,7 +978,7 @@ fun ExpressBookingScreen(
                     when (val quote = pendingQuote) {
                         is PendingQuote.Success -> {
                             Text(
-                                text = "â‚¦${String.format("%,.2f", quote.price)}",
+                                text = "₦${String.format("%,.2f", quote.price)}",
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Black,
                                 color = accentColor

@@ -232,7 +232,7 @@ fun DashboardScreen(
             if ((newM1 && !oldM1) || (newM10 && !oldM10) || (newM50 && !oldM50)) {
                 triggerConfetti = true
                 viewModel.showInAppNotification(
-                    "Milestone Achieved! 🏆",
+                    "Milestone Achieved!",
                     "Congratulations! You unlocked a premium delivery achievement milestone."
                 )
             }
@@ -425,7 +425,7 @@ fun DashboardScreen(
                             )
                             
                             Text(
-                                text = "Welcome Reward Pack! 🎁",
+                                text = "Welcome Reward Pack!",
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Black,
                                 color = AppTextColor,
@@ -539,7 +539,7 @@ fun DashboardScreen(
                                 )
                             ) {
                                 Text(
-                                    text = "Claim My Welcome Gift 🎁",
+                                    text = "Claim My Welcome Gift",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Black
                                 )
@@ -715,7 +715,7 @@ fun DashboardScreen(
                                 )
                             ) {
                                 Text(
-                                    text = "Got It, Let's Track! 🚀",
+                                    text = "Got It, Let's Track!",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Black
                                 )
@@ -735,38 +735,7 @@ fun DashboardScreen(
                 }
             }
 
-            // Subtle blurry gold light backgrounds (glowing effect matching docker)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(450.dp)
-                    .align(Alignment.TopCenter)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                Gold.copy(alpha = if (isDark) 0.04f else 0.02f),
-                                Color.Transparent
-                            ),
-                            radius = 1200f
-                        )
-                    )
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(450.dp)
-                    .align(Alignment.BottomCenter)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                Gold.copy(alpha = if (isDark) 0.05f else 0.03f),
-                                Color.Transparent
-                            ),
-                            radius = 1200f
-                        )
-                    )
-            )
-
+            // Background glow unified without jarring fixed-height seam lines
             val isSandbox by viewModel.isSandboxEnvironment.collectAsState()
             val verifiedStores = remember(marketplaceStores) {
                 marketplaceStores.filter { it.isVerified || it.rating >= 4.5 }.take(6)
@@ -794,122 +763,6 @@ fun DashboardScreen(
                                 onNavigate("Marketplace")
                             }
                         )
-                    }
-                }
-
-                // 1.5 TOP RECOMMENDED VENDOR SHOPS (Dashboard Marketplace Browsing)
-                if (verifiedStores.isNotEmpty()) {
-                    item {
-                        Spacer(modifier = Modifier.height(20.dp))
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Storefront,
-                                        contentDescription = null,
-                                        tint = if (isDark) Gold else Obsidian,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Top Recommended Shops",
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = AppTextColor
-                                    )
-                                }
-                                Text(
-                                    text = "All Stores",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Gold else Obsidian,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { onNavigate("Marketplace") }
-                                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                items(verifiedStores, key = { it.id }) { store ->
-                                    Surface(
-                                        onClick = { onNavigate("VendorStorefront/${store.id}") },
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = if (isDark) Charcoal else Color.White,
-                                        border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
-                                        shadowElevation = 1.dp,
-                                        modifier = Modifier.width(160.dp)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(12.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(52.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Gold.copy(alpha = 0.15f)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                if (store.logoUrl.isNotBlank()) {
-                                                    Image(
-                                                        painter = rememberAsyncImagePainter(store.logoUrl),
-                                                        contentDescription = store.storeName,
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier.fillMaxSize().clip(CircleShape)
-                                                    )
-                                                } else {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Storefront,
-                                                        contentDescription = null,
-                                                        tint = Gold,
-                                                        modifier = Modifier.size(26.dp)
-                                                    )
-                                                }
-                                            }
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Text(
-                                                text = store.storeName,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isDark) Color.White else Obsidian,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Star,
-                                                    contentDescription = null,
-                                                    tint = Gold,
-                                                    modifier = Modifier.size(11.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(3.dp))
-                                                Text(
-                                                    text = "${store.rating} (${store.itemCount} items)",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = TextGray
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -967,86 +820,115 @@ fun DashboardScreen(
                 }
             }
 
-            // LOGISTICS MARKETPLACE CARD
-            if (userRole != "rider") {
+            // 3. TOP RECOMMENDED VENDOR SHOPS (Positioned under Stats Grid)
+            if (verifiedStores.isNotEmpty()) {
                 item {
                     Spacer(modifier = Modifier.height(24.dp))
-                    Surface(
-                        onClick = { onNavigate("Marketplace") },
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        color = Obsidian,
-                        border = BorderStroke(1.2.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate),
-                        shadowElevation = 0.dp
+                            .padding(horizontal = 24.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(
-                                            Obsidian,
-                                            Gold.copy(alpha = 0.04f)
-                                        )
-                                    )
-                                )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Storefront,
+                                    contentDescription = null,
+                                    tint = if (isDark) Gold else Obsidian,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Top Recommended Shops",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = AppTextColor
+                                )
+                            }
+                            Text(
+                                text = "All Stores",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Gold else Obsidian,
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(130.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1.2f)
-                                        .padding(start = 20.dp, top = 16.dp, bottom = 16.dp, end = 8.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onNavigate("Marketplace") }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(verifiedStores, key = { it.id }) { store ->
+                                Surface(
+                                    onClick = { onNavigate("VendorStorefront/${store.id}") },
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (isDark) Charcoal else Color.White,
+                                    border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
+                                    shadowElevation = 0.dp,
+                                    modifier = Modifier.width(160.dp)
                                 ) {
-                                    Text(
-                                        text = "Logistics Marketplace",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Shop shipping boxes, bubble wraps, courier bags, and rider uniforms.",
-                                        fontSize = 11.sp,
-                                        color = TextGray.copy(alpha = 0.75f),
-                                        lineHeight = 14.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = Gold,
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(52.dp)
+                                                .clip(CircleShape)
+                                                .background(Gold.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (store.logoUrl.isNotBlank()) {
+                                                Image(
+                                                    painter = rememberAsyncImagePainter(store.logoUrl),
+                                                    contentDescription = store.storeName,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Storefront,
+                                                    contentDescription = null,
+                                                    tint = Gold,
+                                                    modifier = Modifier.size(26.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
                                         Text(
-                                            text = "SHOP MATERIALS",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Obsidian,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                            text = store.storeName,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDark) Color.White else Obsidian,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Star,
+                                                contentDescription = null,
+                                                tint = Gold,
+                                                modifier = Modifier.size(11.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "${store.rating} (${store.itemCount} items)",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = TextGray
+                                            )
+                                        }
                                     }
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .weight(0.8f)
-                                        .fillMaxHeight(),
-                                    contentAlignment = Alignment.CenterEnd
-                                ) {
-                                    Image(
-                                        painter = rememberAsyncImagePainter("https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=400&q=80"),
-                                        contentDescription = "Logistics Shop Banner",
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .fillMaxHeight()
-                                            .clip(WavyLeftShape()),
-                                        contentScale = ContentScale.Crop
-                                    )
                                 }
                             }
                         }
@@ -1688,7 +1570,7 @@ fun DashboardScreen(
                                     Text("ID: ${parcel.id} • ${parcel.dateString}", fontSize = 11.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "${parcel.pickupAddress} ➔ ${parcel.deliveryAddress}",
+                                        text = "${parcel.pickupAddress} -> ${parcel.deliveryAddress}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = TextGray,
@@ -1997,7 +1879,7 @@ fun DashboardScreen(
                                 shape = RoundedCornerShape(24.dp),
                                 color = Charcoal,
                                 shadowElevation = 0.dp,
-                                border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
+                                border = BorderStroke(1.dp, searchBarBorderColor)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -2041,14 +1923,58 @@ fun DashboardScreen(
                                     }
                                 }
                             }
-                            DashboardActionBtn(
-                                title = "Track order",
-                                icon = Icons.Filled.Place,
-                                onClick = { onNavigate("ActiveTracking") },
+                            Surface(
+                                onClick = { onNavigate("Marketplace") },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(80.dp)
-                            )
+                                    .height(80.dp),
+                                shape = RoundedCornerShape(24.dp),
+                                color = Charcoal,
+                                shadowElevation = 0.dp,
+                                border = BorderStroke(1.dp, searchBarBorderColor)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(Gold),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Storefront,
+                                            contentDescription = "Market",
+                                            tint = Obsidian,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(verticalArrangement = Arrangement.Center) {
+                                        Text(
+                                            text = "Marketplace",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextGray,
+                                            lineHeight = 13.sp,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = "Browse & Shop",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = AppTextColor,
+                                            lineHeight = 16.sp,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -3426,7 +3352,7 @@ fun ParcelDetailBottomSheet(
                                     color = if (isDark) Color.White else Obsidian
                                 )
                                 Text(
-                                    text = "Plate: ${parcel.riderBikeNumber.ifEmpty { "" }} • Rating: $riderRating ★",
+                                    text = "Plate: ${parcel.riderBikeNumber.ifEmpty { "" }} • Rating: $riderRating",
                                     fontSize = 10.sp,
                                     color = TextGray,
                                     fontWeight = FontWeight.Medium

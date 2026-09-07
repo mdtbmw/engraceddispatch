@@ -3,6 +3,12 @@ package com.esdispatch.ui.screens
 import android.widget.Toast
 import android.content.Intent
 import android.net.Uri
+import android.Manifest
+import android.content.Context
+import android.location.LocationManager
+import android.provider.Settings
+import androidx.core.content.ContextCompat
+import androidx.biometric.BiometricManager
 import com.esdispatch.data.CardInfo
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -620,10 +626,10 @@ fun ProfileScreen(
                                         if (!bonusClaimed) {
                                             viewModel.claimDailyBonus()
                                             viewModel.showInAppNotification(
-                                                "VIP Bonus Awarded! 🏆",
+                                                "VIP Bonus Awarded!",
                                                 "100 Loyalty Points successfully added."
                                             )
-                                            Toast.makeText(context, "🏆 100 VIP Points Claimed!", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "100 VIP Points Claimed!", Toast.LENGTH_SHORT).show()
                                         }
                                     },
                                     enabled = !bonusClaimed,
@@ -670,7 +676,7 @@ fun ProfileScreen(
                             else -> (deliveryCount / 10f).coerceIn(0f, 0.4f)
                         }
                         val statusText = when {
-                            isVendorVerified -> "Store LIVE on Marketplace! 🎉"
+                            isVendorVerified -> "Store LIVE on Marketplace!"
                             vendorKycSubmitted -> "KYC submitted — awaiting review"
                             vendorStoreExists -> "Store created — complete KYC"
                             meetsDeliveryReq -> "Milestone unlocked! Register store"
@@ -1552,21 +1558,65 @@ fun SettingsScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
-    val push by viewModel.pushEnabled.collectAsState()
-    val location by viewModel.locationEnabled.collectAsState()
-    val dark by viewModel.darkModeEnabled.collectAsState()
-
-    var showEditProfile by remember { mutableStateOf(false) }
-    var showChangePassword by remember { mutableStateOf(false) }
-    var showPinSetupSheet by remember { mutableStateOf(false) }
-    var showLoginModeSheet by remember { mutableStateOf(false) }
-
-    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
+    val context = LocalContext.current
+    val isDark = isDarkTheme
     val pageBg = LuxuryBlack
     val sheetBg = AppSurface
     val textPrimary = AppTextColor
-    val textSecondary = TextGray
-    val lightGold = Color(0xFFD4AF37)
+
+    val push by viewModel.pushEnabled.collectAsState()
+    val location by viewModel.locationEnabled.collectAsState()
+    val dark by viewModel.darkModeEnabled.collectAsState()
+    val soundEffects by viewModel.soundEffectsEnabled.collectAsState()
+    val haptics by viewModel.hapticsEnabled.collectAsState()
+    val userPin by viewModel.userPin.collectAsState()
+    val loginMode by viewModel.loginMode.collectAsState()
+    val biometricEn by viewModel.biometricEnabled.collectAsState()
+    val userEmail by viewModel.userEmail.collectAsState()
+    val userName by viewModel.userName.collectAsState()
+
+    var showEditProfile by remember { mutableStateOf(false) }
+    var showPinSetupSheet by remember { mutableStateOf(false) }
+    var showLoginModeSheet by remember { mutableStateOf(false) }
+    var showSignOutDialog by remember { mutableStateOf(false) }
+    var showPasswordResetDialog by remember { mutableStateOf(false) }
+    var resetEmailInput by remember(userEmail) { mutableStateOf(userEmail) }
+    var isSendingReset by remember { mutableStateOf(false) }
+
+    var cacheSizeText by remember { mutableStateOf(viewModel.getAppCacheSize(context)) }
+
+    val locationManager = remember(context) { context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager }
+    var isGpsEnabled by remember {
+        mutableStateOf(locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true)
+    }
+    var hasFineLocation by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                      permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        hasFineLocation = granted
+        viewModel.setLocationEnabled(granted)
+        isGpsEnabled = locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true
+    }
+
+    val biometricStatus = remember(context) {
+        try {
+            BiometricManager.from(context).canAuthenticate(
+                BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            )
+        } catch (e: Exception) {
+            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -1594,101 +1644,337 @@ fun SettingsScreen(
                         .background(sheetBg)
                         .verticalScroll(rememberScrollState())
                         .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 24.dp)
-                        .padding(bottom = 120.dp)
+                        .padding(horizontal = 16.dp, vertical = 20.dp)
+                        .padding(bottom = 100.dp)
                 ) {
-                    Text(
-                        text = "Preferences",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDark) lightGold else Obsidian,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-
+                    // Domain 1: Appearance & Interaction
+                    SettingsSectionHeader("Appearance & Interaction")
                     Surface(
                         shape = RoundedCornerShape(24.dp),
-                        color = if (isDark) Color(0xFF1D1D1D) else GoldenWhite,
-                        border = BorderStroke(1.dp, if (isDark) lightGold.copy(alpha = 0.3f) else Slate.copy(alpha = 0.5f)),
+                        color = AppSurface,
+                        border = BorderStroke(1.dp, if (isDark) BorderDark else Color(0xFFE5E7EB)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(8.dp)) {
+                        Column(modifier = Modifier.padding(6.dp)) {
                             SettingsToggleHighContrast(
-                                title = "Push Notifications",
-                                checked = push,
-                                onCheckedChange = { viewModel.togglePushNotifications() }
-                            )
-                            SettingsToggleHighContrast(
-                                title = "Location Services",
-                                checked = location,
-                                onCheckedChange = { viewModel.toggleLocationServices() }
-                            )
-                            SettingsToggleHighContrast(
-                                title = "Dark Mode",
+                                title = "Dark Theme",
+                                subtitle = "Sleek Obsidian & Gold luxury interface",
+                                icon = Icons.Filled.DarkMode,
                                 checked = dark,
                                 onCheckedChange = { viewModel.toggleDarkMode() }
                             )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
+                            SettingsToggleHighContrast(
+                                title = "Sound Effects",
+                                subtitle = "Audio feedback on booking & telemetry sweeps",
+                                icon = Icons.Filled.VolumeUp,
+                                checked = soundEffects,
+                                onCheckedChange = { viewModel.toggleSoundEffects() }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
+                            SettingsToggleHighContrast(
+                                title = "Tactile Haptics",
+                                subtitle = "Physical vibration pulses on touch engagement",
+                                icon = Icons.Filled.Vibration,
+                                checked = haptics,
+                                onCheckedChange = { viewModel.toggleHaptics() }
+                            )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
-                    Text(
-                        text = "Account & Security",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDark) lightGold else Obsidian,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-
+                    // Domain 2: Permissions & Hardware
+                    SettingsSectionHeader("Permissions & Hardware")
                     Surface(
                         shape = RoundedCornerShape(24.dp),
-                        color = if (isDark) Color(0xFF1D1D1D) else GoldenWhite,
-                        border = BorderStroke(1.dp, if (isDark) lightGold.copy(alpha = 0.3f) else Slate.copy(alpha = 0.5f)),
+                        color = AppSurface,
+                        border = BorderStroke(1.dp, if (isDark) BorderDark else Color(0xFFE5E7EB)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(8.dp)) {
+                        Column(modifier = Modifier.padding(6.dp)) {
+                            SettingsToggleHighContrast(
+                                title = "Location Services",
+                                subtitle = if (hasFineLocation) "High-accuracy GPS active for live dispatch" else "Permission required for courier tracking",
+                                icon = Icons.Filled.LocationOn,
+                                checked = location && hasFineLocation,
+                                onCheckedChange = {
+                                    if (!hasFineLocation) {
+                                        locationPermissionLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION
+                                            )
+                                        )
+                                    } else {
+                                        viewModel.toggleLocationServices()
+                                    }
+                                }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
+                            SettingsItemHighContrast(
+                                icon = Icons.Filled.GpsFixed,
+                                title = "GPS Hardware Status",
+                                subtitle = if (isGpsEnabled) "Hardware provider online (50m proximity ready)" else "Hardware GPS offline (Tap to configure)",
+                                badge = if (isGpsEnabled) "ONLINE" else "OFFLINE",
+                                badgeColor = if (isGpsEnabled) Color(0xFF10B981) else Color(0xFFEF4444),
+                                onClick = {
+                                    try {
+                                        context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Open Settings to manage device location", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Domain 3: Notification Preferences
+                    SettingsSectionHeader("Notification Preferences")
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = AppSurface,
+                        border = BorderStroke(1.dp, if (isDark) BorderDark else Color(0xFFE5E7EB)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(6.dp)) {
+                            SettingsToggleHighContrast(
+                                title = "Master Push Alerts",
+                                subtitle = "Enable real-time push dispatches and status pings",
+                                icon = Icons.Filled.Notifications,
+                                checked = push,
+                                onCheckedChange = { viewModel.togglePushNotifications() }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
+                            SettingsItemHighContrast(
+                                icon = Icons.Filled.Tune,
+                                title = "Delivery Alert Stages",
+                                subtitle = "Granular alerts for Booked, Dispatched & Delivered",
+                                badge = "CONFIGURE",
+                                badgeColor = Gold,
+                                onClick = { onNavigate("NotificationSettings") }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Domain 4: Account & Security
+                    SettingsSectionHeader("Account & Security")
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = AppSurface,
+                        border = BorderStroke(1.dp, if (isDark) BorderDark else Color(0xFFE5E7EB)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(6.dp)) {
                             SettingsItemHighContrast(
                                 icon = Icons.Filled.Person,
                                 title = "Edit Profile",
+                                subtitle = if (userName.isNotEmpty()) "$userName • $userEmail" else "Update name, phone, and account photo",
                                 onClick = { showEditProfile = true }
                             )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
                             SettingsItemHighContrast(
                                 icon = Icons.Filled.Dialpad,
-                                title = "PIN Authentication Setup",
+                                title = "Security PIN Setup",
+                                subtitle = "4-digit PIN for instant transactions and login",
+                                badge = if (userPin.isNotEmpty()) "ACTIVE" else "NOT SET",
+                                badgeColor = if (userPin.isNotEmpty()) Color(0xFF10B981) else Color(0xFFF59E0B),
                                 onClick = { showPinSetupSheet = true }
                             )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
                             SettingsItemHighContrast(
                                 icon = Icons.Filled.LockOpen,
-                                title = "Authentication Preference",
+                                title = "Authentication Mode",
+                                subtitle = "Select between PIN Only or Biometric QuickLogin",
+                                badge = loginMode.uppercase(),
+                                badgeColor = Gold,
                                 onClick = { showLoginModeSheet = true }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
+                            SettingsItemHighContrast(
+                                icon = Icons.Filled.Fingerprint,
+                                title = "Biometric QuickLogin",
+                                subtitle = when (biometricStatus) {
+                                    BiometricManager.BIOMETRIC_SUCCESS -> if (biometricEn) "Fingerprint & Biometric Login enabled" else "Tap to toggle device biometric authentication"
+                                    BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "No biometric credentials registered on device"
+                                    else -> "Biometric hardware unavailable on this device"
+                                },
+                                badge = if (biometricEn) "ENABLED" else "DISABLED",
+                                badgeColor = if (biometricEn) Color(0xFF10B981) else TextGray,
+                                onClick = {
+                                    if (biometricStatus == BiometricManager.BIOMETRIC_SUCCESS) {
+                                        val next = !biometricEn
+                                        viewModel.setBiometricEnabled(next)
+                                        Toast.makeText(context, if (next) "Biometric login enabled" else "Biometric login disabled", Toast.LENGTH_SHORT).show()
+                                    } else if (biometricStatus == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED) {
+                                        Toast.makeText(context, "Please configure fingerprint or screen lock in Android Settings", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "Biometric authentication is not supported on this device", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
+                            SettingsItemHighContrast(
+                                icon = Icons.Filled.LockReset,
+                                title = "Password Reset",
+                                subtitle = "Send a password reset email link to your address",
+                                badge = "SEND",
+                                badgeColor = Gold,
+                                onClick = { showPasswordResetDialog = true }
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
+                    // Domain 5: Storage & Diagnostics
+                    SettingsSectionHeader("Storage & Diagnostics")
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = AppSurface,
+                        border = BorderStroke(1.dp, if (isDark) BorderDark else Color(0xFFE5E7EB)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(6.dp)) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(if (isDark) Gold.copy(alpha = 0.12f) else Obsidian.copy(alpha = 0.08f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.CleaningServices,
+                                            contentDescription = null,
+                                            tint = if (isDark) Gold else Obsidian,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column {
+                                        Text(
+                                            text = "Clear Local Cache",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = AppTextColor
+                                        )
+                                        Text(
+                                            text = "Map tiles, cached images & files ($cacheSizeText)",
+                                            fontSize = 12.sp,
+                                            color = TextGray
+                                        )
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        val cleared = viewModel.clearAppCache(context)
+                                        if (cleared) {
+                                            cacheSizeText = viewModel.getAppCacheSize(context)
+                                            Toast.makeText(context, "Local cache cleared successfully", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.3f)),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = if (isDark) Gold else Obsidian
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Clear",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(if (isDark) Gold.copy(alpha = 0.12f) else Obsidian.copy(alpha = 0.08f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Info,
+                                            contentDescription = null,
+                                            tint = if (isDark) Gold else Obsidian,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column {
+                                        Text(
+                                            text = "ESDispatch Fleet Core",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = AppTextColor
+                                        )
+                                        Text(
+                                            text = "Official Release • Production Edition",
+                                            fontSize = 12.sp,
+                                            color = TextGray
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)
+                                ) {
+                                    Text(
+                                        text = "v1.2.0",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isDark) Gold else Obsidian,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    // Sign Out Button
                     Button(
-                        onClick = {
-                            viewModel.logout()
-                            onNavigate("Login")
-                        },
+                        onClick = { showSignOutDialog = true },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(56.dp),
-                        shape = RoundedCornerShape(24.dp),
+                            .height(54.dp),
+                        shape = RoundedCornerShape(20.dp),
                         border = BorderStroke(1.dp, Color.Red),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isDark) Color(0xFF0B0B0B) else Color.White,
+                            containerColor = if (isDark) Color(0xFF181010) else Color(0xFFFFF5F5),
                             contentColor = Color.Red
                         )
                     ) {
-                        Icon(Icons.Filled.Logout, "Logout", tint = Color.Red)
+                        Icon(Icons.Filled.Logout, "Logout", tint = Color.Red, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "SIGN OUT",
-                            fontSize = 15.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.Red,
                             letterSpacing = 1.sp
@@ -1699,7 +1985,7 @@ fun SettingsScreen(
         }
     }
 
-    // --- Settings Modal Sheets ---
+    // --- Settings Modal Sheets & Dialogs ---
     if (showEditProfile) {
         ProfileEditSheet(viewModel) { showEditProfile = false }
     }
@@ -1709,38 +1995,200 @@ fun SettingsScreen(
     if (showLoginModeSheet) {
         LoginModeSheet(viewModel) { showLoginModeSheet = false }
     }
+
+    if (showSignOutDialog) {
+        AlertDialog(
+            onDismissRequest = { showSignOutDialog = false },
+            containerColor = AppSurface,
+            title = {
+                Text(
+                    text = "Confirm Sign Out",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = AppTextColor
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to end your current session? You will be redirected to the sign-in screen.",
+                    fontSize = 14.sp,
+                    color = TextGray
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showSignOutDialog = false
+                        viewModel.logout()
+                        onNavigate("Login")
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Red,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Sign Out", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showSignOutDialog = false }
+                ) {
+                    Text("Cancel", color = AppTextColor, fontWeight = FontWeight.Medium)
+                }
+            }
+        )
+    }
+
+    if (showPasswordResetDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isSendingReset) showPasswordResetDialog = false },
+            containerColor = AppSurface,
+            title = {
+                Text(
+                    text = "Reset Password",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = AppTextColor
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter your registered email address to receive password reset instructions:",
+                        fontSize = 14.sp,
+                        color = TextGray
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = resetEmailInput,
+                        onValueChange = { resetEmailInput = it },
+                        placeholder = { Text("email@domain.com") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Gold,
+                            unfocusedBorderColor = if (isDark) BorderDark else Color(0xFFD1D5DB),
+                            focusedTextColor = AppTextColor,
+                            unfocusedTextColor = AppTextColor
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (resetEmailInput.isNotBlank() && !isSendingReset) {
+                            isSendingReset = true
+                            viewModel.sendPasswordResetEmail(resetEmailInput) { success, msg ->
+                                isSendingReset = false
+                                Toast.makeText(context, msg ?: if (success) "Reset email dispatched" else "Error", Toast.LENGTH_LONG).show()
+                                if (success) showPasswordResetDialog = false
+                            }
+                        }
+                    },
+                    enabled = !isSendingReset && resetEmailInput.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = Obsidian
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = if (isSendingReset) "Sending..." else "Send Link",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showPasswordResetDialog = false },
+                    enabled = !isSendingReset
+                ) {
+                    Text("Cancel", color = AppTextColor, fontWeight = FontWeight.Medium)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun SettingsSectionHeader(title: String) {
+    val isDark = isDarkTheme
+    Text(
+        text = title,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.ExtraBold,
+        color = if (isDark) Gold else Obsidian,
+        letterSpacing = 0.5.sp,
+        modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+    )
 }
 
 @Composable
 fun SettingsToggleHighContrast(
     title: String,
     checked: Boolean,
+    subtitle: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     onCheckedChange: () -> Unit
 ) {
-    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
+    val isDark = isDarkTheme
     val textCol = AppTextColor
-    val lightGold = Color(0xFFD4AF37)
-    val checkedThumbColor = if (isDark) Obsidian else GoldenWhiteLight
+    val checkedThumbColor = Obsidian
     val checkedTrackColor = Gold
     val uncheckedThumbColor = if (isDark) Gold.copy(alpha = 0.5f) else TextGray.copy(alpha = 0.5f)
     val uncheckedTrackColor = if (isDark) Obsidian else BorderLight
-    val uncheckedBorderColor = if (isDark) Gold.copy(alpha = 0.3f) else Color(0xFFD1D5DB)
+    val uncheckedBorderColor = if (isDark) BorderDark else Color(0xFFD1D5DB)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(20.dp))
             .clickable { onCheckedChange() }
-            .padding(vertical = 12.dp, horizontal = 16.dp),
+            .padding(vertical = 12.dp, horizontal = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = title,
-            fontWeight = FontWeight.Bold,
-            fontSize = 15.sp,
-            color = textCol
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            if (icon != null) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (isDark) Gold.copy(alpha = 0.12f) else Obsidian.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (isDark) Gold else Obsidian,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+            }
+            Column {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = textCol
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        fontSize = 12.sp,
+                        color = TextGray
+                    )
+                }
+            }
+        }
 
         Switch(
             checked = checked,
@@ -1760,9 +2208,12 @@ fun SettingsToggleHighContrast(
 fun SettingsItemHighContrast(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
+    subtitle: String? = null,
+    badge: String? = null,
+    badgeColor: Color = Gold,
     onClick: () -> Unit
 ) {
-    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
+    val isDark = isDarkTheme
     val textCol = AppTextColor
     val iconColor = if (isDark) Gold else Obsidian
     val iconBgColor = if (isDark) Gold.copy(alpha = 0.12f) else Obsidian.copy(alpha = 0.08f)
@@ -1771,17 +2222,20 @@ fun SettingsItemHighContrast(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(20.dp))
             .clickable { onClick() }
-            .padding(vertical = 12.dp, horizontal = 16.dp),
+            .padding(vertical = 12.dp, horizontal = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(18.dp))
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(14.dp))
                     .background(iconBgColor),
                 contentAlignment = Alignment.Center
             ) {
@@ -1792,21 +2246,47 @@ fun SettingsItemHighContrast(
                     modifier = Modifier.size(20.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(
-                text = title,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                color = textCol
-            )
+            Spacer(modifier = Modifier.width(14.dp))
+            Column {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = textCol
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        fontSize = 12.sp,
+                        color = TextGray
+                    )
+                }
+            }
         }
 
-        Icon(
-            imageVector = Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = chevronColor,
-            modifier = Modifier.size(20.dp)
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (!badge.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = badgeColor.copy(alpha = 0.15f),
+                    modifier = Modifier.padding(end = 8.dp)
+                ) {
+                    Text(
+                        text = badge,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = badgeColor,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = chevronColor,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 
@@ -1832,7 +2312,7 @@ fun SettingsToggle(
             checked = checked,
             onCheckedChange = { onCheckedChange() },
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
+                checkedThumbColor = Obsidian,
                 checkedTrackColor = Gold,
                 uncheckedThumbColor = TextGray,
                 uncheckedTrackColor = if (isDark) Color(0xFF2C2C2C) else Color(0xFFEFEFEF)
@@ -2016,64 +2496,130 @@ fun AddressBookScreen(
                 Box(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 32.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        items(addresses) { item ->
-                            Surface(
-                                shape = RoundedCornerShape(24.dp),
-                                color = AppSurface,
-                                border = if (item.isDefault) BorderStroke(2.dp, Gold) else null,
-                                modifier = Modifier.fillMaxWidth()
+                    if (addresses.isEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp, horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Column(modifier = Modifier.padding(20.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .background(if (item.isDefault) Gold.copy(alpha = 0.1f) else if (isDark) Charcoal else Color(0xFFF4F5F7)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (item.label == "Home") Icons.Filled.Home else Icons.Filled.Work,
-                                                    contentDescription = null,
-                                                    tint = if (item.isDefault) Gold else TextGray,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
+                                Icon(
+                                    Icons.Filled.Place,
+                                    contentDescription = null,
+                                    tint = if (isDark) Gold else Obsidian,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Text(
+                                "No Saved Addresses Yet",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AppOnSurface
+                            )
+                            Text(
+                                "Save frequent pickup and drop-off destinations like Home, Office, or Warehouse for instant one-tap dispatch.",
+                                fontSize = 13.sp,
+                                color = TextGray,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Button(
+                                onClick = { showDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Gold else Obsidian),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text("Add Your First Address", color = if (isDark) Obsidian else Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 32.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            items(addresses) { item ->
+                                Surface(
+                                    shape = RoundedCornerShape(24.dp),
+                                    color = AppSurface,
+                                    border = if (item.isDefault) BorderStroke(1.5.dp, Gold) else BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (item.isDefault) Gold.copy(alpha = 0.15f) else if (isDark) Charcoal else Color(0xFFF4F5F7)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (item.label.contains("Home", ignoreCase = true)) Icons.Filled.Home else if (item.label.contains("Work", ignoreCase = true) || item.label.contains("Office", ignoreCase = true)) Icons.Filled.Work else Icons.Filled.Place,
+                                                        contentDescription = null,
+                                                        tint = if (item.isDefault) Gold else TextGray,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                                Column {
+                                                    Text(item.label, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = AppOnSurface)
+                                                    if (item.isDefault) {
+                                                        Text("Default Destination", fontSize = 11.sp, color = Gold, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
                                             }
-                                            Spacer(modifier = Modifier.width(12.dp))
-                                            Text(item.label, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = AppOnSurface)
+
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                if (!item.isDefault) {
+                                                    Text(
+                                                        "Set Default",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isDark) Gold else Obsidian,
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f))
+                                                            .clickable {
+                                                                viewModel.setDefaultAddress(item.id)
+                                                            }
+                                                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { viewModel.deleteAddress(item.id) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Filled.DeleteOutline,
+                                                        contentDescription = "Delete",
+                                                        tint = TextGray,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
                                         }
 
-                                        if (item.isDefault) {
-                                            Text(
-                                                "DEFAULT",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Black,
-                                                color = TextGray,
-                                                modifier = Modifier
-                                                    .background(if (isDark) Color(0xFF2C2C2C) else Color(0xFFF3F3F3), RoundedCornerShape(4.dp))
-                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            )
-                                        }
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Text(
+                                            item.address,
+                                            fontSize = 13.sp,
+                                            color = TextGray,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(start = 52.dp)
+                                        )
                                     }
-
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        item.address,
-                                        fontSize = 14.sp,
-                                        color = TextGray,
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.padding(start = 52.dp)
-                                    )
                                 }
                             }
                         }
@@ -2081,6 +2627,7 @@ fun AddressBookScreen(
 
                     // Quick Add Dialog
                     if (showDialog) {
+                        var makeDefault by remember { mutableStateOf(false) }
                         val buttonBg = if (isDark) Gold else Obsidian
                         val buttonTextCol = if (isDark) Obsidian else Color.White
                         AlertDialog(
@@ -2092,7 +2639,7 @@ fun AddressBookScreen(
                                 Button(
                                     onClick = {
                                         if (labelInput.isNotBlank() && addrInput.isNotBlank()) {
-                                            viewModel.addAddress(labelInput, addrInput)
+                                            viewModel.addAddress(labelInput, addrInput, makeDefault)
                                             labelInput = ""
                                             addrInput = ""
                                             showDialog = false
@@ -2112,7 +2659,7 @@ fun AddressBookScreen(
                                     OutlinedTextField(
                                         value = labelInput,
                                         onValueChange = { labelInput = it },
-                                        placeholder = { Text("Label (e.g. Vacation Home)") },
+                                        placeholder = { Text("Label (e.g. Vacation Home, Warehouse)") },
                                         shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = OutlinedTextFieldDefaults.colors(
@@ -2140,6 +2687,22 @@ fun AddressBookScreen(
                                             unfocusedTextColor = AppOnSurface
                                         )
                                     )
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { makeDefault = !makeDefault }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = makeDefault,
+                                            onCheckedChange = { makeDefault = it },
+                                            colors = CheckboxDefaults.colors(checkedColor = Gold)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Set as default address", fontSize = 13.sp, color = AppOnSurface)
+                                    }
                                 }
                             }
                         )
@@ -2397,7 +2960,7 @@ fun NotificationsScreen(
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = if (selectedCategory == "All") "All Caught Up! ✨" else "No $selectedCategory Alerts",
+                                text = if (selectedCategory == "All") "All Caught Up!" else "No $selectedCategory Alerts",
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = if (isDark) Color.White else Obsidian
@@ -3698,7 +4261,7 @@ fun LiveChatSheet(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                "👋 Hello! You are connected live with the ESDispatch Control Center. Type a message below to reach a live dispatcher immediately.",
+                                "Hello! You are connected live with the ESDispatch Control Center. Type a message below to reach a live dispatcher immediately.",
                                 modifier = Modifier.padding(14.dp),
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp
@@ -5373,7 +5936,7 @@ fun PinAuthSheet(
                 if (pinText.length == 4) {
                     kotlinx.coroutines.delay(200)
                     if (registeredPin.isNotBlank()) {
-                        if (pinText == registeredPin) {
+                        if (viewModel.verifyUserPin(pinText)) {
                             onAuthSuccess()
                         } else {
                             Toast.makeText(context, "Invalid Security PIN. Access denied.", Toast.LENGTH_SHORT).show()
@@ -5395,7 +5958,7 @@ fun PinAuthSheet(
                         return@Button
                     }
                     if (registeredPin.isNotBlank()) {
-                        if (pinText == registeredPin) {
+                        if (viewModel.verifyUserPin(pinText)) {
                             onAuthSuccess()
                         } else {
                             Toast.makeText(context, "Invalid Security PIN. Access denied.", Toast.LENGTH_SHORT).show()
@@ -5485,7 +6048,7 @@ fun NotificationSettingsScreen(
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             SettingsToggle(
-                                title = "👑 Order Booked / Created",
+                                title = "Order Booked / Created",
                                 checked = booked,
                                 isDark = isDark
                             ) {
@@ -5493,7 +6056,7 @@ fun NotificationSettingsScreen(
                             }
                             
                             SettingsToggle(
-                                title = "🚚 Dispatched / In Transit",
+                                title = "Dispatched / In Transit",
                                 checked = dispatched,
                                 isDark = isDark
                             ) {
@@ -5501,7 +6064,7 @@ fun NotificationSettingsScreen(
                             }
                             
                             SettingsToggle(
-                                title = "✅ Delivered Successfully",
+                                title = "Delivered Successfully",
                                 checked = delivered,
                                 isDark = isDark
                             ) {
@@ -5509,7 +6072,7 @@ fun NotificationSettingsScreen(
                             }
                             
                             SettingsToggle(
-                                title = "❌ Cancelled Deliveries",
+                                title = "Cancelled Deliveries",
                                 checked = cancelled,
                                 isDark = isDark
                             ) {

@@ -1,4 +1,4 @@
-﻿package com.esdispatch.ui.screens
+package com.esdispatch.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -681,8 +681,7 @@ fun MultiBookingScreen(
                 Surface(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .navigationBarsPadding(),
+                        .fillMaxWidth(),
                     shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                     color = Charcoal,
                     tonalElevation = 8.dp
@@ -690,7 +689,8 @@ fun MultiBookingScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                            .navigationBarsPadding()
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -699,7 +699,7 @@ fun MultiBookingScreen(
                             when (val quote = pendingQuote) {
                                 is PendingQuote.Success -> {
                                     Text(
-                                        text = "â‚¦${String.format("%,.2f", quote.price)}",
+                                        text = "₦${String.format("%,.2f", quote.price)}",
                                         fontSize = 24.sp,
                                         fontWeight = FontWeight.Black,
                                         color = accentColor

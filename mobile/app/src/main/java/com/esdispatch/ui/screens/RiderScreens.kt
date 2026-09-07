@@ -172,7 +172,7 @@ fun RiderDashboardScreen(
                             .padding(horizontal = 24.dp, vertical = 16.dp)
                     ) {
                         Text(
-                            text = "Good day, $firstName! 🏍️",
+                            text = "Good day, $firstName!",
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Black,
                             color = AppTextColor
@@ -398,9 +398,9 @@ fun RiderDashboardScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = if (aiTrafficCongested) {
-                                    "⚠️ ALERT: Heavy traffic congestion reported. Smart motorcycle dispatch rerouting is highly recommended."
+                                    "ALERT: Heavy traffic congestion reported. Smart motorcycle dispatch rerouting is highly recommended."
                                 } else {
-                                    "☀️ OPTIMAL: Clear skies. Normal traffic flow. Safe premium delivery zones are active. Deliveries are running ahead of schedule."
+                                    "OPTIMAL: Clear skies. Normal traffic flow. Safe premium delivery zones are active. Deliveries are running ahead of schedule."
                                 },
                                 fontSize = 11.sp,
                                 color = if (aiTrafficCongested) Color.White else AppTextColor,
@@ -1224,7 +1224,7 @@ fun RiderUpdateBottomSheetContent(
                     viewModel.acceptParcelByRider(parcel.id) { success, err ->
                         isSubmitting = false
                         if (success) {
-                            Toast.makeText(context, "Dispatch Accepted successfully! 🏍️💨", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Dispatch Accepted successfully!", Toast.LENGTH_SHORT).show()
                             onDismiss()
                         } else {
                             Toast.makeText(context, err ?: "Failed to accept dispatch", Toast.LENGTH_SHORT).show()
@@ -1901,7 +1901,7 @@ fun GpsMovementSimulator(
                 containerColor = Charcoal,
                 titleContentColor = AppTextColor,
                 textContentColor = AppTextColor,
-                title = { Text("📍 Near Recipient (Within 50m)", fontWeight = FontWeight.Bold) },
+                title = { Text("Near Recipient (Within 50m)", fontWeight = FontWeight.Bold) },
                 text = { Text("GPS proximity telemetry has detected you are within 50 meters of $deliveryAddress. Update status to ARRIVED?") },
                 confirmButton = {
                     Button(
@@ -2292,7 +2292,7 @@ fun BatchRouteOptimizationDialog(
                         viewModel.optimizeBatchRoute(batchName, stopsList) { plan ->
                             optimizedPlan = plan
                             isOptimizing = false
-                            Toast.makeText(context, "AI Route Optimized successfully! ⚡", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "AI Route Optimized successfully!", Toast.LENGTH_SHORT).show()
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
@@ -2378,9 +2378,9 @@ fun GeofenceTelemetryDialog(
                             alertResult = alert
                             checkedStatus = true
                             if (alert != null) {
-                                Toast.makeText(context, "⚠️ Geofence breach detected!", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, "Geofence breach detected!", Toast.LENGTH_LONG).show()
                             } else {
-                                Toast.makeText(context, "✅ Within corporate perimeter boundary.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Within corporate perimeter boundary.", Toast.LENGTH_SHORT).show()
                             }
                         }
                     },
@@ -2398,11 +2398,11 @@ fun GeofenceTelemetryDialog(
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             if (alertResult != null) {
-                                Text("⚠️ BREACH DETECTED: ${alertResult?.breachType}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF5350))
+                                Text("BREACH DETECTED: ${alertResult?.breachType}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF5350))
                                 Text("Location: ${alertResult?.locationName}", fontSize = 11.sp, color = AppTextColor)
                                 Text("Severity: ${alertResult?.severity} | Time: ${alertResult?.timestamp}", fontSize = 10.sp, color = TextGray)
                             } else {
-                                Text("✅ SECURE: Vehicle operating strictly inside authorized corporate delivery corridor.", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                                Text("SECURE: Vehicle operating strictly inside authorized corporate delivery corridor.", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
                             }
                         }
                     }
@@ -2524,7 +2524,7 @@ fun IncidentReportDialog(
                                 Text("Type: $selectedEvidenceType", fontSize = 10.sp, color = TextGray)
                                 Text("Location: Lekki Toll Gate GPS Verified", fontSize = 9.sp, color = SuccessGreen, fontWeight = FontWeight.Bold)
                                 Text(
-                                    "Change Category ⚙️", 
+                                    "Change Category", 
                                     fontSize = 10.sp, 
                                     color = Gold, 
                                     fontWeight = FontWeight.Bold,
@@ -2569,7 +2569,7 @@ fun IncidentReportDialog(
                                             selectedEvidenceType = type
                                             photoEvidenceCaptured = true
                                             showEvidenceSelector = false
-                                            Toast.makeText(context, "Photo evidence category mapped! 📸", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Photo evidence category mapped!", Toast.LENGTH_SHORT).show()
                                         },
                                         shape = RoundedCornerShape(8.dp),
                                         color = Charcoal,
@@ -2593,7 +2593,7 @@ fun IncidentReportDialog(
                         viewModel.submitIncidentReport(title, severity, description) { success, incidentId ->
                             if (success) {
                                 isSubmitted = true
-                                Toast.makeText(context, "Incident $incidentId logged & dispatched to safety HQ! 🚨", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, "Incident $incidentId logged & dispatched to safety HQ!", Toast.LENGTH_LONG).show()
                             }
                         }
                     },
@@ -2606,7 +2606,7 @@ fun IncidentReportDialog(
                 }
 
                 if (isSubmitted) {
-                    Text("✅ Incident successfully logged in corporate database. Safety supervisor notified.", fontSize = 11.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                    Text("Incident successfully logged in corporate database. Safety supervisor notified.", fontSize = 11.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
                 }
             }
         },
@@ -2665,7 +2665,7 @@ fun BonusCalculatorDialog(
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Customer Rating:", fontSize = 12.sp, color = TextGray)
-                            Text("${bonusCalc.averageRating} ★", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Gold)
+                            Text("${bonusCalc.averageRating}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Gold)
                         }
                         HorizontalDivider(color = BorderDark)
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

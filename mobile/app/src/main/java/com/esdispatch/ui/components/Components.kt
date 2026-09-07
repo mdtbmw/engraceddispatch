@@ -264,27 +264,31 @@ fun BottomNav(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
             .wrapContentHeight()
-            .background(Color.Transparent)
     ) {
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(82.dp),
+                .wrapContentHeight(),
             shape = NotchedNavShape(38.dp),
             color = DarkSurface,
             shadowElevation = 0.dp,
             border = null
         ) {
-            Row(
+            Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
             ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(72.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                 if (activeViewMode == "rider") {
                     // Rider tabs (Manifest, Payroll, Spacer, Tracking, Profile)
                     BottomNavItem(
@@ -358,6 +362,7 @@ fun BottomNav(
                 }
             }
         }
+    }
 
         Box(
             modifier = Modifier
@@ -403,7 +408,10 @@ fun BottomNavItem(
                 scaleX = scale
                 scaleY = scale
             }
-            .tactilePress(scaleDown = 0.88f) { onClick() },
+            .tactilePress(scaleDown = 0.88f) {
+                com.esdispatch.util.SoundManager.playClick()
+                onClick()
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -1168,7 +1176,7 @@ fun SwipeToConfirmButton(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = if (isConfirmed) "SECURELY VERIFIED ✔" else text.uppercase(),
+                text = if (isConfirmed) "SECURELY VERIFIED" else text.uppercase(),
                 fontFamily = SpaceGrotesk,
                 fontWeight = FontWeight.Black,
                 fontSize = 12.sp,

@@ -436,7 +436,7 @@ fun ActiveTrackingScreen(
     )
 
     // Dynamic Weather state and AI Mode (Points 11 & 12)
-    var currentWeather by remember { mutableStateOf("Clear ☀️ (29°C)") }
+    var currentWeather by remember { mutableStateOf("Clear (29°C)") }
     var isAiEtaActive by remember { mutableStateOf(true) }
 
     LaunchedEffect(parcel.courierLatitude, parcel.courierLongitude) {
@@ -456,13 +456,13 @@ fun ActiveTrackingScreen(
                         val temp = currentObj.optDouble("temperature_2m", 28.0)
                         val code = currentObj.optInt("weather_code", 0)
                         val condition = when (code) {
-                            0 -> "Clear ☀️ (${temp.toInt()}°C)"
-                            1, 2, 3 -> "Partly Cloudy ⛅ (${temp.toInt()}°C)"
-                            45, 48 -> "Foggy 🌫️ (${temp.toInt()}°C)"
-                            51, 53, 55, 61, 63, 65 -> "Rainy 🌧️ (${temp.toInt()}°C)"
-                            80, 81, 82 -> "Heavy Rain ⛈️ (${temp.toInt()}°C)"
-                            95, 96, 99 -> "Thunderstorm ⚡ (${temp.toInt()}°C)"
-                            else -> "Clear ☀️ (${temp.toInt()}°C)"
+                            0 -> "Clear (${temp.toInt()}°C)"
+                            1, 2, 3 -> "Partly Cloudy (${temp.toInt()}°C)"
+                            45, 48 -> "Foggy (${temp.toInt()}°C)"
+                            51, 53, 55, 61, 63, 65 -> "Rainy (${temp.toInt()}°C)"
+                            80, 81, 82 -> "Heavy Rain (${temp.toInt()}°C)"
+                            95, 96, 99 -> "Thunderstorm (${temp.toInt()}°C)"
+                            else -> "Clear (${temp.toInt()}°C)"
                         }
                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                             currentWeather = condition
@@ -525,7 +525,7 @@ fun ActiveTrackingScreen(
                     if (distanceMeters <= 1609.34f && !hasNotifiedWithinOneMile) { // 1 mile = 1609.34 meters
                         hasNotifiedWithinOneMile = true
                         showInAppNotificationBanner = true
-                        Toast.makeText(context, "🔔 Delivery Notice: Courier is within 1 mile of your location!", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Delivery Notice: Courier is within 1 mile of your location!", Toast.LENGTH_LONG).show()
                     }
                     if (distanceMeters > 1609.34f) {
                         hasNotifiedWithinOneMile = false
@@ -542,7 +542,7 @@ fun ActiveTrackingScreen(
         if (parcel.progress >= 0.85f && parcel.progress < 0.98f && !hasNotifiedWithinOneMile) {
             hasNotifiedWithinOneMile = true
             showInAppNotificationBanner = true
-            Toast.makeText(context, "🔔 Delivery Notice: Courier is within 1 mile of your location!", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Delivery Notice: Courier is within 1 mile of your location!", Toast.LENGTH_LONG).show()
         }
         if (parcel.progress < 0.85f) {
             hasNotifiedWithinOneMile = false
@@ -741,7 +741,7 @@ fun ActiveTrackingScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Courier Is Near! 🚴",
+                                text = "Courier Is Near!",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Obsidian
@@ -791,7 +791,7 @@ fun ActiveTrackingScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Rider Approaching! (< 500m) 🚴💨",
+                                text = "Rider Approaching! (< 500m)",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Obsidian
@@ -823,12 +823,6 @@ fun ActiveTrackingScreen(
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val weatherEmoji = when (currentWeather) {
-                    "Sunny ☀️" -> "☀️"
-                    "Rainy 🌧️" -> "🌧️"
-                    "Stormy ⛈️" -> "⛈️"
-                    else -> "☀️"
-                }
                 Box(
                     modifier = Modifier
                         .size(42.dp)
@@ -836,18 +830,24 @@ fun ActiveTrackingScreen(
                         .background(Obsidian.copy(alpha = 0.85f))
                         .border(1.dp, BorderDark, CircleShape)
                         .clickable {
-                            currentWeather = when (currentWeather) {
-                                "Sunny ☀️" -> "Rainy 🌧️"
-                                "Rainy 🌧️" -> "Stormy ⛈️"
-                                else -> "Sunny ☀️"
+                            currentWeather = when {
+                                currentWeather.contains("Clear") || currentWeather.contains("Sunny") -> "Rainy (24°C)"
+                                currentWeather.contains("Rain") -> "Stormy (22°C)"
+                                else -> "Clear (29°C)"
                             }
                             tickingSeconds = calculateEta(parcel.progress, currentWeather, isAiEtaActive)
                         },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = weatherEmoji,
-                        fontSize = 18.sp
+                        text = when {
+                            currentWeather.contains("Rain") -> "RAIN"
+                            currentWeather.contains("Storm") || currentWeather.contains("Thunder") -> "STORM"
+                            else -> "SUN"
+                        },
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Gold
                     )
                 }
 
@@ -1283,7 +1283,7 @@ fun ActiveTrackingScreen(
                                                                 Spacer(modifier = Modifier.width(4.dp))
                                                                 val tipFormatted = if (parcel.tipAmount > 0.0) " • ₦${String.format("%,.0f", parcel.tipAmount)}" else ""
                                                                 Text(
-                                                                    text = "${parcel.customerRating.toInt()} ★$tipFormatted",
+                                                                    text = "${parcel.customerRating.toInt()}$tipFormatted",
                                                                     fontSize = 11.sp,
                                                                     fontWeight = FontWeight.Bold,
                                                                     color = if (isDark) Gold else Obsidian
@@ -2156,9 +2156,9 @@ fun LiveMapView(
                     z-index: 1;
                 }
                 @keyframes icon-pulse {
-                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.7); }
-                    70% { transform: scale(1.03); box-shadow: 0 0 0 14px rgba(212, 175, 55, 0); }
-                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(212, 175, 55, 0); }
+                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.7); }
+                    70% { transform: scale(1.03); box-shadow: 0 0 0 14px rgba(255, 184, 0, 0); }
+                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0); }
                 }
                 .pulsing-courier {
                     animation: icon-pulse 2s infinite ease-in-out;
@@ -2168,10 +2168,10 @@ fun LiveMapView(
                     width: 36px;
                     height: 36px;
                     border-radius: 50%;
-                    border: 2.5px solid #D4AF37;
+                    border: 2.5px solid #FFB800;
                     background-size: cover;
                     background-position: center;
-                    box-shadow: 0 0 12px rgba(212,175,55,0.7);
+                    box-shadow: none;
                     animation: icon-pulse 2s infinite ease-in-out;
                 }
                 .map-controls {
@@ -2179,8 +2179,8 @@ fun LiveMapView(
                     top: 16px;
                     left: 16px;
                     z-index: 1000;
-                    background: rgba(21, 21, 24, 0.95);
-                    border: 1.5px solid #D4AF37;
+                    background: rgba(18, 18, 18, 0.95);
+                    border: 1.5px solid #FFB800;
                     border-radius: 24px;
                     padding: 4px;
                     display: flex;
@@ -2192,62 +2192,63 @@ fun LiveMapView(
                     color: #A0AEC0;
                     padding: 6px 14px;
                     font-size: 10px;
-                    font-weight: bold;
+                    font-weight: 800;
                     border-radius: 20px;
                     cursor: pointer;
                     transition: all 0.2s ease;
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 }
                 .control-btn.active {
-                    background: #D4AF37;
-                    color: #151518;
+                    background: #FFB800;
+                    color: #121212;
+                    font-weight: 900;
                 }
                 
                 /* Premium Logistics Address Popups & Tooltips styling */
                 .map-tooltip {
-                    background: rgba(21, 21, 24, 0.95) !important;
-                    border: 1.5px solid #D4AF37 !important;
+                    background: rgba(18, 18, 18, 0.95) !important;
+                    border: 1.5px solid #FFB800 !important;
                     color: #FFFFFF !important;
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
                     font-size: 11px !important;
                     font-weight: 600 !important;
                     border-radius: 8px !important;
                     padding: 6px 10px !important;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+                    box-shadow: none !important;
                     white-space: normal !important;
                     max-width: 200px !important;
                     text-align: center !important;
                 }
                 .leaflet-tooltip-top:before, .map-tooltip:before {
-                    border-top-color: #D4AF37 !important;
+                    border-top-color: #FFB800 !important;
                 }
                 .mapboxgl-popup-content {
-                    background: rgba(21, 21, 24, 0.95) !important;
-                    border: 1.5px solid #D4AF37 !important;
+                    background: rgba(18, 18, 18, 0.95) !important;
+                    border: 1.5px solid #FFB800 !important;
                     color: #FFFFFF !important;
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
                     font-size: 11px !important;
                     font-weight: 600 !important;
                     border-radius: 8px !important;
                     padding: 8px 12px !important;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+                    box-shadow: none !important;
                     max-width: 220px !important;
                     text-align: center !important;
                 }
                 .mapboxgl-popup-anchor-top .mapboxgl-popup-tip {
-                    border-bottom-color: #D4AF37 !important;
+                    border-bottom-color: #FFB800 !important;
                 }
                 .mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip {
-                    border-top-color: #D4AF37 !important;
+                    border-top-color: #FFB800 !important;
                 }
                 .mapboxgl-popup-anchor-left .mapboxgl-popup-tip {
-                    border-right-color: #D4AF37 !important;
+                    border-right-color: #FFB800 !important;
                 }
                 .mapboxgl-popup-anchor-right .mapboxgl-popup-tip {
-                    border-left-color: #D4AF37 !important;
+                    border-left-color: #FFB800 !important;
                 }
                 
-                /* Advanced Modern User Location Pointer */
+                /* Advanced Modern User Location Pointer - Flat, Clean, No Shadow */
                 .user-pointer-container {
                     position: relative;
                     width: 60px;
@@ -2264,7 +2265,7 @@ fun LiveMapView(
                     transform: translateX(-50%);
                     width: 24px;
                     height: 10px;
-                    background: rgba(212, 175, 55, 0.5);
+                    background: rgba(255, 184, 0, 0.35);
                     border-radius: 50%;
                     z-index: 1;
                     animation: user-ripple 1.8s infinite ease-out;
@@ -2285,10 +2286,10 @@ fun LiveMapView(
                     width: 44px;
                     height: 44px;
                     border-radius: 50% 50% 50% 0;
-                    background: #151518;
-                    border: 3px solid #D4AF37;
+                    background: #121212;
+                    border: 3px solid #FFB800;
                     transform: rotate(-45deg);
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                    box-shadow: none;
                     z-index: 2;
                     overflow: hidden;
                     display: flex;
@@ -2308,10 +2309,10 @@ fun LiveMapView(
                     bottom: 8px;
                     width: 8px;
                     height: 8px;
-                    background: #D4AF37;
+                    background: #FFB800;
                     border-radius: 50%;
                     z-index: 3;
-                    border: 1.5px solid #151518;
+                    border: 1.5px solid #121212;
                 }
             </style>
         </head>
@@ -2345,6 +2346,7 @@ fun LiveMapView(
                 var darkTiles = null;
                 var satelliteTiles = null;
                 var satelliteLabels = null;
+                var satelliteRoads = null;
 
                 function setPickupLocation(lat, lng, addr) {
                     pickupLoc = [lat, lng];
@@ -2666,10 +2668,12 @@ fun LiveMapView(
                     darkTiles = L.tileLayer('$tileUrl', { maxZoom: 20 });
                     satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
                     satelliteLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+                    satelliteRoads = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
 
                     var isSat = '$isSatellite' === 'true';
                     if (isSat) {
                         satelliteTiles.addTo(map);
+                        satelliteRoads.addTo(map); // add street, road and highway labels over satellite!
                         satelliteLabels.addTo(map); // add boundaries & places label overlay on top of raw satellite tiles!
                         document.getElementById('satelliteBtn').classList.add('active');
                         document.getElementById('streetBtn').classList.remove('active');
@@ -2687,21 +2691,21 @@ fun LiveMapView(
 
                     var goldCircleIcon = L.divIcon({
                         className: 'custom-div-icon',
-                        html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #D4AF37; border: 2px solid #000; box-shadow: 0 0 8px #D4AF37;'></div>",
+                        html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #FFB800; border: 2px solid #000; box-shadow: none;'></div>",
                         iconSize: [16, 16],
                         iconAnchor: [8, 8]
                     });
 
                     var darkCircleIcon = L.divIcon({
                         className: 'custom-div-icon',
-                        html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #0E0E10; border: 2px solid #D4AF37; box-shadow: 0 0 8px #D4AF37;'></div>",
+                        html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #0E0E10; border: 2px solid #FFB800; box-shadow: none;'></div>",
                         iconSize: [16, 16],
                         iconAnchor: [8, 8]
                     });
 
                     var courierIcon = L.divIcon({
                         className: 'pulsing-courier',
-                        html: "<div style='width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid #D4AF37; background-image: url(\"$courierAvatar\"); background-size: cover; box-shadow: 0 0 12px rgba(212,175,55,0.7);'></div>",
+                        html: "<div style='width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid #FFB800; background-image: url(\"$courierAvatar\"); background-size: cover; box-shadow: none;'></div>",
                         iconSize: [36, 36],
                         iconAnchor: [18, 18]
                     });
@@ -2754,9 +2758,11 @@ fun LiveMapView(
                         if (isSatellite) {
                             map.removeLayer(darkTiles);
                             satelliteTiles.addTo(map);
+                            satelliteRoads.addTo(map); // add road & street labels over satellite
                             satelliteLabels.addTo(map); // add labels layer over satellite tiles
                         } else {
                             try { map.removeLayer(satelliteTiles); } catch(e){}
+                            try { map.removeLayer(satelliteRoads); } catch(e){}
                             try { map.removeLayer(satelliteLabels); } catch(e){}
                             darkTiles.addTo(map);
                         }

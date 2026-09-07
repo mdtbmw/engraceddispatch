@@ -46,6 +46,38 @@ This document establishes the official user interface rules, color standards, st
 7. **Secure Activity Audit Log**: Tracks critical actions such as settings toggles, card visibility updates, and account status changes in Firestore.
 8. **Bulk Action Delivery Management**: Enables administrators to select multiple pending deliveries and update their status or reassign them to a different driver at once.
 
+## Official Screen & Layout Specifications (MANDATORY)
+
+1. **Dashboard Hierarchy & Action Grid**:
+   - **Hero Action Buttons**: The dual action grid inside the header must feature **Wallet** (`Icons.Filled.AccountBalanceWallet`) and **Market** (`Icons.Filled.Storefront` labeled "Market", navigating to Marketplace). Never use "Track order" on the hero.
+   - **Section Order**:
+     1. Hero Carousel (Featured product stack).
+     2. Stats Grid (Active Shipments, Completed Orders, Promo Savings, Reward Points).
+     3. Top Recommended Shops (Verified vendor stores horizontal carousel).
+     4. Active Shipments Live Tracking & Quick Actions.
+   - **No Legacy Marketplace Card**: The redundant static "Logistics Marketplace" promo card is strictly removed.
+
+2. **Featured Product Carousel (`HeroCarousel`)**:
+   - **Zero Bottom Shadows**: Product cards must have `shadowElevation = 0.dp` on all card surfaces and badges. No muddy drop shadows.
+   - **Unobstructed Progress Indicators**: The indicator dots must be situated in a dedicated container *below* the card stack with adequate spacing (minimum 12dp gap), ensuring they are never covered or blocked by the bottom edge of stacked cards.
+
+3. **Live Tracking Map Standards (`TrackingScreen`)**:
+   - **Flat Map Pointer**: The user and courier location pointers must be flat, high-contrast, and clean (`box-shadow: none`). No heavy blurred drop shadows or glowing halos.
+   - **Brand Gold Color Consistency**: All map controls, pill toggles, active buttons (`.control-btn.active`), tooltips, and border highlights must strictly use brand Gold (`#FFB800`), NEVER dull olive/dark gold (`#D4AF37`).
+   - **Legible Street Names**: Street names must be visibly rendered in all map modes. In Satellite mode, the ESRI World Transportation layer (`World_Transportation/MapServer`) must be layered on top of satellite imagery so street, road, and avenue labels are sharp and legible.
+
+4. **Order History Screen (`OrderLogsScreen`)**:
+   - **Clean Surface Layout**: Never render a heavy black dashboard summary card (`DeliverySummaryCard`) at the top of the history list.
+   - The screen must present a clean, organized hierarchy starting with filter chips, immediately followed by the order log cards adapting dynamically to light and dark themes using `Charcoal` surface.
+
+5. **Settings Screen Architecture**:
+   - Settings must be 100% operational, persistent, and logically structured into clear domains:
+     - **Appearance & Interaction**: Theme toggle (synced to global StateFlow), sound effects & haptics toggles.
+     - **Permissions & Hardware**: Real location services checking Android runtime permissions (`ACCESS_FINE_LOCATION`) and real GPS provider status.
+     - **Notification Preferences**: Master push toggle and direct navigation to stage-by-stage alerts (`NotificationSettingsScreen`).
+     - **Account Security**: Profile editor, PIN security (with status indicator), biometric quick-login (validated against device biometric capabilities), and password reset dispatch.
+     - **Storage & Diagnostics**: Local cache cleanup utility with calculated cache size and app version/build metadata.
+
 ## Code Standards
 - Use modern Jetpack Compose layouts and Material 3 components.
 - Do not hardcode static colors for text or card containers; use the dynamic `Charcoal`, `LuxuryBlack`, and `AppTextColor` color tokens which automatically adjust to the system's dark theme state.

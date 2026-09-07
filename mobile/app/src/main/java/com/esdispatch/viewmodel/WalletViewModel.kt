@@ -65,9 +65,9 @@ open class WalletViewModel : AuthViewModel() {
                     reference = txRef
                 ) { _ -> }
 
-                val notifTitle = if (isTopUp) "Wallet Credited! 💳⚡" else "Wallet Debited! 💸"
+                val notifTitle = if (isTopUp) "Wallet Credited" else "Wallet Debited"
                 val notifMessage = if (isTopUp) {
-                    "Your ESDispatch wallet has been topped up with ₦${String.format("%,.2f", displayAmt)}. Real-time logistics power unlocked! 🚀✨"
+                    "Your ESDispatch wallet has been topped up with ₦${String.format("%,.2f", displayAmt)}."
                 } else {
                     "Your ESDispatch wallet has been debited by ₦${String.format("%,.2f", displayAmt)}."
                 }
@@ -86,8 +86,12 @@ open class WalletViewModel : AuthViewModel() {
                     }
                 }
 
+                if (isTopUp) {
+                    com.esdispatch.util.SoundManager.playSuccessArpeggio()
+                }
                 onComplete?.invoke(true, "Wallet successfully updated. New balance: ₦${String.format("%,.2f", newBalance)}")
             } else {
+                com.esdispatch.util.SoundManager.playErrorBuzz()
                 onComplete?.invoke(false, "Failed to process wallet transaction. Please check your network and retry.")
             }
         }

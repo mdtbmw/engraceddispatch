@@ -75,7 +75,7 @@ fun SendParcelScreen(
     ) { permissions ->
         val granted = permissions.values.any { it }
         coroutineScope.launch {
-            Toast.makeText(context, "ðŸŽ¯ Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
             val detected = withContext(Dispatchers.IO) {
                 detectUserLocation(context)
             }
@@ -254,7 +254,7 @@ fun SendParcelScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "âš¡ Smart 'Book Again' (Recent)",
+                                text = "Smart 'Book Again' (Recent)",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Gold
@@ -294,13 +294,13 @@ fun SendParcelScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(text = "â‚¦${String.format("%,.0f", p.price)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                            Text(text = "₦${String.format("%,.0f", p.price)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Gold)
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
                                                 color = Gold.copy(alpha = 0.2f)
                                             ) {
                                                 Text(
-                                                    text = "Rebook âš¡",
+                                                    text = "Rebook",
                                                     fontSize = 9.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = Gold,
@@ -361,20 +361,20 @@ fun SendParcelScreen(
                                     onClick = {
                                         pickup = viewModel.aiCorrectAddress(pickup)
                                         delivery = viewModel.aiCorrectAddress(delivery)
-                                        Toast.makeText(context, "âœ¨ AI Address validation & correction applied!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "AI Address validation & correction applied!", Toast.LENGTH_SHORT).show()
                                     },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                 ) {
-                                    Text("âœ¨ AI Correct", fontSize = 11.sp, color = Gold)
+                                    Text("AI Correct", fontSize = 11.sp, color = Gold)
                                 }
                                 TextButton(
                                     onClick = {
                                         delivery = viewModel.pinDropNearestAddress()
-                                        Toast.makeText(context, "ðŸ“ Pin-dropped nearest landmark detected!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Pin-dropped nearest landmark detected!", Toast.LENGTH_SHORT).show()
                                     },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                 ) {
-                                    Text("ðŸ“ Drop Pin", fontSize = 11.sp, color = Gold)
+                                    Text("Drop Pin", fontSize = 11.sp, color = Gold)
                                 }
                             }
                         }
@@ -1088,7 +1088,7 @@ fun BookingSelectionScreen(
                                         }
                                         Text("Delivery within 12 hours", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                     }
-                                    Text("â‚¦${String.format("%,.2f", priceExpressSameDay)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
+                                    Text("₦${String.format("%,.2f", priceExpressSameDay)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
                                 }
 
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -1146,7 +1146,7 @@ fun BookingSelectionScreen(
                                     Text("Next Day", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
                                     Text("Delivery by tomorrow 6 PM", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                 }
-                                Text("â‚¦${String.format("%,.2f", priceExpressNextDay)}", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = accentTextColor)
+                                Text("₦${String.format("%,.2f", priceExpressNextDay)}", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = accentTextColor)
                             }
                         }
                     }
@@ -1183,7 +1183,7 @@ fun BookingSelectionScreen(
                                     Text("Standard", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
                                     Text("Delivery in 3-5 business days", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                 }
-                                Text("â‚¦${String.format("%,.2f", priceEconomy)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
+                                Text("₦${String.format("%,.2f", priceEconomy)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
                             }
                         }
                     }
@@ -1220,7 +1220,7 @@ fun BookingSelectionScreen(
                                     Text("Multi-parcel", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
                                     Text("Bulk delivery optimization", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                 }
-                                Text("â‚¦${String.format("%,.2f", priceBatch)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
+                                Text("₦${String.format("%,.2f", priceBatch)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Text("Up to 10 parcels included", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentTextColor)
@@ -1259,7 +1259,7 @@ fun BookingSelectionScreen(
                                     Text("Multi-Stop", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
                                     Text("Deliver to up to 5 destinations", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                                 }
-                                Text("â‚¦${String.format("%,.2f", priceMulti)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
+                                Text("₦${String.format("%,.2f", priceMulti)}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = accentTextColor)
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Text("Up to 5 addresses included", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentTextColor)
@@ -1389,7 +1389,7 @@ fun BookingSelectionScreen(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
                                     Text("Prepaid Dispatch Wallet", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color.White)
-                                    Text("Balance: â‚¦${String.format("%,.2f", walletBalance)}", fontSize = 11.sp, color = Gold, fontWeight = FontWeight.Bold)
+                                    Text("Balance: ₦${String.format("%,.2f", walletBalance)}", fontSize = 11.sp, color = Gold, fontWeight = FontWeight.Bold)
                                 }
                             }
 
@@ -1420,8 +1420,7 @@ fun BookingSelectionScreen(
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding(),
+                .fillMaxWidth(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
             tonalElevation = 8.dp
@@ -1429,7 +1428,8 @@ fun BookingSelectionScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1652,7 +1652,7 @@ fun PaymentSuccessScreen(
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("AMOUNT PAID", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
                                     Text(
-                                        text = "â‚¦${String.format("%,.2f", latestParcel?.price ?: 2500.00)}",
+                                        text = "₦${String.format("%,.2f", latestParcel?.price ?: 2500.00)}",
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Gold,

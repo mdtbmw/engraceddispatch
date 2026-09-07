@@ -144,8 +144,14 @@ class MainActivity : FragmentActivity() {
         }
 
         enableEdgeToEdge()
+        com.esdispatch.util.SoundManager.initialize(this)
         setContent {
             val context = androidx.compose.ui.platform.LocalContext.current
+            val soundEnabled by viewModel.soundEffectsEnabled.collectAsState()
+            val hapticsEnabled by viewModel.hapticsEnabled.collectAsState()
+            LaunchedEffect(soundEnabled, hapticsEnabled) {
+                com.esdispatch.util.SoundManager.setPreferences(soundEnabled, hapticsEnabled)
+            }
             LaunchedEffect(Unit) {
                 viewModel.initializeDatabase(context)
             }

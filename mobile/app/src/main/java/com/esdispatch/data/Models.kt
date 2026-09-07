@@ -59,9 +59,9 @@ data class Transaction(
 
 @Entity(tableName = "address_items")
 data class AddressItem(
-    @PrimaryKey val id: String,
-    val label: String, // Home, Office
-    val address: String,
+    @PrimaryKey val id: String = "",
+    val label: String = "", // Home, Office
+    val address: String = "",
     val isDefault: Boolean = false
 )
 

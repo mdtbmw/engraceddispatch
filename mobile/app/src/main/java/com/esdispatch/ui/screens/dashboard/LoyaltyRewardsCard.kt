@@ -56,7 +56,7 @@ fun LoyaltyRewardsCard(
         loyaltyPoints < 100 -> "100 Pts for Silver Tier"
         loyaltyPoints < 500 -> "500 Pts for Gold Elite"
         loyaltyPoints < 1000 -> "1,000 Pts for Platinum VIP"
-        else -> "Max Level Achieved 👑"
+        else -> "Max Level Achieved"
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -137,7 +137,7 @@ fun LoyaltyRewardsCard(
                         onClick = {
                             if (!bonusClaimed) {
                                 viewModel.claimDailyBonus()
-                                Toast.makeText(context, "🏆 100 VIP Points Claimed!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "100 VIP Points Claimed!", Toast.LENGTH_SHORT).show()
                             }
                         },
                         enabled = !bonusClaimed,
