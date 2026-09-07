@@ -177,7 +177,13 @@ object SoundManager {
     private fun playPcm(pcm: ShortArray) {
         var track: AudioTrack? = null
         try {
-            val bufferSize = pcm.size * 2
+            val minBuf = AudioTrack.getMinBufferSize(
+                SAMPLE_RATE,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+            )
+            val pcmBytes = pcm.size * 2
+            val bufferSize = maxOf(pcmBytes, if (minBuf > 0) minBuf else pcmBytes)
             track = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()

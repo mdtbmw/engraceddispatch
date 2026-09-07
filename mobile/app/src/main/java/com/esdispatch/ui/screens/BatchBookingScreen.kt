@@ -46,6 +46,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.ContactsContract
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.activity.compose.BackHandler
+import com.esdispatch.util.CargoFeasibilityValidator
 
 data class BatchDestinationItem(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -231,6 +233,8 @@ fun BatchBookingScreen(
             .fillMaxSize()
             .background(LuxuryBlack)
     ) {
+        BackHandler { onNavigate("BACK") }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -238,7 +242,7 @@ fun BatchBookingScreen(
         ) {
             ScreenHeader(
                 title = "Batch Booking",
-                onBack = { onNavigate("SendParcel") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(
@@ -439,11 +443,11 @@ fun BatchBookingScreen(
                     Column(modifier = Modifier.padding(18.dp)) {
                         Text("Sender Contact Details", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
                         Spacer(modifier = Modifier.height(14.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutlinedTextField(
                                 value = sName,
                                 onValueChange = { sName = it },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp),
                                 placeholder = { Text("Sender Name", color = TextGray) },
                                 leadingIcon = { Icon(Icons.Filled.Person, null, tint = accentIconColor, modifier = Modifier.size(18.dp)) },
@@ -462,7 +466,7 @@ fun BatchBookingScreen(
                             OutlinedTextField(
                                 value = sPhone,
                                 onValueChange = { sPhone = it },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp),
                                 placeholder = { Text("Sender Phone", color = TextGray) },
                                 leadingIcon = { Icon(Icons.Filled.Phone, null, tint = accentIconColor, modifier = Modifier.size(18.dp)) },
@@ -738,7 +742,7 @@ fun BatchBookingScreen(
 
                             Spacer(modifier = Modifier.height(6.dp))
 
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedTextField(
                                     value = stop.recipientName,
                                     onValueChange = { newName ->
@@ -746,9 +750,9 @@ fun BatchBookingScreen(
                                         mutable[index] = mutable[index].copy(recipientName = newName)
                                         batchStops = mutable
                                     },
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(14.dp),
-                                    placeholder = { Text("Name", color = TextGray, fontSize = 12.sp) },
+                                    placeholder = { Text("Recipient Name", color = TextGray, fontSize = 12.sp) },
                                     leadingIcon = { Icon(Icons.Filled.Person, null, tint = accentIconColor, modifier = Modifier.size(16.dp)) },
                                     textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.Bold, fontSize = 12.sp),
                                     colors = OutlinedTextFieldDefaults.colors(
@@ -770,9 +774,9 @@ fun BatchBookingScreen(
                                         mutable[index] = mutable[index].copy(recipientPhone = newPhone)
                                         batchStops = mutable
                                     },
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(14.dp),
-                                    placeholder = { Text("Phone", color = TextGray, fontSize = 12.sp) },
+                                    placeholder = { Text("Recipient Phone", color = TextGray, fontSize = 12.sp) },
                                     leadingIcon = { Icon(Icons.Filled.Phone, null, tint = accentIconColor, modifier = Modifier.size(16.dp)) },
                                     textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.Bold, fontSize = 12.sp),
                                     colors = OutlinedTextFieldDefaults.colors(
@@ -790,8 +794,8 @@ fun BatchBookingScreen(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // Item Name & Weight
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Item Name & Weight - Stacked Vertically
+                            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedTextField(
                                     value = stop.itemName,
                                     onValueChange = { newDesc ->
@@ -799,9 +803,9 @@ fun BatchBookingScreen(
                                         mutable[index] = mutable[index].copy(itemName = newDesc)
                                         batchStops = mutable
                                     },
-                                    modifier = Modifier.weight(1.5f),
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(14.dp),
-                                    placeholder = { Text("Parcel content", color = TextGray, fontSize = 12.sp) },
+                                    placeholder = { Text("Parcel content / description", color = TextGray, fontSize = 12.sp) },
                                     leadingIcon = { AnimatedHugeIcon(Hugeicons.Solid.Package, null, tint = accentIconColor, size = 16.dp) },
                                     textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 12.sp),
                                     colors = OutlinedTextFieldDefaults.colors(
@@ -823,9 +827,9 @@ fun BatchBookingScreen(
                                         mutable[index] = mutable[index].copy(weight = newWeight)
                                         batchStops = mutable
                                     },
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(14.dp),
-                                    label = { Text("Weight (kg)", color = TextGray, fontSize = 10.sp) },
+                                    label = { Text("Package Weight (kg) - Max 20kg", color = TextGray, fontSize = 10.sp) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.Bold, fontSize = 12.sp),
                                     colors = OutlinedTextFieldDefaults.colors(
@@ -839,6 +843,21 @@ fun BatchBookingScreen(
                                         unfocusedLabelColor = TextGray
                                     )
                                 )
+
+                                val stopFeasibility = CargoFeasibilityValidator.validateCargo(
+                                    itemName = stop.itemName,
+                                    weightKg = stop.weight.toDoubleOrNull() ?: 1.0
+                                )
+                                if (!stopFeasibility.isFeasible) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = stopFeasibility.warningMessage ?: "Item exceeds motorcycle limit",
+                                        color = Color(0xFFFF5252),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        lineHeight = 15.sp
+                                    )
+                                }
                             }
                         }
                     }

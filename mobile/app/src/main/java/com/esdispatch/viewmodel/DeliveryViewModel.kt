@@ -29,6 +29,18 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 
+enum class ToastType {
+    SUCCESS,
+    ERROR,
+    WARNING,
+    INFO
+}
+
+data class ToastData(
+    val message: String,
+    val type: ToastType = ToastType.INFO
+)
+
 enum class AppView {
     Dashboard,
     Booking,
@@ -54,6 +66,9 @@ class DeliveryViewModel : WalletViewModel() {
 
     // --- Context & Preferences Persistence ---
     
+
+    private val _favoriteProductIds = MutableStateFlow<Set<String>>(emptySet())
+    val favoriteProductIds: StateFlow<Set<String>> = _favoriteProductIds.asStateFlow()
 
     // --- Stateful Stack-Based Navigation System ---
     private val _navigationStack = MutableStateFlow<List<AppView>>(listOf(AppView.Dashboard))
@@ -184,8 +199,9 @@ class DeliveryViewModel : WalletViewModel() {
         }
         
         val searchesStr = prefs.getString("recent_searches", "") ?: ""
-        _recentSearches.value = if (searchesStr.isEmpty()) emptyList() else searchesStr.split(",").filter { it.isNotEmpty() }
         _showOnboardingTooltip.value = prefs.getBoolean("show_onboarding_tooltip", true)
+        val savedFavs = prefs.getStringSet("favorite_products", emptySet()) ?: emptySet()
+        _favoriteProductIds.value = savedFavs
  
         _pointsSystemEnabled.value = prefs.getBoolean("points_system_enabled", true)
         _isDynamicPricingEnabled.value = prefs.getBoolean("pricing_mode_dynamic", true)
@@ -1494,15 +1510,31 @@ class DeliveryViewModel : WalletViewModel() {
         savePref("dashboard_variant", variant)
     }
 
-    // Custom Toast Notification flow (Obsidian-Gold theme)
+    // Custom Toast Notification flow (Obsidian-Gold luxury pill)
     private val _customToast = MutableStateFlow<String?>(null)
     val customToast: StateFlow<String?> = _customToast.asStateFlow()
 
-    fun showCustomToast(message: String) {
+    private val _customToastData = MutableStateFlow<ToastData?>(null)
+    val customToastData: StateFlow<ToastData?> = _customToastData.asStateFlow()
+
+    fun showCustomToast(message: String, type: ToastType = ToastType.INFO) {
+        showToast(message, type)
+    }
+
+    fun showToast(message: String, type: ToastType = ToastType.INFO) {
+        when (type) {
+            ToastType.SUCCESS -> com.esdispatch.util.SoundManager.playSuccessArpeggio()
+            ToastType.ERROR -> com.esdispatch.util.SoundManager.playErrorBuzz()
+            ToastType.WARNING -> com.esdispatch.util.SoundManager.playGeofencePing()
+            ToastType.INFO -> com.esdispatch.util.SoundManager.playClick()
+        }
         viewModelScope.launch {
+            val data = ToastData(message, type)
             _customToast.value = message
-            kotlinx.coroutines.delay(3000)
-            if (_customToast.value == message) {
+            _customToastData.value = data
+            kotlinx.coroutines.delay(3200)
+            if (_customToastData.value == data) {
+                _customToastData.value = null
                 _customToast.value = null
             }
         }
@@ -1510,6 +1542,7 @@ class DeliveryViewModel : WalletViewModel() {
 
     fun dismissCustomToast() {
         _customToast.value = null
+        _customToastData.value = null
     }
 
     // Onboarding tool-tip overlay state (one-time for new users explaining tracking & maps)
@@ -5611,6 +5644,8 @@ class DeliveryViewModel : WalletViewModel() {
             current.add(CartItem(item, quantity))
         }
         _cartItems.value = current
+        com.esdispatch.util.SoundManager.playSuccessArpeggio()
+        showToast("${item.title} added to cart!", ToastType.SUCCESS)
         val uid = _firebaseUserId.value ?: return
         val fs = com.esdispatch.data.FirebaseManager.firestore ?: return
         val cartData = hashMapOf(
@@ -5620,6 +5655,30 @@ class DeliveryViewModel : WalletViewModel() {
             "quantity" to newQty, "updatedAt" to com.google.firebase.Timestamp.now()
         )
         fs.collection("users").document(uid).collection("cart").document(item.id).set(cartData)
+    }
+
+    fun toggleFavoriteProduct(item: MarketplaceItem) {
+        val current = _favoriteProductIds.value.toMutableSet()
+        val isFav = if (current.contains(item.id)) {
+            current.remove(item.id)
+            false
+        } else {
+            current.add(item.id)
+            true
+        }
+        _favoriteProductIds.value = current
+        try {
+            val prefs = appContext?.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
+            prefs?.edit()?.putStringSet("favorite_products", current)?.apply()
+        } catch(e: Throwable) {}
+        
+        if (isFav) {
+            com.esdispatch.util.SoundManager.playClick()
+            showToast("${item.title} saved to Favorites!", ToastType.SUCCESS)
+        } else {
+            com.esdispatch.util.SoundManager.playClick()
+            showToast("Removed from Favorites", ToastType.INFO)
+        }
     }
 
     fun updateCartQuantity(itemId: String, delta: Int) {

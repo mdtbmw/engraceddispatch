@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.*
 import com.esdispatch.util.CargoFeasibilityValidator
 import com.esdispatch.ui.theme.Hugeicons
@@ -56,6 +57,8 @@ fun ExpressBookingScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
+    BackHandler { onNavigate("BACK") }
+
     val draft by viewModel.parcelDraft.collectAsState()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -277,7 +280,7 @@ fun ExpressBookingScreen(
         ) {
             ScreenHeader(
                 title = "Express Booking",
-                onBack = { onNavigate("SendParcel") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(

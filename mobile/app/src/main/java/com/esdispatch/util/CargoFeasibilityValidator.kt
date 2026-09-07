@@ -11,14 +11,14 @@ object CargoFeasibilityValidator {
 
     const val MAX_MOTORCYCLE_PAYLOAD_KG = 20.0
     const val MAX_MOTORCYCLE_DIMENSION_CM = 45.0
-    const val MAX_ECONOMY_PAYLOAD_KG = 200.0
-    const val MAX_ECONOMY_DIMENSION_CM = 250.0
 
     data class FeasibilityResult(
         val isFeasible: Boolean,
         val warningMessage: String? = null,
         val requiresSpecialHandling: Boolean = false
-    )
+    ) {
+        val rejectionReason: String? get() = warningMessage
+    }
 
     // Regex patterns for clearly uncarryable bulk freight for motorcycles
     private val HEAVY_BULK_KEYWORDS = listOf(
@@ -41,20 +41,32 @@ object CargoFeasibilityValidator {
     )
 
     /**
-     * Evaluates whether an item is safe and feasible to be dispatched on an Express motorcycle.
+     * Universal evaluation of whether an item is safe and physically feasible to be dispatched
+     * on the ESDispatch motorcycle fleet across ALL services (Express, Economy, Batch, Multi).
      */
-    fun validateExpressCargo(
+    fun validateCargo(
         itemName: String,
-        category: String,
-        weightKg: Double
+        category: String = "",
+        weightKg: Double = 1.0,
+        lengthCm: Double = 20.0,
+        widthCm: Double = 15.0,
+        heightCm: Double = 10.0
     ): FeasibilityResult {
         val trimmedItem = itemName.trim()
 
-        // 1. Weight Threshold check (Max 20kg for motorcycle dispatch)
+        // 1. Universal Weight Limit Check (Motorcycle dispatch boxes strictly handle up to 20kg)
         if (weightKg > MAX_MOTORCYCLE_PAYLOAD_KG) {
             return FeasibilityResult(
                 isFeasible = false,
-                warningMessage = "Motorcycle Payload Exceeded: Max payload is 20kg (current: ${weightKg}kg). Please choose Economy Cargo or reduce parcel weight."
+                warningMessage = "Motorcycle Fleet Limit: All ESDispatch deliveries are currently operated via motorcycle couriers. Maximum payload is 20kg (current: ${String.format("%.1f", weightKg)}kg). Please reduce package weight."
+            )
+        }
+
+        // 2. Volumetric Dimension Check (Motorcycle carrier dispatch box max 45cm on any axis)
+        if (lengthCm > MAX_MOTORCYCLE_DIMENSION_CM || widthCm > MAX_MOTORCYCLE_DIMENSION_CM || heightCm > MAX_MOTORCYCLE_DIMENSION_CM) {
+            return FeasibilityResult(
+                isFeasible = false,
+                warningMessage = "Carrier Box Limit: Parcel dimensions exceed dispatch box limits (Max ${MAX_MOTORCYCLE_DIMENSION_CM}cm per side). Bulky cargo cannot fit inside motorcycle dispatch carriers."
             )
         }
 
@@ -62,20 +74,18 @@ object CargoFeasibilityValidator {
             return FeasibilityResult(isFeasible = true)
         }
 
-        // 2. Check if item is an edible food portion
-        val isFoodMeal = FOOD_EXEMPTIONS.any { it.containsMatchIn(trimmedItem) } || category.equals("Food & Takeout", ignoreCase = true)
-
+        // 3. Edible food exemptions (plate of rice, jollof rice, meals) are safe within weight limit
+        val isFoodMeal = FOOD_EXEMPTIONS.any { it.containsMatchIn(trimmedItem) } || category.equals("Food & Takeout", ignoreCase = true) || category.equals("Food & Groceries", ignoreCase = true)
         if (isFoodMeal) {
-            // Edible food is allowed as long as it does not exceed motorcycle weight
             return FeasibilityResult(isFeasible = true)
         }
 
-        // 3. Check for forbidden uncarryable heavy/bulky freight
+        // 4. Check for forbidden uncarryable heavy/bulky freight
         for (pattern in HEAVY_BULK_KEYWORDS) {
             if (pattern.containsMatchIn(trimmedItem)) {
                 return FeasibilityResult(
                     isFeasible = false,
-                    warningMessage = "Uncarryable Motorcycle Cargo: Dispatch motorcycles cannot transport bulk heavy freight (e.g., bags of rice/cement, generators, appliances, mattresses). Max limit is 20kg / 45cm³. Please use Economy Cargo."
+                    warningMessage = "Motorcycle Fleet Limit: Dispatch motorcycles cannot carry heavy or bulk cargo (e.g., bags of rice/cement, generators, refrigerators, mattresses). Max limit is 20kg / 45cm³ carrier box."
                 )
             }
         }
@@ -84,36 +94,34 @@ object CargoFeasibilityValidator {
     }
 
     /**
-     * Validates dimensions and weight for Economy Cargo delivery.
+     * Backward-compatible alias for Express delivery service.
+     */
+    fun validateExpressCargo(
+        itemName: String,
+        category: String,
+        weightKg: Double
+    ): FeasibilityResult {
+        return validateCargo(itemName = itemName, category = category, weightKg = weightKg)
+    }
+
+    /**
+     * Backward-compatible alias for Economy delivery service.
+     * Enforces identical motorcycle physical constraints.
      */
     fun validateEconomyCargo(
         itemName: String,
         weightKg: Double,
-        lengthCm: Double,
-        widthCm: Double,
-        heightCm: Double
+        lengthCm: Double = 20.0,
+        widthCm: Double = 15.0,
+        heightCm: Double = 10.0
     ): FeasibilityResult {
-        if (weightKg > MAX_ECONOMY_PAYLOAD_KG) {
-            return FeasibilityResult(
-                isFeasible = false,
-                warningMessage = "Economy Freight Limit Exceeded: Maximum payload per vehicle is ${MAX_ECONOMY_PAYLOAD_KG}kg (current: ${weightKg}kg)."
-            )
-        }
-
-        if (lengthCm > MAX_ECONOMY_DIMENSION_CM || widthCm > MAX_ECONOMY_DIMENSION_CM || heightCm > MAX_ECONOMY_DIMENSION_CM) {
-            return FeasibilityResult(
-                isFeasible = false,
-                warningMessage = "Dimension Limit Exceeded: Maximum item dimension for standard cargo is ${MAX_ECONOMY_DIMENSION_CM}cm."
-            )
-        }
-
-        return FeasibilityResult(isFeasible = true)
+        return validateCargo(itemName = itemName, category = "", weightKg = weightKg, lengthCm = lengthCm, widthCm = widthCm, heightCm = heightCm)
     }
 
     /**
      * Helper to check if a cargo item strictly violates dispatch constraints.
      */
     fun isStrictlyInfeasible(itemName: String, weightKg: Double): Boolean {
-        return !validateExpressCargo(itemName, "", weightKg).isFeasible
+        return !validateCargo(itemName, "", weightKg).isFeasible
     }
 }

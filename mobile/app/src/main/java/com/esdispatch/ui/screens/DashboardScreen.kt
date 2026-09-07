@@ -111,6 +111,7 @@ import com.esdispatch.ui.components.Box3D
 import com.esdispatch.ui.components.QuiltedBackground
 import com.esdispatch.ui.components.ShimmerBox
 import com.esdispatch.ui.components.AppModalBottomSheet
+import com.esdispatch.ui.components.InteractiveTourGuide
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 import androidx.compose.ui.graphics.Shape
@@ -2127,6 +2128,10 @@ fun DashboardScreen(
                 )
             }
 
+            // ── Interactive Spotlight Onboarding Tour ──
+            InteractiveTourGuide(
+                isDark = isDark
+            )
         }
     }
 }

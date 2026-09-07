@@ -633,11 +633,11 @@ fun ScreenHeader(
                         .clickable { onBack() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.ArrowBack,
+                    AnimatedHugeIcon(
+                        icon = Hugeicons.Solid.ArrowLeft,
                         contentDescription = "Back",
                         tint = backButtonTint,
-                        modifier = Modifier.size(20.dp)
+                        size = 20.dp
                     )
                 }
             } else {

@@ -37,7 +37,10 @@ import com.esdispatch.ui.theme.Gold
 import com.esdispatch.ui.theme.Obsidian
 import com.esdispatch.ui.theme.GoldenWhiteLight
 import com.esdispatch.ui.theme.TextGray
+import com.esdispatch.ui.theme.Hugeicons
+import com.esdispatch.ui.theme.AnimatedHugeIcon
 import com.esdispatch.viewmodel.DeliveryViewModel
+import com.esdispatch.viewmodel.ToastType
 import androidx.compose.foundation.Image
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
@@ -200,6 +203,40 @@ class MainActivity : FragmentActivity() {
                 val navController = rememberNavController()
                 val activeNotification by viewModel.activeInAppNotification.collectAsState()
                 val customToast by viewModel.customToast.collectAsState()
+                val customToastData by viewModel.customToastData.collectAsState()
+
+                val handleNavigation: (String) -> Unit = { route ->
+                    when (route) {
+                        "BACK" -> {
+                            if (!navController.popBackStack()) {
+                                navController.navigate("Dashboard") {
+                                    popUpTo("Dashboard") { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                        "Dashboard" -> {
+                            if (!navController.popBackStack("Dashboard", false)) {
+                                navController.navigate("Dashboard") {
+                                    popUpTo("Dashboard") { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                        "SendParcel" -> {
+                            if (!navController.popBackStack("SendParcel", false)) {
+                                navController.navigate("SendParcel") {
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                        else -> {
+                            navController.navigate(route) {
+                                launchSingleTop = true
+                            }
+                        }
+                    }
+                }
 
                 val pendingShortcutRoute by viewModel.pendingShortcutRoute.collectAsState()
                 LaunchedEffect(pendingShortcutRoute) {
@@ -296,114 +333,106 @@ class MainActivity : FragmentActivity() {
 
                     // Main App Shell
                     composable("Dashboard") {
-                        DashboardScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        DashboardScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("Marketplace") {
-                        MarketplaceScreen(viewModel = viewModel, onNavigate = {
-                            if (it == "Dashboard") navController.popBackStack() else navController.navigate(it)
-                        })
+                        MarketplaceScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("VendorPortal") {
-                        VendorPortalScreen(viewModel = viewModel, onNavigate = {
-                            if (it == "Dashboard") navController.popBackStack() else navController.navigate(it)
-                        })
+                        VendorPortalScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("VendorStorefront/{vendorId}") { backStackEntry ->
                         val vendorId = backStackEntry.arguments?.getString("vendorId") ?: ""
-                        VendorStorefrontScreen(viewModel = viewModel, vendorId = vendorId, onNavigate = {
-                            if (it == "Dashboard") navController.popBackStack() else navController.navigate(it)
-                        })
+                        VendorStorefrontScreen(viewModel = viewModel, vendorId = vendorId, onNavigate = handleNavigation)
                     }
                     composable("VendorProfile/{vendorId}") { backStackEntry ->
                         val vendorId = backStackEntry.arguments?.getString("vendorId") ?: ""
-                        VendorProfileScreen(vendorId = vendorId, viewModel = viewModel, onNavigate = {
-                            if (it == "Dashboard") navController.popBackStack() else navController.navigate(it)
-                        }, onBack = { navController.popBackStack() })
+                        VendorProfileScreen(vendorId = vendorId, viewModel = viewModel, onNavigate = handleNavigation, onBack = { handleNavigation("BACK") })
                     }
                     composable("OrderLogs") {
-                        OrderLogsScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        OrderLogsScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("Profile") {
-                        ProfileScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        ProfileScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
 
                     // Booking Flow
                     composable("SendParcel") {
-                        ServiceSelectionScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        ServiceSelectionScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("SendParcelDetails") {
-                        SendParcelScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        SendParcelScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("ExpressBooking") {
-                        ExpressBookingScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        ExpressBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("EconomyBooking") {
-                        EconomyBookingScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        EconomyBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BatchBooking") {
-                        BatchBookingScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        BatchBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("MultiBooking") {
-                        MultiBookingScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        MultiBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BookingForm") {
-                        BookingFormScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        BookingFormScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BookingDetails") {
-                        BookingDetails(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        BookingDetails(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BookingSelection") {
-                        BookingSelectionScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        BookingSelectionScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("PaymentSuccess") {
-                        PaymentSuccessScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        PaymentSuccessScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
 
                     // Extras & Tools
                     composable("ActiveTracking") {
-                        ActiveTrackingScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        ActiveTrackingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("Scanner") {
-                        ScannerScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        ScannerScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("ProofOfDelivery/{parcelId}") { backStackEntry ->
                         val parcelId = backStackEntry.arguments?.getString("parcelId") ?: ""
                         com.esdispatch.ui.screens.ProofOfDeliveryScreen(navController = navController, viewModel = viewModel, parcelId = parcelId)
                     }
                     composable("CustomerAssistant") {
-                        CustomerAssistantScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                        CustomerAssistantScreen(viewModel = viewModel, onBack = { handleNavigation("BACK") })
                     }
                     composable("AIDispatchManager") {
-                        AIDispatchManagerScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                        AIDispatchManagerScreen(viewModel = viewModel, onBack = { handleNavigation("BACK") })
                     }
 
                     // Profile settings, reviews & options
                     composable("Wallet") {
-                        WalletScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        WalletScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("Settings") {
-                        SettingsScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        SettingsScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("NotificationSettings") {
-                        NotificationSettingsScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        NotificationSettingsScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("RiderReview") {
-                        RiderReviewScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        RiderReviewScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("AddressBook") {
-                        AddressBookScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        AddressBookScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("Notifications") {
-                        NotificationsScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        NotificationsScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("Promotions") {
-                        PromotionsScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        PromotionsScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("Referral") {
-                        ReferralScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        ReferralScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("RiderDashboard") {
-                        RiderDashboardScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        RiderDashboardScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
 
                 }
@@ -472,7 +501,7 @@ class MainActivity : FragmentActivity() {
                     }
                 }
 
-                // Custom Toast Notification Overlay (Obsidian-Gold Theme)
+                // Custom Luxury Toast Notification Pill Overlay
                 AnimatedVisibility(
                     visible = customToast != null,
                     enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -483,12 +512,28 @@ class MainActivity : FragmentActivity() {
                         .padding(horizontal = 24.dp)
                         .zIndex(200f)
                 ) {
-                    customToast?.let { toastMsg ->
+                    val toastMsg = customToast
+                    val toastData = customToastData
+                    if (toastMsg != null) {
+                        val toastType = toastData?.type ?: ToastType.INFO
+                        val accentColor = when (toastType) {
+                            ToastType.SUCCESS -> Gold
+                            ToastType.ERROR -> Color(0xFFFF5252)
+                            ToastType.WARNING -> Color(0xFFFFB800)
+                            ToastType.INFO -> Gold
+                        }
+                        val toastIcon = when (toastType) {
+                            ToastType.SUCCESS -> Hugeicons.Solid.CheckCircle
+                            ToastType.ERROR -> Hugeicons.Solid.AlertTriangle
+                            ToastType.WARNING -> Hugeicons.Solid.AlertTriangle
+                            ToastType.INFO -> Hugeicons.Solid.Bell
+                        }
+
                         Surface(
                             shape = RoundedCornerShape(24.dp),
                             color = Obsidian,
-                            border = BorderStroke(1.5.dp, Gold),
-                            shadowElevation = 8.dp,
+                            border = BorderStroke(1.5.dp, accentColor),
+                            shadowElevation = 10.dp,
                             modifier = Modifier.clickable { viewModel.dismissCustomToast() }
                         ) {
                             Row(
@@ -496,22 +541,21 @@ class MainActivity : FragmentActivity() {
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.CheckCircle,
+                                AnimatedHugeIcon(
+                                    icon = toastIcon,
                                     contentDescription = null,
-                                    tint = Gold,
-                                    modifier = Modifier.size(20.dp)
+                                    tint = accentColor,
+                                    size = 20.dp
                                 )
                                 Text(
                                     text = toastMsg,
                                     fontSize = 13.sp,
-                                    color = Gold,
+                                    color = Color.White,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
                     }
-
                 }
 
                 if (maintenanceMode) {

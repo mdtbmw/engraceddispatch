@@ -1,13 +1,16 @@
 package com.esdispatch.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -24,10 +27,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImagePainter
@@ -39,6 +45,8 @@ import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 import com.esdispatch.viewmodel.MarketplaceItem
 import com.esdispatch.viewmodel.MarketplaceStore
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -50,18 +58,24 @@ fun MarketplaceScreen(
     // Correct dark-mode check — isDarkTheme doesn't exist as a top-level symbol
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
 
+    BackHandler {
+        onNavigate("BACK")
+    }
+
     // Live Firestore state
     val marketplaceItems by viewModel.marketplaceProducts.collectAsState()
     val stores by viewModel.marketplaceStores.collectAsState()
     val cartItems by viewModel.cartItems.collectAsState()
     val walletBalance by viewModel.walletBalance.collectAsState()
     val marketplaceStores by viewModel.marketplaceStores.collectAsState()
+    val favoriteIds by viewModel.favoriteProductIds.collectAsState()
 
     // UI state
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
     var showItemDetails by remember { mutableStateOf<MarketplaceItem?>(null) }
     var showCheckoutSheet by remember { mutableStateOf(false) }
+    var showFavoritesSheet by remember { mutableStateOf(false) }
 
     // Aligned with Vendor Portal product categories so every vendor item is reachable
     val categories = listOf("All", "Delivery Gear", "Apparel", "Lubricants", "Accessories", "Safety", "Packaging", "Electronics", "General", "Food & Beverages", "Services")
@@ -91,40 +105,82 @@ fun MarketplaceScreen(
                 .fillMaxSize()
                 .background(HeaderBgColor)
         ) {
-            // Header with cart badge
+            // Header with wishlist and cart badges
             ScreenHeader(
                 title = "Marketplace Catalog",
-                onBack = { onNavigate("Dashboard") },
+                onBack = { onNavigate("BACK") },
                 rightContent = {
-                    Box(modifier = Modifier.padding(end = 8.dp)) {
-                        val badgeScale by animateFloatAsState(
-                            targetValue = if (cartCount > 0) 1.0f else 0.0f,
-                            animationSpec = SpringPhysics.TouchPress,
-                            label = "cartBadgeScale"
-                        )
-                        IconButton(
-                            onClick = { showCheckoutSheet = true },
-                            modifier = Modifier.tactilePress(scaleDown = 0.90f) { showCheckoutSheet = true }
-                        ) {
-                            Icon(
-                                Icons.Filled.ShoppingCart,
-                                contentDescription = "Cart",
-                                tint = if (isDark) Obsidian else Gold
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        // Wishlist / Favorites button
+                        Box {
+                            val favScale by animateFloatAsState(
+                                targetValue = if (favoriteIds.isNotEmpty()) 1.0f else 0.0f,
+                                animationSpec = SpringPhysics.TouchPress,
+                                label = "favBadgeScale"
                             )
-                        }
-                        if (cartCount > 0) {
-                            Badge(
-                                containerColor = Color(0xFFEF4444),
-                                contentColor = Color.White,
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .offset(x = (-4).dp)
-                                    .graphicsLayer {
-                                        scaleX = badgeScale
-                                        scaleY = badgeScale
-                                    }
+                            IconButton(
+                                onClick = { showFavoritesSheet = true },
+                                modifier = Modifier.tactilePress(scaleDown = 0.90f) { showFavoritesSheet = true }
                             ) {
-                                Text("$cartCount", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                AnimatedHugeIcon(
+                                    icon = Hugeicons.Solid.Heart,
+                                    tint = if (favoriteIds.isNotEmpty()) Color(0xFFEF4444) else (if (isDark) Obsidian else Gold),
+                                    size = 20.dp
+                                )
+                            }
+                            if (favoriteIds.isNotEmpty()) {
+                                Badge(
+                                    containerColor = Color(0xFFEF4444),
+                                    contentColor = Color.White,
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = (-2).dp, y = 2.dp)
+                                        .graphicsLayer {
+                                            scaleX = favScale
+                                            scaleY = favScale
+                                        }
+                                ) {
+                                    Text("${favoriteIds.size}", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(2.dp))
+
+                        // Cart button
+                        Box {
+                            val badgeScale by animateFloatAsState(
+                                targetValue = if (cartCount > 0) 1.0f else 0.0f,
+                                animationSpec = SpringPhysics.TouchPress,
+                                label = "cartBadgeScale"
+                            )
+                            IconButton(
+                                onClick = { showCheckoutSheet = true },
+                                modifier = Modifier.tactilePress(scaleDown = 0.90f) { showCheckoutSheet = true }
+                            ) {
+                                AnimatedHugeIcon(
+                                    icon = Hugeicons.Solid.Cart,
+                                    tint = if (isDark) Obsidian else Gold,
+                                    size = 20.dp
+                                )
+                            }
+                            if (cartCount > 0) {
+                                Badge(
+                                    containerColor = Color(0xFFEF4444),
+                                    contentColor = Color.White,
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = (-2).dp, y = 2.dp)
+                                        .graphicsLayer {
+                                            scaleX = badgeScale
+                                            scaleY = badgeScale
+                                        }
+                                ) {
+                                    Text("$cartCount", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -219,7 +275,7 @@ fun MarketplaceScreen(
                             shape = RoundedCornerShape(22.dp),
                             color = if (isDark) Charcoal else Color.White,
                             border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
-                            shadowElevation = 3.dp
+                            shadowElevation = 0.dp
                         ) {
                             Column(
                                 modifier = Modifier
@@ -316,10 +372,13 @@ fun MarketplaceScreen(
                             MarketplaceProductCard(
                                 item = item,
                                 isDark = isDark,
+                                isFavorite = favoriteIds.contains(item.id),
                                 onTap = { showItemDetails = item },
                                 onAddToCart = {
                                     viewModel.addToCart(item)
-                                    Toast.makeText(context, "${item.title} added to cart", Toast.LENGTH_SHORT).show()
+                                },
+                                onToggleFavorite = {
+                                    viewModel.toggleFavoriteProduct(item)
                                 }
                             )
                         }
@@ -802,6 +861,129 @@ fun MarketplaceScreen(
                 }
             }
         }
+
+        // ── Favorites / Wishlist Sheet ─────────────────────────────────────────────
+        if (showFavoritesSheet) {
+            val favItems = marketplaceItems.filter { favoriteIds.contains(it.id) }
+            ModalBottomSheet(
+                onDismissRequest = { showFavoritesSheet = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = if (isDark) Charcoal else GoldenWhite,
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.78f)
+                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            AnimatedHugeIcon(icon = Hugeicons.Solid.Heart, tint = Color(0xFFEF4444), size = 22.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "My Wishlist (${favItems.size})",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = AppTextColor
+                            )
+                        }
+                        IconButton(onClick = { showFavoritesSheet = false }) {
+                            AnimatedHugeIcon(icon = Hugeicons.Solid.Close, tint = AppTextColor, size = 18.dp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (favItems.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                AnimatedHugeIcon(icon = Hugeicons.Solid.Heart, tint = Gold.copy(alpha = 0.35f), size = 52.dp)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text("No saved favorites yet", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Swipe right on any product to save it here", fontSize = 12.sp, color = TextGray)
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(favItems, key = { it.id }) { favItem ->
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (isDark) LuxuryBlack else Color.White,
+                                    border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        val painter = rememberAsyncImagePainter(favItem.imageUrl)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(56.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (isDark) Color(0xFF222222) else Color(0xFFEAEAEA)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Image(
+                                                painter = painter,
+                                                contentDescription = favItem.title,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(favItem.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = AppTextColor, maxLines = 1)
+                                            Text(favItem.vendorStore, fontSize = 10.sp, color = Gold)
+                                            Text("₦${String.format("%,.0f", favItem.price)}", fontSize = 12.sp, fontWeight = FontWeight.Black, color = AppTextColor)
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        // Add to cart button
+                                        IconButton(
+                                            onClick = {
+                                                viewModel.addToCart(favItem)
+                                            },
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .background(Gold, RoundedCornerShape(10.dp))
+                                        ) {
+                                            AnimatedHugeIcon(icon = Hugeicons.Solid.Cart, tint = Obsidian, size = 16.dp)
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        // Remove favorite button
+                                        IconButton(
+                                            onClick = {
+                                                viewModel.toggleFavoriteProduct(favItem)
+                                            },
+                                            modifier = Modifier.size(34.dp)
+                                        ) {
+                                            AnimatedHugeIcon(icon = Hugeicons.Solid.Trash, tint = Color(0xFFEF4444), size = 16.dp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -811,107 +993,215 @@ fun MarketplaceScreen(
 private fun MarketplaceProductCard(
     item: MarketplaceItem,
     isDark: Boolean,
+    isFavorite: Boolean,
     onTap: () -> Unit,
-    onAddToCart: () -> Unit
+    onAddToCart: () -> Unit,
+    onToggleFavorite: () -> Unit
 ) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = if (isDark) Charcoal else GoldenWhite,
-        border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)),
+    val offsetX = remember { Animatable(0f) }
+    val coroutineScope = rememberCoroutineScope()
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .tactilePress(scaleDown = 0.97f) { onTap() }
+            .clip(RoundedCornerShape(20.dp))
     ) {
+        // Background swipe action indicators
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+                .matchParentSize()
+                .background(if (isDark) Color(0xFF18181A) else Color(0xFFE8E8E8)),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val painter = rememberAsyncImagePainter(item.imageUrl)
-            Box(
+            // Left Action: Revealed when dragged RIGHT -> Favorite
+            Row(
                 modifier = Modifier
-                    .size(72.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isDark) Color(0xFF222222) else Color(0xFFEAEAEA)),
-                contentAlignment = Alignment.Center
+                    .fillMaxHeight()
+                    .background(if (isFavorite) Color(0xFFDC2626) else Color(0xFFEF4444).copy(alpha = 0.9f))
+                    .padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Image(
-                    painter = painter,
-                    contentDescription = item.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                AnimatedHugeIcon(
+                    icon = Hugeicons.Solid.Heart,
+                    tint = Color.White,
+                    size = 20.dp
                 )
-                if (painter.state is AsyncImagePainter.State.Error || item.imageUrl.isBlank()) {
-                    Icon(Icons.Filled.ShoppingBag, null, tint = Gold, modifier = Modifier.size(28.dp))
-                }
-                if (item.stock <= 0) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.55f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("SOLD OUT", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color.White)
-                    }
-                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    if (isFavorite) "Saved" else "Favorite",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
+            // Right Action: Revealed when dragged LEFT -> Add to Cart
+            Row(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .background(Gold)
+                    .padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    item.title,
-                    color = if (isDark) Color.White else Obsidian,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    maxLines = 1
-                )
-                Text(
-                    item.vendorStore,
-                    color = Gold,
+                    "Add to Cart",
+                    color = Obsidian,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Black
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Star, null, tint = Color(0xFFF59E0B), modifier = Modifier.size(11.dp))
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        "${item.rating} (${item.reviewsCount})",
-                        color = TextGray, fontSize = 10.sp
+                Spacer(modifier = Modifier.width(6.dp))
+                AnimatedHugeIcon(
+                    icon = Hugeicons.Solid.Cart,
+                    tint = Obsidian,
+                    size = 20.dp
+                )
+            }
+        }
+
+        // Foreground Card that slides smoothly with gesture
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = if (isDark) Charcoal else GoldenWhite,
+            border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .pointerInput(item.id) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            coroutineScope.launch {
+                                val currentOffset = offsetX.value
+                                if (currentOffset > 70f) {
+                                    onToggleFavorite()
+                                } else if (currentOffset < -70f) {
+                                    if (item.stock > 0) {
+                                        onAddToCart()
+                                    }
+                                }
+                                offsetX.animateTo(0f, animationSpec = spring(stiffness = 400f, dampingRatio = 0.75f))
+                            }
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            coroutineScope.launch {
+                                val target = offsetX.value + dragAmount * 0.75f
+                                offsetX.snapTo(target.coerceIn(-160f, 160f))
+                            }
+                        }
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.Center
+                .clickable { onTap() }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "₦${String.format("%,.0f", item.price)}",
-                    color = if (isDark) Gold else Obsidian,
-                    fontSize = 14.sp, fontWeight = FontWeight.Black
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-                    IconButton(
-                        onClick = onAddToCart,
-                        enabled = item.stock > 0,
-                        modifier = Modifier
-                            .size(34.dp)
-                            .background(
-                                if (item.stock > 0) Gold else Gold.copy(alpha = 0.3f),
-                                RoundedCornerShape(10.dp)
-                            )
-                            .tactilePress(scaleDown = 0.88f) { if (item.stock > 0) onAddToCart() }
-                    ) {
-                        Icon(
-                            Icons.Filled.AddShoppingCart, null,
-                            tint = Obsidian, modifier = Modifier.size(16.dp)
+                val painter = rememberAsyncImagePainter(item.imageUrl)
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isDark) Color(0xFF222222) else Color(0xFFEAEAEA)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painter,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    if (painter.state is AsyncImagePainter.State.Error || item.imageUrl.isBlank()) {
+                        Icon(Icons.Filled.ShoppingBag, null, tint = Gold, modifier = Modifier.size(28.dp))
+                    }
+                    if (item.stock <= 0) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.55f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("SOLD OUT", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color.White)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        item.title,
+                        color = if (isDark) Color.White else Obsidian,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        maxLines = 1
+                    )
+                    Text(
+                        item.vendorStore,
+                        color = Gold,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Star, null, tint = Color(0xFFF59E0B), modifier = Modifier.size(11.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            "${item.rating} (${item.reviewsCount})",
+                            color = TextGray, fontSize = 10.sp
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        "₦${String.format("%,.0f", item.price)}",
+                        color = if (isDark) Gold else Obsidian,
+                        fontSize = 14.sp, fontWeight = FontWeight.Black
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Quick favorite icon button
+                        IconButton(
+                            onClick = onToggleFavorite,
+                            modifier = Modifier
+                                .size(34.dp)
+                                .tactilePress(scaleDown = 0.88f) { onToggleFavorite() }
+                        ) {
+                            AnimatedHugeIcon(
+                                icon = Hugeicons.Solid.Heart,
+                                tint = if (isFavorite) Color(0xFFEF4444) else TextGray.copy(alpha = 0.6f),
+                                size = 18.dp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        // Add to cart icon button
+                        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                            IconButton(
+                                onClick = onAddToCart,
+                                enabled = item.stock > 0,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .background(
+                                        if (item.stock > 0) Gold else Gold.copy(alpha = 0.3f),
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .tactilePress(scaleDown = 0.88f) { if (item.stock > 0) onAddToCart() }
+                            ) {
+                                AnimatedHugeIcon(
+                                    icon = Hugeicons.Solid.Cart,
+                                    tint = Obsidian,
+                                    size = 16.dp
+                                )
+                            }
+                        }
                     }
                 }
             }

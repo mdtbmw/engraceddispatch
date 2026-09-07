@@ -42,14 +42,18 @@ import kotlinx.coroutines.withContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.ContactsContract
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import com.esdispatch.util.CargoFeasibilityValidator
 
 @Composable
 fun MultiBookingScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
+    BackHandler { onNavigate("BACK") }
+
     val draft by viewModel.parcelDraft.collectAsState()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -58,6 +62,9 @@ fun MultiBookingScreen(
     var delivery by remember { mutableStateOf(draft.deliveryAddress) }
     var itemName by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("4.5") }
+    val cargoValidation = remember(itemName, weight) {
+        CargoFeasibilityValidator.validateCargo(itemName = itemName, weightKg = weight.toDoubleOrNull() ?: 1.0)
+    }
     var showCheckoutSheet by remember { mutableStateOf(false) }
     var showPaystackSheet by remember { mutableStateOf(false) }
     var pendingAmount by remember { mutableStateOf(0.0) }
@@ -183,7 +190,7 @@ fun MultiBookingScreen(
         ) {
             ScreenHeader(
                 title = "Multi-Pickup Booking",
-                onBack = { onNavigate("SendParcel") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(
@@ -570,6 +577,17 @@ fun MultiBookingScreen(
                             )
                         )
 
+                        if (!cargoValidation.isFeasible) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = cargoValidation.rejectionReason ?: "Motorcycle limit exceeded (Max 20kg, 45cm³)",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = 16.sp
+                            )
+                        }
+
                         Spacer(modifier = Modifier.height(24.dp))
                         Text("Sender Contact Details", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = accentColor)
                         Spacer(modifier = Modifier.height(12.dp))
@@ -674,146 +692,145 @@ fun MultiBookingScreen(
                         )
                     }
                 }
+            }
+        }
+    }
 
-                // Bottom Pricing Summary - overlayed
-        if (focusedPickupIndex == -1 && !deliveryFocused) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth(),
-                    shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-                    color = Charcoal,
-                    tonalElevation = 8.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Multi-Pickup Price", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                            when (val quote = pendingQuote) {
-                                is PendingQuote.Success -> {
-                                    Text(
-                                        text = "₦${String.format("%,.2f", quote.price)}",
-                                        fontSize = 24.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = accentColor
-                                    )
-                                }
-                                is PendingQuote.Loading -> {
-                                    CircularProgressIndicator(
-                                        color = Gold,
-                                        modifier = Modifier.size(24.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                }
-                                is PendingQuote.Error -> {
-                                    Text(
-                                        text = "Calc Error",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
-                                else -> {
-                                    Text(
-                                        text = "Enter addresses",
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextGray
-                                    )
-                                }
-                            }
+    // Bottom Pricing Summary - overlayed at bottom of outer Box
+    if (focusedPickupIndex == -1 && !deliveryFocused) {
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+            color = Charcoal,
+            tonalElevation = 8.dp,
+            shadowElevation = 16.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Multi-Pickup Price", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Bold)
+                    when (val quote = pendingQuote) {
+                        is PendingQuote.Success -> {
+                            Text(
+                                text = "₦${String.format("%,.2f", quote.price)}",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Black,
+                                color = accentColor
+                            )
                         }
-
-                        val firstPickup = pickups.firstOrNull() ?: ""
-                        val isAddressesValid = firstPickup.trim().length >= 6 && delivery.trim().length >= 6
-                        val isContactValid = sName.trim().isNotBlank() && sPhone.trim().isNotBlank() && rName.trim().isNotBlank() && rPhone.trim().isNotBlank()
-                        val isBookingEnabled = isAddressesValid && isContactValid && pendingQuote is PendingQuote.Success
-
-                        Button(
-                            onClick = {
-                                showCheckoutSheet = true
-                            },
-                            enabled = isBookingEnabled,
-                            modifier = Modifier
-                                .width(180.dp)
-                                .height(56.dp),
-                            shape = RoundedCornerShape(24.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Obsidian,
-                                disabledContainerColor = Color.Gray.copy(alpha = 0.3f),
-                                contentColor = Gold,
-                                disabledContentColor = TextGray
-                            ),
-                            border = BorderStroke(1.2.dp, if (isBookingEnabled) Gold else Color.Gray.copy(alpha = 0.3f))
-                        ) {
-                            Text("Book Multi-Pick", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (isBookingEnabled) Gold else TextGray)
+                        is PendingQuote.Loading -> {
+                            CircularProgressIndicator(
+                                color = Gold,
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                        is PendingQuote.Error -> {
+                            Text(
+                                text = "Calc Error",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        else -> {
+                            Text(
+                                text = "Enter addresses",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextGray
+                            )
                         }
                     }
                 }
+
+                val firstPickup = pickups.firstOrNull() ?: ""
+                val isAddressesValid = firstPickup.trim().length >= 6 && delivery.trim().length >= 6
+                val isContactValid = sName.trim().isNotBlank() && sPhone.trim().isNotBlank() && rName.trim().isNotBlank() && rPhone.trim().isNotBlank()
+                val isBookingEnabled = isAddressesValid && isContactValid && cargoValidation.isFeasible && pendingQuote is PendingQuote.Success
+
+                Button(
+                    onClick = {
+                        showCheckoutSheet = true
+                    },
+                    enabled = isBookingEnabled,
+                    modifier = Modifier
+                        .width(180.dp)
+                        .height(56.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Obsidian,
+                        disabledContainerColor = Color.Gray.copy(alpha = 0.3f),
+                        contentColor = Gold,
+                        disabledContentColor = TextGray
+                    ),
+                    border = BorderStroke(1.2.dp, if (isBookingEnabled) Gold else Color.Gray.copy(alpha = 0.3f))
+                ) {
+                    Text("Book Multi-Pick", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (isBookingEnabled) Gold else TextGray)
+                }
             }
         }
-
-        val quotePrice = (pendingQuote as? PendingQuote.Success)?.price ?: 0.0
-
-        if (showCheckoutSheet) {
-            WalletCheckoutSheet(
-                bookingPrice = quotePrice,
-                walletBalance = viewModel.walletBalance.collectAsState().value,
-                onConfirmWalletPayment = {
-                    showCheckoutSheet = false
-                    viewModel.updateDraftPickup(pickups.firstOrNull() ?: "")
-                    viewModel.updateDraftDelivery(delivery)
-                    viewModel.updateDraftSenderInfo(sName, sPhone)
-                    viewModel.updateDraftReceiverInfo(rName, rPhone)
-                    viewModel.finalizeDraftPrice("Multi", quotePrice)
-                    viewModel.confirmBooking { ok, msg ->
-                        if (ok) {
-                            onNavigate("PaymentSuccess")
-                        } else {
-                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                        }
-                    }
-                },
-                onFundRequired = { missingAmt ->
-                    showCheckoutSheet = false
-                    pendingAmount = missingAmt
-                    showPaystackSheet = true
-                },
-                onDismiss = { showCheckoutSheet = false }
-            )
-        }
-
-        if (showPaystackSheet) {
-            PaystackCheckoutSheet(
-                amount = pendingAmount,
-                onPaymentComplete = { reference ->
-                    showPaystackSheet = false
-                    viewModel.topUpWallet(pendingAmount)
-                    viewModel.updateDraftPickup(pickups.firstOrNull() ?: "")
-                    viewModel.updateDraftDelivery(delivery)
-                    viewModel.updateDraftSenderInfo(sName, sPhone)
-                    viewModel.updateDraftReceiverInfo(rName, rPhone)
-                    viewModel.finalizeDraftPrice("Multi", quotePrice)
-                    viewModel.confirmBooking { ok, msg ->
-                        if (ok) {
-                            onNavigate("PaymentSuccess")
-                        } else {
-                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                        }
-                    }
-                },
-                onDismiss = { showPaystackSheet = false }
-            )
-        }
     }
-}
-}
-}
+
+    val quotePrice = (pendingQuote as? PendingQuote.Success)?.price ?: 0.0
+
+    if (showCheckoutSheet) {
+        WalletCheckoutSheet(
+            bookingPrice = quotePrice,
+            walletBalance = viewModel.walletBalance.collectAsState().value,
+            onConfirmWalletPayment = {
+                showCheckoutSheet = false
+                viewModel.updateDraftPickup(pickups.firstOrNull() ?: "")
+                viewModel.updateDraftDelivery(delivery)
+                viewModel.updateDraftSenderInfo(sName, sPhone)
+                viewModel.updateDraftReceiverInfo(rName, rPhone)
+                viewModel.finalizeDraftPrice("Multi", quotePrice)
+                viewModel.confirmBooking { ok, msg ->
+                    if (ok) {
+                        onNavigate("PaymentSuccess")
+                    } else {
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onFundRequired = { missingAmt ->
+                showCheckoutSheet = false
+                pendingAmount = missingAmt
+                showPaystackSheet = true
+            },
+            onDismiss = { showCheckoutSheet = false }
+        )
+    }
+
+    if (showPaystackSheet) {
+        PaystackCheckoutSheet(
+            amount = pendingAmount,
+            onPaymentComplete = { reference ->
+                showPaystackSheet = false
+                viewModel.topUpWallet(pendingAmount)
+                viewModel.updateDraftPickup(pickups.firstOrNull() ?: "")
+                viewModel.updateDraftDelivery(delivery)
+                viewModel.updateDraftSenderInfo(sName, sPhone)
+                viewModel.updateDraftReceiverInfo(rName, rPhone)
+                viewModel.finalizeDraftPrice("Multi", quotePrice)
+                viewModel.confirmBooking { ok, msg ->
+                    if (ok) {
+                        onNavigate("PaymentSuccess")
+                    } else {
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onDismiss = { showPaystackSheet = false }
+        )
+    }
+    }
 }

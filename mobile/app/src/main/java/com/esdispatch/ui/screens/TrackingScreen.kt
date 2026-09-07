@@ -613,7 +613,7 @@ fun ActiveTrackingScreen(
                     .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
                     .background(if (isDark) BackgroundDark else BackgroundLight)
             ) {
-            val routeColor = if (aiTrafficCongested) "#FF3B30" else if (showTraffic) "#FF9500" else "#D4AF37"
+            val routeColor = if (aiTrafficCongested) "#FF3B30" else if (showTraffic) "#FF9500" else "#FFB800"
 
             // 1. FULL SCREEN MAP BACKGROUND (Uber-like experience)
             if (isLocalLoading) {
@@ -2050,6 +2050,7 @@ fun LiveMapView(
             settings.domStorageEnabled = true
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
+            settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
             try {
                 settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             } catch (e: Throwable) {}
@@ -2335,6 +2336,7 @@ fun LiveMapView(
                 var userLoc = [0.0, 0.0];
 
                 var map = null;
+                var leafletMap = null;
                 var isMapboxActive = false;
                 var routeLine = null;
                 var courierMarker = null;
@@ -2524,17 +2526,17 @@ fun LiveMapView(
                     pickupEl.style.width = '16px';
                     pickupEl.style.height = '16px';
                     pickupEl.style.borderRadius = '50%';
-                    pickupEl.style.backgroundColor = '#D4AF37';
+                    pickupEl.style.backgroundColor = '#FFB800';
                     pickupEl.style.border = '2px solid #000';
-                    pickupEl.style.boxShadow = '0 0 8px #D4AF37';
+                    pickupEl.style.boxShadow = 'none';
 
                     var deliveryEl = document.createElement('div');
                     deliveryEl.style.width = '16px';
                     deliveryEl.style.height = '16px';
                     deliveryEl.style.borderRadius = '50%';
                     deliveryEl.style.backgroundColor = '#0E0E10';
-                    deliveryEl.style.border = '2px solid #D4AF37';
-                    deliveryEl.style.boxShadow = '0 0 8px #D4AF37';
+                    deliveryEl.style.border = '2px solid #FFB800';
+                    deliveryEl.style.boxShadow = 'none';
 
                     var courierEl = document.createElement('div');
                     courierEl.className = 'mapbox-pulsing-courier';
@@ -2664,8 +2666,10 @@ fun LiveMapView(
                         zoomControl: false,
                         attributionControl: false
                     });
+                    leafletMap = map;
 
-                    darkTiles = L.tileLayer('$tileUrl', { maxZoom: 20 });
+                    darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' });
+                    streetTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' });
                     satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
                     satelliteLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
                     satelliteRoads = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
@@ -2678,7 +2682,14 @@ fun LiveMapView(
                         document.getElementById('satelliteBtn').classList.add('active');
                         document.getElementById('streetBtn').classList.remove('active');
                     } else {
-                        darkTiles.addTo(map);
+                        if (isDarkTheme) {
+                            darkTiles.addTo(map);
+                            satelliteRoads.addTo(map); // illuminated street & road network over dark base!
+                            satelliteLabels.addTo(map);
+                        } else {
+                            streetTiles.addTo(map);
+                            satelliteRoads.addTo(map);
+                        }
                         document.getElementById('streetBtn').classList.add('active');
                         document.getElementById('satelliteBtn').classList.remove('active');
                     }
@@ -2756,15 +2767,23 @@ fun LiveMapView(
                         map.setStyle(style);
                     } else {
                         if (isSatellite) {
-                            map.removeLayer(darkTiles);
+                            try { map.removeLayer(darkTiles); } catch(e){}
+                            try { map.removeLayer(streetTiles); } catch(e){}
                             satelliteTiles.addTo(map);
                             satelliteRoads.addTo(map); // add road & street labels over satellite
                             satelliteLabels.addTo(map); // add labels layer over satellite tiles
                         } else {
                             try { map.removeLayer(satelliteTiles); } catch(e){}
-                            try { map.removeLayer(satelliteRoads); } catch(e){}
-                            try { map.removeLayer(satelliteLabels); } catch(e){}
-                            darkTiles.addTo(map);
+                            if (isDarkTheme) {
+                                try { map.removeLayer(streetTiles); } catch(e){}
+                                darkTiles.addTo(map);
+                                satelliteRoads.addTo(map);
+                                satelliteLabels.addTo(map);
+                            } else {
+                                try { map.removeLayer(darkTiles); } catch(e){}
+                                streetTiles.addTo(map);
+                                satelliteRoads.addTo(map);
+                            }
                         }
                     }
 

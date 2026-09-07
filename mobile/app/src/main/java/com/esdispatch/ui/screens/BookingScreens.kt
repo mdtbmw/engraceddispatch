@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +53,8 @@ fun SendParcelScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
+    BackHandler { onNavigate("BACK") }
+
     val draft by viewModel.parcelDraft.collectAsState()
     val context = LocalContext.current
     val currentUserName by viewModel.userName.collectAsState()
@@ -231,7 +234,7 @@ fun SendParcelScreen(
         ) {
             ScreenHeader(
                 title = "Send Parcel",
-                onBack = { onNavigate("Dashboard") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(

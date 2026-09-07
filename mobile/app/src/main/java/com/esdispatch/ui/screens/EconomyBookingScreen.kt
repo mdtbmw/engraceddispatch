@@ -17,8 +17,9 @@ import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalOffer
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Person
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.*
 import com.esdispatch.util.CargoFeasibilityValidator
 import com.esdispatch.ui.theme.Hugeicons
@@ -50,6 +51,8 @@ fun EconomyBookingScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
+    BackHandler { onNavigate("BACK") }
+
     val draft by viewModel.parcelDraft.collectAsState()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -258,7 +261,7 @@ fun EconomyBookingScreen(
         ) {
             ScreenHeader(
                 title = "Economy Booking",
-                onBack = { onNavigate("SendParcel") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(
@@ -638,7 +641,7 @@ fun EconomyBookingScreen(
                             modifier = Modifier
                                 .fillMaxWidth(),
                             shape = RoundedCornerShape(20.dp),
-                            placeholder = { Text("Item Name (e.g., Heavy Box)", color = TextGray) },
+                            placeholder = { Text("Item Name (e.g., Documents, Fashion, Food, Electronics)", color = TextGray) },
                             textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = accentColor,
@@ -674,6 +677,17 @@ fun EconomyBookingScreen(
                                     focusedLabelColor = accentColor,
                                     unfocusedLabelColor = TextGray
                                 )
+                            )
+                        }
+
+                        if (!cargoFeasibility.isFeasible) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = cargoFeasibility.rejectionReason ?: "Motorcycle limit exceeded (Max 20kg, 45cm³)",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = 16.sp
                             )
                         }
                     }

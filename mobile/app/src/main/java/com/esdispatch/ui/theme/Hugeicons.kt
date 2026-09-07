@@ -461,6 +461,306 @@ object Hugeicons {
                 }
             }.build()
         }
+
+        /** Solid Arrow Left / Back Navigation */
+        val ArrowLeft: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.ArrowLeft",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(20.0f, 11.0f)
+                    horizontalLineTo(7.83f)
+                    lineTo(13.42f, 5.41f)
+                    curveTo(13.81f, 5.02f, 13.81f, 4.39f, 13.42f, 4.0f)
+                    curveTo(13.03f, 3.61f, 12.4f, 3.61f, 12.01f, 4.0f)
+                    lineTo(4.42f, 11.59f)
+                    curveTo(4.03f, 11.98f, 4.03f, 12.61f, 4.42f, 13.0f)
+                    lineTo(12.01f, 20.59f)
+                    curveTo(12.4f, 20.98f, 13.03f, 20.98f, 13.42f, 20.59f)
+                    curveTo(13.81f, 20.2f, 13.81f, 19.57f, 13.42f, 19.18f)
+                    lineTo(7.83f, 13.0f)
+                    horizontalLineTo(20.0f)
+                    curveTo(20.55f, 13.0f, 21.0f, 12.55f, 21.0f, 12.0f)
+                    curveTo(21.0f, 11.45f, 20.55f, 11.0f, 20.0f, 11.0f)
+                    close()
+                }
+            }.build()
+        }
+
+        /** Solid Arrow Right */
+        val ArrowRight: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.ArrowRight",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(4.0f, 11.0f)
+                    horizontalLineTo(16.17f)
+                    lineTo(10.58f, 5.41f)
+                    curveTo(10.19f, 5.02f, 10.19f, 4.39f, 10.58f, 4.0f)
+                    curveTo(10.97f, 3.61f, 11.6f, 3.61f, 11.99f, 4.0f)
+                    lineTo(19.58f, 11.59f)
+                    curveTo(19.97f, 11.98f, 19.97f, 12.61f, 19.58f, 13.0f)
+                    lineTo(11.99f, 20.59f)
+                    curveTo(11.6f, 20.98f, 10.97f, 20.98f, 10.58f, 20.59f)
+                    curveTo(10.19f, 20.2f, 10.19f, 19.57f, 10.58f, 19.18f)
+                    lineTo(16.17f, 13.0f)
+                    horizontalLineTo(4.0f)
+                    curveTo(3.45f, 13.0f, 3.0f, 12.55f, 3.0f, 12.0f)
+                    curveTo(3.0f, 11.45f, 3.45f, 11.0f, 4.0f, 11.0f)
+                    close()
+                }
+            }.build()
+        }
+
+        /** Solid Search / Magnifier */
+        val Search: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.Search",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(10.5f, 2.0f)
+                    curveTo(5.81f, 2.0f, 2.0f, 5.81f, 2.0f, 10.5f)
+                    curveTo(2.0f, 15.19f, 5.81f, 19.0f, 10.5f, 19.0f)
+                    curveTo(12.49f, 19.0f, 14.33f, 18.31f, 15.79f, 17.15f)
+                    lineTo(20.32f, 21.68f)
+                    curveTo(20.71f, 22.07f, 21.34f, 22.07f, 21.73f, 21.68f)
+                    curveTo(22.12f, 21.29f, 22.12f, 20.66f, 21.73f, 20.27f)
+                    lineTo(17.25f, 15.79f)
+                    curveTo(18.35f, 14.33f, 19.0f, 12.49f, 19.0f, 10.5f)
+                    curveTo(19.0f, 5.81f, 15.19f, 2.0f, 10.5f, 2.0f)
+                    close()
+                    moveTo(10.5f, 4.0f)
+                    curveTo(14.09f, 4.0f, 17.0f, 6.91f, 17.0f, 10.5f)
+                    curveTo(17.0f, 14.09f, 14.09f, 17.0f, 10.5f, 17.0f)
+                    curveTo(6.91f, 17.0f, 4.0f, 14.09f, 4.0f, 10.5f)
+                    curveTo(4.0f, 6.91f, 6.91f, 4.0f, 10.5f, 4.0f)
+                    close()
+                }
+            }.build()
+        }
+
+        /** Solid Phone */
+        val Phone: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.Phone",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(6.62f, 10.79f)
+                    curveTo(8.06f, 13.62f, 10.38f, 15.94f, 13.21f, 17.38f)
+                    lineTo(15.41f, 15.18f)
+                    curveTo(15.69f, 14.9f, 16.08f, 14.82f, 16.43f, 14.93f)
+                    curveTo(17.55f, 15.3f, 18.75f, 15.5f, 20.0f, 15.5f)
+                    curveTo(20.55f, 15.5f, 21.0f, 15.95f, 21.0f, 16.5f)
+                    verticalLineTo(20.0f)
+                    curveTo(21.0f, 20.55f, 20.55f, 21.0f, 20.0f, 21.0f)
+                    curveTo(10.61f, 21.0f, 3.0f, 13.39f, 3.0f, 4.0f)
+                    curveTo(3.0f, 3.45f, 3.45f, 3.0f, 4.0f, 3.0f)
+                    horizontalLineTo(7.5f)
+                    curveTo(8.05f, 3.0f, 8.5f, 3.45f, 8.5f, 4.0f)
+                    curveTo(8.5f, 5.25f, 8.7f, 6.45f, 9.07f, 7.57f)
+                    curveTo(9.18f, 7.92f, 9.1f, 8.31f, 8.82f, 8.59f)
+                    lineTo(6.62f, 10.79f)
+                    close()
+                }
+            }.build()
+        }
+
+        /** Solid Shopping Cart */
+        val Cart: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.Cart",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(7.0f, 18.0f)
+                    curveTo(5.9f, 18.0f, 5.01f, 18.9f, 5.01f, 20.0f)
+                    curveTo(5.01f, 21.1f, 5.9f, 22.0f, 7.0f, 22.0f)
+                    curveTo(8.1f, 22.0f, 9.0f, 21.1f, 9.0f, 20.0f)
+                    curveTo(9.0f, 18.9f, 8.1f, 18.0f, 7.0f, 18.0f)
+                    close()
+                    moveTo(17.0f, 18.0f)
+                    curveTo(15.9f, 18.0f, 15.01f, 18.9f, 15.01f, 20.0f)
+                    curveTo(15.01f, 21.1f, 15.9f, 22.0f, 17.0f, 22.0f)
+                    curveTo(18.1f, 22.0f, 19.0f, 21.1f, 19.0f, 20.0f)
+                    curveTo(19.0f, 18.9f, 18.1f, 18.0f, 17.0f, 18.0f)
+                    close()
+                    moveTo(7.2f, 14.63f)
+                    lineTo(7.23f, 14.53f)
+                    lineTo(8.1f, 13.0f)
+                    horizontalLineTo(15.55f)
+                    curveTo(16.3f, 13.0f, 16.96f, 12.59f, 17.3f, 11.97f)
+                    lineTo(21.16f, 4.96f)
+                    curveTo(21.41f, 4.5f, 21.08f, 4.0f, 20.55f, 4.0f)
+                    horizontalLineTo(5.21f)
+                    lineTo(4.27f, 2.0f)
+                    horizontalLineTo(1.0f)
+                    verticalLineTo(4.0f)
+                    horizontalLineTo(3.0f)
+                    lineTo(6.6f, 11.59f)
+                    lineTo(5.25f, 14.04f)
+                    curveTo(4.52f, 15.37f, 5.48f, 17.0f, 7.0f, 17.0f)
+                    horizontalLineTo(19.0f)
+                    verticalLineTo(15.0f)
+                    horizontalLineTo(7.42f)
+                    curveTo(7.29f, 15.0f, 7.17f, 14.83f, 7.2f, 14.63f)
+                    close()
+                }
+            }.build()
+        }
+
+        /** Solid Heart / Favorite */
+        val Heart: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.Heart",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(12.0f, 21.35f)
+                    lineTo(10.55f, 20.03f)
+                    curveTo(5.4f, 15.36f, 2.0f, 12.28f, 2.0f, 8.5f)
+                    curveTo(2.0f, 5.42f, 4.42f, 3.0f, 7.5f, 3.0f)
+                    curveTo(9.24f, 3.0f, 10.91f, 3.81f, 12.0f, 5.09f)
+                    curveTo(13.09f, 3.81f, 14.76f, 3.0f, 16.5f, 3.0f)
+                    curveTo(19.58f, 3.0f, 22.0f, 5.42f, 22.0f, 8.5f)
+                    curveTo(22.0f, 12.28f, 18.6f, 15.36f, 13.45f, 20.04f)
+                    lineTo(12.0f, 21.35f)
+                    close()
+                }
+            }.build()
+        }
+
+        /** Solid Check Circle / Success */
+        val CheckCircle: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.CheckCircle",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(12.0f, 2.0f)
+                    curveTo(6.48f, 2.0f, 2.0f, 6.48f, 2.0f, 12.0f)
+                    curveTo(2.0f, 17.52f, 6.48f, 22.0f, 12.0f, 22.0f)
+                    curveTo(17.52f, 22.0f, 22.0f, 17.52f, 22.0f, 12.0f)
+                    curveTo(22.0f, 6.48f, 17.52f, 2.0f, 12.0f, 2.0f)
+                    close()
+                    moveTo(10.0f, 16.2f)
+                    lineTo(5.8f, 12.0f)
+                    lineTo(7.21f, 10.59f)
+                    lineTo(10.0f, 13.37f)
+                    lineTo(16.79f, 6.58f)
+                    lineTo(18.2f, 8.0f)
+                    lineTo(10.0f, 16.2f)
+                    close()
+                }
+            }.build()
+        }
+
+        /** Solid Close / Cancel */
+        val Close: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.Close",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(19.0f, 6.41f)
+                    lineTo(17.59f, 5.0f)
+                    lineTo(12.0f, 10.59f)
+                    lineTo(6.41f, 5.0f)
+                    lineTo(5.0f, 6.41f)
+                    lineTo(10.59f, 12.0f)
+                    lineTo(5.0f, 17.59f)
+                    lineTo(6.41f, 19.0f)
+                    lineTo(12.0f, 13.41f)
+                    lineTo(17.59f, 19.0f)
+                    lineTo(19.0f, 17.59f)
+                    lineTo(13.41f, 12.0f)
+                    lineTo(19.0f, 6.41f)
+                    close()
+                }
+            }.build()
+        }
+
+        /** Solid Flash / Lightning */
+        val Flash: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.Flash",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(7.0f, 2.0f)
+                    verticalLineTo(13.0f)
+                    horizontalLineTo(10.0f)
+                    verticalLineTo(22.0f)
+                    lineTo(17.0f, 10.0f)
+                    horizontalLineTo(13.0f)
+                    lineTo(16.0f, 2.0f)
+                    horizontalLineTo(7.0f)
+                    close()
+                }
+            }.build()
+        }
+
+        /** Solid Trash / Delete */
+        val Trash: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.Trash",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(6.0f, 19.0f)
+                    curveTo(6.0f, 20.1f, 6.9f, 21.0f, 8.0f, 21.0f)
+                    horizontalLineTo(16.0f)
+                    curveTo(17.1f, 21.0f, 18.0f, 20.1f, 18.0f, 19.0f)
+                    verticalLineTo(7.0f)
+                    horizontalLineTo(6.0f)
+                    verticalLineTo(19.0f)
+                    close()
+                    moveTo(19.0f, 4.0f)
+                    horizontalLineTo(15.5f)
+                    lineTo(14.5f, 3.0f)
+                    horizontalLineTo(9.5f)
+                    lineTo(8.5f, 4.0f)
+                    horizontalLineTo(5.0f)
+                    verticalLineTo(6.0f)
+                    horizontalLineTo(19.0f)
+                    verticalLineTo(4.0f)
+                    close()
+                }
+            }.build()
+        }
     }
 }
 
@@ -473,7 +773,7 @@ object Hugeicons {
 @Composable
 fun AnimatedHugeIcon(
     icon: ImageVector,
-    contentDescription: String?,
+    contentDescription: String? = null,
     modifier: Modifier = Modifier,
     tint: Color = LocalContentColor.current,
     size: Dp = 24.dp,
