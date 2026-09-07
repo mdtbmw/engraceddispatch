@@ -3016,9 +3016,24 @@ class DeliveryViewModel : WalletViewModel() {
 
     fun uploadAvatar(uriString: String) {
         val uid = _firebaseUserId.value ?: return
+        
+        // If it's already a remote URL (e.g. preset avatar), save directly
+        if (uriString.startsWith("http://") || uriString.startsWith("https://")) {
+            _photoUrl.value = uriString
+            savePref("photo_url", uriString)
+            com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users").document(uid)
+                .update("photoUrl", uriString)
+            return
+        }
+
+        val fileUri: android.net.Uri = when {
+            uriString.startsWith("content://") || uriString.startsWith("file://") -> android.net.Uri.parse(uriString)
+            else -> android.net.Uri.fromFile(java.io.File(uriString))
+        }
+
         val storageRef = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child("avatars/$uid.jpg")
         
-        storageRef.putFile(android.net.Uri.parse(uriString))
+        storageRef.putFile(fileUri)
             .addOnSuccessListener {
                 storageRef.downloadUrl.addOnSuccessListener { uri ->
                     val urlString = uri.toString()

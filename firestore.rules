@@ -336,14 +336,24 @@ service cloud.firestore {
     // =========================================================
 
     match /support_chats/{ticketId} {
-      allow read: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin() || isDispatcher());
-      allow create: if isAuth() && isReasonableWrite();
-      allow update: if isAuth() && isReasonableWrite();
+      allow read: if isAuth() && (ticketId == request.auth.uid || resource.data.userId == request.auth.uid || isAdmin() || isDispatcher());
+      allow create: if isAuth() && isReasonableWrite() && (ticketId == request.auth.uid || request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAuth() && isReasonableWrite() && (ticketId == request.auth.uid || resource.data.userId == request.auth.uid || isAdmin() || isDispatcher());
       allow delete: if isAdmin();
 
       match /messages/{msgId} {
-        allow read: if isAuth() && (get(/databases/$(database)/documents/support_chats/$(ticketId)).data.userId == request.auth.uid || isAdmin() || isDispatcher());
-        allow create: if isAuth() && isReasonableWrite();
+        allow read: if isAuth() && (
+          ticketId == request.auth.uid ||
+          (exists(/databases/$(database)/documents/support_chats/$(ticketId)) && get(/databases/$(database)/documents/support_chats/$(ticketId)).data.userId == request.auth.uid) ||
+          isAdmin() ||
+          isDispatcher()
+        );
+        allow create: if isAuth() && isReasonableWrite() && (
+          ticketId == request.auth.uid ||
+          (exists(/databases/$(database)/documents/support_chats/$(ticketId)) && get(/databases/$(database)/documents/support_chats/$(ticketId)).data.userId == request.auth.uid) ||
+          isAdmin() ||
+          isDispatcher()
+        );
         allow update, delete: if isAdmin();
       }
     }
@@ -429,6 +439,15 @@ service cloud.firestore {
     match /system_ledger/{docId} {
       allow read: if isAdmin();
       allow write: if false; // System ledger mutations strictly reserved for Cloud Functions
+    }
+
+    match /verification_otps/{docId} {
+      allow read, write: if false; // Verification OTPs strictly managed by Cloud Functions backend
+    }
+
+    match /system_settings/{settingId} {
+      allow read: if isAuth() && (settingId != 'smtp' || isAdmin());
+      allow write: if isAdmin();
     }
   }
 }

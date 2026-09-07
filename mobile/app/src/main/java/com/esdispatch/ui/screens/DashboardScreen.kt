@@ -60,6 +60,8 @@ import androidx.compose.material.icons.filled.Redeem
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import com.esdispatch.ui.theme.Hugeicons
+import com.esdispatch.ui.theme.AnimatedHugeIcon
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -1722,11 +1724,11 @@ fun DashboardScreen(
                                     .clickable { onNavigate("Notifications") },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Notifications,
+                                AnimatedHugeIcon(
+                                    icon = Hugeicons.Solid.Bell,
                                     contentDescription = "Notifications",
                                     tint = headerContentColor,
-                                    modifier = Modifier.size(24.dp)
+                                    size = 22.dp
                                 )
                                 Box(
                                     modifier = Modifier
@@ -1895,11 +1897,11 @@ fun DashboardScreen(
                                             .background(Gold),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AccountBalanceWallet,
+                                        AnimatedHugeIcon(
+                                            icon = Hugeicons.Solid.Wallet,
                                             contentDescription = "Wallet",
                                             tint = Obsidian,
-                                            modifier = Modifier.size(18.dp)
+                                            size = 18.dp
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))
@@ -1947,11 +1949,11 @@ fun DashboardScreen(
                                             .background(Gold),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Storefront,
+                                        AnimatedHugeIcon(
+                                            icon = Hugeicons.Solid.Storefront,
                                             contentDescription = "Market",
                                             tint = Obsidian,
-                                            modifier = Modifier.size(18.dp)
+                                            size = 18.dp
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))

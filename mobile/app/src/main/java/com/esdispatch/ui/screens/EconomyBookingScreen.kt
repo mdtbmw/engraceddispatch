@@ -1,4 +1,4 @@
-﻿package com.esdispatch.ui.screens
+package com.esdispatch.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -20,6 +20,9 @@ import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.*
+import com.esdispatch.util.CargoFeasibilityValidator
+import com.esdispatch.ui.theme.Hugeicons
+import com.esdispatch.ui.theme.AnimatedHugeIcon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +74,16 @@ fun EconomyBookingScreen(
     var length by remember { mutableStateOf("25") }
     var width by remember { mutableStateOf("20") }
     var height by remember { mutableStateOf("15") }
+
+    val cargoFeasibility = remember(itemName, weight, length, width, height) {
+        CargoFeasibilityValidator.validateEconomyCargo(
+            itemName = itemName,
+            weightKg = weight.toDoubleOrNull() ?: 2.5,
+            lengthCm = length.toDoubleOrNull() ?: 25.0,
+            widthCm = width.toDoubleOrNull() ?: 20.0,
+            heightCm = height.toDoubleOrNull() ?: 15.0
+        )
+    }
 
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
@@ -884,6 +897,38 @@ fun EconomyBookingScreen(
                                 )
                             )
                         }
+
+                        // Real-Time Economy Cargo Feasibility Warning
+                        if (!cargoFeasibility.isFeasible && cargoFeasibility.warningMessage != null) {
+                            Surface(
+                                color = Color(0xFF381313),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, Color(0xFFFF5252)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    AnimatedHugeIcon(
+                                        icon = Hugeicons.Solid.AlertTriangle,
+                                        contentDescription = "Alert",
+                                        tint = Color(0xFFFF5252),
+                                        size = 22.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = cargoFeasibility.warningMessage,
+                                        color = Color(0xFFFFCDD2),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1011,7 +1056,7 @@ fun EconomyBookingScreen(
                 }
 
                 val isAddressesValid = pickup.trim().length >= 6 && delivery.trim().length >= 6
-                val isBookingEnabled = isAddressesValid && pendingQuote is PendingQuote.Success
+                val isBookingEnabled = isAddressesValid && pendingQuote is PendingQuote.Success && cargoFeasibility.isFeasible
 
                 Button(
                     onClick = {
@@ -1030,7 +1075,12 @@ fun EconomyBookingScreen(
                     ),
                     border = BorderStroke(1.2.dp, if (isBookingEnabled) Gold else Color.Gray.copy(alpha = 0.3f))
                 ) {
-                    Text("Book Economy", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (isBookingEnabled) Gold else TextGray)
+                    Text(
+                        if (!cargoFeasibility.isFeasible) "Limit Exceeded" else "Book Economy",
+                        fontSize = if (!cargoFeasibility.isFeasible) 13.sp else 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isBookingEnabled) Gold else TextGray
+                    )
                 }
             }
         }

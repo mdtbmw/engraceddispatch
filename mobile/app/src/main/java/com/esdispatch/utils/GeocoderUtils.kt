@@ -59,14 +59,23 @@ object GeocoderUtils {
         }
     }
 
-    suspend fun fetchMapboxPlacesAutocompleteItems(query: String): List<SearchResultItem> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    suspend fun fetchMapboxPlacesAutocompleteItems(
+        query: String,
+        proximityLng: Double? = null,
+        proximityLat: Double? = null
+    ): List<SearchResultItem> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         if (query.isBlank() || query.length < 2) return@withContext emptyList()
         val results = mutableListOf<SearchResultItem>()
         try {
             val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
             if (!token.isNullOrBlank()) {
                 val encodedQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
-                val urlString = "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&autocomplete=true&types=poi,address,neighborhood,locality,place,landmark&limit=10"
+                val proxParam = if (proximityLng != null && proximityLat != null) {
+                    "&proximity=$proximityLng,$proximityLat"
+                } else {
+                    "&proximity=5.6037,6.3350"
+                }
+                val urlString = "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&autocomplete=true&country=ng&types=poi,address,neighborhood,locality,place,landmark$proxParam&limit=10"
                 val url = java.net.URL(urlString)
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
@@ -98,41 +107,47 @@ object GeocoderUtils {
         } catch (e: Exception) {
             android.util.Log.e("MapboxPlaces", "Mapbox Places API autocomplete error: ${e.message}")
         }
-        return@withContext results
-    }
 
-    suspend fun fetchMapboxPlacesAutocomplete(query: String): List<String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        if (query.isBlank() || query.length < 2) return@withContext emptyList()
-        val results = mutableListOf<String>()
-        try {
-            val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
-            if (!token.isNullOrBlank()) {
-                val encodedQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
-                val urlString = "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&autocomplete=true&types=poi,address,neighborhood,locality,place,landmark&limit=10"
-                val url = java.net.URL(urlString)
-                val conn = url.openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.connectTimeout = 4000
-                conn.readTimeout = 4000
-                if (conn.responseCode == 200) {
-                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    val jsonObj = org.json.JSONObject(jsonStr)
-                    val features = jsonObj.optJSONArray("features")
-                    if (features != null) {
-                        for (i in 0 until features.length()) {
-                            val feat = features.getJSONObject(i)
-                            val placeName = feat.optString("place_name")
-                            if (placeName.isNotBlank() && !results.contains(placeName)) {
-                                results.add(placeName)
-                            }
+        // Native Android Geocoder fallback for local Nigerian POIs / businesses / spots not indexed in Mapbox
+        if (results.size < 3) {
+            try {
+                val appCtx = com.esdispatch.DispatchApplication.instance
+                val geocoder = android.location.Geocoder(appCtx, java.util.Locale.getDefault())
+                val queryWithCountry = if (query.contains("Nigeria", ignoreCase = true)) query.trim() else "${query.trim()}, Nigeria"
+                val systemAddrs = getFromLocationNameCompat(geocoder, queryWithCountry, 6)
+                if (!systemAddrs.isNullOrEmpty()) {
+                    for (addr in systemAddrs) {
+                        val fullLine = addr.getAddressLine(0) ?: ""
+                        val feature = addr.featureName ?: addr.premises ?: addr.subThoroughfare ?: ""
+                        val cleanLine = fullLine.replace(", Nigeria", "").replace(", Edo", "").trim()
+                        val title = if (feature.isNotBlank() && feature != cleanLine && !cleanLine.startsWith(feature)) feature else cleanLine.split(",").firstOrNull()?.trim() ?: cleanLine
+                        val subtitle = if (cleanLine.contains(title) && cleanLine != title) cleanLine.removePrefix(title).removePrefix(",").trim() else cleanLine
+                        if (cleanLine.isNotBlank() && results.none { it.displayInput.contains(cleanLine, ignoreCase = true) || cleanLine.contains(it.displayInput, ignoreCase = true) }) {
+                            results.add(SearchResultItem(
+                                title = title,
+                                fullAddress = if (subtitle.isNotBlank()) subtitle else cleanLine,
+                                lat = addr.latitude,
+                                lng = addr.longitude
+                            ))
                         }
                     }
                 }
+            } catch (e: Exception) {
+                android.util.Log.w("MapboxPlaces", "Android Geocoder fallback error: ${e.message}")
             }
-        } catch (e: Exception) {
-            android.util.Log.e("MapboxPlaces", "Mapbox Places API autocomplete error: ${e.message}")
         }
+
         return@withContext results
+    }
+
+    suspend fun fetchMapboxPlacesAutocomplete(
+        query: String,
+        proximityLng: Double? = null,
+        proximityLat: Double? = null
+    ): List<String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (query.isBlank() || query.length < 2) return@withContext emptyList()
+        val items = fetchMapboxPlacesAutocompleteItems(query, proximityLng, proximityLat)
+        return@withContext items.map { it.displayInput }
     }
 
     private val reverseGeocodeCache = java.util.concurrent.ConcurrentHashMap<String, String>()

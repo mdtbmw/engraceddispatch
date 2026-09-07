@@ -1,6 +1,8 @@
 package com.esdispatch.ui.components
 
 import com.esdispatch.BuildConfig
+import com.esdispatch.ui.theme.Hugeicons
+import com.esdispatch.ui.theme.AnimatedHugeIcon
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -292,7 +294,15 @@ fun BottomNav(
                 if (activeViewMode == "rider") {
                     // Rider tabs (Manifest, Payroll, Spacer, Tracking, Profile)
                     BottomNavItem(
-                        icon = { Icon(Icons.Filled.DirectionsBike, "Manifest", tint = if (currentScreen == "Dashboard") selectedColor else unselectedColor) },
+                        icon = {
+                            AnimatedHugeIcon(
+                                icon = Hugeicons.Solid.Motorcycle,
+                                contentDescription = "Manifest",
+                                tint = if (currentScreen == "Dashboard") selectedColor else unselectedColor,
+                                selected = currentScreen == "Dashboard",
+                                size = 22.dp
+                            )
+                        },
                         label = "Manifest",
                         isSelected = currentScreen == "Dashboard",
                         modifier = Modifier.width(52.dp),
@@ -300,7 +310,15 @@ fun BottomNav(
                     )
 
                     BottomNavItem(
-                        icon = { Icon(Icons.Filled.AccountBalanceWallet, "Payroll", tint = if (currentScreen == "Wallet") selectedColor else unselectedColor) },
+                        icon = {
+                            AnimatedHugeIcon(
+                                icon = Hugeicons.Solid.Wallet,
+                                contentDescription = "Payroll",
+                                tint = if (currentScreen == "Wallet") selectedColor else unselectedColor,
+                                selected = currentScreen == "Wallet",
+                                size = 22.dp
+                            )
+                        },
                         label = "Payroll",
                         isSelected = currentScreen == "Wallet",
                         modifier = Modifier.width(52.dp),
@@ -310,7 +328,15 @@ fun BottomNav(
                     Spacer(modifier = Modifier.width(64.dp))
 
                     BottomNavItem(
-                        icon = { Icon(Icons.Filled.Map, "Tracking", tint = if (currentScreen == "ActiveTracking") selectedColor else unselectedColor) },
+                        icon = {
+                            AnimatedHugeIcon(
+                                icon = Hugeicons.Solid.Route,
+                                contentDescription = "Tracking",
+                                tint = if (currentScreen == "ActiveTracking") selectedColor else unselectedColor,
+                                selected = currentScreen == "ActiveTracking",
+                                size = 22.dp
+                            )
+                        },
                         label = "Tracking",
                         isSelected = currentScreen == "ActiveTracking",
                         modifier = Modifier.width(52.dp),
@@ -318,7 +344,15 @@ fun BottomNav(
                     )
 
                     BottomNavItem(
-                        icon = { Icon(Icons.Filled.Person, "Profile", tint = if (currentScreen == "Profile") selectedColor else unselectedColor) },
+                        icon = {
+                            AnimatedHugeIcon(
+                                icon = Hugeicons.Solid.Profile,
+                                contentDescription = "Profile",
+                                tint = if (currentScreen == "Profile") selectedColor else unselectedColor,
+                                selected = currentScreen == "Profile",
+                                size = 22.dp
+                            )
+                        },
                         label = "Profile",
                         isSelected = currentScreen == "Profile",
                         modifier = Modifier.width(52.dp),
@@ -327,7 +361,15 @@ fun BottomNav(
                 } else {
                     // Customer tabs (Home, Orders, Spacer, Tracking, Profile)
                     BottomNavItem(
-                        icon = { Icon(Icons.Filled.Home, "Home", tint = if (currentScreen == "Dashboard") selectedColor else unselectedColor) },
+                        icon = {
+                            AnimatedHugeIcon(
+                                icon = Hugeicons.Solid.Home,
+                                contentDescription = "Home",
+                                tint = if (currentScreen == "Dashboard") selectedColor else unselectedColor,
+                                selected = currentScreen == "Dashboard",
+                                size = 22.dp
+                            )
+                        },
                         label = "Home",
                         isSelected = currentScreen == "Dashboard",
                         modifier = Modifier.width(52.dp),
@@ -335,7 +377,15 @@ fun BottomNav(
                     )
 
                     BottomNavItem(
-                        icon = { Icon(Icons.Filled.Inbox, "Orders", tint = if (currentScreen == "OrderLogs") selectedColor else unselectedColor) },
+                        icon = {
+                            AnimatedHugeIcon(
+                                icon = Hugeicons.Solid.Package,
+                                contentDescription = "Orders",
+                                tint = if (currentScreen == "OrderLogs") selectedColor else unselectedColor,
+                                selected = currentScreen == "OrderLogs",
+                                size = 22.dp
+                            )
+                        },
                         label = "Order",
                         isSelected = currentScreen == "OrderLogs",
                         modifier = Modifier.width(52.dp),
@@ -345,7 +395,15 @@ fun BottomNav(
                     Spacer(modifier = Modifier.width(64.dp))
 
                     BottomNavItem(
-                        icon = { Icon(Icons.Filled.Map, "Tracking", tint = if (currentScreen == "ActiveTracking") selectedColor else unselectedColor) },
+                        icon = {
+                            AnimatedHugeIcon(
+                                icon = Hugeicons.Solid.Route,
+                                contentDescription = "Tracking",
+                                tint = if (currentScreen == "ActiveTracking") selectedColor else unselectedColor,
+                                selected = currentScreen == "ActiveTracking",
+                                size = 22.dp
+                            )
+                        },
                         label = "Tracking",
                         isSelected = currentScreen == "ActiveTracking",
                         modifier = Modifier.width(52.dp),
@@ -353,7 +411,15 @@ fun BottomNav(
                     )
 
                     BottomNavItem(
-                        icon = { Icon(Icons.Filled.Person, "Profile", tint = if (currentScreen == "Profile") selectedColor else unselectedColor) },
+                        icon = {
+                            AnimatedHugeIcon(
+                                icon = Hugeicons.Solid.Profile,
+                                contentDescription = "Profile",
+                                tint = if (currentScreen == "Profile") selectedColor else unselectedColor,
+                                selected = currentScreen == "Profile",
+                                size = 22.dp
+                            )
+                        },
                         label = "Profile",
                         isSelected = currentScreen == "Profile",
                         modifier = Modifier.width(52.dp),

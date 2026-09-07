@@ -23,6 +23,9 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.*
+import com.esdispatch.util.CargoFeasibilityValidator
+import com.esdispatch.ui.theme.Hugeicons
+import com.esdispatch.ui.theme.AnimatedHugeIcon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -210,7 +213,23 @@ fun ExpressBookingScreen(
     }
     var selectedDate by remember { mutableStateOf(dates[0]) }
 
-    val categories = listOf("Electronics", "Documents", "Apparel", "Others")
+    val categories = listOf(
+        "Documents",
+        "Food & Takeout",
+        "Electronics",
+        "Fashion & Apparel",
+        "Pharmacy & Health",
+        "Small Parcels",
+        "Fragile & Valuables"
+    )
+
+    val cargoFeasibility = remember(itemName, selectedCategory, weight) {
+        CargoFeasibilityValidator.validateExpressCargo(
+            itemName = itemName,
+            category = selectedCategory,
+            weightKg = weight.toDoubleOrNull() ?: 1.5
+        )
+    }
 
     // Pricing Calculation
     val pendingQuote by viewModel.pendingQuote.collectAsState()
@@ -842,27 +861,47 @@ fun ExpressBookingScreen(
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
 
-                        Row(
+                        LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 2.dp)
                         ) {
-                            categories.forEach { cat ->
+                            items(categories) { cat ->
                                 val isSelected = selectedCategory == cat
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(40.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isSelected) Gold else (if (isLight) GoldenWhiteLight else Obsidian))
-                                        .clickable { selectedCategory = cat },
-                                    contentAlignment = Alignment.Center
+                                val catIcon = when (cat) {
+                                    "Documents" -> Hugeicons.Solid.ShieldCheck
+                                    "Food & Takeout" -> Hugeicons.Solid.Star
+                                    "Electronics" -> Hugeicons.Solid.Route
+                                    "Fashion & Apparel" -> Hugeicons.Solid.Profile
+                                    "Pharmacy & Health" -> Hugeicons.Solid.ShieldCheck
+                                    "Fragile & Valuables" -> Hugeicons.Solid.AlertTriangle
+                                    else -> Hugeicons.Solid.Package
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (isSelected) Gold else (if (isLight) GoldenWhiteLight else Obsidian),
+                                    border = BorderStroke(1.dp, if (isSelected) Gold else (if (isLight) Slate else BorderDark)),
+                                    modifier = Modifier.clickable { selectedCategory = cat }
                                 ) {
-                                    Text(
-                                        text = cat,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Obsidian else TextGray
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AnimatedHugeIcon(
+                                            icon = catIcon,
+                                            contentDescription = cat,
+                                            tint = if (isSelected) Obsidian else (if (isDark) GoldenWhiteLight else TextGray),
+                                            size = 16.dp,
+                                            selected = isSelected
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = cat,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) Obsidian else (if (isDark) GoldenWhiteLight else TextGray)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -890,6 +929,67 @@ fun ExpressBookingScreen(
                                     unfocusedLabelColor = TextGray
                                 )
                             )
+                        }
+
+                        // Real-Time Cargo Feasibility Warning
+                        if (!cargoFeasibility.isFeasible && cargoFeasibility.warningMessage != null) {
+                            Surface(
+                                color = Color(0xFF381313),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, Color(0xFFFF5252)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    AnimatedHugeIcon(
+                                        icon = Hugeicons.Solid.AlertTriangle,
+                                        contentDescription = "Alert",
+                                        tint = Color(0xFFFF5252),
+                                        size = 22.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = cargoFeasibility.warningMessage,
+                                        color = Color(0xFFFFCDD2),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        // Permanent Motorcycle Dispatch Specification Note
+                        Surface(
+                            color = Gold.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.18f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AnimatedHugeIcon(
+                                    icon = Hugeicons.Solid.Motorcycle,
+                                    contentDescription = "Motorcycle limits",
+                                    tint = Gold,
+                                    size = 18.dp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Motorcycle Dispatch Limits: Maximum single payload is 20kg with max dimensions of 45cm x 45cm x 45cm. For larger freight, choose Economy Cargo.",
+                                    fontSize = 11.sp,
+                                    color = if (isDark) GoldenWhiteLight else TextGray,
+                                    lineHeight = 15.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -1011,7 +1111,7 @@ fun ExpressBookingScreen(
                 }
 
                 val isAddressesValid = pickup.trim().length >= 6 && delivery.trim().length >= 6
-                val isBookingEnabled = isAddressesValid && pendingQuote is PendingQuote.Success
+                val isBookingEnabled = isAddressesValid && pendingQuote is PendingQuote.Success && cargoFeasibility.isFeasible
 
                 Button(
                     onClick = {
@@ -1030,7 +1130,12 @@ fun ExpressBookingScreen(
                     ),
                     border = BorderStroke(1.2.dp, if (isBookingEnabled) Gold else Color.Gray.copy(alpha = 0.3f))
                 ) {
-                    Text("Book Instant", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (isBookingEnabled) Gold else TextGray)
+                    Text(
+                        if (!cargoFeasibility.isFeasible) "Limit Exceeded" else "Book Instant",
+                        fontSize = if (!cargoFeasibility.isFeasible) 13.sp else 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isBookingEnabled) Gold else TextGray
+                    )
                 }
             }
         }

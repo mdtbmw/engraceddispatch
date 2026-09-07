@@ -4087,7 +4087,7 @@ fun ParcelChatDialog(
     }
 }
 
-private suspend fun detectUserLocationCoords(context: android.content.Context): Pair<Double, Double> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+private suspend fun detectUserLocationCoords(context: android.content.Context): Pair<Double, Double>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     try {
         if (androidx.core.content.ContextCompat.checkSelfPermission(
                 context,
@@ -4125,7 +4125,19 @@ private suspend fun detectUserLocationCoords(context: android.content.Context): 
         android.util.Log.e("DetectLocationCoords", "GPS high accuracy detection failed: ${e.message}")
     }
 
-    return@withContext Pair(6.3345, 5.6254)
+    try {
+        val lm = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
+        if (lm != null) {
+            val providers = lm.getProviders(true)
+            for (provider in providers) {
+                @Suppress("MissingPermission")
+                val l = lm.getLastKnownLocation(provider)
+                if (l != null) {
+                    return@withContext Pair(l.latitude, l.longitude)
+                }
+            }
+        }
+    } catch (_: Exception) {}
+
+    return@withContext null
 }
-
-

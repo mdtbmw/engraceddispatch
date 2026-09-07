@@ -640,3 +640,217 @@ export const onContactCreated = functions.firestore
     return null;
   });
 
+// ============================================================================
+// LUXURY SMTP EMAIL & OTP AUTHENTICATION ENGINE
+// ============================================================================
+
+import { sendEmail, getTransporter } from './emails/emailTransporter';
+import {
+  renderSignUpOtpEmail,
+  renderPasswordResetOtpEmail,
+  renderTwoFactorOtpEmail,
+  renderPinResetOtpEmail,
+  renderDeliveryHandoverOtpEmail,
+  renderDeliveryInvoiceEmail,
+  renderWalletTransactionEmail,
+  renderPartnerWelcomeEmail,
+} from './emails/emailTemplates';
+import { createAndStoreOtp, verifyOtpCode, OtpPurpose } from './emails/otpService';
+
+/**
+ * Callable Function: Generates and dispatches a 6-digit OTP code to the user's email.
+ */
+export const sendEmailOtp = functions.https.onCall(async (data, context) => {
+  const email = (data.email || '').trim().toLowerCase();
+  const purpose = (data.purpose || 'SIGN_UP') as OtpPurpose;
+  const name = (data.name || 'Valued Client').trim();
+
+  if (!email || !email.includes('@')) {
+    throw new functions.https.HttpsError('invalid-argument', 'A valid email address is required.');
+  }
+
+  try {
+    const { code, expiresAt } = await createAndStoreOtp(email, purpose, 10);
+
+    let subject = 'ESDispatch Authentication Passcode';
+    let html = '';
+
+    switch (purpose) {
+      case 'SIGN_UP':
+        subject = `Your ESDispatch Verification Code: ${code}`;
+        html = renderSignUpOtpEmail({ name, otp: code, expiryMinutes: 10 });
+        break;
+      case 'PASSWORD_RESET':
+        subject = `ESDispatch Password Reset: ${code}`;
+        html = renderPasswordResetOtpEmail({ name, otp: code, expiryMinutes: 10 });
+        break;
+      case 'TWO_FACTOR':
+        subject = `ESDispatch 2FA Login Code: ${code}`;
+        html = renderTwoFactorOtpEmail({ name, otp: code, expiryMinutes: 5, ipOrDevice: data.deviceInfo });
+        break;
+      case 'PIN_RESET':
+        subject = `ESDispatch Wallet PIN Reset Code: ${code}`;
+        html = renderPinResetOtpEmail({ name, otp: code, expiryMinutes: 10 });
+        break;
+      default:
+        subject = `Your ESDispatch Passcode: ${code}`;
+        html = renderSignUpOtpEmail({ name, otp: code, expiryMinutes: 10 });
+        break;
+    }
+
+    const emailResult = await sendEmail({ to: email, subject, html });
+
+    if (!emailResult.success) {
+      throw new functions.https.HttpsError('internal', `Failed to send email: ${emailResult.error}`);
+    }
+
+    return {
+      success: true,
+      message: 'Verification code sent successfully.',
+      expiresAt: expiresAt.toISOString(),
+    };
+  } catch (error: any) {
+    console.error('[sendEmailOtp Error]', error);
+    if (error instanceof functions.https.HttpsError) throw error;
+    throw new functions.https.HttpsError('internal', error.message || 'Error processing OTP request.');
+  }
+});
+
+/**
+ * Callable Function: Verifies a user-submitted 6-digit OTP code.
+ */
+export const verifyEmailOtp = functions.https.onCall(async (data, context) => {
+  const email = (data.email || '').trim().toLowerCase();
+  const purpose = (data.purpose || 'SIGN_UP') as OtpPurpose;
+  const code = (data.code || '').trim();
+
+  if (!email || !code) {
+    throw new functions.https.HttpsError('invalid-argument', 'Email and 6-digit code are required.');
+  }
+
+  try {
+    const verification = await verifyOtpCode(email, purpose, code);
+    if (!verification.valid) {
+      return { success: false, message: verification.message };
+    }
+
+    // If verifying signup, mark user email as verified in Auth if user exists
+    if (purpose === 'SIGN_UP') {
+      try {
+        const userRecord = await admin.auth().getUserByEmail(email);
+        if (userRecord && !userRecord.emailVerified) {
+          await admin.auth().updateUser(userRecord.uid, { emailVerified: true });
+          await db.collection('users').doc(userRecord.uid).set({ emailVerified: true }, { merge: true });
+        }
+      } catch (authErr) {
+        // User may be in the middle of sign up before auth record is finalized
+        console.log(`[verifyEmailOtp] User record not yet in Auth: ${authErr}`);
+      }
+    }
+
+    return { success: true, message: verification.message };
+  } catch (error: any) {
+    console.error('[verifyEmailOtp Error]', error);
+    throw new functions.https.HttpsError('internal', error.message || 'Error verifying code.');
+  }
+});
+
+/**
+ * Callable Function: Diagnostic tool for Admin to verify SMTP connection.
+ */
+export const testSmtpConnection = functions.https.onCall(async (data, context) => {
+  try {
+    const { transporter, config } = await getTransporter();
+    await transporter.verify();
+    return {
+      success: true,
+      message: `SMTP connection established successfully to ${config.host}:${config.port} as ${config.user}.`,
+    };
+  } catch (error: any) {
+    console.error('[testSmtpConnection Error]', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to verify SMTP credentials.',
+    };
+  }
+});
+
+/**
+ * Trigger: When a delivery status updates to 'ARRIVED' or 'PICKED_UP',
+ * send the handover code email to the recipient if recipientEmail exists.
+ */
+export const onDeliveryStatusEmailTrigger = functions.firestore
+  .document('deliveries/{deliveryId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (!before || !after) return null;
+
+    // 1. Handover Code Alert on Arrival / Out for Delivery
+    const becameArrived = before.status !== 'ARRIVED' && after.status === 'ARRIVED';
+    const becameOutForDelivery = before.status !== 'IN_TRANSIT' && after.status === 'IN_TRANSIT';
+
+    if ((becameArrived || becameOutForDelivery) && after.recipientEmail && after.deliveryCode) {
+      try {
+        const html = renderDeliveryHandoverOtpEmail({
+          trackingNumber: after.trackingNumber || context.params.deliveryId.slice(0, 8).toUpperCase(),
+          recipientName: after.recipientName || 'Valued Recipient',
+          pickupAddress: after.pickupAddress || 'Dispatch Hub',
+          dropoffAddress: after.dropoffAddress || 'Designated Destination',
+          handoverOtp: after.deliveryCode,
+        });
+
+        await sendEmail({
+          to: after.recipientEmail,
+          subject: `ESDispatch Handover Code for Shipment #${after.trackingNumber || context.params.deliveryId.slice(0, 8).toUpperCase()}`,
+          html,
+        });
+        console.log(`[Handover Code Email] Sent to ${after.recipientEmail}`);
+      } catch (err) {
+        console.error('[Handover Code Email Error]', err);
+      }
+    }
+
+    // 2. Official Invoice Receipt on Delivered
+    const becameDelivered = before.status !== 'DELIVERED' && after.status === 'DELIVERED';
+    if (becameDelivered) {
+      const targetEmail = after.senderEmail || after.customerEmail;
+      if (targetEmail) {
+        try {
+          const breakdown = [
+            { label: 'Base Delivery Fare', amount: `NGN ${Number(after.basePrice || after.price || 0).toLocaleString()}` },
+          ];
+          if (after.weightSurge && Number(after.weightSurge) > 0) {
+            breakdown.push({ label: 'Weight Surcharge', amount: `NGN ${Number(after.weightSurge).toLocaleString()}` });
+          }
+          if (after.tipAmount && Number(after.tipAmount) > 0) {
+            breakdown.push({ label: 'Courier Tip', amount: `NGN ${Number(after.tipAmount).toLocaleString()}` });
+          }
+
+          const html = renderDeliveryInvoiceEmail({
+            trackingNumber: after.trackingNumber || context.params.deliveryId.slice(0, 8).toUpperCase(),
+            recipientName: after.recipientName || 'Recipient',
+            senderName: after.senderName || 'Valued Client',
+            serviceType: after.serviceType || 'Standard Express',
+            amountPaid: `NGN ${Number(after.price || 0).toLocaleString()}`,
+            date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+            paymentMethod: after.paymentMethod || 'Wallet Settlement',
+            breakdown,
+          });
+
+          await sendEmail({
+            to: targetEmail,
+            subject: `Payment Receipt: Shipment #${after.trackingNumber || context.params.deliveryId.slice(0, 8).toUpperCase()}`,
+            html,
+          });
+          console.log(`[Invoice Email] Sent to ${targetEmail}`);
+        } catch (err) {
+          console.error('[Invoice Email Error]', err);
+        }
+      }
+    }
+
+    return null;
+  });
+
+

@@ -51,6 +51,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1283,39 +1284,58 @@ fun WalletScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(20.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(48.dp)
-                                                    .clip(RoundedCornerShape(16.dp))
-                                                    .background(if (tx.isTopUp) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (tx.isTopUp) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
-                                                    contentDescription = "Type",
-                                                    tint = if (tx.isTopUp) Color(0xFF4CAF50) else Color(0xFFF44336),
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.width(16.dp))
-                                            Column {
-                                                Text(tx.title, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = AppOnSurface)
-                                                Text(tx.date, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                            }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(if (tx.isTopUp) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (tx.isTopUp) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
+                                                contentDescription = "Type",
+                                                tint = if (tx.isTopUp) Color(0xFF4CAF50) else Color(0xFFF44336),
+                                                modifier = Modifier.size(20.dp)
+                                            )
                                         }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = tx.title,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = AppOnSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = tx.date,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = TextGray,
+                                                maxLines = 1
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
 
                                         val amtColor = if (tx.isTopUp) Color(0xFF4CAF50) else AppOnSurface
                                         val prefix = if (tx.isTopUp) "+" else "-"
                                         Text(
                                             text = "$prefix₦${String.format("%,.2f", kotlin.math.abs(tx.amount))}",
-                                            fontSize = 18.sp,
+                                            fontSize = 15.sp,
                                             fontWeight = FontWeight.Black,
-                                            color = amtColor
+                                            color = amtColor,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }
@@ -3048,13 +3068,18 @@ fun NotificationsScreen(
                                                 fontWeight = FontWeight.ExtraBold,
                                                 fontSize = 13.sp,
                                                 color = textPrimary,
-                                                modifier = Modifier.weight(1f, fill = false)
+                                                modifier = Modifier.weight(1f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
+                                            Spacer(modifier = Modifier.width(8.dp))
                                             Text(
                                                 text = item.time,
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Medium,
-                                                color = TextGray
+                                                color = TextGray,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
 
@@ -4083,7 +4108,7 @@ fun HelpSupportSheet(
                 // Call Support
                 Surface(
                     onClick = {
-                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+2348001234567"))
+                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+2348031234567"))
                         context.startActivity(intent)
                         dismissWithAnim()
                     },
@@ -4096,7 +4121,41 @@ fun HelpSupportSheet(
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
                             Text("Call Support Desk", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
-                            Text("+234 800 123 4567 (Toll Free)", fontSize = 12.sp, color = TextGray)
+                            Text("+234 803 123 4567 (24/7 Dispatch Desk)", fontSize = 12.sp, color = TextGray)
+                        }
+                    }
+                }
+
+                // WhatsApp Live Dispatch
+                Surface(
+                    onClick = {
+                        try {
+                            val waUrl = "https://wa.me/2348031234567?text=" + java.net.URLEncoder.encode("Hello ESDispatch Support, I need assistance with my delivery.", "UTF-8")
+                            val waIntent = Intent(Intent.ACTION_VIEW, Uri.parse(waUrl))
+                            context.startActivity(waIntent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "WhatsApp not available", Toast.LENGTH_SHORT).show()
+                        }
+                        dismissWithAnim()
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (MaterialTheme.colorScheme.background != BackgroundDark) Color(0xFFF5F5F5) else Color(0xFF2C2C2C),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF25D366)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Chat, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text("WhatsApp Live Dispatch", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
+                            Text("+234 803 123 4567 (Direct WhatsApp)", fontSize = 12.sp, color = TextGray)
                         }
                     }
                 }
@@ -4444,17 +4503,58 @@ fun AvatarSelectionSheet(
             try {
                 val cachePath = java.io.File(context.cacheDir, "images")
                 cachePath.mkdirs()
-                val file = java.io.File(cachePath, "profile_avatar.png")
+                val file = java.io.File(cachePath, "profile_avatar_${System.currentTimeMillis()}.png")
                 val stream = java.io.FileOutputStream(file)
                 bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
                 stream.close()
                 viewModel.uploadAvatar(file.absolutePath)
-                Toast.makeText(context, "Camera avatar updated successfully!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Camera photo updated successfully!", Toast.LENGTH_SHORT).show()
+                dismissWithAnim()
             } catch (e: Exception) {
                 e.printStackTrace()
                 Toast.makeText(context, "Failed to save camera image", Toast.LENGTH_SHORT).show()
             }
-            dismissWithAnim()
+        }
+    }
+
+    // Camera permission launcher
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            try {
+                cameraLauncher.launch(null)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Unable to launch camera: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Camera permission is required to capture a photo.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Photo Picker launcher (Android modern media picker)
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                if (inputStream != null) {
+                    val cachePath = java.io.File(context.cacheDir, "images")
+                    cachePath.mkdirs()
+                    val file = java.io.File(cachePath, "profile_avatar_${System.currentTimeMillis()}.png")
+                    val outputStream = java.io.FileOutputStream(file)
+                    inputStream.copyTo(outputStream)
+                    inputStream.close()
+                    outputStream.close()
+                    viewModel.uploadAvatar(file.absolutePath)
+                    Toast.makeText(context, "Profile photo updated!", Toast.LENGTH_SHORT).show()
+                    dismissWithAnim()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Failed to load selected photo", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -4476,21 +4576,57 @@ fun AvatarSelectionSheet(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("Select Pre-set Avatar", fontSize = 14.sp, color = TextGray)
-
-                TextButton(
+                // Camera Button
+                Button(
                     onClick = {
-                        cameraLauncher.launch(null)
-                    }
+                        val hasPerm = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.CAMERA
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        if (hasPerm) {
+                            try {
+                                cameraLauncher.launch(null)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Unable to open camera", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = LuxuryBlack),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
-                    Icon(Icons.Filled.CameraAlt, "Camera", tint = Gold)
+                    Icon(Icons.Filled.CameraAlt, contentDescription = "Camera", modifier = Modifier.size(18.dp), tint = LuxuryBlack)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Use Camera", color = Gold, fontWeight = FontWeight.Bold)
+                    Text("Take Photo", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+
+                // Gallery Button
+                OutlinedButton(
+                    onClick = {
+                        photoPickerLauncher.launch(
+                            androidx.activity.result.PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                            )
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Gold),
+                    border = BorderStroke(1.dp, Gold),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    Icon(Icons.Filled.PhotoLibrary, contentDescription = "Gallery", modifier = Modifier.size(18.dp), tint = Gold)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Gallery", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
+
+            Text("Or choose a pre-set avatar:", fontSize = 13.sp, color = TextGray)
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),

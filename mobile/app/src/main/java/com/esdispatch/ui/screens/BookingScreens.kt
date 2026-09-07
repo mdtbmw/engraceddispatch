@@ -494,12 +494,13 @@ fun SendParcelScreen(
                                     }
                                 }
 
-                                                                // Delivery address
+                                // Delivery address
                                 OutlinedTextField(
                                     value = delivery,
                                     onValueChange = { delivery = it },
                                     modifier = Modifier
-                                        .fillMaxWidth(),
+                                        .fillMaxWidth()
+                                        .onFocusChanged { deliveryFocus = it.isFocused },
                                     shape = RoundedCornerShape(20.dp),
                                     placeholder = { Text("Delivery address", color = TextGray) },
                                     leadingIcon = {
@@ -522,6 +523,31 @@ fun SendParcelScreen(
                                         unfocusedPlaceholderColor = TextGray
                                     )
                                 )
+
+                                androidx.compose.animation.AnimatedVisibility(visible = deliveryResults.isNotEmpty() && deliveryFocus) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Charcoal,
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                                    ) {
+                                        Column {
+                                            deliveryResults.take(3).forEach { res ->
+                                                Text(
+                                                    text = res,
+                                                    color = Color.White,
+                                                    fontSize = 13.sp,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            delivery = res
+                                                            deliveryFocus = false
+                                                        }
+                                                        .padding(12.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
 
