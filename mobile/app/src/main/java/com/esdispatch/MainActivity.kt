@@ -15,10 +15,17 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.esdispatch.viewmodel.ToastData
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -35,7 +42,9 @@ import com.esdispatch.ui.screens.*
 import com.esdispatch.ui.theme.MyApplicationTheme
 import com.esdispatch.ui.theme.Gold
 import com.esdispatch.ui.theme.Obsidian
+import com.esdispatch.ui.theme.GoldenWhite
 import com.esdispatch.ui.theme.GoldenWhiteLight
+import com.esdispatch.ui.theme.GoldenWhiteSurface
 import com.esdispatch.ui.theme.TextGray
 import com.esdispatch.ui.theme.Hugeicons
 import com.esdispatch.ui.theme.AnimatedHugeIcon
@@ -502,25 +511,57 @@ class MainActivity : FragmentActivity() {
                 }
 
                 // Custom Luxury Toast Notification Pill Overlay
+                var activeToastData by remember { mutableStateOf<ToastData?>(null) }
+                val toastScope = rememberCoroutineScope()
+                var dismissJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+                LaunchedEffect(Unit) {
+                    com.esdispatch.util.CustomToastBridge.toastFlow.collect { data ->
+                        activeToastData = data
+                        dismissJob?.cancel()
+                        dismissJob = toastScope.launch {
+                            delay(3200)
+                            if (activeToastData?.id == data.id) {
+                                activeToastData = null
+                            }
+                        }
+                    }
+                }
+
+                LaunchedEffect(Unit) {
+                    viewModel.customToastData.collect { data ->
+                        if (data != null) {
+                            activeToastData = data
+                            dismissJob?.cancel()
+                            dismissJob = toastScope.launch {
+                                delay(3200)
+                                if (activeToastData?.id == data.id) {
+                                    activeToastData = null
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val currentToast = activeToastData
                 AnimatedVisibility(
-                    visible = customToast != null,
-                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                    visible = currentToast != null,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 96.dp) // shift upwards to clear bottom floating dock easily
-                        .padding(horizontal = 24.dp)
-                        .zIndex(200f)
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 16.dp)
+                        .padding(horizontal = 20.dp)
+                        .zIndex(9999f)
                 ) {
-                    val toastMsg = customToast
-                    val toastData = customToastData
-                    if (toastMsg != null) {
-                        val toastType = toastData?.type ?: ToastType.INFO
+                    if (currentToast != null) {
+                        val toastType = currentToast.type
                         val accentColor = when (toastType) {
-                            ToastType.SUCCESS -> Gold
+                            ToastType.SUCCESS -> if (darkModeEnabled) Gold else Color(0xFF10B981) // Emerald in light, Gold in dark
                             ToastType.ERROR -> Color(0xFFFF5252)
                             ToastType.WARNING -> Color(0xFFFFB800)
-                            ToastType.INFO -> Gold
+                            ToastType.INFO -> if (darkModeEnabled) Gold else Obsidian
                         }
                         val toastIcon = when (toastType) {
                             ToastType.SUCCESS -> Hugeicons.Solid.CheckCircle
@@ -530,14 +571,18 @@ class MainActivity : FragmentActivity() {
                         }
 
                         Surface(
-                            shape = RoundedCornerShape(24.dp),
-                            color = Obsidian,
+                            shape = RoundedCornerShape(26.dp),
+                            color = if (darkModeEnabled) Color(0xFF161618) else GoldenWhiteSurface,
                             border = BorderStroke(1.5.dp, accentColor),
-                            shadowElevation = 10.dp,
-                            modifier = Modifier.clickable { viewModel.dismissCustomToast() }
+                            shadowElevation = 8.dp,
+                            modifier = Modifier.clickable { 
+                                viewModel.dismissCustomToast()
+                                dismissJob?.cancel()
+                                activeToastData = null
+                            }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 11.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
@@ -548,9 +593,9 @@ class MainActivity : FragmentActivity() {
                                     size = 20.dp
                                 )
                                 Text(
-                                    text = toastMsg,
+                                    text = currentToast.message,
                                     fontSize = 13.sp,
-                                    color = Color.White,
+                                    color = if (darkModeEnabled) Color.White else Obsidian,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -630,9 +675,9 @@ class MainActivity : FragmentActivity() {
 
 @Composable
 fun ConfigurationErrorScreen(isDark: Boolean) {
-    val backgroundColor = if (isDark) Obsidian else Color.White
+    val backgroundColor = if (isDark) Obsidian else GoldenWhite
     val textColor = if (isDark) Color.White else Obsidian
-    val surfaceColor = if (isDark) Color(0xFF1E1E1E) else Color(0xFFF9F9F9)
+    val surfaceColor = if (isDark) Color(0xFF1E1E1E) else GoldenWhiteLight
     val cardBorderColor = if (isDark) Gold else Obsidian.copy(alpha = 0.1f)
 
     // Animated rotation for a friendly waving hand 👋

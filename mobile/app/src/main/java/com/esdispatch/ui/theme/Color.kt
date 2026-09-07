@@ -10,9 +10,10 @@ val GoldDark = Color(0xFFD4AF37)
 val GoldLight = Color(0xFFFFF3D6)
 val GoldContainer = Color(0xFFFFE082)
 
-// Subtle golden-white palette
-val GoldenWhite = Color(0xFFFAF7EC) // Smooth warm golden-white background
-val GoldenWhiteLight = Color(0xFFFFFDF5) // Radiant warm golden-white for cards/surfaces
+// Subtle golden-white palette (eye-comfort warm golden-white shades of brand Gold)
+val GoldenWhite = Color(0xFFF5EEDB) // Smooth warm golden-white background
+val GoldenWhiteLight = Color(0xFFFBF6E7) // Radiant warm golden-white for cards/surfaces
+val GoldenWhiteSurface = Color(0xFFFEFBF0) // Elevated dialogs, tooltips, toasts
 
 // Obsidian is used for dark text and major headings
 val Obsidian = Color(0xFF121212)
@@ -23,7 +24,7 @@ val Charcoal: Color
     get() = if (isDarkTheme) Obsidian else GoldenWhiteLight
 
 // Slate is a light grayish color for borders/dividers - updated to a warm gold-tinted gray
-val Slate = Color(0xFFE4DFD0)
+val Slate = Color(0xFFE2D9C3)
 
 // LuxuryBlack is a soft off-white for page backgrounds
 val LuxuryBlack: Color
@@ -68,7 +69,7 @@ val WarningOrange = Color(0xFFFF9800)
 
 // Named Border and Divider Tokens
 val BorderDark = Color(0xFF222222)
-val BorderLight = Color(0xFFE5E7EB)
+val BorderLight = Color(0xFFE2D9C3)
 
 val BorderColor: Color
     @Composable
@@ -76,7 +77,7 @@ val BorderColor: Color
 
 val DividerColor: Color
     @Composable
-    get() = if (isDarkTheme) Obsidian.copy(alpha = 0.3f) else Color(0xFFE5E7EB)
+    get() = if (isDarkTheme) Obsidian.copy(alpha = 0.3f) else Slate
 
 
 

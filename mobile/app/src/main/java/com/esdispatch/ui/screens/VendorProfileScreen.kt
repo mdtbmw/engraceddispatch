@@ -35,6 +35,8 @@ import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 import com.esdispatch.viewmodel.MarketplaceItem
 import com.esdispatch.viewmodel.MarketplaceStore
+import com.esdispatch.viewmodel.ToastType
+import com.esdispatch.util.CustomToastBridge
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -326,7 +328,7 @@ fun VendorProfileScreen(
                             onQuickView = { quickViewItem = item },
                             onAddToCart = {
                                 viewModel.addToCart(item, 1)
-                                Toast.makeText(context, "${item.title} added to cart!", Toast.LENGTH_SHORT).show()
+                                CustomToastBridge.show("${item.title} added to cart!", ToastType.SUCCESS)
                             }
                         )
                     }
@@ -414,7 +416,7 @@ fun VendorProfileScreen(
             onDismiss = { quickViewItem = null },
             onAddToCart = { qty ->
                 viewModel.addToCart(item, qty)
-                Toast.makeText(context, "Added $qty x ${item.title} to cart!", Toast.LENGTH_SHORT).show()
+                CustomToastBridge.show("Added $qty x ${item.title} to cart!", ToastType.SUCCESS)
                 quickViewItem = null
             }
         )
@@ -503,7 +505,7 @@ private fun VendorProductCard(
                             .weight(1f)
                             .height(32.dp),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) LuxuryBlack else Color.White, contentColor = AppTextColor),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) LuxuryBlack else GoldenWhiteLight, contentColor = AppTextColor),
                         border = BorderStroke(1.dp, if (isDark) BorderDark else Slate),
                         contentPadding = PaddingValues(0.dp)
                     ) {
@@ -659,7 +661,7 @@ private fun QuickViewProductModal(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(if (isDark) LuxuryBlack else Color.White)
+                            .background(if (isDark) LuxuryBlack else GoldenWhiteLight)
                             .clickable { if (quantity > 1) quantity-- },
                         contentAlignment = Alignment.Center
                     ) {
@@ -672,7 +674,7 @@ private fun QuickViewProductModal(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(if (isDark) LuxuryBlack else Color.White)
+                            .background(if (isDark) LuxuryBlack else GoldenWhiteLight)
                             .clickable { quantity++ },
                         contentAlignment = Alignment.Center
                     ) {

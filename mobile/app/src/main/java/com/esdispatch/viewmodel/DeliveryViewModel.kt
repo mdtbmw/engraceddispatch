@@ -38,7 +38,8 @@ enum class ToastType {
 
 data class ToastData(
     val message: String,
-    val type: ToastType = ToastType.INFO
+    val type: ToastType = ToastType.INFO,
+    val id: Long = System.nanoTime()
 )
 
 enum class AppView {
@@ -1522,18 +1523,13 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun showToast(message: String, type: ToastType = ToastType.INFO) {
-        when (type) {
-            ToastType.SUCCESS -> com.esdispatch.util.SoundManager.playSuccessArpeggio()
-            ToastType.ERROR -> com.esdispatch.util.SoundManager.playErrorBuzz()
-            ToastType.WARNING -> com.esdispatch.util.SoundManager.playGeofencePing()
-            ToastType.INFO -> com.esdispatch.util.SoundManager.playClick()
-        }
+        val data = ToastData(message, type, System.nanoTime())
+        com.esdispatch.util.CustomToastBridge.show(message, type)
+        _customToast.value = message
+        _customToastData.value = data
         viewModelScope.launch {
-            val data = ToastData(message, type)
-            _customToast.value = message
-            _customToastData.value = data
             kotlinx.coroutines.delay(3200)
-            if (_customToastData.value == data) {
+            if (_customToastData.value?.id == data.id) {
                 _customToastData.value = null
                 _customToast.value = null
             }
@@ -3437,13 +3433,13 @@ class DeliveryViewModel : WalletViewModel() {
                     resolver.openOutputStream(uri)?.use { outputStream ->
                         outputStream.write(jsonString.toByteArray())
                     }
-                    Toast.makeText(context, "History successfully exported to Downloads folder!", Toast.LENGTH_LONG).show()
+                    showToast("History successfully exported to Downloads folder!", ToastType.SUCCESS)
                 } else {
-                    Toast.makeText(context, "Failed to create file in Downloads.", Toast.LENGTH_SHORT).show()
+                    showToast("Failed to create file in Downloads.", ToastType.ERROR)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("ExportHistory", "Failed to export JSON: ${e.message}")
-                Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+                showToast("Export failed: ${e.message}", ToastType.ERROR)
             }
         }
     }

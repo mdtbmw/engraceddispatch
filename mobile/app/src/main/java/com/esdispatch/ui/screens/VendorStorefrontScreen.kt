@@ -40,6 +40,8 @@ import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 import com.esdispatch.viewmodel.MarketplaceItem
 import com.esdispatch.viewmodel.MarketplaceStore
+import com.esdispatch.viewmodel.ToastType
+import com.esdispatch.util.CustomToastBridge
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -187,7 +189,7 @@ fun VendorStorefrontScreen(
                                     onTap = { quickViewItem = product },
                                     onAddToCart = {
                                         viewModel.addToCart(product)
-                                        Toast.makeText(context, "${product.title} added to cart", Toast.LENGTH_SHORT).show()
+                                        CustomToastBridge.show("${product.title} added to cart", ToastType.SUCCESS)
                                     }
                                 )
                             }
@@ -310,7 +312,7 @@ fun VendorStorefrontScreen(
                     onClick = {
                         if (quickView.stock > 0) {
                             viewModel.addToCart(quickView)
-                            Toast.makeText(context, "Added to cart!", Toast.LENGTH_SHORT).show()
+                            CustomToastBridge.show("Added to cart!", ToastType.SUCCESS)
                             quickViewItem = null
                         }
                     },

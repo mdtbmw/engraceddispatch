@@ -525,7 +525,7 @@ fun ActiveTrackingScreen(
                     if (distanceMeters <= 1609.34f && !hasNotifiedWithinOneMile) { // 1 mile = 1609.34 meters
                         hasNotifiedWithinOneMile = true
                         showInAppNotificationBanner = true
-                        Toast.makeText(context, "Delivery Notice: Courier is within 1 mile of your location!", Toast.LENGTH_LONG).show()
+                        com.esdispatch.util.CustomToastBridge.show("Delivery Notice: Courier is within 1 mile of your location!", com.esdispatch.viewmodel.ToastType.INFO)
                     }
                     if (distanceMeters > 1609.34f) {
                         hasNotifiedWithinOneMile = false
@@ -542,7 +542,7 @@ fun ActiveTrackingScreen(
         if (parcel.progress >= 0.85f && parcel.progress < 0.98f && !hasNotifiedWithinOneMile) {
             hasNotifiedWithinOneMile = true
             showInAppNotificationBanner = true
-            Toast.makeText(context, "Delivery Notice: Courier is within 1 mile of your location!", Toast.LENGTH_LONG).show()
+            com.esdispatch.util.CustomToastBridge.show("Delivery Notice: Courier is within 1 mile of your location!", com.esdispatch.viewmodel.ToastType.INFO)
         }
         if (parcel.progress < 0.85f) {
             hasNotifiedWithinOneMile = false
@@ -918,7 +918,7 @@ fun ActiveTrackingScreen(
                         Card(
                             modifier = Modifier.fillMaxSize(),
                             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-                            colors = CardDefaults.cardColors(containerColor = if (isDark) Obsidian else Color.White),
+                            colors = CardDefaults.cardColors(containerColor = if (isDark) Obsidian else GoldenWhiteLight),
                             border = BorderStroke(1.5.dp, if (isDark) Gold else BorderLight)
                         ) {
                             Box(modifier = Modifier.fillMaxSize()) {
@@ -1761,7 +1761,7 @@ val badgeText = when (parcelForId.status) {
                                                     modifier = Modifier
                                                         .size(44.dp)
                                                         .clip(CircleShape)
-                                                        .background(Color.White)
+                                                        .background(GoldenWhiteLight)
                                                         .clickable {
                                                             val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${parcel.courierPhone}"))
                                                             try {
@@ -2091,12 +2091,12 @@ fun LiveMapView(
                     context = context,
                     onMapClickCallback = { lat, lng ->
                         reverseGeocodeAddress(context, lat, lng) { address ->
-                            Toast.makeText(context, "Location Selected on Map: $address", Toast.LENGTH_LONG).show()
+                            com.esdispatch.util.CustomToastBridge.show("Location Selected: $address", com.esdispatch.viewmodel.ToastType.SUCCESS)
                         }
                     },
                     onMarkerPlacedCallback = { label, lat, lng ->
                         reverseGeocodeAddress(context, lat, lng) { address ->
-                            Toast.makeText(context, "$label Address Marker: $address", Toast.LENGTH_LONG).show()
+                            com.esdispatch.util.CustomToastBridge.show("$label Marker: $address", com.esdispatch.viewmodel.ToastType.INFO)
                         }
                     },
                     onTrackingUpdatedCallback = { lat, lng ->
@@ -2456,7 +2456,7 @@ fun LiveMapView(
                         try {
                             mapboxgl.accessToken = mapboxToken;
                             var styleMode = '$isSatellite' === 'true' ? 'mapbox://styles/mapbox/satellite-streets-v12' : 
-                                            (isDarkTheme ? 'mapbox://styles/mapbox/navigation-night-v1' : 'mapbox://styles/mapbox/navigation-day-v1');
+                                            (isDarkTheme ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/streets-v12');
                             
                             var initialCenter = hasUserLoc ? [userLoc[1], userLoc[0]] : [pickupLoc[1], pickupLoc[0]];
                             map = new mapboxgl.Map({
@@ -2662,17 +2662,19 @@ fun LiveMapView(
                     var initialCenter = hasUserLoc ? userLoc : pickupLoc;
                     map = L.map('map', {
                         center: initialCenter,
-                        zoom: 12,
+                        zoom: 14,
+                        minZoom: 3,
+                        maxZoom: 18,
                         zoomControl: false,
                         attributionControl: false
                     });
                     leafletMap = map;
 
-                    darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' });
-                    streetTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' });
-                    satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
-                    satelliteLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
-                    satelliteRoads = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+                    darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, maxNativeZoom: 18, subdomains: 'abcd' });
+                    streetTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, maxNativeZoom: 18, subdomains: 'abcd', attribution: '© CARTO, © OpenStreetMap' });
+                    satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
+                    satelliteLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
+                    satelliteRoads = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
 
                     var isSat = '$isSatellite' === 'true';
                     if (isSat) {
@@ -2684,15 +2686,29 @@ fun LiveMapView(
                     } else {
                         if (isDarkTheme) {
                             darkTiles.addTo(map);
-                            satelliteRoads.addTo(map); // illuminated street & road network over dark base!
-                            satelliteLabels.addTo(map);
                         } else {
                             streetTiles.addTo(map);
-                            satelliteRoads.addTo(map);
                         }
                         document.getElementById('streetBtn').classList.add('active');
                         document.getElementById('satelliteBtn').classList.remove('active');
                     }
+
+                    window.userZoomed = false;
+                    map.on('zoomstart', function(e) {
+                        if (e && e.originalEvent) {
+                            window.userZoomed = true;
+                        }
+                    });
+                    var origSetZoom = map.setZoom;
+                    map.setZoom = function(z, options) {
+                        if (window.userZoomed) return map;
+                        return origSetZoom.call(map, z, options);
+                    };
+                    window.programmaticSetZoom = function(z) {
+                        if (map) {
+                            origSetZoom.call(map, z);
+                        }
+                    };
 
                     map.on('click', function(e) {
                         if (window.AndroidMap) {
@@ -2763,7 +2779,7 @@ fun LiveMapView(
                     if (!map) return;
                     if (isMapboxActive) {
                         var style = isSatellite ? 'mapbox://styles/mapbox/satellite-streets-v12' : 
-                                    (isDarkTheme ? 'mapbox://styles/mapbox/navigation-night-v1' : 'mapbox://styles/mapbox/navigation-day-v1');
+                                    (isDarkTheme ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/streets-v12');
                         map.setStyle(style);
                     } else {
                         if (isSatellite) {
@@ -2774,15 +2790,14 @@ fun LiveMapView(
                             satelliteLabels.addTo(map); // add labels layer over satellite tiles
                         } else {
                             try { map.removeLayer(satelliteTiles); } catch(e){}
+                            try { map.removeLayer(satelliteRoads); } catch(e){}
+                            try { map.removeLayer(satelliteLabels); } catch(e){}
                             if (isDarkTheme) {
                                 try { map.removeLayer(streetTiles); } catch(e){}
                                 darkTiles.addTo(map);
-                                satelliteRoads.addTo(map);
-                                satelliteLabels.addTo(map);
                             } else {
                                 try { map.removeLayer(darkTiles); } catch(e){}
                                 streetTiles.addTo(map);
-                                satelliteRoads.addTo(map);
                             }
                         }
                     }
@@ -2939,7 +2954,7 @@ fun LiveMapView(
 
     LaunchedEffect(zoom, isPageLoaded) {
         if (isPageLoaded) {
-            webView.evaluateJavascript("map.setZoom($zoom)", null)
+            webView.evaluateJavascript("if (typeof window.programmaticSetZoom === 'function') { window.programmaticSetZoom($zoom); } else if (typeof map !== 'undefined' && map !== null) { map.setZoom($zoom); }", null)
         }
     }
 
@@ -3618,9 +3633,9 @@ fun DeliveryFeedbackDialog(
         content = {
             Surface(
                 shape = RoundedCornerShape(24.dp),
-                color = if (isDark) Charcoal else Color.White,
+                color = Charcoal,
                 tonalElevation = 6.dp,
-                border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.2f) else Color(0xFFE5E7EB))
+                border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.2f) else Slate)
             ) {
                 Column(
                     modifier = Modifier
@@ -3782,8 +3797,8 @@ fun DeliveryFeedbackDialog(
                                     unfocusedBorderColor = if (isDark) Gold.copy(alpha = 0.3f) else Color.LightGray,
                                     focusedLabelColor = Gold,
                                     unfocusedLabelColor = if (isDark) GoldLight else Obsidian,
-                                    focusedContainerColor = if (isDark) LuxuryBlack else Color.White,
-                                    unfocusedContainerColor = if (isDark) LuxuryBlack else Color.White,
+                                    focusedContainerColor = if (isDark) LuxuryBlack else GoldenWhiteSurface,
+                                    unfocusedContainerColor = if (isDark) LuxuryBlack else GoldenWhiteLight,
                                     focusedTextColor = if (isDark) Color.White else Obsidian,
                                     unfocusedTextColor = if (isDark) Color.White else Obsidian
                                 ),

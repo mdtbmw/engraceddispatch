@@ -273,7 +273,7 @@ fun MarketplaceScreen(
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp),
                             shape = RoundedCornerShape(22.dp),
-                            color = if (isDark) Charcoal else Color.White,
+                            color = Charcoal,
                             border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
                             shadowElevation = 0.dp
                         ) {
@@ -585,7 +585,7 @@ fun MarketplaceScreen(
                     items(cartItems, key = { it.item.id }) { cartItem ->
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = if (isDark) LuxuryBlack else Color.White,
+                            color = if (isDark) LuxuryBlack else GoldenWhiteLight,
                             border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f))
                         ) {
                             Row(
@@ -720,7 +720,7 @@ fun MarketplaceScreen(
                                 .weight(1f)
                                 .clickable { selectedPaymentMethod = method },
                             shape = RoundedCornerShape(14.dp),
-                            color = if (sel) Gold.copy(alpha = 0.18f) else if (isDark) LuxuryBlack else Color.White,
+                            color = if (sel) Gold.copy(alpha = 0.18f) else if (isDark) LuxuryBlack else GoldenWhiteLight,
                             border = BorderStroke(1.5.dp, if (sel) Gold else if (isDark) BorderDark else Slate)
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
@@ -741,7 +741,7 @@ fun MarketplaceScreen(
                     Surface(
                         onClick = { redeemPoints = !redeemPoints },
                         shape = RoundedCornerShape(16.dp),
-                        color = if (redeemPoints) Gold.copy(alpha = 0.15f) else if (isDark) LuxuryBlack else Color.White,
+                        color = if (redeemPoints) Gold.copy(alpha = 0.15f) else if (isDark) LuxuryBlack else GoldenWhiteLight,
                         border = BorderStroke(1.dp, if (redeemPoints) Gold else if (isDark) BorderDark else Slate)
                     ) {
                         Row(
@@ -772,7 +772,7 @@ fun MarketplaceScreen(
                 // Price Summary
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = if (isDark) LuxuryBlack else Color.White,
+                    color = if (isDark) LuxuryBlack else GoldenWhiteLight,
                     border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f))
                 ) {
                     Column(
@@ -923,7 +923,7 @@ fun MarketplaceScreen(
                             items(favItems, key = { it.id }) { favItem ->
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
-                                    color = if (isDark) LuxuryBlack else Color.White,
+                                    color = if (isDark) LuxuryBlack else GoldenWhiteLight,
                                     border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {

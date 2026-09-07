@@ -1936,7 +1936,7 @@ fun ServiceSelectionScreen(
                         if (isLight) BorderStroke(1.dp, BorderLight) else BorderStroke(1.dp, Color(0xFF333333))
                     }
                     val containerColor = if (isLight) {
-                        if (isSelected) Gold.copy(alpha = 0.08f) else Color.White
+                        if (isSelected) Gold.copy(alpha = 0.08f) else GoldenWhiteLight
                     } else {
                         if (isSelected) Charcoal else Obsidian
                     }

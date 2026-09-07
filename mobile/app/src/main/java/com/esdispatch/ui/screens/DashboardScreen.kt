@@ -112,6 +112,7 @@ import com.esdispatch.ui.components.QuiltedBackground
 import com.esdispatch.ui.components.ShimmerBox
 import com.esdispatch.ui.components.AppModalBottomSheet
 import com.esdispatch.ui.components.InteractiveTourGuide
+import com.esdispatch.ui.components.tourSpotlightTarget
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 import androidx.compose.ui.graphics.Shape
@@ -366,7 +367,11 @@ fun DashboardScreen(
 
     Scaffold(
         containerColor = LuxuryBlack,
-        bottomBar = { BottomNav(currentScreen = "Dashboard", onNavigate = onNavigate, activeViewMode = activeViewMode, userRole = userRole) }
+        bottomBar = { 
+            Box(modifier = Modifier.tourSpotlightTarget("bottom_dock")) {
+                BottomNav(currentScreen = "Dashboard", onNavigate = onNavigate, activeViewMode = activeViewMode, userRole = userRole)
+            }
+        }
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -560,183 +565,7 @@ fun DashboardScreen(
                         }
                     }
                 }
-            }
-
-            val showOnboardingTooltip by viewModel.showOnboardingTooltip.collectAsState()
-            val showOnboardingOverlay = showOnboardingTooltip && !showWelcomeGiftDialog
-
-            androidx.compose.animation.AnimatedVisibility(
-                visible = showOnboardingOverlay,
-                enter = fadeIn() + scaleIn(initialScale = 0.85f),
-                exit = fadeOut() + scaleOut(targetScale = 0.85f),
-                modifier = Modifier.zIndex(98f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.85f))
-                        .clickable(enabled = false) {},
-                    contentAlignment = Alignment.Center
-                ) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth(0.92f)
-                            .padding(16.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Charcoal),
-                        border = BorderStroke(1.5.dp, if (isDark) Gold else Obsidian)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .background(if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.1f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Map,
-                                    contentDescription = "Onboarding Guide",
-                                    tint = if (isDark) Gold else Obsidian,
-                                    modifier = Modifier.size(36.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Text(
-                                text = "ONBOARDING GUIDE",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Gold else Obsidian,
-                                letterSpacing = 2.sp
-                            )
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            Text(
-                                text = "Tracking & Real-Time Maps",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Black,
-                                color = AppTextColor,
-                                textAlign = TextAlign.Center
-                            )
-
-                            Spacer(modifier = Modifier.height(20.dp))
-
-                            // Feature 1: Formatting
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(if (isDark) Gold.copy(alpha = 0.1f) else Obsidian.copy(alpha = 0.05f), RoundedCornerShape(10.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.QrCodeScanner,
-                                        contentDescription = null,
-                                        tint = if (isDark) Gold else Obsidian,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Smart Tracking ID Input",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AppTextColor
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Type tracking IDs on the tracking screens; fields automatically insert hyphens (XXXX-XXXX-XXXX) for perfect readability.",
-                                        fontSize = 11.sp,
-                                        color = TextGray,
-                                        lineHeight = 15.sp
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Feature 2: Map
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(if (isDark) Gold.copy(alpha = 0.1f) else Obsidian.copy(alpha = 0.05f), RoundedCornerShape(10.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Navigation,
-                                        contentDescription = null,
-                                        tint = if (isDark) Gold else Obsidian,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Interactive Real-Time Maps",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AppTextColor
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Tap on any active shipment or the Tracking tab to open live Mapbox-powered Leaflet & D3 maps featuring interactive Zoom, satellite overlays, and driver ETA.",
-                                        fontSize = 11.sp,
-                                        color = TextGray,
-                                        lineHeight = 15.sp
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(28.dp))
-
-                            Button(
-                                onClick = {
-                                    viewModel.dismissOnboardingTooltip()
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(50.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isDark) Gold else Obsidian,
-                                    contentColor = if (isDark) Obsidian else Color.White
-                                )
-                            ) {
-                                Text(
-                                    text = "Got It, Let's Track!",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Black
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Text(
-                                text = "ESDISPATCH • PREMIUM LOGISTICS",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = GoldLight.copy(alpha = 0.6f),
-                                letterSpacing = 1.5.sp
-                            )
-                        }
-                    }
                 }
-            }
 
             // Background glow unified without jarring fixed-height seam lines
             val isSandbox by viewModel.isSandboxEnvironment.collectAsState()
@@ -756,16 +585,18 @@ fun DashboardScreen(
                 if (sections["promo_banner"] != false) {
                     item {
                         Spacer(modifier = Modifier.height(20.dp))
-                        HeroCarousel(
-                            products = marketplaceProducts,
-                            onAddToCart = { item ->
-                                viewModel.addToCart(item)
-                                Toast.makeText(context, "Added ${item.title} to cart", Toast.LENGTH_SHORT).show()
-                            },
-                            onProductClick = { item ->
-                                onNavigate("Marketplace")
-                            }
-                        )
+                        Box(modifier = Modifier.tourSpotlightTarget("hero_carousel")) {
+                            HeroCarousel(
+                                products = marketplaceProducts,
+                                onAddToCart = { item ->
+                                    viewModel.addToCart(item)
+                                    com.esdispatch.util.CustomToastBridge.show("Added ${item.title} to cart", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                                },
+                                onProductClick = { item ->
+                                    onNavigate("Marketplace")
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -775,7 +606,8 @@ fun DashboardScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
+                        .padding(horizontal = 24.dp)
+                        .tourSpotlightTarget("stats_grid"),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
@@ -871,7 +703,7 @@ fun DashboardScreen(
                                 Surface(
                                     onClick = { onNavigate("VendorStorefront/${store.id}") },
                                     shape = RoundedCornerShape(20.dp),
-                                    color = if (isDark) Charcoal else Color.White,
+                                    color = Charcoal,
                                     border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
                                     shadowElevation = 0.dp,
                                     modifier = Modifier.width(160.dp)
@@ -1049,7 +881,7 @@ fun DashboardScreen(
                             else -> (36f - 18f * swipeProgress).dp
                         }
 
-                        val baseColor = if (isDark) Charcoal else Color.White
+                        val baseColor = Charcoal
                         val cardBgColor = if (relativeIndex == 0) {
                             baseColor
                         } else if (relativeIndex == 1) {
@@ -1165,7 +997,7 @@ fun DashboardScreen(
                                                     modifier = Modifier
                                                         .clip(RoundedCornerShape(6.dp))
                                                         .clickable {
-                                                            Toast.makeText(context, "Promo code ${promo.code} applied successfully!", Toast.LENGTH_SHORT).show()
+                                                            com.esdispatch.util.CustomToastBridge.show("Promo code ${promo.code} applied successfully!", com.esdispatch.viewmodel.ToastType.SUCCESS)
                                                         }
                                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                                 ) {
@@ -1502,7 +1334,7 @@ fun DashboardScreen(
                         key = parcel.id,
                         onArchive = {
                             viewModel.archiveParcel(parcel.id)
-                            Toast.makeText(context, "Parcel ${parcel.id} archived", Toast.LENGTH_SHORT).show()
+                            com.esdispatch.util.CustomToastBridge.show("Parcel ${parcel.id} archived", com.esdispatch.viewmodel.ToastType.INFO)
                         }
                     ) {
                         ParcelCard(
@@ -1800,7 +1632,7 @@ fun DashboardScreen(
                                                 viewModel.selectParcelForTracking(found.id)
                                                 onNavigate("ActiveTracking")
                                             } else {
-                                                Toast.makeText(context, "No parcel found matching '$searchQuery'", Toast.LENGTH_SHORT).show()
+                                                com.esdispatch.util.CustomToastBridge.show("No parcel found matching '$searchQuery'", com.esdispatch.viewmodel.ToastType.WARNING)
                                             }
                                         }
                                     }
@@ -1829,7 +1661,7 @@ fun DashboardScreen(
                                                 viewModel.selectParcelForTracking(found.id)
                                                 onNavigate("ActiveTracking")
                                             } else {
-                                                Toast.makeText(context, "No parcel found matching '$searchQuery'", Toast.LENGTH_SHORT).show()
+                                                com.esdispatch.util.CustomToastBridge.show("No parcel found matching '$searchQuery'", com.esdispatch.viewmodel.ToastType.WARNING)
                                             }
                                         }
                                     }
@@ -1869,9 +1701,11 @@ fun DashboardScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Dual Action Grid (Wallet & Track Order) Inside Header
+                        // Dual Action Grid (Wallet & Marketplace) Inside Header
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .tourSpotlightTarget("quick_actions"),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Surface(
@@ -2130,7 +1964,8 @@ fun DashboardScreen(
 
             // ── Interactive Spotlight Onboarding Tour ──
             InteractiveTourGuide(
-                isDark = isDark
+                isDark = isDark,
+                listState = listState
             )
         }
     }
@@ -3319,7 +3154,7 @@ fun ParcelDetailBottomSheet(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
-                        color = if (isDark) LuxuryBlack else Color.White,
+                        color = if (isDark) LuxuryBlack else GoldenWhiteLight,
                         border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.25f) else Obsidian.copy(alpha = 0.25f))
                     ) {
                         Row(

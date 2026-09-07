@@ -159,7 +159,7 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     // Premium User Profile Card
-                    val cardBgColor = if (isDark) Charcoal else Color.White
+                    val cardBgColor = Charcoal
                     val cardBorderColor = if (isDark) Gold.copy(alpha = 0.2f) else BorderLight
                     val primaryTextColor = if (isDark) Color.White else Obsidian
                     val secondaryTextColor = if (isDark) TextGray else Color(0xFF4B5563) // darker gray for light mode contrast
@@ -218,7 +218,7 @@ fun ProfileScreen(
                                             .align(Alignment.BottomEnd)
                                             .size(24.dp)
                                             .clip(CircleShape)
-                                            .background(if (isDark) Charcoal else Color.White)
+                                            .background(Charcoal)
                                             .border(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else BorderLight, CircleShape)
                                             .clickable { showAvatarSheet = true },
                                         contentAlignment = Alignment.Center
@@ -557,7 +557,7 @@ fun ProfileScreen(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(24.dp),
-                        color = if (isDark) Charcoal else Color.White,
+                        color = Charcoal,
                         border = BorderStroke(1.2.dp, if (isDark) Gold.copy(alpha = 0.35f) else BorderLight),
                         shadowElevation = 0.dp
                     ) {
@@ -690,7 +690,7 @@ fun ProfileScreen(
                                 .clip(RoundedCornerShape(24.dp))
                                 .clickable { onNavigate("VendorPortal") },
                             shape = RoundedCornerShape(24.dp),
-                            color = if (isDark) Charcoal else Color.White,
+                            color = Charcoal,
                             border = BorderStroke(1.2.dp, if (isDark) Gold.copy(alpha = 0.35f) else BorderLight),
                             shadowElevation = 0.dp
                         ) {
@@ -755,7 +755,7 @@ fun ProfileScreen(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(24.dp),
-                            color = if (isDark) Charcoal else Color.White,
+                            color = Charcoal,
                             border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else BorderLight),
                             shadowElevation = 0.dp
                         ) {
@@ -1947,29 +1947,17 @@ fun SettingsScreen(
                                     Spacer(modifier = Modifier.width(14.dp))
                                     Column {
                                         Text(
-                                            text = "ESDispatch Fleet Core",
+                                            text = "ESDispatch",
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 15.sp,
                                             color = AppTextColor
                                         )
                                         Text(
-                                            text = "Official Release • Production Edition",
+                                            text = "Official Release - 1.2.0",
                                             fontSize = 12.sp,
                                             color = TextGray
                                         )
                                     }
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)
-                                ) {
-                                    Text(
-                                        text = "v1.2.0",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (isDark) Gold else Obsidian,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
                                 }
                             }
                         }
@@ -2853,7 +2841,7 @@ fun NotificationsScreen(
                     Text("Cancel", color = if (isDark) Gold else Obsidian, fontWeight = FontWeight.SemiBold)
                 }
             },
-            containerColor = if (isDark) Charcoal else Color.White,
+            containerColor = Charcoal,
             shape = RoundedCornerShape(20.dp)
         )
     }
@@ -2910,7 +2898,7 @@ fun NotificationsScreen(
                         Surface(
                             onClick = { selectedCategory = category },
                             shape = RoundedCornerShape(20.dp),
-                            color = if (isSelected) Gold else (if (isDark) Charcoal else Color.White),
+                            color = if (isSelected) Gold else Charcoal,
                             border = if (isSelected) null else BorderStroke(1.dp, if (isDark) BorderDark else BorderLight)
                         ) {
                             Row(
@@ -3007,7 +2995,7 @@ fun NotificationsScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(paginatedList, key = { it.id }) { item ->
-                            val cardBg = if (isDark) Charcoal else Color.White
+                            val cardBg = Charcoal
                             val textPrimary = if (isDark) Color.White else Obsidian
                             val textSecondary = if (isDark) TextGray else Color(0xFF4B5563)
                             val linkedParcel = remember(item.parcelId, parcels) {

@@ -987,7 +987,7 @@ fun ExpressBookingScreen(
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "Motorcycle Dispatch Limits: Maximum single payload is 20kg with max dimensions of 45cm x 45cm x 45cm. For larger freight, choose Economy Cargo.",
+                                    text = "Fleet Payload Limit: Couriers operate motorcycle dispatch capped at 20kg payload (45cm × 45cm × 45cm max). This fleet limit strictly applies to all bookings.",
                                     fontSize = 11.sp,
                                     color = if (isDark) GoldenWhiteLight else TextGray,
                                     lineHeight = 15.sp
