@@ -30,7 +30,7 @@ function useOnlineStatus() {
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment } from "firebase/firestore";
-import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer } from "lucide-react";
+import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
 type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking" | "support";
@@ -375,7 +375,7 @@ async function seedMarketplace(db: any, addLog: any, addToast: any, createNotifi
   }
 }
 
-function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, seedUsers, seedDeliveries, seedBanners, seedPromos, seedReferrals, seedAppContent, seeding, setTab }: any) {
+function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, seedUsers, seedDeliveries, seedBanners, seedPromos, seedReferrals, seedAppContent, seeding, setTab, marketplaceEnabled, toggleMarketplace }: any) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = (d: any) => {
     if (!d.dateString) return true;
@@ -386,83 +386,224 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
     .slice(-10)
     .reverse();
   const [filterCat, setFilterCat] = useState("all");
-  const serviceIcon = (tag: string, cls: string) => {
+  const [inspectingCategory, setInspectingCategory] = useState<any | null>(null);
+
+  const serviceIcon = (tag: string, cls: string, size = 18) => {
     switch(tag) {
-      case "Express": return <Zap size={24} className={cls} strokeWidth={2} />;
-      case "Economy": return <DollarSign size={24} className={cls} strokeWidth={2} />;
-      case "Standard": return <Package size={24} className={cls} strokeWidth={2} />;
-      case "Batch": return <Layers size={24} className={cls} strokeWidth={2} />;
-      case "Multi": return <MapPin size={24} className={cls} strokeWidth={2} />;
-      case "Cold Chain": return <Shield size={24} className={cls} strokeWidth={2} />;
-      default: return <Package size={24} className={cls} strokeWidth={2} />;
+      case "Express": return <Zap size={size} className={cls} strokeWidth={2.2} />;
+      case "Economy": return <DollarSign size={size} className={cls} strokeWidth={2.2} />;
+      case "Standard": return <Package size={size} className={cls} strokeWidth={2.2} />;
+      case "Batch": return <Layers size={size} className={cls} strokeWidth={2.2} />;
+      case "Multi": return <MapPin size={size} className={cls} strokeWidth={2.2} />;
+      case "Cold Chain": return <Shield size={size} className={cls} strokeWidth={2.2} />;
+      default: return <Package size={size} className={cls} strokeWidth={2.2} />;
     }
   };
+
   const catBtn = (cat: string, label: string) => (
-    <button onClick={() => setFilterCat(cat)}
-      className={"px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-sm " + (filterCat === cat ? "bg-[#111] dark:bg-white text-white dark:text-[#111]" : "bg-white dark:bg-[#222] text-[#111] dark:text-white border border-black/20 dark:border-white/20 hover:bg-black/5 dark:hover:bg-white/10")}>{label}</button>
+    <button key={cat} onClick={() => setFilterCat(cat)}
+      className={"px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm " + (filterCat === cat ? "bg-[#111] dark:bg-white text-white dark:text-[#111]" : "bg-white dark:bg-[#222] text-[#111] dark:text-white border border-black/15 dark:border-white/15 hover:bg-black/5 dark:hover:bg-white/10")}>{label}</button>
   );
+
+  const availableCategories = Array.from(new Set(activeDeliveriesData.map((a: any) => a.tag)));
+  const displayDeliveriesData = filterCat === "all" ? activeDeliveriesData : activeDeliveriesData.filter((a: any) => a.tag === filterCat);
+
   return <div className="tab-content space-y-8">
+      {/* Quick Master Marketplace App Killswitch Banner */}
+      <div className={`p-4 rounded-3xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
+        marketplaceEnabled 
+          ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-950 dark:text-emerald-300" 
+          : "bg-red-500/10 border-red-500/25 text-red-950 dark:text-red-300"
+      }`}>
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
+            <Store className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-wider">Marketplace & Storefront App Visibility:</span>
+              <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
+                {marketplaceEnabled ? "LIVE ON APP" : "HIDDEN ON APP"}
+              </span>
+            </div>
+            <p className="text-[11px] opacity-80 mt-0.5">
+              {marketplaceEnabled 
+                ? "Customer mobile app displays vendor store catalogs, verified shops carousel, and merchant enrollment. Click button to immediately turn off." 
+                : "Marketplace is completely hidden on mobile. Mobile dashboard hero button dynamically converts to 'Live Tracking' radar."}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={toggleMarketplace}
+          className={`px-4 py-2 rounded-2xl text-xs font-black shrink-0 transition-all shadow-sm flex items-center gap-2 ${
+            marketplaceEnabled ? "bg-red-500 hover:bg-red-600 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"
+          }`}
+        >
+          <Power className="w-3.5 h-3.5" />
+          {marketplaceEnabled ? "Turn OFF Marketplace" : "Turn ON Marketplace"}
+        </button>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="stagger-1"><StatCard icon={<Users className="w-4 h-4 text-[#FFC542]" />} label="TOTAL USERS" value={activeUsers.length.toString()} sub={customers.length + " customers · " + drivers.length + " drivers"} /></div>
         <div className="stagger-2"><StatCard icon={<Package className="w-4 h-4 text-[#FFC542]" />} label="SHIPMENTS" value={deliveries.length.toString()} sub={pendingDeliveries.length + " pending · " + delivered.length + " delivered"} /></div>
         <div className="stagger-3"><StatCard icon={<DollarSign className="w-4 h-4 text-[#FFC542]" />} label="REVENUE" value={fmt(totalRevenue)} sub={fmt(totalTips) + " in tips · " + referrals.length + " referrals"} /></div>
         <div className="stagger-4"><StatCard icon={<Activity className="w-4 h-4 text-[#FFC542]" />} label="ONLINE" value={(activeUsers.filter((u: any) => u.isOnline).length).toString()} sub={drivers.filter((d: any) => d.isOnline).length + " drivers · " + (activeUsers.filter((u: any) => u.role === "customer" && u.isOnline).length) + " customers"} /></div>
       </div>
+
       <section>
-        <div className="flex justify-between items-end mb-6 flex-wrap gap-4">
-          <h1 className="text-[28px] font-extrabold tracking-tight text-[#111] dark:text-white">Active Deliveries</h1>
-          <div className="flex gap-2.5 flex-wrap">
-            {catBtn("all", "All deliveries")}
-            {catBtn("Express", "Express")}
-            {catBtn("Economy", "Economy")}
-            {catBtn("Standard", "Standard")}
-            {catBtn("Batch", "Batch")}
-            {catBtn("Multi", "Multi")}
-            {catBtn("Cold Chain", "Cold Chain")}
+        <div className="flex justify-between items-end mb-4 flex-wrap gap-4">
+          <div>
+            <h1 className="text-xl font-extrabold tracking-tight text-[#111] dark:text-white">Active Deliveries for Today</h1>
+            <p className="text-xs text-black/40 dark:text-white/40 mt-0.5">Real-time scheduled drop-offs across active service categories</p>
+          </div>
+          {activeDeliveriesData.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {catBtn("all", `All (${activeDeliveriesData.reduce((s: number, a: any) => s + a.total, 0)})`)}
+              {availableCategories.map((c: any) => catBtn(c, c))}
+            </div>
+          )}
+        </div>
+
+        {activeDeliveriesData.length === 0 ? (
+          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-8 text-center shadow-sm">
+            <div className="w-12 h-12 rounded-2xl bg-black/5 dark:bg-white/5 mx-auto mb-3 flex items-center justify-center text-black/30 dark:text-white/30">
+              <Package className="w-6 h-6" />
+            </div>
+            <h3 className="text-sm font-black text-[#111] dark:text-white">No Active Deliveries Scheduled for Today</h3>
+            <p className="text-xs text-black/50 dark:text-white/50 mt-1 max-w-md mx-auto">
+              No delivery requests are currently active for today. As soon as a customer books a shipment via the mobile app, real-time cards will automatically appear here.
+            </p>
+            <div className="mt-4 flex items-center justify-center gap-2.5">
+              <button onClick={() => setTab("shipments")} className="px-4 py-2 bg-[#FFC542] text-[#111] font-black text-xs rounded-xl shadow-sm hover:bg-[#FFC542]/80 transition-all">
+                View All Shipments
+              </button>
+              <button onClick={seedDeliveries} className="px-4 py-2 bg-black/5 dark:bg-white/10 text-[#111] dark:text-white font-bold text-xs rounded-xl hover:bg-black/10 transition-all">
+                Seed Sample Today's Deliveries
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3.5">
+            {displayDeliveriesData.map((a: any, i: number) => {
+              const g = a.theme === "gold" ? "bg-[#FFC542]" : a.theme === "black" ? "bg-[#111]" : "bg-white border-[2px] border-[#111] dark:border-white";
+              const t = a.theme === "gold" ? "bg-[#111] text-white" : a.theme === "black" ? "bg-white text-[#111]" : "bg-[#FFC542] text-[#111]";
+              const p = a.theme === "gold" ? "bg-black/20" : a.theme === "black" ? "bg-white/20" : "bg-black/10 dark:bg-white/10";
+              const pf = a.theme === "black" ? "bg-[#FFC542]" : "bg-[#111]";
+              const tc = a.theme === "black" ? "text-white" : "text-[#111] dark:text-white";
+              const bt = a.theme === "black" ? "bg-[#FFC542] text-[#111]" : "bg-[#111] text-white";
+              const ac = a.theme === "gold" ? "ring-[#FFC542]" : a.theme === "black" ? "ring-[#111]" : "ring-white";
+              const ec = a.theme === "gold" ? "bg-[#111] text-white" : a.theme === "black" ? "bg-white text-[#111]" : "bg-[#FFC542] text-[#111]";
+              const bk = a.theme === "black" ? "fill-none text-white" : a.theme === "gold" ? "fill-[#111] text-[#111]" : "fill-none text-[#111] dark:text-white";
+              const pct = a.total > 0 ? Math.round((a.progress / a.total) * 100) : 0;
+              const cardCouriers = (a.deliveries || []).filter((d: any) => d.courierName && d.courierName !== "Unassigned").slice(0, 3);
+              const extraCount = Math.max(0, (a.deliveries || []).filter((d: any) => d.courierName && d.courierName !== "Unassigned").length - 3);
+
+              return <div key={i} className={"animate-fade-in transition-all duration-200 " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6"][i % 6])}>
+                <div 
+                  onClick={() => setInspectingCategory(a)}
+                  className={g + " rounded-2xl p-4 flex flex-col min-h-[175px] shadow-sm relative overflow-hidden group cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-md"}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <span className={t + " text-[10px] font-black px-2.5 py-0.5 rounded-full z-10"}>{a.tag}</span>
+                    {serviceIcon(a.tag, bk, 16)}
+                  </div>
+                  <h3 className={"text-xs font-black leading-snug line-clamp-1 mb-2 z-10 " + tc}>{a.title}</h3>
+                  <div className="mt-auto z-10">
+                    <div className={"flex justify-between items-end font-extrabold text-[10px] mb-1.5 " + tc}>
+                      <span>Active</span>
+                      <span>{a.progress}/{a.total} in transit</span>
+                    </div>
+                    <div className={"w-full h-1.5 rounded-full mb-3 " + p}>
+                      <div className={"h-full rounded-full " + pf} style={{ width: pct + "%" }}></div>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <div className="flex -space-x-2 relative group/avatar" onClick={(e) => { e.stopPropagation(); setInspectingCategory(a); }}>
+                        {cardCouriers.length > 0 ? (
+                          cardCouriers.map((c: any, j: number) => (
+                            <div key={j} title={c.courierName} className="relative">
+                              <img src={"https://api.dicebear.com/7.x/avataaars/svg?seed=" + c.courierName} alt={c.courierName} className={"w-6 h-6 rounded-full ring-2 " + ac + " bg-white object-cover"} />
+                            </div>
+                          ))
+                        ) : (
+                          <div className={"w-6 h-6 rounded-full ring-2 " + ac + " " + ec + " text-[9px] font-bold flex items-center justify-center"}>R</div>
+                        )}
+                        <div title={`Click to view all ${a.total} deliveries`} className={"w-6 h-6 rounded-full ring-2 " + ac + " " + ec + " text-[9px] font-black flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"}>
+                          +{extraCount > 0 ? extraCount : a.total}
+                        </div>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setInspectingCategory(a); }} 
+                        className={bt + " px-2.5 py-1 rounded-full text-[10px] font-black shadow-sm hover:opacity-80 transition-all flex items-center gap-1"}
+                      >
+                        <Eye size={11} /> View ({a.total})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>;
+            })}
+          </div>
+        )}
+
+      {/* Inspect Category Deliveries Modal */}
+      {inspectingCategory && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setInspectingCategory(null)}>
+          <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-2xl shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3 border-b border-black/10 dark:border-white/10 shrink-0">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-[#FFC542] text-[#111]">{inspectingCategory.tag}</span>
+                  <h3 className="text-base font-black text-[#111] dark:text-white">Active Deliveries ({inspectingCategory.total})</h3>
+                </div>
+                <p className="text-[11px] text-black/50 dark:text-white/50 mt-0.5">Real-time scheduled drop-offs for today in this service tier</p>
+              </div>
+              <button onClick={() => setInspectingCategory(null)} className="p-2 text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {(inspectingCategory.deliveries || []).map((d: any) => (
+                <div key={d.id} className="p-3 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 flex items-center justify-between gap-3 hover:border-[#FFC542]/40 transition-all">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-[#FFC542]/20 flex items-center justify-center text-[#FFC542] shrink-0 font-bold text-xs">
+                      <Package size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-xs text-[#111] dark:text-white truncate">{d.itemName || "Delivery"}</span>
+                        <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">#{idShort(d.id)}</span>
+                        <span className={"text-[9px] font-bold px-2 py-0.2 rounded-full " + sStyle(d.status)}>{d.status}</span>
+                      </div>
+                      <div className="text-[10px] text-black/50 dark:text-white/50 truncate mt-0.5">
+                        {d.senderName || "Sender"} → <b className="text-[#111] dark:text-white">{d.receiverName}</b> ({d.deliveryAddress})
+                      </div>
+                      <div className="text-[10px] text-[#FFC542] font-semibold mt-0.5 flex items-center gap-1">
+                        <Users size={10} /> Courier: {d.courierName || "Unassigned"} {d.courierPhone ? `(${d.courierPhone})` : ""}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-black text-xs text-[#111] dark:text-white">₦{(d.price || 0).toLocaleString()}</div>
+                    <button 
+                      onClick={() => { setInspectingCategory(null); setTab("shipments"); }} 
+                      className="mt-1.5 px-3 py-1 bg-[#111] dark:bg-white text-white dark:text-[#111] text-[10px] font-bold rounded-lg hover:opacity-80 transition-all"
+                    >
+                      Manage
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="pt-2 border-t border-black/10 dark:border-white/10 flex justify-between items-center text-xs shrink-0">
+              <span className="text-black/50 dark:text-white/50 text-[11px] font-medium">Click manage to view tracking, OTP, and driver re-assignment</span>
+              <button onClick={() => { setInspectingCategory(null); setTab("shipments"); }} className="px-4 py-2 bg-[#FFC542] text-[#111] font-black text-xs rounded-xl hover:bg-[#FFC542]/90 transition-all">
+                Open All in Shipments Tab →
+              </button>
+            </div>
           </div>
         </div>
-        {deliveries.length === 0 && <div className="text-center py-6 text-black/40 dark:text-white/40 font-bold text-base">No deliveries yet. Seed sample data below.</div>}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {(filterCat === "all" ? activeDeliveriesData : activeDeliveriesData.filter((a: any) => a.tag === filterCat)).map((a: any, i: number) => {
-            const g = a.theme === "gold" ? "bg-[#FFC542]" : a.theme === "black" ? "bg-[#111]" : "bg-white border-[2.5px] border-[#111] dark:border-white";
-            const t = a.theme === "gold" ? "bg-[#111] text-white" : a.theme === "black" ? "bg-white text-[#111]" : "bg-[#FFC542] text-[#111]";
-            const p = a.theme === "gold" ? "bg-black/20" : a.theme === "black" ? "bg-white/20" : "bg-black/10 dark:bg-white/10";
-            const pf = a.theme === "black" ? "bg-[#FFC542]" : "bg-[#111]";
-            const tc = a.theme === "black" ? "text-white" : "text-[#111] dark:text-white";
-            const bt = a.theme === "black" ? "bg-[#FFC542] text-[#111]" : "bg-[#111] text-white";
-            const ac = a.theme === "gold" ? "ring-[#FFC542]" : a.theme === "black" ? "ring-[#111]" : "ring-white";
-            const ec = a.theme === "gold" ? "bg-[#111] text-white" : a.theme === "black" ? "bg-white text-[#111]" : "bg-[#FFC542] text-[#111]";
-            const bk = a.theme === "black" ? "fill-none text-white" : a.theme === "gold" ? "fill-[#111] text-[#111]" : "fill-none text-[#111] dark:text-white";
-            const pct = a.total > 0 ? Math.round((a.progress / a.total) * 100) : 0;
-            const cardCouriers = deliveries.filter((d: any) => d.category === a.tag && d.courierName && d.courierName !== "Unassigned").slice(0, 3);
-            const extraCount = Math.max(0, deliveries.filter((d: any) => d.category === a.tag && d.courierName && d.courierName !== "Unassigned").length - 3);
-            return <div key={i} className={"animate-fade-in hover:scale-[1.02] transition-all duration-300 " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6"][i % 6])}>
-              <div className={g + " rounded-3xl p-7 flex flex-col min-h-[220px] shadow-sm relative overflow-hidden group"}>
-                <div className="flex justify-between items-start mb-6">
-                  <span className={t + " text-xs font-bold px-4 py-1.5 rounded-full z-10"}>{a.tag}</span>
-                  {serviceIcon(a.tag, bk)}
-                </div>
-                <h3 className={"text-[22px] font-extrabold leading-snug pr-8 mb-8 z-10 " + tc}>{a.title}</h3>
-                <div className="mt-auto z-10">
-                  <div className={"flex justify-between items-end font-bold text-[13px] mb-3 " + tc}>
-                    <span>Progress</span>
-                    <span>{a.progress}/{a.total} {a.unit}</span>
-                  </div>
-                  <div className={"w-full h-2 rounded-full mb-6 " + p}>
-                    <div className={"h-full rounded-full " + pf} style={{ width: pct + "%" }}></div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div className="flex -space-x-3">
-                      {cardCouriers.length > 0 ? cardCouriers.map((c: any, j: number) => <img key={j} src={"https://api.dicebear.com/7.x/avataaars/svg?seed=" + c.courierName} alt="" className={"w-9 h-9 rounded-full ring-2 " + ac + " bg-white object-cover"} />) : ["Mia","John","Sarah"].slice(0, Math.max(1, a.total)).map((s, j) => <div key={j} className={"w-9 h-9 rounded-full ring-2 " + ac + " " + ec + " text-[10px] font-bold flex items-center justify-center"}>{s.charAt(0)}</div>)}
-                      <div className={"w-9 h-9 rounded-full ring-2 " + ac + " " + ec + " text-[10px] font-bold flex items-center justify-center"}>{cardCouriers.length > 0 ? "+" + extraCount : "+" + Math.max(0, a.total)}</div>
-                    </div>
-                    <button onClick={() => setTab("shipments")} className={bt + " px-6 py-2.5 rounded-full text-sm font-bold shadow-md hover:opacity-80 transition-all"}>Track</button>
-                  </div>
-                </div>
-              </div>
-            </div>;
-          })}
-        </div>
+      )}
       </section>
       <section className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
         <div className="lg:col-span-3 border border-black/10 dark:border-white/10 rounded-3xl p-7 flex flex-col bg-white dark:bg-[#1a1a1a]">
@@ -953,8 +1094,10 @@ function AdminDashboardPage() {
       });
       setPayoutRequests(list);
     }, console.error));
-    getDoc(doc(db, "system_config", "global_settings")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => { addToast("error", "Failed to load system settings. Using defaults."); });
-    getDoc(doc(db, "system_config", "pricing")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => { addToast("error", "Failed to load pricing config. Using defaults."); });
+    unsubs.push(onSnapshot(doc(db, "system_config", "global_settings"), s => {
+      if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() }));
+    }, () => {}));
+    getDoc(doc(db, "system_config", "pricing")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => {});
     return () => unsubs.forEach(f => f());
   }, [currentUser]);
 
@@ -988,13 +1131,20 @@ function AdminDashboardPage() {
     addLog("Setting", key + " = " + JSON.stringify(val));
   };
 
+  const marketplaceEnabled = settings.marketplaceEnabled !== false;
+  const toggleMarketplace = async () => {
+    const nextVal = !marketplaceEnabled;
+    await updateSetting("marketplaceEnabled", nextVal);
+    addToast("success", `Marketplace is now ${nextVal ? "ENABLED (Live on App)" : "DISABLED (Hidden on App)"}`);
+  };
+
   const [seeding, setSeeding] = useState("");
   const seedUsersWrapper = async () => { setSeeding("users"); await seedUsers(db, addLog, addToast, createNotification); setSeeding(""); };
   const seedDeliveriesWrapper = async () => { setSeeding("deliveries"); await seedDeliveries(db, addLog, addToast, createNotification); setSeeding(""); };
   const seedBannersWrapper = async () => { setSeeding("banners"); await seedBanners(db, addLog, addToast, createNotification); setSeeding(""); };
   const seedPromosWrapper = async () => { setSeeding("promos"); await seedPromos(db, addLog, addToast, createNotification); setSeeding(""); };
   const seedReferralsWrapper = async () => { setSeeding("referrals"); await seedReferrals(db, addLog, addToast, createNotification); setSeeding(""); };
-    const seedMarketplaceWrapper = async () => { setSeeding("marketplace"); await seedMarketplace(db, addLog, addToast, createNotification); setSeeding(""); };
+  const seedMarketplaceWrapper = async () => { setSeeding("marketplace"); await seedMarketplace(db, addLog, addToast, createNotification); setSeeding(""); };
   const seedAppContentWrapper = async () => { setSeeding("appcontent"); await seedAppContent(db, addLog, addToast, createNotification, setSettings); setSeeding(""); };
 
 
@@ -1050,32 +1200,31 @@ function AdminDashboardPage() {
     );
   }
 
-  
+  // Purely real active deliveries for today — no simulated default tiers
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const isDeliveryToday = (d: any) => {
+    if (!d.dateString) return true;
+    return d.dateString.startsWith("Today") || d.dateString.includes(todayStr) || d.dateString === "";
+  };
+  const activeDeliveriesToday = deliveries.filter(d => d.status !== "DELIVERED" && d.status !== "CANCELLED" && isDeliveryToday(d));
+  const categoriesWithActive = Array.from(new Set(activeDeliveriesToday.map(d => d.category || "General").filter(Boolean)));
+  const themes = ["gold", "white", "black"] as const;
 
-    const categories = Array.from(new Set(deliveries.map(d => d.category).filter(Boolean)));
-    const themes = ["gold", "white", "black"] as const;
-    const defaultTiers = [
-      { tag: "Express", title: "Express Deliveries", progress: 0, total: 0, unit: "drops", theme: "gold" as const },
-      { tag: "Economy", title: "Economy Deliveries", progress: 0, total: 0, unit: "drops", theme: "white" as const },
-      { tag: "Standard", title: "Standard Deliveries", progress: 0, total: 0, unit: "drops", theme: "black" as const },
-      { tag: "Batch", title: "Batch Deliveries", progress: 0, total: 0, unit: "drops", theme: "gold" as const },
-      { tag: "Multi", title: "Multi-Stop Deliveries", progress: 0, total: 0, unit: "drops", theme: "white" as const },
-      { tag: "Cold Chain", title: "Cold Chain Deliveries", progress: 0, total: 0, unit: "drops", theme: "black" as const },
-    ];
-    const activeDeliveriesData = categories.length > 0 ? categories.map((cat, idx) => {
-      const catActive = deliveries.filter(d => d.category === cat && d.status !== "DELIVERED" && d.status !== "CANCELLED");
-      const catDelivered = deliveries.filter(d => d.category === cat && d.status === "DELIVERED");
-      return {
-        tag: cat,
-        title: cat + " Deliveries",
-        progress: catActive.filter(d => ["TRANSIT","OUT_FOR_DELIVERY"].includes(d.status)).length,
-        total: catActive.length + catDelivered.length,
-        unit: "drops",
-        active: catActive.length,
-        delivered: catDelivered.length,
-        theme: themes[idx % themes.length],
-      };
-    }) : defaultTiers;
+  const activeDeliveriesData = categoriesWithActive.map((cat, idx) => {
+    const catActive = activeDeliveriesToday.filter(d => (d.category || "General") === cat);
+    const catInTransit = catActive.filter(d => ["TRANSIT", "OUT_FOR_DELIVERY"].includes(d.status));
+    return {
+      tag: cat,
+      title: cat + " Deliveries",
+      progress: catInTransit.length,
+      total: catActive.length,
+      unit: "drops",
+      active: catActive.length,
+      inTransit: catInTransit.length,
+      theme: themes[idx % themes.length],
+      deliveries: catActive,
+    };
+  });
 
   const allNavItems: { id: TabId; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: "dashboard", label: "Dashboard", icon: <Folder size={22} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
@@ -2356,10 +2505,12 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
 }
 
 
-function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, addToast, seedMarketplace }: {
+function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, addToast, seedMarketplace, marketplaceEnabled, toggleMarketplace }: {
   products: Product[]; stores: VendorStore[]; orders: MarketplaceOrder[]; payoutRequests: VendorPayoutRequest[];
   db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void;
   seedMarketplace: () => Promise<void>;
+  marketplaceEnabled: boolean;
+  toggleMarketplace: () => Promise<void> | void;
 }) {
   const [activeSubTab, setActiveSubTab] = useState<"products" | "stores" | "orders" | "payouts">("products");
   const [search, setSearch] = useState("");
@@ -2653,6 +2804,45 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
           <Store className="w-4 h-4" /> Enlist Store
         </button>
       </div>
+    </div>
+
+    {/* Master Killswitch Banner */}
+    <div className={`p-5 rounded-3xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all shadow-sm ${
+      marketplaceEnabled 
+        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200" 
+        : "bg-red-500/10 border-red-500/30 text-red-950 dark:text-red-200"
+    }`}>
+      <div className="flex items-center gap-3.5">
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
+          <Store className="w-6 h-6" />
+        </div>
+        <div>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="text-sm font-black uppercase tracking-wider">
+              App Marketplace & Stores Master Switch:
+            </span>
+            <span className={`text-xs font-black px-3 py-0.5 rounded-full shadow-sm ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
+              {marketplaceEnabled ? "ENABLED (LIVE ON MOBILE APP)" : "DISABLED (HIDDEN ON MOBILE APP)"}
+            </span>
+          </div>
+          <p className="text-xs opacity-80 mt-1 max-w-2xl">
+            {marketplaceEnabled 
+              ? "All store catalogs, verified shops carousel, and vendor recruitment cards are currently visible to customers on mobile. Click the switch button anytime to turn off and hide everything marketplace." 
+              : "Marketplace is completely hidden on mobile app (no store catalogs, no merchant enrollment, and the mobile dashboard hero button dynamically converts to 'Live Tracking' radar). Click to turn on."}
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={toggleMarketplace}
+        className={`px-6 py-3 rounded-2xl text-xs font-black shrink-0 transition-all shadow-md flex items-center gap-2 hover:scale-[1.02] ${
+          marketplaceEnabled 
+            ? "bg-red-500 hover:bg-red-600 text-white" 
+            : "bg-emerald-500 hover:bg-emerald-600 text-white"
+        }`}
+      >
+        <Power className="w-4 h-4" />
+        {marketplaceEnabled ? "Turn OFF Marketplace on App" : "Turn ON Marketplace on App"}
+      </button>
     </div>
 
     {/* Metric Stat Cards */}
@@ -3631,7 +3821,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
         setMobileSidebar={setMobileSidebar} notifications={notifications} markNotifRead={markNotifRead} 
       />
       <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 pb-10 pt-6">
-         {tab === "marketplace" && <MarketplaceTab products={products} stores={stores} orders={marketplaceOrders} payoutRequests={payoutRequests} db={db} addLog={addLog} addToast={addToast} seedMarketplace={seedMarketplaceWrapper} />}
+         {tab === "marketplace" && <MarketplaceTab products={products} stores={stores} orders={marketplaceOrders} payoutRequests={payoutRequests} db={db} addLog={addLog} addToast={addToast} seedMarketplace={seedMarketplaceWrapper} marketplaceEnabled={marketplaceEnabled} toggleMarketplace={toggleMarketplace} />}
         {tab === "dashboard" && <DashboardTab 
             deliveries={deliveries} 
             activeUsers={activeUsers} 
@@ -3652,6 +3842,8 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
             seedAppContent={seedAppContentWrapper} 
             seeding={seeding}
             setTab={setTab}
+            marketplaceEnabled={marketplaceEnabled}
+            toggleMarketplace={toggleMarketplace}
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} />}
