@@ -46,20 +46,9 @@ service cloud.firestore {
         || (resource != null && request.resource.data.role == resource.data.role);
     }
 
-    // Read size limit: deny reads of documents over 256 KiB
-    function withinReadSizeLimit() {
-      return resource.data.size() < 256 * 1024;
-    }
-
-    // Write size limit: deny writes of documents over 128 KiB
-    function withinWriteSizeLimit() {
-      return request.resource.data.size() < 128 * 1024;
-    }
-
-    // Rate limit: max 10 writes per minute per user (soft via doc size + existence checks)
+    // Soft field count limit to prevent bloated payloads
     function isReasonableWrite() {
-      return withinWriteSizeLimit()
-        && request.resource.data.keys().size() <= 50;
+      return request.resource.data.keys().size() <= 60;
     }
 
     // Validate contact/subscriber data to prevent abuse
@@ -338,18 +327,20 @@ service cloud.firestore {
     match /support_chats/{ticketId} {
       allow read: if isAuth() && (ticketId == request.auth.uid || resource.data.userId == request.auth.uid || isAdmin() || isDispatcher());
       allow create: if isAuth() && isReasonableWrite() && (ticketId == request.auth.uid || request.resource.data.userId == request.auth.uid || isAdmin());
-      allow update: if isAuth() && isReasonableWrite() && (ticketId == request.auth.uid || resource.data.userId == request.auth.uid || isAdmin() || isDispatcher());
+      allow update: if isAuth() && isReasonableWrite() && (ticketId == request.auth.uid || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || isAdmin() || isDispatcher());
       allow delete: if isAdmin();
 
       match /messages/{msgId} {
         allow read: if isAuth() && (
           ticketId == request.auth.uid ||
+          resource.data.senderId == request.auth.uid ||
           (exists(/databases/$(database)/documents/support_chats/$(ticketId)) && get(/databases/$(database)/documents/support_chats/$(ticketId)).data.userId == request.auth.uid) ||
           isAdmin() ||
           isDispatcher()
         );
         allow create: if isAuth() && isReasonableWrite() && (
           ticketId == request.auth.uid ||
+          request.resource.data.senderId == request.auth.uid ||
           (exists(/databases/$(database)/documents/support_chats/$(ticketId)) && get(/databases/$(database)/documents/support_chats/$(ticketId)).data.userId == request.auth.uid) ||
           isAdmin() ||
           isDispatcher()

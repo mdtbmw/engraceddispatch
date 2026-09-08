@@ -325,21 +325,21 @@ fun ActiveTrackingScreen(
 
     val previewParcel = remember {
         Parcel(
-            id = "ENG-PREVIEW-101",
+            id = "",
             itemName = "Express Logistics Delivery",
-            imageUrl = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=200&h=200&fit=crop",
-            status = ParcelStatus.TRANSIT,
-            pickupAddress = "GRA, Benin City",
-            deliveryAddress = "18 Sakponba Road, Benin City",
-            senderName = "Engraced Dispatch HQ",
-            senderPhone = "+234 800 123 4567",
-            receiverName = "Valued Customer",
-            receiverPhone = "+234 812 345 6789",
-            weight = 2.5,
-            price = 2500.0,
-            courierName = "Musa Ibrahim",
-            courierPhone = "+234 803 111 2233",
-            progress = 0.65f
+            imageUrl = "",
+            status = ParcelStatus.PENDING,
+            pickupAddress = "",
+            deliveryAddress = "",
+            senderName = "",
+            senderPhone = "",
+            receiverName = "",
+            receiverPhone = "",
+            weight = 0.0,
+            price = 0.0,
+            courierName = "",
+            courierPhone = "",
+            progress = 0f
         )
     }
 
@@ -475,8 +475,14 @@ fun ActiveTrackingScreen(
         }
     }
 
-    fun calculateEta(prog: Float, weather: String, aiActive: Boolean): Int {
-        val baseSeconds = ((1f - prog) * 1200).toInt().coerceAtLeast(10)
+    var realDistanceKm by remember { mutableStateOf<Float?>(null) }
+
+    fun calculateEta(prog: Float, weather: String, aiActive: Boolean, distKm: Float? = realDistanceKm): Int {
+        val baseSeconds = if (distKm != null && distKm > 0.05f) {
+            ((distKm * 144f) + 90f).toInt()
+        } else {
+            ((1f - prog) * 1200).toInt().coerceAtLeast(10)
+        }
         val weatherMultiplier = when {
             weather.contains("Rainy") || weather.contains("Heavy Rain") -> 1.35
             weather.contains("Thunderstorm") || weather.contains("Stormy") -> 1.75
@@ -522,6 +528,9 @@ fun ActiveTrackingScreen(
                         results
                     )
                     val distanceMeters = results[0]
+                    val distKm = distanceMeters / 1000f
+                    realDistanceKm = distKm
+                    tickingSeconds = calculateEta(parcel.progress, currentWeather, isAiEtaActive, distKm)
                     if (distanceMeters <= 1609.34f && !hasNotifiedWithinOneMile) { // 1 mile = 1609.34 meters
                         hasNotifiedWithinOneMile = true
                         showInAppNotificationBanner = true
@@ -537,6 +546,7 @@ fun ActiveTrackingScreen(
                 // Ignore geocoding errors and fallback to progress
             }
         }
+        realDistanceKm = null
         
         // Fallback to simulated progress if no real coordinates
         if (parcel.progress >= 0.85f && parcel.progress < 0.98f && !hasNotifiedWithinOneMile) {
@@ -1064,7 +1074,7 @@ fun ActiveTrackingScreen(
                                             val etaSubText = when (parcel.status) {
                                                 ParcelStatus.DELIVERED -> "Completed"
                                                 ParcelStatus.CANCELLED -> "No status"
-                                                else -> "Est. Arrival"
+                                                else -> realDistanceKm?.let { String.format(java.util.Locale.US, "Est. Arrival (%.1f km)", it) } ?: "Est. Arrival"
                                             }
                                             Column(horizontalAlignment = Alignment.End) {
                                                 Text(
@@ -1665,6 +1675,11 @@ val badgeText = when (parcelForId.status) {
 
                                 // 4. THE COURIER / DRIVER AGENT CARD (FIXED AT THE ABSOLUTE BOTTOM)
                                 if (!hasNoBooking) {
+                                    val isCourierAssigned = parcel.courierName.isNotBlank() &&
+                                        !parcel.courierName.equals("unassigned", ignoreCase = true) &&
+                                        parcel.riderId.isNotBlank() &&
+                                        parcel.status != ParcelStatus.PENDING
+
                                     Surface(
                                         shape = RoundedCornerShape(24.dp),
                                         color = if (isDark) Charcoal else Obsidian,
@@ -1677,119 +1692,183 @@ val badgeText = when (parcelForId.status) {
                                     Box(modifier = Modifier.fillMaxWidth()) {
                                         QuiltedBackground(modifier = Modifier.matchParentSize()) {}
 
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(14.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            if (isLocalLoading) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(50.dp)
-                                                            .border(2.dp, Gold, CircleShape)
-                                                            .clip(CircleShape)
-                                                    ) {
-                                                        SkeletonBox(
-                                                            modifier = Modifier.fillMaxSize(),
-                                                            isLight = isLight,
-                                                            shape = CircleShape
-                                                        )
+                                        if (isCourierAssigned) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(14.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (isLocalLoading) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(50.dp)
+                                                                .border(2.dp, Gold, CircleShape)
+                                                                .clip(CircleShape)
+                                                        ) {
+                                                            SkeletonBox(
+                                                                modifier = Modifier.fillMaxSize(),
+                                                                isLight = isLight,
+                                                                shape = CircleShape
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.width(12.dp))
+                                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            SkeletonBox(
+                                                                modifier = Modifier.width(140.dp).height(16.dp),
+                                                                isLight = isLight
+                                                            )
+                                                            SkeletonBox(
+                                                                modifier = Modifier.width(80.dp).height(12.dp),
+                                                                isLight = isLight
+                                                            )
+                                                        }
                                                     }
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                        SkeletonBox(
-                                                            modifier = Modifier.width(140.dp).height(16.dp),
-                                                            isLight = isLight
-                                                        )
-                                                        SkeletonBox(
-                                                            modifier = Modifier.width(80.dp).height(12.dp),
-                                                            isLight = isLight
-                                                        )
+                                                } else {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(50.dp)
+                                                                .border(2.dp, Gold, CircleShape)
+                                                                .clip(CircleShape)
+                                                        ) {
+                                                            Image(
+                                                                painter = rememberAsyncImagePainter(parcel.courierAvatar),
+                                                                contentDescription = "Courier Profile",
+                                                                contentScale = ContentScale.Crop,
+                                                                modifier = Modifier.fillMaxSize()
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.width(12.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = parcel.courierName,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                fontSize = 16.sp,
+                                                                color = Color.White
+                                                            )
+                                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Star,
+                                                                    contentDescription = null,
+                                                                    tint = Gold,
+                                                                    modifier = Modifier.size(13.dp)
+                                                                )
+                                                                Spacer(modifier = Modifier.width(4.dp))
+                                                                val activeRider = riders.find { it.id == parcel.riderId }
+                                                                val riderRatingStr = activeRider?.let { String.format("%.2f", it.rating) } ?: "4.95"
+                                                                Text(
+                                                                    text = "$riderRatingStr" + if (parcel.riderBikeNumber.isNotEmpty()) " • Bike: ${parcel.riderBikeNumber}" else " (VIP Rider)",
+                                                                    fontSize = 11.sp,
+                                                                    color = TextGray,
+                                                                    fontWeight = FontWeight.SemiBold
+                                                                )
+                                                            }
+                                                        }
                                                     }
                                                 }
-                                            } else {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
+
+                                                // High Contrast Contact Actions (NO White on Gold!)
+                                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                    // Call Trigger (Obsidian icon on White circle)
                                                     Box(
                                                         modifier = Modifier
-                                                            .size(50.dp)
-                                                            .border(2.dp, Gold, CircleShape)
+                                                            .size(44.dp)
                                                             .clip(CircleShape)
+                                                            .background(GoldenWhiteLight)
+                                                            .clickable {
+                                                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${parcel.courierPhone}"))
+                                                                try {
+                                                                    context.startActivity(dialIntent)
+                                                                } catch (e: Exception) {
+                                                                    Toast.makeText(context, "Call not supported on this device", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            },
+                                                        contentAlignment = Alignment.Center
                                                     ) {
-                                                        Image(
-                                                            painter = rememberAsyncImagePainter(parcel.courierAvatar),
-                                                            contentDescription = "Courier Profile",
-                                                            contentScale = ContentScale.Crop,
-                                                            modifier = Modifier.fillMaxSize()
+                                                        Icon(Icons.Filled.Call, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                    }
+
+                                                    // Chat Trigger (Obsidian icon on Gold circle)
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(44.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Gold)
+                                                            .clickable { showChatSheet = true },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(Icons.Filled.Chat, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            // Courier is being assigned / searching nearest rider
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(14.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                val infiniteTransition = rememberInfiniteTransition(label = "pulseCourier")
+                                                val pulseScale by infiniteTransition.animateFloat(
+                                                    initialValue = 0.92f,
+                                                    targetValue = 1.08f,
+                                                    animationSpec = infiniteRepeatable(
+                                                        animation = tween(1000, easing = FastOutSlowInEasing),
+                                                        repeatMode = RepeatMode.Reverse
+                                                    ),
+                                                    label = "pulseScale"
+                                                )
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(48.dp)
+                                                            .graphicsLayer {
+                                                                scaleX = pulseScale
+                                                                scaleY = pulseScale
+                                                            }
+                                                            .background(Gold.copy(alpha = 0.15f), CircleShape)
+                                                            .border(1.5.dp, Gold.copy(alpha = 0.6f), CircleShape),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.DirectionsBike,
+                                                            contentDescription = "Assigning Courier",
+                                                            tint = Gold,
+                                                            modifier = Modifier.size(24.dp)
                                                         )
                                                     }
                                                     Spacer(modifier = Modifier.width(12.dp))
                                                     Column {
                                                         Text(
-                                                            text = parcel.courierName,
-                                                            fontWeight = FontWeight.ExtraBold,
-                                                            fontSize = 16.sp,
+                                                            text = "Assigning Nearest Courier...",
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 14.sp,
                                                             color = Color.White
                                                         )
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Star,
-                                                                contentDescription = null,
-                                                                tint = Gold,
-                                                                modifier = Modifier.size(13.dp)
-                                                            )
-                                                            Spacer(modifier = Modifier.width(4.dp))
-                                                            val activeRider = riders.find { it.id == parcel.riderId }
-                                                            val riderRatingStr = activeRider?.let { String.format("%.2f", it.rating) } ?: "4.95"
-                                                            Text(
-                                                                text = "$riderRatingStr" + if (parcel.riderBikeNumber.isNotEmpty()) " • Bike: ${parcel.riderBikeNumber}" else " (VIP Rider)",
-                                                                fontSize = 11.sp,
-                                                                color = TextGray,
-                                                                fontWeight = FontWeight.SemiBold
-                                                            )
-                                                        }
+                                                        Text(
+                                                            text = "Matching active riders in your dispatch zone",
+                                                            fontSize = 11.sp,
+                                                            color = TextGray
+                                                        )
                                                     }
                                                 }
-                                            }
-
-                                            // High Contrast Contact Actions (NO White on Gold!)
-                                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                                // Call Trigger (Obsidian icon on White circle)
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(44.dp)
-                                                        .clip(CircleShape)
-                                                        .background(GoldenWhiteLight)
-                                                        .clickable {
-                                                            val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${parcel.courierPhone}"))
-                                                            try {
-                                                                context.startActivity(dialIntent)
-                                                            } catch (e: Exception) {
-                                                                Toast.makeText(context, "Call not supported on this device", Toast.LENGTH_SHORT).show()
-                                                            }
-                                                        },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(Icons.Filled.Call, null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                }
-
-                                                // Chat Trigger (Obsidian icon on Gold circle)
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(44.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Gold)
-                                                        .clickable { showChatSheet = true },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(Icons.Filled.Chat, null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                }
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(20.dp),
+                                                    color = Gold,
+                                                    strokeWidth = 2.dp
+                                                )
                                             }
                                         }
                                     }
-                                }
+                                    }
                                 }
                             }
                         }

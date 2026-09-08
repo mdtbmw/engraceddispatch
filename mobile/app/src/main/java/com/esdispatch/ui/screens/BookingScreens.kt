@@ -1541,9 +1541,21 @@ fun PaymentSuccessScreen(
     val isDark = !isLight
     val context = LocalContext.current
     val parcels by viewModel.parcels.collectAsState()
-    val latestParcel = parcels.firstOrNull()
+    val selectedParcel by viewModel.selectedParcel.collectAsState()
+    val draft by viewModel.parcelDraft.collectAsState()
+    val latestParcel = selectedParcel ?: parcels.firstOrNull()
     val currentUserName by viewModel.userName.collectAsState()
     val currentUserPhone by viewModel.userPhone.collectAsState()
+
+    val displayTrackingId = latestParcel?.id?.ifBlank { null } ?: "ENG-DISPATCH"
+    val displayPrice = latestParcel?.price ?: if (draft.price > 0) draft.price else 0.0
+    val displaySenderName = latestParcel?.senderName?.ifBlank { null } ?: currentUserName.ifBlank { draft.senderName.ifBlank { "Customer" } }
+    val displaySenderPhone = latestParcel?.senderPhone?.ifBlank { null } ?: currentUserPhone.ifBlank { draft.senderPhone.ifBlank { "N/A" } }
+    val displayReceiverName = latestParcel?.receiverName?.ifBlank { null } ?: draft.receiverName.ifBlank { "Valued Customer" }
+    val displayReceiverPhone = latestParcel?.receiverPhone?.ifBlank { null } ?: draft.receiverPhone.ifBlank { "N/A" }
+    val displayPickup = latestParcel?.pickupAddress?.ifBlank { null } ?: draft.pickupAddress.ifBlank { "Scheduled Pickup" }
+    val displayDelivery = latestParcel?.deliveryAddress?.ifBlank { null } ?: draft.deliveryAddress.ifBlank { "Scheduled Delivery Destination" }
+    val displayItem = latestParcel?.itemName?.ifBlank { null } ?: "Premium Package Dispatch"
 
     LaunchedEffect(Unit) {
         scale.animateTo(
@@ -1670,10 +1682,10 @@ fun PaymentSuccessScreen(
                                             .padding(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
                                         Text(
-                                            text = latestParcel?.id ?: "ENG-824-LGS",
+                                            text = displayTrackingId,
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.Black,
-                                            color = if (isDark) Color.White else Obsidian,
+                                            color = AppTextColor,
                                             fontFamily = SpaceGrotesk
                                         )
                                     }
@@ -1681,7 +1693,7 @@ fun PaymentSuccessScreen(
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("AMOUNT PAID", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
                                     Text(
-                                        text = "₦${String.format("%,.2f", latestParcel?.price ?: 2500.00)}",
+                                        text = "₦${String.format("%,.2f", displayPrice)}",
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Gold,
@@ -1700,31 +1712,31 @@ fun PaymentSuccessScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("SENDER", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                    Text(latestParcel?.senderName ?: currentUserName.ifBlank { "Customer" }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                    Text(latestParcel?.senderPhone ?: currentUserPhone.ifBlank { "+234 803 123 4567" }, fontSize = 10.sp, color = TextGray)
+                                    Text(displaySenderName, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                                    Text(displaySenderPhone, fontSize = 10.sp, color = TextGray)
                                 }
                                 Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                                     Text("RECIPIENT", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                    Text(latestParcel?.receiverName ?: "Tunde Balogun", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                    Text(latestParcel?.receiverPhone ?: "+234 812 345 6789", fontSize = 10.sp, color = TextGray)
+                                    Text(displayReceiverName, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                                    Text(displayReceiverPhone, fontSize = 10.sp, color = TextGray)
                                 }
                             }
 
                             // Pickup & Delivery Address
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text("PICKUP ADDRESS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                Text(latestParcel?.pickupAddress ?: "No. 12 Obafemi Awolowo Way, Ikeja", fontSize = 11.sp, color = TextGray)
+                                Text(displayPickup, fontSize = 11.sp, color = TextGray)
                             }
 
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text("DELIVERY ADDRESS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                Text(latestParcel?.deliveryAddress ?: "Lekki Phase 1, Lagos", fontSize = 11.sp, color = TextGray)
+                                Text(displayDelivery, fontSize = 11.sp, color = TextGray)
                             }
 
                             // Item Description
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text("ITEM DESCRIPTION", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                Text(latestParcel?.itemName ?: "Premium Package Dispatch", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                Text(displayItem, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = AppTextColor)
                             }
 
                             // Thin Divider line

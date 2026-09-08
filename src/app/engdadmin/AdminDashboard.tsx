@@ -1265,9 +1265,17 @@ function getDynamicPassword(email: string, pin: string): string {
   return `${pin}${pin}_${hashStr}`;
 }
 
-function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserProfile[]; searchQuery: string; db: any; addLog: any }) {
+function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotification }: { 
+  activeUsers: UserProfile[]; 
+  searchQuery: string; 
+  db: any; 
+  addLog: any; 
+  addToast?: (type: Toast["type"], message: string) => void;
+  createNotification?: (title: string, desc: string) => Promise<void>;
+}) {
     const [search, setSearch] = useState("");
     const [editUser, setEditUser] = useState<UserProfile | null>(null);
+    const [previewUser, setPreviewUser] = useState<UserProfile | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
     const [showNewUser, setShowNewUser] = useState(false);
     const [newUserStep, setNewUserStep] = useState(1);
@@ -1281,16 +1289,18 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
     const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "" });
     const [uPage, setUPage] = useState(0);
     const uPerPage = 20;
-    const filtered = activeUsers.filter(u => { const q = (searchQuery || search).toLowerCase(); return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.phone.includes(q); });
+    const filtered = activeUsers.filter(u => { const q = (searchQuery || search).toLowerCase(); return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.phone && u.phone.includes(q)); });
     const uTotalPages = Math.max(1, Math.ceil(filtered.length / uPerPage));
     const pagedUsers = filtered.slice(uPage * uPerPage, (uPage + 1) * uPerPage);
     useEffect(() => { setUPage(0); }, [search, searchQuery]);
     const saveUser = async () => {
       if (!editUser) return;
       await updateDoc(doc(db, "users", editUser.id), { name: form.name || editUser.name, role: form.role || editUser.role, phone: form.phone || editUser.phone, bikeNumber: form.bikeNumber || editUser.bikeNumber, status: form.status || editUser.status, updatedAt: Timestamp.now() });
-      addLog("Update User", editUser.name + " -> " + (form.name || editUser.name)); setEditUser(null);
+      addLog("Update User", editUser.name + " -> " + (form.name || editUser.name));
+      if (addToast) addToast("success", `Updated details for ${form.name || editUser.name}`);
+      setEditUser(null);
     };
-    const deleteUser = async (id: string) => { await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() }); addLog("Delete User", "Soft-deleted " + id); setConfirmDelete(null); };
+    const deleteUser = async (id: string) => { await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() }); addLog("Delete User", "Soft-deleted " + id); if (addToast) addToast("info", "User deactivated"); setConfirmDelete(null); };
     const promoteToVendor = async (u: UserProfile) => {
       try {
         const today = new Date().toISOString().slice(0, 10);
@@ -1303,7 +1313,8 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
         }, { merge: true });
         await updateDoc(doc(db, "users", u.id), { role: "vendor", userRole: "Vendor", isVendorVerified: true, updatedAt: Timestamp.now() });
         addLog("Upgrade Vendor", `Upgraded '${u.name}' (${u.email}) to vendor with approved storefront`);
-      } catch (err: any) { addLog("Error", "Upgrade to vendor failed: " + (err.message || "unknown")); }
+        if (addToast) addToast("success", `Upgraded ${u.name} to Vendor!`);
+      } catch (err: any) { addLog("Error", "Upgrade to vendor failed: " + (err.message || "unknown")); if (addToast) addToast("error", "Failed to upgrade vendor"); }
     };
     const handleFundWallet = async () => {
       const amt = parseFloat(fundAmount);
@@ -1334,18 +1345,40 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
         await setDoc(doc(db, "users", fundUser.id, "transactions", txId), txDoc);
         await setDoc(doc(db, "transactions", txId), txDoc);
 
+        // Send in-app notification directly to user's notifications subcollection
+        try {
+          await addDoc(collection(db, "users", fundUser.id, "notifications"), {
+            title: fundAction === "credit" ? "Wallet Credited!" : "Wallet Debited",
+            message: fundReason 
+              ? `${fundReason} (₦${amt.toLocaleString()})`
+              : `Your account was ${fundAction === "credit" ? "credited with" : "debited by"} ₦${amt.toLocaleString()} by Admin.`,
+            amount: delta,
+            read: false,
+            createdAt: Timestamp.now()
+          });
+        } catch (nErr) {
+          console.warn("Could not dispatch user in-app notification:", nErr);
+        }
+
         addLog("Wallet Adjustment", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name} (${fundUser.email}). New balance: ₦${newBal.toLocaleString()}`);
+        if (addToast) {
+          addToast("success", `Successfully ${fundAction === "credit" ? "credited" : "debited"} ₦${amt.toLocaleString()} for ${fundUser.name}`);
+        }
+        if (createNotification) {
+          createNotification("Wallet Funded", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name}`);
+        }
         setFundUser(null);
         setFundAmount("");
         setFundReason("");
       } catch (err: any) {
         addLog("Error", "Fund wallet failed: " + (err.message || "unknown"));
+        if (addToast) addToast("error", "Fund wallet failed: " + (err.message || "unknown"));
       }
       setFundingWallet(false);
     };
     const createUser = async () => {
-      if (newUserForm.pin !== newUserForm.confirmPin) { addLog("Error", "PIN mismatch"); return; }
-      if (newUserForm.pin.length < 4) { addLog("Error", "PIN must be at least 4 digits"); return; }
+      if (newUserForm.pin !== newUserForm.confirmPin) { addLog("Error", "PIN mismatch"); if (addToast) addToast("error", "PIN mismatch"); return; }
+      if (newUserForm.pin.length < 4) { addLog("Error", "PIN must be at least 4 digits"); if (addToast) addToast("error", "PIN must be at least 4 digits"); return; }
       setCreatingUser(true);
       try {
         const derivedPwd = getDynamicPassword(newUserForm.email, newUserForm.pin);
@@ -1368,11 +1401,10 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
           status: isRider ? "active" : "offline",
           riderStatus: isRider ? "active" : "offline",
           isOnline: isRider ? true : false,
-          vehicleType: "motorcycle",
-          rating: 5.0,
-          deliveryCount: 0,
           walletBalance: 0,
           loyaltyPoints: 0,
+          deliveryCount: 0,
+          rating: 5.0,
           photoUrl: "",
           isDeleted: false,
           createdAt: Timestamp.now(),
@@ -1380,101 +1412,136 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
         });
 
         if (newUserForm.role === "vendor") {
-          // Auto-create an approved vendor storefront tied to the new user's uid (mobile schema)
+          const today = new Date().toISOString().slice(0, 10);
           await setDoc(doc(db, "marketplace_stores", cred.user.uid), {
-            id: cred.user.uid, ownerId: cred.user.uid, storeName: newUserForm.name + "'s Store",
-            category: "General", ownerName: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone,
-            description: "", address: "", commissionRate: 8.5, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
+            id: cred.user.uid, ownerId: cred.user.uid, storeName: newUserForm.name + "'s Store", category: "General",
+            ownerName: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone, description: "", address: "",
+            commissionRate: 8.5, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
             isVerified: true, isPendingReview: false, kycStatus: "approved", status: "APPROVED",
-            dateEnlisted: new Date().toISOString().slice(0, 10), createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
+            dateEnlisted: today, createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
           });
           await updateDoc(doc(db, "users", cred.user.uid), { userRole: "Vendor", isVendorVerified: true });
-          addLog("Create Vendor", "Created vendor '" + newUserForm.name + "' with auto-approved storefront");
         }
 
-        try { await signOut(secondaryAuth); } catch (_) {}
-
-        addLog("Create User", newUserForm.name + " (" + newUserForm.email + ") as " + newUserForm.role);
+        addLog("Create User", `Created ${newUserForm.role} '${newUserForm.name}' (${newUserForm.email})`);
+        if (addToast) addToast("success", `Created ${newUserForm.role} ${newUserForm.name}`);
         setShowNewUser(false);
-        setNewUserStep(1);
         setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
-      } catch (e: any) { addLog("Error", "Create user failed: " + (e.message || "unknown")); }
+        setNewUserStep(1);
+      } catch (err: any) {
+        addLog("Error", "Create user failed: " + (err.message || "unknown"));
+        if (addToast) addToast("error", "Create user failed: " + (err.message || "unknown"));
+      }
       setCreatingUser(false);
     };
-    return <div className="tab-content space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
+
+    return <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#FFC542]" /> Users</h1>
-          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} total (page {uPage + 1}/{uTotalPages})</p></div>
-        <div className="flex items-center gap-3 flex-wrap w-full sm:w-auto">
-          <button onClick={() => setShowNewUser(true)} className="flex-1 sm:flex-none px-4 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center justify-center gap-1.5"><UserPlus className="w-4 h-4" /> Add User</button>
+          <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} active registered users</p></div>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowNewUser(true)} className="px-4 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:shadow-md transition-all"><UserPlus className="w-4 h-4" /> Add User</button>
           <div className="flex-1 sm:flex-none"><SearchInput value={search} onChange={setSearch} placeholder="Search users..." /></div>
         </div>
       </div>
-      {showNewUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setShowNewUser(false)}>
-        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
+      {showNewUser && <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm space-y-4 animate-scale-in">
+        <div className="flex items-center justify-between">
           <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> New User — Step {newUserStep}/2</h3>
-          {/* Step indicator */}
-          <div className="flex gap-2">
-            <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 1 ? "bg-[#FFC542]" : "bg-gray-200 dark:bg-gray-700")} />
-            <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 2 ? "bg-[#FFC542]" : "bg-gray-200 dark:bg-gray-700")} />
-          </div>
-          {newUserStep === 1 ? (
-            <div className="space-y-3">
-              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Full Name</label>
-                <input value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Email</label>
-                <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone</label>
-                <input value={newUserForm.phone} onChange={e => setNewUserForm(p => ({ ...p, phone: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Role</label>
-                <Select value={newUserForm.role} onChange={v => { setNewUserForm(p => ({ ...p, role: v })); if (v !== "rider") setNewUserForm(p => ({ ...p, bikeNumber: "" })); }} options={[{value:"customer",label:"Customer"},{value:"rider",label:"Rider"},{value:"vendor",label:"Vendor (opens a storefront)"},{value:"admin",label:"Admin"}]} className="w-full" /></div>
-              {newUserForm.role === "vendor" && <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20">
-                <p className="text-[10px] font-bold text-[#FFC542] uppercase">Vendor Storefront</p>
-                <p className="text-xs text-[#111] dark:text-white font-semibold mt-1">An approved vendor store will be created automatically for this account. The vendor can manage it from the mobile app.</p>
-              </div>}
-              <div className="flex justify-end pt-2">
-                <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else addLog("Error", "Fill in name and email first"); }} className="px-6 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-all">Next →</button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20">
-                <p className="text-xs font-bold text-[#111] dark:text-white">{newUserForm.name}</p>
-                <p className="text-[10px] text-black/40 dark:text-white/40">{newUserForm.email} · {newUserForm.role}</p>
-              </div>
-              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">PIN (4+ digits — used for app login)</label>
-                <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(p => ({ ...p, pin: e.target.value.replace(/\D/g, '') }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" placeholder="Enter PIN" /></div>
-              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Confirm PIN</label>
-                <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(p => ({ ...p, confirmPin: e.target.value.replace(/\D/g, '') }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" placeholder="Confirm PIN" /></div>
-              {newUserForm.role === "rider" && <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike Number</label>
-                <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(p => ({ ...p, bikeNumber: e.target.value }))} placeholder="e.g. LASG-1234" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>}
-              <div className="flex items-center justify-between gap-3 pt-2 border-t border-black/10 dark:border-white/10">
-                <button onClick={() => setNewUserStep(1)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">← Back</button>
-                <SaveBtn onClick={createUser} loading={creatingUser} label="Create Account" />
-              </div>
-            </div>
-          )}
+          <button onClick={() => { setShowNewUser(false); setNewUserStep(1); }} className="text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70"><X className="w-4 h-4" /></button>
         </div>
+        <div className="flex gap-2">
+          <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 1 ? "bg-[#FFC542]" : "bg-gray-200 dark:bg-gray-700")} />
+          <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 2 ? "bg-[#FFC542]" : "bg-gray-200 dark:bg-gray-700")} />
+        </div>
+        {newUserStep === 1 ? (
+          <div className="space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Full Name *</label>
+                <input value={newUserForm.name} onChange={e => setNewUserForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Osas Ighodaro" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Email Address *</label>
+                <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(f => ({ ...f, email: e.target.value }))} placeholder="e.g. user@esdispatch.com" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone Number</label>
+                <input value={newUserForm.phone} onChange={e => setNewUserForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 08012345678" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Account Role</label>
+                <Select value={newUserForm.role} onChange={v => setNewUserForm(f => ({ ...f, role: v }))} options={[{ value: "customer", label: "Customer" }, { value: "rider", label: "Rider / Courier" }, { value: "vendor", label: "Vendor" }, { value: "admin", label: "Admin" }]} /></div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else { addLog("Error", "Fill in name and email first"); if (addToast) addToast("error", "Fill in name and email first"); } }} className="px-6 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-all">Next →</button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {newUserForm.role === "rider" && <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike / Plate Number</label>
+              <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>}
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Set 4-Digit PIN *</label>
+                <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+              <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Confirm PIN *</label>
+                <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(f => ({ ...f, confirmPin: e.target.value }))} placeholder="••••" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            </div>
+            <div className="flex items-center justify-between gap-2 pt-2">
+              <button onClick={() => setNewUserStep(1)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">← Back</button>
+              <button onClick={createUser} disabled={creatingUser || !newUserForm.pin || !newUserForm.confirmPin} className="px-6 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 disabled:opacity-50 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-1.5">
+                {creatingUser ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Create User
+              </button>
+            </div>
+          </div>
+        )}
       </div>}
-      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
-            <tr><th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Name</th>
-              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Email</th>
-              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Role</th>
+            <tr><th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">User</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Contact</th>
+              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Role / Status</th>
+              <th className="text-right font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden sm:table-cell">Balance</th>
               <th className="text-right font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Actions</th></tr>
           </thead><tbody className="divide-y divide-black/5 dark:divide-white/10">
-            {pagedUsers.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-black/40 dark:text-white/40">No users found.</td></tr>}
+            {pagedUsers.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-black/40 dark:text-white/40">No users found.</td></tr>}
             {pagedUsers.map((u, i) => <tr key={u.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors animate-fade-in " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][i] || "")}>
-              <td className="p-3"><div className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#111] dark:text-white">{u.name.charAt(0).toUpperCase()}</div>
-                <div><p className="font-bold text-[#111] dark:text-white">{u.name}</p><span className="text-[10px] text-black/40 dark:text-white/40">{u.phone || ""}</span></div></div></td>
-              <td className="p-3 hidden md:table-cell"><span className="text-black/60 dark:text-white/60">{u.email}</span></td>
-              <td className="p-3 hidden lg:table-cell"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + rBadge(u.role)}>{u.role.toUpperCase()}</span></td>
-              <td className="p-3 text-right">
+              <td className="p-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="relative">
+                    <div className="w-9 h-9 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#111] dark:text-white border border-[#FFC542]/30">
+                      {u.name.charAt(0).toUpperCase()}
+                    </div>
+                    {u.isOnline && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#1a1a1a]" />}
+                  </div>
+                  <div>
+                    <p className="font-black text-[#111] dark:text-white flex items-center gap-1.5">{u.name}
+                      {u.role === "rider" && u.bikeNumber && <span className="text-[9px] font-mono px-1.5 py-0.2 bg-black/5 dark:bg-white/10 rounded text-black/60 dark:text-white/60">{u.bikeNumber}</span>}
+                    </p>
+                    <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">UID: {u.id ? u.id.slice(0, 8) : "N/A"}...</span>
+                  </div>
+                </div>
+              </td>
+              <td className="p-3 hidden md:table-cell">
+                <div className="space-y-0.5">
+                  <p className="text-black/70 dark:text-white/70">{u.email}</p>
+                  <p className="text-[10px] text-black/40 dark:text-white/40">{u.phone || "No phone"}</p>
+                </div>
+              </td>
+              <td className="p-3 hidden lg:table-cell">
+                <div className="flex items-center gap-1.5">
+                  <span className={"text-[10px] font-bold px-2.5 py-0.5 rounded-full " + rBadge(u.role)}>{(u.role || "customer").toUpperCase()}</span>
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${u.status === "active" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60"}`}>
+                    {(u.status || "active").toUpperCase()}
+                  </span>
+                </div>
+              </td>
+              <td className="p-3 text-right hidden sm:table-cell">
+                <p className="font-mono font-black text-xs text-emerald-600 dark:text-emerald-400">₦{(u.walletBalance || 0).toLocaleString()}</p>
+                <p className="text-[10px] text-black/40 dark:text-white/40">{u.loyaltyPoints || 0} pts</p>
+              </td>
+              <td className="p-3 text-right whitespace-nowrap">
+                <button title="View Full Details" onClick={() => setPreviewUser(u)} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors"><Eye className="w-3.5 h-3.5" /></button>
                 {(u.role !== "vendor" && u.role !== "admin" && u.role !== "super_admin") && <button title="Upgrade to Vendor" onClick={() => promoteToVendor(u)} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Store className="w-3.5 h-3.5" /></button>}
                 <button title="Fund / Adjust Wallet" onClick={() => setFundUser(u)} className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-3.5 h-3.5" /></button>
-                <button onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role, phone: u.phone, bikeNumber: u.bikeNumber || "", status: u.status }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
-                <button onClick={() => setConfirmDelete(u.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button></td>
+                <button title="Edit User" onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role || "customer", phone: u.phone || "", bikeNumber: u.bikeNumber || "", status: u.status || "active" }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
+                <button title="Deactivate User" onClick={() => setConfirmDelete(u.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+              </td>
             </tr>)}
           </tbody></table>
         </div>
@@ -1484,7 +1551,86 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
         {Array.from({ length: uTotalPages }, (_, i) => <button key={i} onClick={() => setUPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === uPage ? "bg-[#FFC542] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
         <button onClick={() => setUPage(p => Math.min(uTotalPages - 1, p + 1))} disabled={uPage >= uTotalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
       </div>}
-      <ConfirmModal show={confirmDelete !== null} title="Delete User" message="Soft-delete this user?" confirmLabel="Delete" onConfirm={() => deleteUser(confirmDelete!)} onCancel={() => setConfirmDelete(null)} />
+      <ConfirmModal show={confirmDelete !== null} title="Delete User" message="Soft-delete this user? They will no longer be able to log in or transact." confirmLabel="Deactivate" onConfirm={() => deleteUser(confirmDelete!)} onCancel={() => setConfirmDelete(null)} />
+      
+      {/* User Details Preview Modal */}
+      {previewUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setPreviewUser(null)}>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-[#FFC542] text-[#111] flex items-center justify-center text-lg font-black shadow-md">
+                {previewUser.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
+                  {previewUser.name}
+                  {previewUser.isOnline && <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" title="Online" />}
+                </h3>
+                <p className="text-xs text-black/50 dark:text-white/50">{previewUser.email}</p>
+              </div>
+            </div>
+            <button onClick={() => setPreviewUser(null)} className="p-2 text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70 rounded-full hover:bg-black/5 dark:hover:bg-white/5"><X size={18} /></button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">Wallet</p>
+              <p className="text-sm font-black text-emerald-600 dark:text-emerald-300 font-mono mt-0.5">₦{(previewUser.walletBalance || 0).toLocaleString()}</p>
+            </div>
+            <div className="bg-[#FFC542]/10 border border-[#FFC542]/20 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-bold uppercase text-[#FFC542]">Points</p>
+              <p className="text-sm font-black text-[#111] dark:text-white font-mono mt-0.5">{previewUser.loyaltyPoints || 0}</p>
+            </div>
+            <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-500/20 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-bold uppercase text-blue-600 dark:text-blue-400">Deliveries</p>
+              <p className="text-sm font-black text-blue-600 dark:text-blue-300 font-mono mt-0.5">{previewUser.deliveryCount || 0}</p>
+            </div>
+            <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-500/20 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-bold uppercase text-purple-600 dark:text-purple-400">Rating</p>
+              <p className="text-sm font-black text-purple-600 dark:text-purple-300 font-mono mt-0.5">{previewUser.rating ? `${previewUser.rating} ★` : "5.0 ★"}</p>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 dark:bg-[#222] rounded-2xl p-4 space-y-2 text-xs">
+            <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
+              <span className="text-black/40 dark:text-white/40">User ID</span>
+              <span className="font-mono text-black/70 dark:text-white/70">{previewUser.uid || previewUser.id}</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
+              <span className="text-black/40 dark:text-white/40">Phone Number</span>
+              <span className="font-bold text-[#111] dark:text-white">{previewUser.phone || "None registered"}</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
+              <span className="text-black/40 dark:text-white/40">Role</span>
+              <span className={"font-bold px-2 py-0.5 rounded-full text-[10px] " + rBadge(previewUser.role)}>{(previewUser.role || "customer").toUpperCase()}</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
+              <span className="text-black/40 dark:text-white/40">Account Status</span>
+              <span className={`font-bold text-[10px] px-2 py-0.5 rounded-full ${previewUser.status === "active" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300"}`}>
+                {(previewUser.status || "active").toUpperCase()}
+              </span>
+            </div>
+            {previewUser.bikeNumber && <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
+              <span className="text-black/40 dark:text-white/40">Assigned Bike / Vehicle</span>
+              <span className="font-mono font-bold text-[#111] dark:text-white">{previewUser.bikeNumber}</span>
+            </div>}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="flex gap-2">
+              <button onClick={() => { setFundUser(previewUser); setPreviewUser(null); }} className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all">
+                <DollarSign size={14} /> Fund Wallet
+              </button>
+              <button onClick={() => { setEditUser(previewUser); setForm({ name: previewUser.name, role: previewUser.role || "customer", phone: previewUser.phone || "", bikeNumber: previewUser.bikeNumber || "", status: previewUser.status || "active" }); setPreviewUser(null); }} className="px-3.5 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 transition-all">
+                <Edit3 size={14} /> Edit
+              </button>
+            </div>
+            <button onClick={() => setPreviewUser(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Close</button>
+          </div>
+        </div>
+      </div>}
+
+      {/* Fund User Wallet Modal */}
       {fundUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setFundUser(null)}>
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
           <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><DollarSign className="w-5 h-5 text-emerald-500" /> Fund & Manage Wallet</h3>
@@ -1501,12 +1647,12 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
               </div>
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Amount (₦)</label>
+              <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Amount (₦) *</label>
               <input type="number" min="1" value={fundAmount} onChange={e => setFundAmount(e.target.value)} placeholder="e.g. 5000" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white font-bold" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Reason / Narration</label>
-              <input type="text" value={fundReason} onChange={e => setFundReason(e.target.value)} placeholder="e.g. Balance top-up / admin refund" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" />
+              <input type="text" value={fundReason} onChange={e => setFundReason(e.target.value)} placeholder="e.g. Customer promo credit / order refund" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" />
             </div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-black/10 dark:border-white/10">
@@ -1517,13 +1663,53 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
           </div>
         </div>
       </div>}
+
+      {/* Edit User Modal with proper Dropdowns */}
       {editUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
-        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-[#FFC542]" /> Edit User</h3>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-[#FFC542]" /> Edit User</h3>
+            <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">{editUser.email}</span>
+          </div>
           <div className="space-y-3">
-            {["name","role","phone","bikeNumber","status"].map(k => <div key={k}><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{k.replace(/([A-Z])/g, ' $1').trim()}</label>
-              <input value={form[k as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>)}
+            <div>
+              <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Full Name</label>
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone Number</label>
+              <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Role</label>
+                <Select value={form.role || editUser.role} onChange={v => setForm(f => ({ ...f, role: v }))} 
+                  options={[
+                    { value: "customer", label: "Customer" },
+                    { value: "rider", label: "Rider / Courier" },
+                    { value: "vendor", label: "Vendor" },
+                    { value: "admin", label: "Admin" },
+                    { value: "dispatcher", label: "Dispatcher" }
+                  ]} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Status</label>
+                <Select value={form.status || editUser.status} onChange={v => setForm(f => ({ ...f, status: v }))}
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "offline", label: "Offline" },
+                    { value: "suspended", label: "Suspended" },
+                    { value: "pending", label: "Pending Review" }
+                  ]} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike / Vehicle Number</label>
+              <input value={form.bikeNumber} onChange={e => setForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204"
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+            </div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-2">
             <button onClick={() => setEditUser(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
@@ -1533,7 +1719,6 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
       </div>}
     </div>;
   }
-
 
 function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string; db: any; addLog: any }) {
     const [search, setSearch] = useState("");
@@ -2315,6 +2500,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
         <Toggle label="Auto-Verify Vendors" desc="Instantly approve vendor stores once KYC + delivery milestone are met" checked={!!sForm.autoVerifyVendors} onChange={v => upd("autoVerifyVendors", v)} />
         <Toggle label="Referral System" desc="Referral rewards and invite codes" checked={!!sForm.referralEnabled} onChange={v => upd("referralEnabled", v)} />
         <Toggle label="Dynamic Pricing" desc="Surge pricing based on demand" checked={!!sForm.dynamicPricing} onChange={v => upd("dynamicPricing", v)} />
+        <Toggle label="Phone Verification (SMS/WhatsApp/Call)" desc="Require phone number OTP verification for order booking and account security" checked={!!sForm.phoneVerificationEnabled} onChange={v => upd("phoneVerificationEnabled", v)} />
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Feature Toggles")} loading={saving} /></div>
     </div>
@@ -2481,6 +2667,8 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
           <input value={sForm.contactEmail ?? ""} onChange={e => upd("contactEmail", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SUPPORT PHONE</label>
           <input value={sForm.supportPhone ?? ""} onChange={e => upd("supportPhone", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
+        <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">SUPPORT WHATSAPP</label>
+          <input value={sForm.supportWhatsapp ?? ""} onChange={e => upd("supportWhatsapp", e.target.value)} placeholder="e.g. +2348012345678" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div className="relative"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">FCM SERVER KEY</label>
           <div className="relative"><input type={showFcm ? "text" : "password"} value={fcmKey} onChange={e => setFcmKey(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 pr-8 text-xs text-[#111] dark:text-white" placeholder="Stored in admin-only config"/>
             <button onClick={() => setShowFcm(!showFcm)} className="absolute right-2 top-1/2 -translate-y-1/2 text-black/30 dark:text-white/30 hover:text-black/60 dark:hover:text-white/60"><Eye size={14} /></button></div></div>
@@ -3845,7 +4033,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
             marketplaceEnabled={marketplaceEnabled}
             toggleMarketplace={toggleMarketplace}
           />}
-        {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} />}
+        {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} />}
         {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}

@@ -46,6 +46,15 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import com.esdispatch.util.CargoFeasibilityValidator
+import android.content.Intent
+
+data class MultiPickupStop(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val address: String = "",
+    val recipientName: String = "",
+    val recipientPhone: String = "",
+    val itemDescription: String = ""
+)
 
 @Composable
 fun MultiBookingScreen(
@@ -58,7 +67,18 @@ fun MultiBookingScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var pickups by remember { mutableStateOf(if (draft.pickupAddress.isNotBlank()) listOf(draft.pickupAddress) else listOf("Murtala Muhammed Rd, Ikeja")) }
+    var stops by remember {
+        mutableStateOf(
+            listOf(
+                MultiPickupStop(
+                    address = if (draft.pickupAddress.isNotBlank()) draft.pickupAddress else "Murtala Muhammed Rd, Ikeja",
+                    recipientName = draft.receiverName,
+                    recipientPhone = draft.receiverPhone,
+                    itemDescription = ""
+                )
+            )
+        )
+    }
     var delivery by remember { mutableStateOf(draft.deliveryAddress) }
     var itemName by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("4.5") }
@@ -74,36 +94,43 @@ fun MultiBookingScreen(
     var rName by remember { mutableStateOf(draft.receiverName) }
     var rPhone by remember { mutableStateOf(draft.receiverPhone) }
 
+    var activeContactPickerStopIndex by remember { mutableIntStateOf(-1) }
+
     val contactPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickContact()
-    ) { uri ->
-        if (uri != null) {
-            val cursor = context.contentResolver.query(uri, null, null, null, null)
-            if (cursor != null && cursor.moveToFirst()) {
-                val nameIndex = cursor.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME)
-                val hasPhoneIndex = cursor.getColumnIndex(ContactsContract.Contacts.HAS_PHONE_NUMBER)
-                val idIndex = cursor.getColumnIndex(ContactsContract.Contacts._ID)
-                
-                val name = if (nameIndex >= 0) cursor.getString(nameIndex) else ""
-                val hasPhone = if (hasPhoneIndex >= 0) cursor.getString(hasPhoneIndex) else "0"
-                val id = if (idIndex >= 0) cursor.getString(idIndex) else ""
-                
-                rName = name
-                if (hasPhone == "1") {
-                    val phones = context.contentResolver.query(
-                        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                        null,
-                        ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = ?",
-                        arrayOf(id),
-                        null
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val contactUri = result.data?.data
+            if (contactUri != null) {
+                try {
+                    val projection = arrayOf(
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        ContactsContract.CommonDataKinds.Phone.NUMBER
                     )
-                    if (phones != null && phones.moveToFirst()) {
-                        val phoneIndex = phones.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                        rPhone = if (phoneIndex >= 0) phones.getString(phoneIndex) else ""
-                        phones.close()
+                    context.contentResolver.query(contactUri, projection, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                            val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                            val name = if (nameIndex >= 0) cursor.getString(nameIndex) ?: "" else ""
+                            val num = if (numberIndex >= 0) (cursor.getString(numberIndex) ?: "").replace(" ", "").replace("-", "") else ""
+                            if (activeContactPickerStopIndex in stops.indices) {
+                                stops = stops.toMutableList().apply {
+                                    val cur = this[activeContactPickerStopIndex]
+                                    this[activeContactPickerStopIndex] = cur.copy(
+                                        recipientName = if (name.isNotBlank()) name else cur.recipientName,
+                                        recipientPhone = if (num.isNotBlank()) num else cur.recipientPhone
+                                    )
+                                }
+                            } else {
+                                if (name.isNotBlank()) rName = name
+                                if (num.isNotBlank()) rPhone = num
+                            }
+                            Toast.makeText(context, "Contact loaded successfully!", Toast.LENGTH_SHORT).show()
+                        }
                     }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Failed to read contact", Toast.LENGTH_SHORT).show()
                 }
-                cursor.close()
             }
         }
     }
@@ -136,8 +163,8 @@ fun MultiBookingScreen(
     // Pricing Calculation
     val pendingQuote by viewModel.pendingQuote.collectAsState()
 
-    LaunchedEffect(pickups, delivery, weight) {
-        val firstPickup = pickups.firstOrNull() ?: ""
+    LaunchedEffect(stops, delivery, weight) {
+        val firstPickup = stops.firstOrNull()?.address ?: ""
         if (firstPickup.isNotBlank() && delivery.isNotBlank() && firstPickup.length >= 6 && delivery.length >= 6) {
             viewModel.calculateDynamicPriceAsync(
                 serviceType = "Multi",
@@ -148,7 +175,7 @@ fun MultiBookingScreen(
                 length = 20,
                 width = 15,
                 height = 10,
-                stopsCount = pickups.size - 1,
+                stopsCount = (stops.size - 1).coerceAtLeast(0),
                 insuranceType = "none"
             )
         } else {
@@ -160,11 +187,19 @@ fun MultiBookingScreen(
         if (delivery.isEmpty()) delivery = draft.deliveryAddress
     }
 
-    LaunchedEffect(pickups, delivery, sName, sPhone, rName, rPhone) {
-        viewModel.updateDraftPickup(pickups.firstOrNull() ?: "")
+    LaunchedEffect(stops, delivery, sName, sPhone, rName, rPhone) {
+        val firstStop = stops.firstOrNull()
+        viewModel.updateDraftPickup(firstStop?.address ?: "")
         viewModel.updateDraftDelivery(delivery)
         viewModel.updateDraftSenderInfo(sName, sPhone)
         viewModel.updateDraftReceiverInfo(rName, rPhone)
+        if (stops.size > 1) {
+            viewModel.updateDraftAdditionalStops(
+                stops.drop(1).map {
+                    "${it.address} | Contact: ${it.recipientName} (${it.recipientPhone}) | Item: ${it.itemDescription}"
+                }
+            )
+        }
     }
 
     val isLight = MaterialTheme.colorScheme.background == BackgroundLight
@@ -201,6 +236,10 @@ fun MultiBookingScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
+                        .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
+                            deliveryFocused = false
+                            focusedPickupIndex = -1
+                        }
                         .padding(horizontal = 24.dp, vertical = 24.dp)
                         .padding(bottom = 140.dp) // extra space for bottom CTA bar
                 ) {
@@ -277,55 +316,96 @@ fun MultiBookingScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Pickups (${pickups.size}/5)",
+                                text = "Pickups & Stops (${stops.size}/5)",
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 14.sp,
                                 color = accentColor
                             )
 
-                            if (pickups.size < 5) {
+                            if (stops.size < 5) {
                                 TextButton(
                                     onClick = {
-                                        pickups = pickups + ""
+                                        stops = stops + MultiPickupStop()
                                     },
                                     colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
                                 ) {
                                     Icon(Icons.Filled.Add, null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Add Pickup", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("Add Stop", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        pickups.forEachIndexed { index, pick ->
-                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                        stops.forEachIndexed { index, stop ->
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = if (isDark) Charcoal.copy(alpha = 0.5f) else GoldenWhite,
+                                border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f))
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = "STOP #${index + 1}",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = accentColor,
+                                                letterSpacing = 1.sp
+                                            )
+                                        }
+
+                                        if (stops.size > 1) {
+                                            IconButton(
+                                                onClick = {
+                                                    stops = stops.toMutableList().apply { removeAt(index) }
+                                                    if (focusedPickupIndex == index) {
+                                                        focusedPickupIndex = -1
+                                                        suggestionItems = emptyList()
+                                                    }
+                                                },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(Icons.Filled.Delete, "Remove Stop", tint = Color.Red, modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Address input
                                     OutlinedTextField(
-                                        value = pick,
+                                        value = stop.address,
                                         onValueChange = { newValue ->
-                                            val mutable = pickups.toMutableList()
-                                            mutable[index] = newValue
-                                            pickups = mutable
+                                            stops = stops.toMutableList().apply { this[index] = stop.copy(address = newValue) }
                                             deliveryFocused = false
                                             focusedPickupIndex = index
                                             performSearch(newValue)
                                         },
                                         modifier = Modifier
-                                            .weight(1f)
+                                            .fillMaxWidth()
                                             .onFocusChanged {
                                                 if (it.isFocused) {
                                                     deliveryFocused = false
                                                     focusedPickupIndex = index
-                                                    performSearch(pick)
+                                                    performSearch(stop.address)
                                                 }
                                             },
-                                        shape = RoundedCornerShape(20.dp),
-                                        placeholder = { Text("Pickup Address ${index + 1}", color = TextGray) },
+                                        shape = RoundedCornerShape(16.dp),
+                                        placeholder = { Text("Stop Address #${index + 1}", color = TextGray) },
                                         leadingIcon = { Icon(Icons.Filled.Place, null, tint = accentIconColor) },
                                         textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
                                         colors = OutlinedTextFieldDefaults.colors(
@@ -340,72 +420,155 @@ fun MultiBookingScreen(
                                         )
                                     )
 
-                                    if (pickups.size > 1) {
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        IconButton(
-                                            onClick = {
-                                                val mutable = pickups.toMutableList()
-                                                mutable.removeAt(index)
-                                                pickups = mutable
-                                                if (focusedPickupIndex == index) {
-                                                    focusedPickupIndex = -1
-                                                    suggestionItems = emptyList()
+                                    // Autocomplete Dropdown for this stop
+                                    if (focusedPickupIndex == index && suggestionItems.isNotEmpty()) {
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(max = 240.dp)
+                                                .padding(vertical = 8.dp),
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = CardDefaults.cardColors(containerColor = Charcoal),
+                                            border = BorderStroke(1.dp, accentColor),
+                                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                                        ) {
+                                            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                                                suggestionItems.forEach { item ->
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable {
+                                                                stops = stops.toMutableList().apply { this[index] = stop.copy(address = item.displayInput) }
+                                                                focusedPickupIndex = -1
+                                                                suggestionItems = emptyList()
+                                                            }
+                                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(30.dp)
+                                                                .clip(CircleShape)
+                                                                .background(Gold.copy(alpha = 0.15f)),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(Icons.Filled.Place, null, tint = Gold, modifier = Modifier.size(16.dp))
+                                                        }
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(item.title, color = AppTextColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                            if (item.fullAddress.isNotBlank() && item.fullAddress != item.title) {
+                                                                Spacer(modifier = Modifier.height(2.dp))
+                                                                Text(item.fullAddress, color = TextGray, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                            }
+                                                        }
+                                                    }
+                                                    HorizontalDivider(color = if (isLight) BorderLight else Color(0xFF2E2E2E))
                                                 }
                                             }
-                                        ) {
-                                            Icon(Icons.Filled.Delete, "Remove Pickup", tint = Color.Red, modifier = Modifier.size(20.dp))
                                         }
                                     }
-                                }
 
-                                // Autocomplete Dropdown for currently focused pickup
-                                if (focusedPickupIndex == index && suggestionItems.isNotEmpty()) {
-                                    Card(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(max = 240.dp)
-                                            .padding(vertical = 8.dp),
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Item description for stop
+                                    OutlinedTextField(
+                                        value = stop.itemDescription,
+                                        onValueChange = { newValue ->
+                                            stops = stops.toMutableList().apply { this[index] = stop.copy(itemDescription = newValue) }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(16.dp),
-                                        colors = CardDefaults.cardColors(containerColor = Charcoal),
-                                        border = BorderStroke(1.dp, accentColor),
-                                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                                        placeholder = { Text("Item at Stop #${index + 1} (e.g. Parcel, Documents)", color = TextGray) },
+                                        textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.Normal, fontSize = 13.sp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = accentColor,
+                                            unfocusedBorderColor = fieldBorderColor,
+                                            focusedContainerColor = fieldBgColor,
+                                            unfocusedContainerColor = fieldBgColor,
+                                            focusedTextColor = fieldTextColor,
+                                            unfocusedTextColor = fieldTextColor,
+                                            focusedPlaceholderColor = TextGray,
+                                            unfocusedPlaceholderColor = TextGray
+                                        )
+                                    )
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Contact header + "From Contacts" button
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                                            suggestionItems.forEach { item ->
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .clickable {
-                                                            val mutable = pickups.toMutableList()
-                                                            mutable[index] = item.displayInput
-                                                            pickups = mutable
-                                                            focusedPickupIndex = -1
-                                                            suggestionItems = emptyList()
-                                                        }
-                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(30.dp)
-                                                            .clip(CircleShape)
-                                                            .background(Gold.copy(alpha = 0.15f)),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(Icons.Filled.Place, null, tint = Gold, modifier = Modifier.size(16.dp))
-                                                    }
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Text(item.title, color = AppTextColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                        if (item.fullAddress.isNotBlank() && item.fullAddress != item.title) {
-                                                            Spacer(modifier = Modifier.height(2.dp))
-                                                            Text(item.fullAddress, color = TextGray, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                                        }
-                                                    }
+                                        Text("Stop Recipient / Contact", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                        Text(
+                                            text = "From Contacts",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Obsidian,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Gold)
+                                                .clickable {
+                                                    activeContactPickerStopIndex = index
+                                                    contactPickerLauncher.launch(
+                                                        Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+                                                    )
                                                 }
-                                                HorizontalDivider(color = if (isLight) BorderLight else Color(0xFF2E2E2E))
-                                            }
-                                        }
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = stop.recipientName,
+                                            onValueChange = { newValue ->
+                                                stops = stops.toMutableList().apply { this[index] = stop.copy(recipientName = newValue) }
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(16.dp),
+                                            placeholder = { Text("Name", color = TextGray) },
+                                            leadingIcon = { Icon(Icons.Filled.Person, null, tint = accentIconColor, modifier = Modifier.size(16.dp)) },
+                                            textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = accentColor,
+                                                unfocusedBorderColor = fieldBorderColor,
+                                                focusedContainerColor = fieldBgColor,
+                                                unfocusedContainerColor = fieldBgColor,
+                                                focusedTextColor = fieldTextColor,
+                                                unfocusedTextColor = fieldTextColor,
+                                                focusedPlaceholderColor = TextGray,
+                                                unfocusedPlaceholderColor = TextGray
+                                            )
+                                        )
+
+                                        OutlinedTextField(
+                                            value = stop.recipientPhone,
+                                            onValueChange = { newValue ->
+                                                stops = stops.toMutableList().apply { this[index] = stop.copy(recipientPhone = newValue) }
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(16.dp),
+                                            placeholder = { Text("Phone", color = TextGray) },
+                                            leadingIcon = { Icon(Icons.Filled.Phone, null, tint = accentIconColor, modifier = Modifier.size(16.dp)) },
+                                            textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = accentColor,
+                                                unfocusedBorderColor = fieldBorderColor,
+                                                focusedContainerColor = fieldBgColor,
+                                                unfocusedContainerColor = fieldBgColor,
+                                                focusedTextColor = fieldTextColor,
+                                                unfocusedTextColor = fieldTextColor,
+                                                focusedPlaceholderColor = TextGray,
+                                                unfocusedPlaceholderColor = TextGray
+                                            )
+                                        )
                                     }
                                 }
                             }
@@ -646,7 +809,12 @@ fun MultiBookingScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(Gold)
-                                    .clickable { contactPickerLauncher.launch(null) }
+                                    .clickable {
+                                        activeContactPickerStopIndex = -1
+                                        contactPickerLauncher.launch(
+                                            Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+                                        )
+                                    }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             )
                         }
@@ -752,10 +920,11 @@ fun MultiBookingScreen(
                     }
                 }
 
-                val firstPickup = pickups.firstOrNull() ?: ""
+                val firstPickup = stops.firstOrNull()?.address ?: ""
                 val isAddressesValid = firstPickup.trim().length >= 6 && delivery.trim().length >= 6
+                val isStopsValid = stops.all { it.address.trim().isNotBlank() }
                 val isContactValid = sName.trim().isNotBlank() && sPhone.trim().isNotBlank() && rName.trim().isNotBlank() && rPhone.trim().isNotBlank()
-                val isBookingEnabled = isAddressesValid && isContactValid && cargoValidation.isFeasible && pendingQuote is PendingQuote.Success
+                val isBookingEnabled = isAddressesValid && isStopsValid && isContactValid && cargoValidation.isFeasible && pendingQuote is PendingQuote.Success
 
                 Button(
                     onClick = {
@@ -788,10 +957,18 @@ fun MultiBookingScreen(
             walletBalance = viewModel.walletBalance.collectAsState().value,
             onConfirmWalletPayment = {
                 showCheckoutSheet = false
-                viewModel.updateDraftPickup(pickups.firstOrNull() ?: "")
+                val firstStop = stops.firstOrNull()
+                viewModel.updateDraftPickup(firstStop?.address ?: "")
                 viewModel.updateDraftDelivery(delivery)
                 viewModel.updateDraftSenderInfo(sName, sPhone)
                 viewModel.updateDraftReceiverInfo(rName, rPhone)
+                if (stops.size > 1) {
+                    viewModel.updateDraftAdditionalStops(
+                        stops.drop(1).map {
+                            "${it.address} | Contact: ${it.recipientName} (${it.recipientPhone}) | Item: ${it.itemDescription}"
+                        }
+                    )
+                }
                 viewModel.finalizeDraftPrice("Multi", quotePrice)
                 viewModel.confirmBooking { ok, msg ->
                     if (ok) {
@@ -816,10 +993,18 @@ fun MultiBookingScreen(
             onPaymentComplete = { reference ->
                 showPaystackSheet = false
                 viewModel.topUpWallet(pendingAmount)
-                viewModel.updateDraftPickup(pickups.firstOrNull() ?: "")
+                val firstStop = stops.firstOrNull()
+                viewModel.updateDraftPickup(firstStop?.address ?: "")
                 viewModel.updateDraftDelivery(delivery)
                 viewModel.updateDraftSenderInfo(sName, sPhone)
                 viewModel.updateDraftReceiverInfo(rName, rPhone)
+                if (stops.size > 1) {
+                    viewModel.updateDraftAdditionalStops(
+                        stops.drop(1).map {
+                            "${it.address} | Contact: ${it.recipientName} (${it.recipientPhone}) | Item: ${it.itemDescription}"
+                        }
+                    )
+                }
                 viewModel.finalizeDraftPrice("Multi", quotePrice)
                 viewModel.confirmBooking { ok, msg ->
                     if (ok) {

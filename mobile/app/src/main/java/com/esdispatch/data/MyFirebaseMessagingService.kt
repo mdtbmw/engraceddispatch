@@ -41,8 +41,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val title = remoteMessage.data["title"] ?: "ESDispatch Status Update"
             val message = remoteMessage.data["message"] ?: "Your parcel status has changed."
             val parcelId = remoteMessage.data["parcelId"]
+            val status = remoteMessage.data["status"]
             
-            showNotification(applicationContext, title, message, parcelId)
+            showNotification(applicationContext, title, message, parcelId, status)
             com.esdispatch.data.FirebaseManager.triggerFcmNotification(title, message)
         }
 
@@ -50,7 +51,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         remoteMessage.notification?.let {
             val title = it.title ?: "ESDispatch Status Update"
             val body = it.body ?: "Your parcel status has changed."
-            showNotification(applicationContext, title, body, null)
+            showNotification(applicationContext, title, body, null, null)
             com.esdispatch.data.FirebaseManager.triggerFcmNotification(title, body)
         }
     }
@@ -60,7 +61,26 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         private const val CHANNEL_ID = "parcel_status_updates"
         private const val CHANNEL_NAME = "Parcel Status Updates"
 
-        fun showNotification(context: Context, title: String, message: String, parcelId: String? = null) {
+        fun determineProgress(status: String?, text: String): Int {
+            val st = status?.uppercase() ?: ""
+            val lower = text.lowercase()
+            return when {
+                st.contains("DELIVERED") || lower.contains("delivered") -> 100
+                st.contains("ARRIVED") || lower.contains("arrived") -> 90
+                st.contains("TRANSIT") || st.contains("PICK") || lower.contains("transit") || lower.contains("picked") -> 65
+                st.contains("ASSIGN") || lower.contains("assigned") -> 35
+                st.contains("PENDING") || st.contains("BOOK") || lower.contains("booked") || lower.contains("pending") -> 15
+                else -> 50
+            }
+        }
+
+        fun showNotification(
+            context: Context,
+            title: String,
+            message: String,
+            parcelId: String? = null,
+            status: String? = null
+        ) {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -90,9 +110,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            // Dynamic icons fallback
+            val smallIconRes = try {
+                R.drawable.ic_logo
+            } catch (e: Exception) {
+                android.R.drawable.ic_dialog_info
+            }
+
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(smallIconRes)
                 .setContentTitle(title)
                 .setContentText(message)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -101,9 +126,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // Shows on Lock Screen
 
-            // If it's a parcel delivery update, show the live progress bar on Lock Screen & Drawer (Points 16 & 17)
+            // Dynamic stage progress on Lock Screen & Notification Drawer (15%, 35%, 65%, 90%, 100%)
             if (parcelId != null && parcelId != "GIFT") {
-                builder.setProgress(100, 75, false) // Live 75% progress bar on notification layout
+                val progress = determineProgress(status, "$title $message")
+                if (progress >= 100) {
+                    builder.setProgress(0, 0, false) // Completed: dismiss progress bar
+                } else {
+                    builder.setProgress(100, progress, false)
+                }
             }
 
             // Interactive Quick Action: Track Live
@@ -122,7 +152,12 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             )
             builder.addAction(android.R.drawable.ic_menu_compass, "Track Live", trackPendingIntent)
 
-            val notificationId = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
+            // Stable notification ID per parcel so status updates modify existing notification cleanly
+            val notificationId = if (!parcelId.isNullOrBlank() && parcelId != "GIFT") {
+                Math.abs(parcelId.hashCode())
+            } else {
+                (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
+            }
             notificationManager.notify(notificationId, builder.build())
         }
     }

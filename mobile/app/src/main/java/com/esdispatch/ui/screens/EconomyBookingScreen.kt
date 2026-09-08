@@ -107,41 +107,36 @@ fun EconomyBookingScreen(
     }
 
     val contactPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.PickContact()
-    ) { uri ->
-        if (uri != null) {
-            try {
-                val cursor = context.contentResolver.query(uri, null, null, null, null)
-                if (cursor != null && cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndex(android.provider.ContactsContract.Contacts.DISPLAY_NAME)
-                    if (nameIndex >= 0) {
-                        rName = cursor.getString(nameIndex) ?: ""
-                    }
-                    val hasPhoneIndex = cursor.getColumnIndex(android.provider.ContactsContract.Contacts.HAS_PHONE_NUMBER)
-                    if (hasPhoneIndex >= 0 && cursor.getString(hasPhoneIndex) == "1") {
-                        val idIndex = cursor.getColumnIndex(android.provider.ContactsContract.Contacts._ID)
-                        if (idIndex >= 0) {
-                            val contactId = cursor.getString(idIndex)
-                            val phones = context.contentResolver.query(
-                                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                                null,
-                                android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = " + contactId,
-                                null, null
-                            )
-                            if (phones != null && phones.moveToFirst()) {
-                                val numberIndex = phones.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-                                if (numberIndex >= 0) {
-                                    rPhone = phones.getString(numberIndex) ?: ""
-                                }
-                                phones.close()
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val contactUri = result.data?.data
+            if (contactUri != null) {
+                try {
+                    val projection = arrayOf(
+                        android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+                    )
+                    context.contentResolver.query(contactUri, projection, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIndex = cursor.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                            val numberIndex = cursor.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
+                            if (nameIndex >= 0) {
+                                val name = cursor.getString(nameIndex)
+                                if (!name.isNullOrBlank()) rName = name
                             }
+                            if (numberIndex >= 0) {
+                                val num = cursor.getString(numberIndex)
+                                if (!num.isNullOrBlank()) {
+                                    rPhone = num.replace(" ", "").replace("-", "")
+                                }
+                            }
+                            Toast.makeText(context, "Contact loaded successfully!", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    cursor.close()
-                    Toast.makeText(context, "Contact loaded successfully!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Failed to read contact", Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed to read contact", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -272,6 +267,9 @@ fun EconomyBookingScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
+                        .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
+                            focusedField = null
+                        }
                         .padding(horizontal = 24.dp, vertical = 24.dp)
                         .padding(bottom = 140.dp) // extra space for bottom CTA bar
                 ) {
@@ -413,9 +411,17 @@ fun EconomyBookingScreen(
                                 colors = CardDefaults.cardColors(containerColor = if (isDark) MapStandardBg else GoldenWhite),
                                 border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.4f) else Slate),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 240.dp)
+                                    .padding(vertical = 4.dp)
                             ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
                                     Text(
                                         if (isSearchingSuggestions) "Searching places & addresses..." else "Verified Location Matches:",
                                         fontSize = 10.sp,
@@ -423,7 +429,7 @@ fun EconomyBookingScreen(
                                         color = if (isDark) Gold else Obsidian,
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                     )
-                                    suggestionItemsForPickup.take(5).forEach { item ->
+                                    suggestionItemsForPickup.forEach { item ->
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -553,9 +559,17 @@ fun EconomyBookingScreen(
                                 colors = CardDefaults.cardColors(containerColor = if (isDark) MapStandardBg else GoldenWhite),
                                 border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.4f) else Slate),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 240.dp)
+                                    .padding(vertical = 4.dp)
                             ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
                                     Text(
                                         if (isSearchingSuggestions) "Searching places & addresses..." else "Verified Location Matches:",
                                         fontSize = 10.sp,
@@ -563,7 +577,7 @@ fun EconomyBookingScreen(
                                         color = if (isDark) Gold else Obsidian,
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                     )
-                                    suggestionItemsForDelivery.take(5).forEach { item ->
+                                    suggestionItemsForDelivery.forEach { item ->
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -774,7 +788,12 @@ fun EconomyBookingScreen(
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(Color(0xFF2ECC71))
                                     .clickable {
-                                        contactPickerLauncher.launch(null)
+                                        contactPickerLauncher.launch(
+                                            android.content.Intent(
+                                                android.content.Intent.ACTION_PICK,
+                                                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+                                            )
+                                        )
                                     }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             )

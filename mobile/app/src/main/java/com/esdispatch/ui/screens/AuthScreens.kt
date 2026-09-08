@@ -396,14 +396,6 @@ fun LoginScreen(
                         // Google Sign-In Button on the left
                         Surface(
                             onClick = {
-                                val playAvailability = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context)
-                                if (playAvailability != ConnectionResult.SUCCESS) {
-                                    if (GoogleApiAvailability.getInstance().isUserResolvableError(playAvailability)) {
-                                        Toast.makeText(context, "Google Play Services warning. Attempting sign-in...", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "Google Play Services not detected. Attempting sign-in...", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
                                 val webClientId = try { com.esdispatch.BuildConfig.GOOGLE_WEB_CLIENT_ID } catch (e: Throwable) { "" }
                                 val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                                     .requestEmail()
@@ -494,11 +486,40 @@ fun LoginScreen(
                         // Biometric/Fingerprint Login Button on the right
                         Surface(
                             onClick = {
-                                val isRegistered = viewModel.biometricRegistered.value
-                                if (isRegistered) {
-                                    showBiometricAuth = true
+                                val activity = context as? androidx.fragment.app.FragmentActivity
+                                val creds = viewModel.getBiometricCredentials()
+                                val authEmail = creds?.first ?: email.ifEmpty { viewModel.userEmail.value }
+                                val biometricPin = creds?.second ?: registeredPin
+
+                                if (activity != null && authEmail.isNotBlank() && biometricPin.isNotBlank()) {
+                                    com.esdispatch.util.BiometricHelper.authenticate(
+                                        activity = activity,
+                                        title = "ESDispatch Biometric Verification",
+                                        subtitle = "Authorize secure access",
+                                        description = "Scan your fingerprint or use your face to unlock your secure dispatcher console.",
+                                        onSuccess = {
+                                            isValidatingPin = true
+                                            viewModel.signInWithFirebase(authEmail, biometricPin) { success, errorText ->
+                                                if (success) {
+                                                    Toast.makeText(context, "Biometrics Verified! Welcome Back.", Toast.LENGTH_SHORT).show()
+                                                    onNavigate("Preloader")
+                                                } else {
+                                                    Toast.makeText(context, errorText ?: "Invalid credentials loaded from biometrics.", Toast.LENGTH_SHORT).show()
+                                                }
+                                                isValidatingPin = false
+                                            }
+                                        },
+                                        onError = { err ->
+                                            showBiometricAuth = true
+                                        }
+                                    )
                                 } else {
-                                    showBiometricEnroll = true
+                                    val isRegistered = viewModel.biometricRegistered.value
+                                    if (isRegistered) {
+                                        showBiometricAuth = true
+                                    } else {
+                                        showBiometricEnroll = true
+                                    }
                                 }
                             },
                             shape = RoundedCornerShape(24.dp),
@@ -986,14 +1007,6 @@ fun SignUpScreen(
                             } else {
                                 Button(
                                     onClick = {
-                                        val playAvailability = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context)
-                                        if (playAvailability != ConnectionResult.SUCCESS) {
-                                            if (GoogleApiAvailability.getInstance().isUserResolvableError(playAvailability)) {
-                                                Toast.makeText(context, "Google Play Services warning. Attempting sign-in...", Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                Toast.makeText(context, "Google Play Services not detected. Attempting sign-in...", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
                                         val webClientId = try { com.esdispatch.BuildConfig.GOOGLE_WEB_CLIENT_ID } catch (e: Throwable) { "" }
                                         val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                                             .requestEmail()

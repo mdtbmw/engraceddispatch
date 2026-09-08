@@ -58,7 +58,7 @@ object CargoFeasibilityValidator {
         if (weightKg > MAX_MOTORCYCLE_PAYLOAD_KG) {
             return FeasibilityResult(
                 isFeasible = false,
-                warningMessage = "Motorcycle Fleet Limit: All ESDispatch deliveries are currently operated via motorcycle couriers. Maximum payload is 20kg (current: ${String.format("%.1f", weightKg)}kg). Please reduce package weight."
+                warningMessage = "Max weight: 20kg (Motorcycle payload limit)"
             )
         }
 
