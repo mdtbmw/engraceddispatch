@@ -27,7 +27,7 @@ function useOnlineStatus() {
   }, []);
   return online;
 }
-import { auth, db } from "@/lib/firebase";
+import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment } from "firebase/firestore";
 import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer } from "lucide-react";
@@ -376,7 +376,15 @@ async function seedMarketplace(db: any, addLog: any, addToast: any, createNotifi
 }
 
 function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, seedUsers, seedDeliveries, seedBanners, seedPromos, seedReferrals, seedAppContent, seeding, setTab }: any) {
-  const recentDeliveries = deliveries.filter((d: any) => d.status !== "DELIVERED" && d.status !== "CANCELLED").slice(-10).reverse();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const isToday = (d: any) => {
+    if (!d.dateString) return true;
+    return d.dateString.startsWith("Today") || d.dateString.includes(todayStr) || d.dateString === "";
+  };
+  const recentDeliveries = deliveries
+    .filter((d: any) => d.status !== "DELIVERED" && d.status !== "CANCELLED" && isToday(d))
+    .slice(-10)
+    .reverse();
   const [filterCat, setFilterCat] = useState("all");
   const serviceIcon = (tag: string, cls: string) => {
     switch(tag) {
@@ -459,10 +467,10 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
       <section className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
         <div className="lg:col-span-3 border border-black/10 dark:border-white/10 rounded-3xl p-7 flex flex-col bg-white dark:bg-[#1a1a1a]">
           <div className="flex justify-between items-center mb-5">
-            <h2 className="text-[22px] font-extrabold tracking-tight text-[#111] dark:text-white">Next scheduled drops</h2>
+            <h2 className="text-[22px] font-extrabold tracking-tight text-[#111] dark:text-white">Active Bookings Today</h2>
             <button onClick={() => setTab("shipments")} className="text-[#FFC542] font-bold text-sm hover:underline">View all deliveries</button>
           </div>
-          {recentDeliveries.length === 0 && <div className="text-center py-10 text-black/40 dark:text-white/40 text-sm">No scheduled drops yet.</div>}
+          {recentDeliveries.length === 0 && <div className="text-center py-10 text-black/40 dark:text-white/40 text-sm font-semibold">No active bookings for today. All scheduled drops completed or waiting for new requests.</div>}
           {recentDeliveries.length > 0 && <>
             <div className="grid grid-cols-12 gap-4 pb-3 border-b-2 border-black/5 dark:border-white/10 text-[13px] text-black/50 dark:text-white/50 font-bold px-3">
               <div className="col-span-6">Delivery Task</div>
@@ -1098,9 +1106,12 @@ function AdminDashboardPage() {
 
 
 function getDynamicPassword(email: string, pin: string): string {
-  const prefix = email.split("@")[0] || "";
+  const cleanPrefix = (email.split("@")[0] || "").toLowerCase().trim();
   let hash = 0;
-  for (let i = 0; i < prefix.length; i++) { hash = ((hash << 5) - hash) + prefix.charCodeAt(i); hash |= 0; }
+  for (let i = 0; i < cleanPrefix.length; i++) {
+    hash = ((hash << 5) - hash) + cleanPrefix.charCodeAt(i);
+    hash |= 0;
+  }
   const hashStr = Math.abs(hash).toString().slice(0, 6).padEnd(6, 's');
   return `${pin}${pin}_${hashStr}`;
 }
@@ -1113,6 +1124,11 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
     const [newUserStep, setNewUserStep] = useState(1);
     const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
     const [creatingUser, setCreatingUser] = useState(false);
+    const [fundUser, setFundUser] = useState<UserProfile | null>(null);
+    const [fundAction, setFundAction] = useState<"credit" | "debit">("credit");
+    const [fundAmount, setFundAmount] = useState("");
+    const [fundReason, setFundReason] = useState("");
+    const [fundingWallet, setFundingWallet] = useState(false);
     const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "" });
     const [uPage, setUPage] = useState(0);
     const uPerPage = 20;
@@ -1140,14 +1156,80 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
         addLog("Upgrade Vendor", `Upgraded '${u.name}' (${u.email}) to vendor with approved storefront`);
       } catch (err: any) { addLog("Error", "Upgrade to vendor failed: " + (err.message || "unknown")); }
     };
+    const handleFundWallet = async () => {
+      const amt = parseFloat(fundAmount);
+      if (isNaN(amt) || amt <= 0 || !fundUser) return;
+      setFundingWallet(true);
+      try {
+        const delta = fundAction === "credit" ? amt : -amt;
+        const currentBal = fundUser.walletBalance || 0;
+        const newBal = Math.max(0, currentBal + delta);
+        
+        await updateDoc(doc(db, "users", fundUser.id), {
+          walletBalance: increment(delta),
+          updatedAt: Timestamp.now()
+        });
+
+        const txId = "TXN-" + Date.now();
+        const txDoc = {
+          id: txId,
+          userId: fundUser.id,
+          userName: fundUser.name,
+          title: fundReason || (fundAction === "credit" ? "Admin Wallet Credit" : "Admin Wallet Debit"),
+          amount: delta,
+          type: fundAction === "credit" ? "CREDIT" : "DEBIT",
+          date: new Date().toISOString(),
+          status: "SUCCESS",
+          createdAt: Timestamp.now()
+        };
+        await setDoc(doc(db, "users", fundUser.id, "transactions", txId), txDoc);
+        await setDoc(doc(db, "transactions", txId), txDoc);
+
+        addLog("Wallet Adjustment", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name} (${fundUser.email}). New balance: ₦${newBal.toLocaleString()}`);
+        setFundUser(null);
+        setFundAmount("");
+        setFundReason("");
+      } catch (err: any) {
+        addLog("Error", "Fund wallet failed: " + (err.message || "unknown"));
+      }
+      setFundingWallet(false);
+    };
     const createUser = async () => {
       if (newUserForm.pin !== newUserForm.confirmPin) { addLog("Error", "PIN mismatch"); return; }
       if (newUserForm.pin.length < 4) { addLog("Error", "PIN must be at least 4 digits"); return; }
       setCreatingUser(true);
       try {
         const derivedPwd = getDynamicPassword(newUserForm.email, newUserForm.pin);
-        const cred = await createUserWithEmailAndPassword(auth, newUserForm.email, derivedPwd);
-        await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, name: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone, role: newUserForm.role, bikeNumber: newUserForm.bikeNumber, pin: newUserForm.pin, status: "offline", isOnline: false, rating: 0, deliveryCount: 0, walletBalance: 0, loyaltyPoints: 0, photoUrl: "", isDeleted: false, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+        const secondaryAuth = getSecondaryAuth();
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, newUserForm.email, derivedPwd);
+        
+        const isRider = newUserForm.role === "rider";
+        const bikeNum = newUserForm.bikeNumber || (isRider ? `ES-BIKE-${Math.floor(100 + Math.random() * 900)}` : "");
+
+        await setDoc(doc(db, "users", cred.user.uid), {
+          uid: cred.user.uid,
+          id: cred.user.uid,
+          name: newUserForm.name,
+          email: newUserForm.email,
+          phone: newUserForm.phone,
+          role: newUserForm.role,
+          userRole: isRider ? "Rider" : (newUserForm.role === "vendor" ? "Vendor" : "Customer"),
+          bikeNumber: bikeNum,
+          pin: newUserForm.pin,
+          status: isRider ? "active" : "offline",
+          riderStatus: isRider ? "active" : "offline",
+          isOnline: isRider ? true : false,
+          vehicleType: "motorcycle",
+          rating: 5.0,
+          deliveryCount: 0,
+          walletBalance: 0,
+          loyaltyPoints: 0,
+          photoUrl: "",
+          isDeleted: false,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        });
+
         if (newUserForm.role === "vendor") {
           // Auto-create an approved vendor storefront tied to the new user's uid (mobile schema)
           await setDoc(doc(db, "marketplace_stores", cred.user.uid), {
@@ -1160,7 +1242,13 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
           await updateDoc(doc(db, "users", cred.user.uid), { userRole: "Vendor", isVendorVerified: true });
           addLog("Create Vendor", "Created vendor '" + newUserForm.name + "' with auto-approved storefront");
         }
-        addLog("Create User", newUserForm.name + " (" + newUserForm.email + ") as " + newUserForm.role); setShowNewUser(false); setNewUserStep(1); setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
+
+        try { await signOut(secondaryAuth); } catch (_) {}
+
+        addLog("Create User", newUserForm.name + " (" + newUserForm.email + ") as " + newUserForm.role);
+        setShowNewUser(false);
+        setNewUserStep(1);
+        setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
       } catch (e: any) { addLog("Error", "Create user failed: " + (e.message || "unknown")); }
       setCreatingUser(false);
     };
@@ -1235,6 +1323,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
               <td className="p-3 hidden lg:table-cell"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + rBadge(u.role)}>{u.role.toUpperCase()}</span></td>
               <td className="p-3 text-right">
                 {(u.role !== "vendor" && u.role !== "admin" && u.role !== "super_admin") && <button title="Upgrade to Vendor" onClick={() => promoteToVendor(u)} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Store className="w-3.5 h-3.5" /></button>}
+                <button title="Fund / Adjust Wallet" onClick={() => setFundUser(u)} className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-3.5 h-3.5" /></button>
                 <button onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role, phone: u.phone, bikeNumber: u.bikeNumber || "", status: u.status }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
                 <button onClick={() => setConfirmDelete(u.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button></td>
             </tr>)}
@@ -1247,6 +1336,38 @@ function UsersTab({ activeUsers, searchQuery, db, addLog }: { activeUsers: UserP
         <button onClick={() => setUPage(p => Math.min(uTotalPages - 1, p + 1))} disabled={uPage >= uTotalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
       </div>}
       <ConfirmModal show={confirmDelete !== null} title="Delete User" message="Soft-delete this user?" confirmLabel="Delete" onConfirm={() => deleteUser(confirmDelete!)} onCancel={() => setConfirmDelete(null)} />
+      {fundUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setFundUser(null)}>
+        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><DollarSign className="w-5 h-5 text-emerald-500" /> Fund & Manage Wallet</h3>
+          <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20">
+            <p className="text-xs font-bold text-[#111] dark:text-white">{fundUser.name}</p>
+            <p className="text-[10px] text-black/40 dark:text-white/40">{fundUser.email} · Current Balance: ₦{(fundUser.walletBalance || 0).toLocaleString()}</p>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Operation</label>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setFundAction("credit")} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${fundAction === "credit" ? "bg-emerald-500 text-white shadow-sm" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60"}`}>Credit (+)</button>
+                <button type="button" onClick={() => setFundAction("debit")} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${fundAction === "debit" ? "bg-red-500 text-white shadow-sm" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60"}`}>Debit (-)</button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Amount (₦)</label>
+              <input type="number" min="1" value={fundAmount} onChange={e => setFundAmount(e.target.value)} placeholder="e.g. 5000" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white font-bold" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Reason / Narration</label>
+              <input type="text" value={fundReason} onChange={e => setFundReason(e.target.value)} placeholder="e.g. Balance top-up / admin refund" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-black/10 dark:border-white/10">
+            <button onClick={() => setFundUser(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
+            <button onClick={handleFundWallet} disabled={fundingWallet || !fundAmount} className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black transition-all disabled:opacity-50">
+              {fundingWallet ? "Processing..." : `Confirm ${fundAction === "credit" ? "Credit" : "Debit"}`}
+            </button>
+          </div>
+        </div>
+      </div>}
       {editUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
           <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-[#FFC542]" /> Edit User</h3>
@@ -2039,6 +2160,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Zap className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Feature Toggles</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
+        <Toggle label="Marketplace & Vendor Stores" desc="Master switch: enable or hide all storefronts, shop carousels and vendor features on mobile app" checked={sForm.marketplaceEnabled !== false} onChange={v => upd("marketplaceEnabled", v)} />
         <Toggle label="Points & Loyalty" desc="Bronze/Silver/Gold/Platinum tier system" checked={!!sForm.pointsAndLoyalty} onChange={v => { upd("pointsSystemEnabled", v); upd("pointsAndLoyalty", v); }} />
         <Toggle label="Driver Tips" desc="Customers can add tips on delivery" checked={!!sForm.driverTipsEnabled} onChange={v => { upd("tipSystemEnabled", v); upd("driverTipsEnabled", v); }} />
         <Toggle label="Auto-Verify Vendors" desc="Instantly approve vendor stores once KYC + delivery milestone are met" checked={!!sForm.autoVerifyVendors} onChange={v => upd("autoVerifyVendors", v)} />

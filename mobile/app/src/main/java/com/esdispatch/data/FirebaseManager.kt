@@ -118,9 +118,13 @@ object FirebaseManager {
     }
 
     fun getDynamicPassword(email: String, pin: String): String {
-        val cleanEmail = email.trim().lowercase()
-        val emailHash = cleanEmail.substringBefore("@").hashCode().toString().take(6).padEnd(6, 's')
-        return "${pin}${pin}_$emailHash"
+        val cleanPrefix = email.trim().lowercase().substringBefore("@")
+        var hash = 0
+        for (ch in cleanPrefix) {
+            hash = (hash * 31) + ch.code
+        }
+        val absHashStr = kotlin.math.abs(hash).toString().take(6).padEnd(6, 's')
+        return "${pin}${pin}_$absHashStr"
     }
 
     /**
@@ -166,6 +170,12 @@ object FirebaseManager {
             onComplete(false)
             return
         }
+        val currentEmail = authInstance.currentUser?.email
+        if (currentEmail != null && currentEmail.equals(email.trim(), ignoreCase = true)) {
+            // User is currently authenticated with this email (e.g. completing Google sign-up onboarding)
+            onComplete(false)
+            return
+        }
         authInstance.fetchSignInMethodsForEmail(email.trim())
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
@@ -186,11 +196,13 @@ object FirebaseManager {
             onComplete(false)
             return
         }
-        val cleanQueryPhone = phone.trim().replace("-", "").replace("+", "")
+        val currentUid = auth?.currentUser?.uid
         db.collection("users").whereEqualTo("phone", phone.trim())
             .get()
             .addOnSuccessListener { querySnapshot ->
-                onComplete(querySnapshot.documents.isNotEmpty())
+                // Filter out the user's own document if they are updating or completing onboarding
+                val matchingDocs = querySnapshot.documents.filter { it.id != currentUid }
+                onComplete(matchingDocs.isNotEmpty())
             }
             .addOnFailureListener {
                 onComplete(false)

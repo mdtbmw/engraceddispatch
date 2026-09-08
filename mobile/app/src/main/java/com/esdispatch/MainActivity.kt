@@ -213,9 +213,15 @@ class MainActivity : FragmentActivity() {
                 val activeNotification by viewModel.activeInAppNotification.collectAsState()
                 val customToast by viewModel.customToast.collectAsState()
                 val customToastData by viewModel.customToastData.collectAsState()
+                val marketplaceEnabled by viewModel.marketplaceEnabled.collectAsState()
 
                 val handleNavigation: (String) -> Unit = { route ->
-                    when (route) {
+                    val effectiveRoute = if (!marketplaceEnabled && (route == "Marketplace" || route.startsWith("VendorStorefront") || route == "VendorPortal" || route.startsWith("VendorProfile"))) {
+                        "Dashboard"
+                    } else {
+                        route
+                    }
+                    when (effectiveRoute) {
                         "BACK" -> {
                             if (!navController.popBackStack()) {
                                 navController.navigate("Dashboard") {
@@ -240,7 +246,19 @@ class MainActivity : FragmentActivity() {
                             }
                         }
                         else -> {
-                            navController.navigate(route) {
+                            navController.navigate(effectiveRoute) {
+                                launchSingleTop = true
+                            }
+                        }
+                    }
+                }
+
+                LaunchedEffect(marketplaceEnabled) {
+                    if (!marketplaceEnabled) {
+                        val currentDest = navController.currentDestination?.route
+                        if (currentDest == "Marketplace" || currentDest?.startsWith("Vendor") == true) {
+                            navController.navigate("Dashboard") {
+                                popUpTo("Dashboard") { inclusive = false }
                                 launchSingleTop = true
                             }
                         }

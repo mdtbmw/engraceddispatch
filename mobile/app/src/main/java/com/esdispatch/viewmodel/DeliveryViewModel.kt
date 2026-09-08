@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.esdispatch.data.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -203,7 +205,7 @@ class DeliveryViewModel : WalletViewModel() {
         _showOnboardingTooltip.value = prefs.getBoolean("show_onboarding_tooltip", true)
         val savedFavs = prefs.getStringSet("favorite_products", emptySet()) ?: emptySet()
         _favoriteProductIds.value = savedFavs
- 
+        _marketplaceEnabled.value = prefs.getBoolean("marketplace_enabled", true)
         _pointsSystemEnabled.value = prefs.getBoolean("points_system_enabled", true)
         _isDynamicPricingEnabled.value = prefs.getBoolean("pricing_mode_dynamic", true)
         _tipSystemEnabled.value = prefs.getBoolean("tip_system_enabled", true)
@@ -246,6 +248,10 @@ class DeliveryViewModel : WalletViewModel() {
             }?.let { listenerRegistrations.add(it) }
             db?.collection("system_config")?.document("global_settings")?.addSnapshotListener { snap, _ ->
                 if (snap != null && snap.exists()) {
+                    (snap.get("marketplaceEnabled") as? Boolean)?.let {
+                        _marketplaceEnabled.value = it
+                        savePref("marketplace_enabled", it)
+                    }
                     (snap.get("pointsSystemEnabled") as? Boolean)?.let { _pointsSystemEnabled.value = it }
                     (snap.get("pricingModeDynamic") as? Boolean)?.let { _isDynamicPricingEnabled.value = it }
                     (snap.get("tipSystemEnabled") as? Boolean)?.let { _tipSystemEnabled.value = it }
@@ -432,6 +438,9 @@ class DeliveryViewModel : WalletViewModel() {
     val activeViewMode: StateFlow<String> = _activeViewMode.asStateFlow()
 
     // Admin & System Configurations
+    private val _marketplaceEnabled = MutableStateFlow(true)
+    val marketplaceEnabled: StateFlow<Boolean> = _marketplaceEnabled.asStateFlow()
+
     private val _pointsSystemEnabled = MutableStateFlow(true)
     val pointsSystemEnabled: StateFlow<Boolean> = _pointsSystemEnabled.asStateFlow()
 
@@ -2698,17 +2707,17 @@ class DeliveryViewModel : WalletViewModel() {
         }
 
         viewModelScope.launch {
-            val uid = _firebaseUserId.value
+            val uid = _firebaseUserId.value ?: com.esdispatch.data.FirebaseManager.auth?.currentUser?.uid
             if (uid.isNullOrEmpty()) {
-                onComplete(false, "Google authentication failed. Please sign in again.")
+                onComplete(false, "Google authentication session missing. Please tap Google sign-in again.")
                 return@launch
             }
-            val email = _userEmail.value
+            val email = _userEmail.value.ifBlank { com.esdispatch.data.FirebaseManager.auth?.currentUser?.email ?: "" }
             if (email.isBlank()) {
-                onComplete(false, "Email not available. Please sign in again.")
+                onComplete(false, "Google email not available. Please sign in again.")
                 return@launch
             }
-            val name = _userName.value.ifBlank { "User" }
+            val name = _userName.value.ifBlank { com.esdispatch.data.FirebaseManager.auth?.currentUser?.displayName ?: "Google User" }
 
             updateProfile(name, email, phone)
             setUserPin(pin)
@@ -3044,7 +3053,7 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun uploadAvatar(uriString: String) {
-        val uid = _firebaseUserId.value ?: return
+        val uid = _firebaseUserId.value ?: com.esdispatch.data.FirebaseManager.auth?.currentUser?.uid ?: return
         
         // If it's already a remote URL (e.g. preset avatar), save directly
         if (uriString.startsWith("http://") || uriString.startsWith("https://")) {
@@ -3055,28 +3064,58 @@ class DeliveryViewModel : WalletViewModel() {
             return
         }
 
-        val fileUri: android.net.Uri = when {
-            uriString.startsWith("content://") || uriString.startsWith("file://") -> android.net.Uri.parse(uriString)
-            else -> android.net.Uri.fromFile(java.io.File(uriString))
-        }
-
-        val storageRef = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child("avatars/$uid.jpg")
-        
-        storageRef.putFile(fileUri)
-            .addOnSuccessListener {
-                storageRef.downloadUrl.addOnSuccessListener { uri ->
-                    val urlString = uri.toString()
-                    _photoUrl.value = urlString
-                    savePref("photo_url", urlString)
+        val ctx = appContext ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val fileUri: android.net.Uri = when {
+                    uriString.startsWith("content://") || uriString.startsWith("file://") -> android.net.Uri.parse(uriString)
+                    else -> android.net.Uri.fromFile(java.io.File(uriString))
+                }
+                val inputStream = ctx.contentResolver.openInputStream(fileUri)
+                val originalBitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                if (originalBitmap != null) {
+                    val maxDim = 256
+                    val width = originalBitmap.width
+                    val height = originalBitmap.height
+                    val ratio = minOf(maxDim.toFloat() / width, maxDim.toFloat() / height, 1f)
+                    val scaledWidth = (width * ratio).toInt().coerceAtLeast(1)
+                    val scaledHeight = (height * ratio).toInt().coerceAtLeast(1)
+                    val scaledBitmap = android.graphics.Bitmap.createScaledBitmap(originalBitmap, scaledWidth, scaledHeight, true)
                     
-                    // Update user profile in Firestore
+                    val outputStream = java.io.ByteArrayOutputStream()
+                    scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, outputStream)
+                    val bytes = outputStream.toByteArray()
+                    val base64Str = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    val dataUrl = "data:image/jpeg;base64,$base64Str"
+                    
+                    withContext(Dispatchers.Main) {
+                        _photoUrl.value = dataUrl
+                        savePref("photo_url", dataUrl)
+                    }
+                    
                     com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users").document(uid)
-                        .update("photoUrl", urlString)
+                        .update(
+                            mapOf(
+                                "photoUrl" to dataUrl,
+                                "avatarBase64" to base64Str,
+                                "updatedAt" to com.google.firebase.Timestamp.now()
+                            )
+                        )
+                        .addOnSuccessListener {
+                            com.esdispatch.util.CustomToastBridge.show("Profile picture updated!", ToastType.SUCCESS)
+                        }
+                        .addOnFailureListener { e ->
+                            android.util.Log.e("AvatarUpload", "Failed to update profile doc: ${e.message}")
+                        }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AvatarUpload", "Failed to process photo: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    com.esdispatch.util.CustomToastBridge.show("Could not process selected image", ToastType.ERROR)
                 }
             }
-            .addOnFailureListener {
-                android.util.Log.e("AvatarUpload", "Failed to upload avatar", it)
-            }
+        }
     }
 
     /** Upload a store asset (logo/cover/banner) to Storage and persist its URL on the store doc. */

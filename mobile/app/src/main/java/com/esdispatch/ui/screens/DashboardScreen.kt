@@ -170,18 +170,34 @@ fun DashboardScreen(
 
     val parcels by viewModel.parcels.collectAsState()
     val archivedParcelIds by viewModel.archivedParcelIds.collectAsState()
-    var selectedFilter by remember { mutableStateOf("In Transit") } // 'All', 'In Transit', 'Delivered'
+    var selectedFilter by remember { mutableStateOf("All Active") } // 'All Active', 'In Transit'
     var quickViewParcel by remember { mutableStateOf<Parcel?>(null) }
 
-    val unarchivedParcels = remember(parcels, archivedParcelIds) {
-        parcels.filter { it.id !in archivedParcelIds }
+    val todayDateStr = remember {
+        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+    }
+    val todayReadableStr = remember {
+        java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()).format(java.util.Date())
     }
 
-    val filteredParcels = remember(unarchivedParcels, selectedFilter) {
+    // STRICT: Dashboard only shows active bookings for that day and resets when nothing
+    // Completed/delivered cards are removed so new active shipments can take center stage
+    val activeTodayParcels = remember(parcels, archivedParcelIds) {
+        parcels.filter { parcel ->
+            parcel.id !in archivedParcelIds &&
+            parcel.status != ParcelStatus.DELIVERED &&
+            parcel.status != ParcelStatus.CANCELLED &&
+            (parcel.dateString.startsWith("Today", ignoreCase = true) ||
+             parcel.dateString.contains(todayDateStr) ||
+             parcel.dateString.contains(todayReadableStr) ||
+             parcel.dateString.isBlank())
+        }
+    }
+
+    val filteredParcels = remember(activeTodayParcels, selectedFilter) {
         when (selectedFilter) {
-            "In Transit" -> unarchivedParcels.filter { it.status == ParcelStatus.TRANSIT || it.status == ParcelStatus.OUT_FOR_DELIVERY }
-            "Delivered" -> unarchivedParcels.filter { it.status == ParcelStatus.DELIVERED }
-            else -> unarchivedParcels.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED } // "All"
+            "In Transit" -> activeTodayParcels.filter { it.status == ParcelStatus.TRANSIT || it.status == ParcelStatus.OUT_FOR_DELIVERY }
+            else -> activeTodayParcels // "All Active"
         }
     }
 
@@ -189,8 +205,8 @@ fun DashboardScreen(
         parcels.filter { it.status == ParcelStatus.DELIVERED && it.id !in archivedParcelIds }
     }
     
-    val activeParcels = remember(unarchivedParcels) {
-        unarchivedParcels.filter { it.status == ParcelStatus.TRANSIT }
+    val activeParcels = remember(activeTodayParcels) {
+        activeTodayParcels.filter { it.status == ParcelStatus.TRANSIT }
     }
     val walletBalance by viewModel.walletBalance.collectAsState()
     val referralCode = viewModel.referralCode
@@ -255,6 +271,7 @@ fun DashboardScreen(
 
     val marketplaceProducts by viewModel.marketplaceProducts.collectAsState()
     val marketplaceStores by viewModel.marketplaceStores.collectAsState()
+    val marketplaceEnabled by viewModel.marketplaceEnabled.collectAsState()
 
     val density = LocalDensity.current
     val maxScrollDistancePx = with(density) { 235.dp.toPx() }
@@ -656,7 +673,7 @@ fun DashboardScreen(
             }
 
             // 3. TOP RECOMMENDED VENDOR SHOPS (Positioned under Stats Grid)
-            if (verifiedStores.isNotEmpty()) {
+            if (marketplaceEnabled && verifiedStores.isNotEmpty()) {
                 item {
                     Spacer(modifier = Modifier.height(24.dp))
                     Column(
@@ -1186,7 +1203,7 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val filters = listOf("All", "In Transit", "Delivered")
+                    val filters = listOf("All Active", "In Transit")
                     filters.forEach { filterOption ->
                         val isSelected = selectedFilter == filterOption
                         val tabBg = if (isSelected) {
@@ -1296,10 +1313,7 @@ fun DashboardScreen(
                                 AnimatedParcelIllustration()
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text(
-                                    text = when (selectedFilter) {
-                                        "In Transit" -> "No Active Shipments"
-                                        else -> "No Shipments Found"
-                                    },
+                                    text = "No Active Shipments Today",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = AppTextColor
@@ -1307,7 +1321,7 @@ fun DashboardScreen(
                                 Text(
                                     text = when (selectedFilter) {
                                         "In Transit" -> "You don't have any shipments on the road right now."
-                                        else -> "Your shipment list is currently empty."
+                                        else -> "All your deliveries for today are completed or you haven't booked any shipments yet."
                                     },
                                     fontSize = 12.sp,
                                     color = TextGray,
@@ -1761,7 +1775,9 @@ fun DashboardScreen(
                                 }
                             }
                             Surface(
-                                onClick = { onNavigate("Marketplace") },
+                                onClick = {
+                                    if (marketplaceEnabled) onNavigate("Marketplace") else onNavigate("Tracking")
+                                },
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(80.dp),
@@ -1785,16 +1801,16 @@ fun DashboardScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         AnimatedHugeIcon(
-                                            icon = Hugeicons.Solid.Storefront,
-                                            contentDescription = "Market",
-                                            tint = Obsidian,
+                                            icon = if (marketplaceEnabled) Hugeicons.Solid.Storefront else Hugeicons.Solid.Route,
+                                            contentDescription = if (marketplaceEnabled) "Market" else "Tracking",
+                                            tint = Obsidian, // STRICT LOCK: Obsidian on Gold background!
                                             size = 18.dp
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column(verticalArrangement = Arrangement.Center) {
                                         Text(
-                                            text = "Marketplace",
+                                            text = if (marketplaceEnabled) "Marketplace" else "Live Tracking",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = TextGray,
@@ -1802,7 +1818,7 @@ fun DashboardScreen(
                                             maxLines = 1
                                         )
                                         Text(
-                                            text = "Browse & Shop",
+                                            text = if (marketplaceEnabled) "Browse & Shop" else "Radar & Fleet",
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.Black,
                                             color = AppTextColor,
@@ -1965,7 +1981,14 @@ fun DashboardScreen(
             // ── Interactive Spotlight Onboarding Tour ──
             InteractiveTourGuide(
                 isDark = isDark,
-                listState = listState
+                listState = listState,
+                onTourFinished = {
+                    triggerConfetti = true
+                    com.esdispatch.util.CustomToastBridge.show(
+                        "Welcome to ESDispatch! You're ready to dispatch.",
+                        com.esdispatch.viewmodel.ToastType.SUCCESS
+                    )
+                }
             )
         }
     }

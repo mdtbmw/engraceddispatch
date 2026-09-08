@@ -104,6 +104,7 @@ fun ProfileScreen(
     val vendorStoreExists by viewModel.vendorStoreExists.collectAsState()
     val isVendorVerified by viewModel.isVendorVerified.collectAsState()
     val vendorKycSubmitted by viewModel.vendorKycSubmitted.collectAsState()
+    val marketplaceEnabled by viewModel.marketplaceEnabled.collectAsState()
     var showMarketplaceSheet by remember { mutableStateOf(false) }
     val activeViewMode by viewModel.activeViewMode.collectAsState()
     val bikeNumber by viewModel.bikeNumber.collectAsState()
@@ -665,8 +666,8 @@ fun ProfileScreen(
                         }
                     }
 
-                    // 2. Becoming a Vendor Card (if not rider)
-                    if (userRole != "rider") {
+                    // 2. Becoming a Vendor Card (if marketplace enabled and not rider)
+                    if (marketplaceEnabled && userRole != "rider") {
                         Spacer(modifier = Modifier.height(14.dp))
                         val meetsDeliveryReq = deliveryCount >= 10
                         val stepProgress = when {

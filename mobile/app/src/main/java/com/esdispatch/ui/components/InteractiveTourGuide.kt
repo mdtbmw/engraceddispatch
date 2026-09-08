@@ -255,10 +255,20 @@ fun InteractiveTourGuide(
         }
     }
 
-    // Determine whether tooltip should sit below or above the target
-    val isTargetInUpperHalf = (animTop + animBottom) / 2f < screenHeightPx * 0.52f
     val cutoutPadding = with(density) { 8.dp.toPx() }
     val cornerRadius = with(density) { 18.dp.toPx() }
+
+    // Determine whether tooltip should sit below or above the target based on available screen space
+    val spaceAbovePx = (animTop - cutoutPadding).coerceAtLeast(0f)
+    val spaceBelowPx = (screenHeightPx - (animBottom + cutoutPadding)).coerceAtLeast(0f)
+    val minClearancePx = with(density) { 240.dp.toPx() }
+    val placeBelow = if (spaceBelowPx >= minClearancePx) {
+        true
+    } else if (spaceAbovePx >= minClearancePx) {
+        false
+    } else {
+        spaceBelowPx >= spaceAbovePx
+    }
 
     // THEME PALETTE: Light Mode by default, Dark Mode only if isDark is active
     val cardBg = if (isDark) Color(0xFF1C1C1E) else GoldenWhiteSurface
@@ -269,6 +279,15 @@ fun InteractiveTourGuide(
     val badgeText = if (isDark) Gold else Obsidian
     val arrowColor = cardBg
 
+    LaunchedEffect(currentStepIndex) {
+        if (listState != null) {
+            when (currentStepIndex) {
+                0, 1 -> listState.animateScrollToItem(0)
+                2 -> listState.animateScrollToItem(1)
+            }
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -276,9 +295,9 @@ fun InteractiveTourGuide(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
-            ) { /* block background interactions */ }
+            ) { /* strictly absorb and block background interactions so the tour is not dismissed accidentally */ }
     ) {
-        // 1. Scrim Canvas with transparent cutout and gold highlight border
+        // 1. Scrim Canvas with transparent cutout (NO outline / NO artificial border)
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -292,31 +311,13 @@ fun InteractiveTourGuide(
             val width = (animRight - animLeft) + cutoutPadding * 2
             val height = (animBottom - animTop) + cutoutPadding * 2
 
-            // Cutout spotlight showing the real underlying feature
+            // Clean, borderless cutout spotlight showing the native underlying feature with NO outline stroke
             drawRoundRect(
                 color = Color.Transparent,
                 topLeft = Offset(left, top),
                 size = Size(width, height),
                 cornerRadius = CornerRadius(cornerRadius, cornerRadius),
                 blendMode = BlendMode.Clear
-            )
-
-            // Animated breathing outer halo
-            drawRoundRect(
-                color = Gold.copy(alpha = haloAlpha),
-                topLeft = Offset(left - haloExpansion, top - haloExpansion),
-                size = Size(width + haloExpansion * 2, height + haloExpansion * 2),
-                cornerRadius = CornerRadius(cornerRadius + haloExpansion, cornerRadius + haloExpansion),
-                style = Stroke(width = 2.dp.toPx())
-            )
-
-            // Crisp Gold border outlining the target
-            drawRoundRect(
-                color = Gold,
-                topLeft = Offset(left, top),
-                size = Size(width, height),
-                cornerRadius = CornerRadius(cornerRadius, cornerRadius),
-                style = Stroke(width = 2.5.dp.toPx())
             )
         }
 
@@ -328,19 +329,23 @@ fun InteractiveTourGuide(
             screenWidthPx - with(density) { 48.dp.toPx() }
         )
 
-        // Calculate vertical position for the tooltip
-        val tooltipModifier = if (isTargetInUpperHalf) {
+        // Intelligently calculate clamped vertical position for the tooltip so it never bleeds off-screen
+        val safeTopMarginDp = 56.dp
+        val safeBottomMarginDp = 96.dp // clears bottom floating navigation dock
+        val screenHeightDp = configuration.screenHeightDp.dp
+
+        val tooltipModifier = if (placeBelow) {
             val topOffsetDp = with(density) { (animBottom + cutoutPadding + 14.dp.toPx()).toDp() }
             Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = topOffsetDp.coerceAtLeast(16.dp))
-                .padding(horizontal = 20.dp)
+                .padding(top = topOffsetDp.coerceIn(safeTopMarginDp, screenHeightDp - 260.dp))
+                .padding(horizontal = 16.dp)
         } else {
             val bottomOffsetDp = with(density) { (screenHeightPx - (animTop - cutoutPadding) + 14.dp.toPx()).toDp() }
             Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = bottomOffsetDp.coerceAtLeast(16.dp))
-                .padding(horizontal = 20.dp)
+                .padding(bottom = bottomOffsetDp.coerceIn(safeBottomMarginDp, screenHeightDp - 260.dp))
+                .padding(horizontal = 16.dp)
         }
 
         Column(
@@ -348,7 +353,7 @@ fun InteractiveTourGuide(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Pointer arrow pointing UP (if tooltip is below target)
-            if (isTargetInUpperHalf) {
+            if (placeBelow) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -534,7 +539,7 @@ fun InteractiveTourGuide(
             }
 
             // Pointer arrow pointing DOWN (if tooltip is above target)
-            if (!isTargetInUpperHalf) {
+            if (!placeBelow) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

@@ -711,8 +711,12 @@ fun SignUpScreen(
     var isEmailTaken by remember { mutableStateOf(false) }
     var isPhoneTaken by remember { mutableStateOf(false) }
 
-    LaunchedEffect(email, googleAuthInProg) {
-        if (email.contains("@") && email.contains(".") && !googleAuthInProg) {
+    val currentAuthUser = com.esdispatch.data.FirebaseManager.auth?.currentUser
+    val isGoogleUser = googleAuthInProg || (currentAuthUser != null && currentAuthUser.providerData.any { it.providerId == "google.com" })
+
+    LaunchedEffect(email, isGoogleUser) {
+        val currentEmail = currentAuthUser?.email
+        if (email.contains("@") && email.contains(".") && !isGoogleUser && !email.equals(currentEmail, ignoreCase = true)) {
             kotlinx.coroutines.delay(600)
             viewModel.checkEmailExists(email) { exists ->
                 isEmailTaken = exists
@@ -722,11 +726,11 @@ fun SignUpScreen(
         }
     }
 
-    LaunchedEffect(phone, googleAuthInProg) {
+    LaunchedEffect(phone, isGoogleUser) {
         val clean = phone.filter { it.isDigit() }
         // Skip duplicate-phone check entirely when the user is completing Google onboarding —
         // their phone may already be in Firestore if they partially registered before.
-        if (clean.length >= 10 && !googleAuthInProg) {
+        if (clean.length >= 10 && !isGoogleUser) {
             kotlinx.coroutines.delay(600)
             viewModel.checkPhoneExists(phone) { exists ->
                 isPhoneTaken = exists
@@ -748,10 +752,14 @@ fun SignUpScreen(
     val vmName by viewModel.userName.collectAsState()
     val vmEmail by viewModel.userEmail.collectAsState()
 
-    LaunchedEffect(googleAuthInProg, vmName, vmEmail) {
-        if (googleAuthInProg && vmEmail.isNotEmpty()) {
-            email = vmEmail
-            val parts = vmName.trim().split(" ")
+    LaunchedEffect(isGoogleUser, vmName, vmEmail, currentAuthUser) {
+        if (isGoogleUser) {
+            val effEmail = currentAuthUser?.email ?: vmEmail
+            val effName = currentAuthUser?.displayName ?: vmName
+            if (effEmail.isNotEmpty()) {
+                email = effEmail
+            }
+            val parts = effName.trim().split(" ")
             if (parts.isNotEmpty()) {
                 firstName = parts[0]
                 if (parts.size > 1) {
@@ -1265,11 +1273,11 @@ fun SignUpScreen(
                                         Toast.makeText(context, "Please enter a valid email address", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
-                                    if (isEmailTaken && !googleAuthInProg) {
+                                    if (isEmailTaken && !isGoogleUser) {
                                         Toast.makeText(context, "This email is already registered", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
-                                    if (isPhoneTaken && !googleAuthInProg) {
+                                    if (isPhoneTaken && !isGoogleUser) {
                                         Toast.makeText(context, "This phone number is already registered", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
@@ -1481,25 +1489,25 @@ fun SignUpScreen(
                                     }
                                     isRegistering = true
                                     val fullName = "$firstName $lastName".trim()
-                                    if (googleAuthInProg) {
+                                    if (isGoogleUser) {
                                         viewModel.completeGoogleSignUp(phone, pin) { success, errorText ->
                                             isRegistering = false
                                             if (success) {
                                                 viewModel.setGoogleAuthInProgress(false)
-                                                Toast.makeText(context, "Google Registration Complete!", Toast.LENGTH_SHORT).show()
+                                                com.esdispatch.util.CustomToastBridge.show("Google Registration Complete!", com.esdispatch.viewmodel.ToastType.SUCCESS)
                                                 onNavigate("Preloader")
                                             } else {
-                                                Toast.makeText(context, errorText ?: "Registration failed. Try again.", Toast.LENGTH_SHORT).show()
+                                                com.esdispatch.util.CustomToastBridge.show(errorText ?: "Registration failed. Try again.", com.esdispatch.viewmodel.ToastType.ERROR)
                                             }
                                         }
                                     } else {
                                         viewModel.signUpWithFirebase(fullName, email, phone, pin, "customer", "") { success, errorText ->
                                             isRegistering = false
                                             if (success) {
-                                                Toast.makeText(context, "Account Created with Security PIN!", Toast.LENGTH_SHORT).show()
+                                                com.esdispatch.util.CustomToastBridge.show("Account Created with Security PIN!", com.esdispatch.viewmodel.ToastType.SUCCESS)
                                                 onNavigate("Preloader")
                                             } else {
-                                                Toast.makeText(context, errorText ?: "Registration failed. Try again.", Toast.LENGTH_SHORT).show()
+                                                com.esdispatch.util.CustomToastBridge.show(errorText ?: "Registration failed. Try again.", com.esdispatch.viewmodel.ToastType.ERROR)
                                             }
                                         }
                                     }
