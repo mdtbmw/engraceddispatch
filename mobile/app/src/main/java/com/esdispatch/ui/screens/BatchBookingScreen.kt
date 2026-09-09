@@ -48,6 +48,9 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.activity.compose.BackHandler
 import com.esdispatch.util.CargoFeasibilityValidator
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.style.TextOverflow
+import android.content.Intent
 
 data class BatchDestinationItem(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -58,22 +61,23 @@ data class BatchDestinationItem(
     val weight: String = "1.5"
 )
 
-val nigerianLandmarks = listOf(
-    "Aso Rock Presidential Villa, Abuja",
-    "Murtala Muhammed International Airport, Ikeja, Lagos",
-    "Lekki Conservation Centre, Lagos",
-    "National Arts Theatre, Iganmu, Lagos",
-    "University of Ibadan, Ibadan",
-    "Millennium Park, Maitama, Abuja",
-    "Zuma Rock, Madalla, Suleja",
-    "Tarkwa Bay Beach, Victoria Island, Lagos",
-    "Yankari Game Reserve, Bauchi",
-    "Olumo Rock, Abeokuta, Ogun State",
-    "Kajuru Castle, Kajuru, Kaduna",
-    "Idanre Hill, Idanre, Ondo State",
-    "Agodi Gardens, Ibadan",
-    "Nike Art Gallery, Lekki, Lagos",
-    "Port Harcourt Pleasure Park, Port Harcourt"
+val beninLandmarks = listOf(
+    "Ring Road (King's Square), City Center, Benin City",
+    "Benin City Airport, Airport Road, Benin City",
+    "Oba's Palace, Oba Ovonramwen Square, Benin City",
+    "University of Benin (UNIBEN), Ugbowo, Benin City",
+    "UBTH (Teaching Hospital), Ugbowo, Benin City",
+    "Ihama Road, GRA, Benin City",
+    "Boundary Road, GRA, Benin City",
+    "Ugbor Road, GRA, Benin City",
+    "Ramat Park, Ikpoba Hill, Benin City",
+    "New Benin Market, New Benin, Benin City",
+    "Uselu Market, Uselu, Benin City",
+    "Sapele Road, Benin City",
+    "Upper Sakponba Road, Benin City",
+    "Ekenwan Road (Campus Area), Benin City",
+    "Central Hospital, Sapele Road, Benin City",
+    "Ogba Zoo & Nature Park, Airport Road Extension, Benin City"
 )
 
 @Composable
@@ -84,13 +88,14 @@ fun BatchBookingScreen(
     val draft by viewModel.parcelDraft.collectAsState()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
     var pickup by remember { mutableStateOf(draft.pickupAddress) }
     var batchStops by remember {
         mutableStateOf(
             listOf(
                 BatchDestinationItem(
-                    destinationAddress = if (draft.deliveryAddress.isNotBlank()) draft.deliveryAddress else "Herbert Macaulay Way, Yaba, Lagos",
+                    destinationAddress = if (draft.deliveryAddress.isNotBlank()) draft.deliveryAddress else "14 Ihama Road, GRA, Benin City",
                     recipientName = draft.receiverName,
                     recipientPhone = draft.receiverPhone,
                     itemName = "Package 1",
@@ -109,43 +114,37 @@ fun BatchBookingScreen(
     var sPhone by remember { mutableStateOf(draft.senderPhone) }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickContact()
-    ) { uri ->
-        if (uri != null) {
-            val cursor = context.contentResolver.query(uri, null, null, null, null)
-            if (cursor != null && cursor.moveToFirst()) {
-                val nameIndex = cursor.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME)
-                val hasPhoneIndex = cursor.getColumnIndex(ContactsContract.Contacts.HAS_PHONE_NUMBER)
-                val idIndex = cursor.getColumnIndex(ContactsContract.Contacts._ID)
-                
-                val name = if (nameIndex >= 0) cursor.getString(nameIndex) else ""
-                val hasPhone = if (hasPhoneIndex >= 0) cursor.getString(hasPhoneIndex) else "0"
-                val id = if (idIndex >= 0) cursor.getString(idIndex) else ""
-                
-                var phoneVal = ""
-                if (hasPhone == "1") {
-                    val phones = context.contentResolver.query(
-                        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                        null,
-                        ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = ?",
-                        arrayOf(id),
-                        null
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+            val contactUri = result.data?.data
+            if (contactUri != null) {
+                try {
+                    val projection = arrayOf(
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        ContactsContract.CommonDataKinds.Phone.NUMBER
                     )
-                    if (phones != null && phones.moveToFirst()) {
-                        val phoneIndex = phones.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                        phoneVal = if (phoneIndex >= 0) phones.getString(phoneIndex) else ""
-                        phones.close()
-                    }
-                }
-                cursor.close()
+                    context.contentResolver.query(contactUri, projection, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                            val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                            val name = if (nameIndex >= 0) cursor.getString(nameIndex) ?: "" else ""
+                            val phoneVal = if (numberIndex >= 0) (cursor.getString(numberIndex) ?: "").replace(" ", "").replace("-", "") else ""
 
-                if (activeContactPickerStopIndex in batchStops.indices) {
-                    val updated = batchStops.toMutableList()
-                    updated[activeContactPickerStopIndex] = updated[activeContactPickerStopIndex].copy(
-                        recipientName = name,
-                        recipientPhone = phoneVal
-                    )
-                    batchStops = updated
+                            if (activeContactPickerStopIndex in batchStops.indices) {
+                                val updated = batchStops.toMutableList()
+                                updated[activeContactPickerStopIndex] = updated[activeContactPickerStopIndex].copy(
+                                    recipientName = if (name.isNotBlank()) name else updated[activeContactPickerStopIndex].recipientName,
+                                    recipientPhone = if (phoneVal.isNotBlank()) phoneVal else updated[activeContactPickerStopIndex].recipientPhone
+                                )
+                                batchStops = updated
+                                Toast.makeText(context, "Contact loaded: $name", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("BatchBookingScreen", "Contact pick error: ${e.message}")
+                    Toast.makeText(context, "Could not load contact details directly. Please enter manually.", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -253,6 +252,9 @@ fun BatchBookingScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
+                        .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
+                            focusManager.clearFocus()
+                        }
                         .padding(horizontal = 24.dp, vertical = 24.dp)
                         .padding(bottom = 140.dp) // extra space for bottom CTA bar
                 ) {
@@ -287,9 +289,10 @@ fun BatchBookingScreen(
                             Card(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = Charcoal),
-                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.15f)),
+                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.2f)),
                                 modifier = Modifier
-                                    .width(200.dp)
+                                    .width(210.dp)
+                                    .height(78.dp)
                                     .clickable {
                                         if (batchStops.isNotEmpty()) {
                                             val mutable = batchStops.toMutableList()
@@ -311,18 +314,31 @@ fun BatchBookingScreen(
                                         Toast.makeText(context, "Recipient details loaded!", Toast.LENGTH_SHORT).show()
                                     }
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Filled.History, null, tint = Gold, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Icon(Icons.Filled.History, null, tint = Gold, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = name,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isLight) Obsidian else Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        addr,
+                                        text = addr,
                                         fontSize = 10.sp,
                                         color = TextGray,
-                                        lineHeight = 14.sp
+                                        lineHeight = 13.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -734,7 +750,9 @@ fun BatchBookingScreen(
                                         .background(Gold)
                                         .clickable {
                                             activeContactPickerStopIndex = index
-                                            contactPickerLauncher.launch(null)
+                                            contactPickerLauncher.launch(
+                                                Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+                                            )
                                         }
                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                 )

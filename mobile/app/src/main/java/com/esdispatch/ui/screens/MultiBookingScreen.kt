@@ -46,6 +46,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import com.esdispatch.util.CargoFeasibilityValidator
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.style.TextOverflow
 import android.content.Intent
 
 data class MultiPickupStop(
@@ -66,6 +68,7 @@ fun MultiBookingScreen(
     val draft by viewModel.parcelDraft.collectAsState()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
     var stops by remember {
         mutableStateOf(
@@ -239,6 +242,7 @@ fun MultiBookingScreen(
                         .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
                             deliveryFocused = false
                             focusedPickupIndex = -1
+                            focusManager.clearFocus()
                         }
                         .padding(horizontal = 24.dp, vertical = 24.dp)
                         .padding(bottom = 140.dp) // extra space for bottom CTA bar
@@ -274,26 +278,44 @@ fun MultiBookingScreen(
                             Card(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = Charcoal),
-                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.15f)),
+                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.2f)),
                                 modifier = Modifier
-                                    .width(200.dp)
+                                    .width(210.dp)
+                                    .height(78.dp)
                                     .clickable {
                                         delivery = addr
+                                        if (rName.isBlank()) {
+                                            rName = name
+                                            rPhone = phone
+                                        }
                                         Toast.makeText(context, "Recipient details loaded!", Toast.LENGTH_SHORT).show()
                                     }
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Filled.History, null, tint = Gold, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Icon(Icons.Filled.History, null, tint = Gold, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = name,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isLight) Obsidian else Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        addr,
+                                        text = addr,
                                         fontSize = 10.sp,
                                         color = TextGray,
-                                        lineHeight = 14.sp
+                                        lineHeight = 13.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -522,20 +544,22 @@ fun MultiBookingScreen(
 
                                     Spacer(modifier = Modifier.height(6.dp))
 
-                                    Row(
+                                    Column(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         OutlinedTextField(
                                             value = stop.recipientName,
                                             onValueChange = { newValue ->
                                                 stops = stops.toMutableList().apply { this[index] = stop.copy(recipientName = newValue) }
                                             },
-                                            modifier = Modifier.weight(1f),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true,
                                             shape = RoundedCornerShape(16.dp),
-                                            placeholder = { Text("Name", color = TextGray) },
+                                            placeholder = { Text("Recipient name", color = TextGray, fontSize = 12.sp) },
                                             leadingIcon = { Icon(Icons.Filled.Person, null, tint = accentIconColor, modifier = Modifier.size(16.dp)) },
                                             textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+                                            keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Next),
                                             colors = OutlinedTextFieldDefaults.colors(
                                                 focusedBorderColor = accentColor,
                                                 unfocusedBorderColor = fieldBorderColor,
@@ -553,11 +577,19 @@ fun MultiBookingScreen(
                                             onValueChange = { newValue ->
                                                 stops = stops.toMutableList().apply { this[index] = stop.copy(recipientPhone = newValue) }
                                             },
-                                            modifier = Modifier.weight(1f),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true,
                                             shape = RoundedCornerShape(16.dp),
-                                            placeholder = { Text("Phone", color = TextGray) },
+                                            placeholder = { Text("Phone number (e.g. 08012345678)", color = TextGray, fontSize = 12.sp) },
                                             leadingIcon = { Icon(Icons.Filled.Phone, null, tint = accentIconColor, modifier = Modifier.size(16.dp)) },
                                             textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+                                            keyboardOptions = KeyboardOptions(
+                                                keyboardType = KeyboardType.Phone,
+                                                imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                                            ),
+                                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                                                onDone = { focusManager.clearFocus() }
+                                            ),
                                             colors = OutlinedTextFieldDefaults.colors(
                                                 focusedBorderColor = accentColor,
                                                 unfocusedBorderColor = fieldBorderColor,

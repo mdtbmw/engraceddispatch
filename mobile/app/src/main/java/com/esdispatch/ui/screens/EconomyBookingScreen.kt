@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.esdispatch.ui.theme.*
@@ -41,6 +42,7 @@ import com.esdispatch.ui.components.WalletCheckoutSheet
 import com.esdispatch.viewmodel.DeliveryViewModel
 import com.esdispatch.viewmodel.PendingQuote
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -263,12 +265,14 @@ fun EconomyBookingScreen(
                 modifier = Modifier.weight(1f),
                 containerColor = if (isDark) BackgroundDark else BackgroundLight
             ) {
+                val focusManager = LocalFocusManager.current
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
                         .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
                             focusedField = null
+                            focusManager.clearFocus()
                         }
                         .padding(horizontal = 24.dp, vertical = 24.dp)
                         .padding(bottom = 140.dp) // extra space for bottom CTA bar
@@ -304,26 +308,44 @@ fun EconomyBookingScreen(
                             Card(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = Charcoal),
-                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.15f)),
+                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.2f)),
                                 modifier = Modifier
-                                    .width(200.dp)
+                                    .width(210.dp)
+                                    .height(78.dp)
                                     .clickable {
                                         delivery = addr
+                                        if (rName.isBlank()) {
+                                            rName = name
+                                            rPhone = phone
+                                        }
                                         Toast.makeText(context, "Recipient details loaded!", Toast.LENGTH_SHORT).show()
                                     }
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Filled.History, null, tint = Gold, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Icon(Icons.Filled.History, null, tint = Gold, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = name,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isLight) Obsidian else Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        addr,
+                                        text = addr,
                                         fontSize = 10.sp,
                                         color = TextGray,
-                                        lineHeight = 14.sp
+                                        lineHeight = 13.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }

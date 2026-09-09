@@ -56,6 +56,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -442,8 +443,8 @@ fun ActiveTrackingScreen(
     LaunchedEffect(parcel.courierLatitude, parcel.courierLongitude) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val lat = parcel.courierLatitude ?: 6.454070
-                val lng = parcel.courierLongitude ?: 3.394670
+                val lat = parcel.courierLatitude ?: 6.3350
+                val lng = parcel.courierLongitude ?: 5.6037
                 val url = java.net.URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&current=temperature_2m,weather_code")
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 4000
@@ -813,6 +814,59 @@ fun ActiveTrackingScreen(
                                 fontSize = 11.sp,
                                 color = Obsidian.copy(alpha = 0.85f),
                                 fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            // FLOATING LUXURY DELIVERY SUCCESS POP-UP BANNER DOCKED AT TOP
+            if (!hasNoBooking && parcel.status == ParcelStatus.DELIVERED) {
+                Card(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Gold),
+                    border = BorderStroke(1.5.dp, Obsidian),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(Obsidian),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = "Delivered",
+                                tint = Gold,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "PACKAGE DELIVERED SUCCESSFULLY",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Obsidian,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "Handover confirmed with ${parcel.courierName.ifBlank { "courier" }}. Thank you for choosing ESDispatch!",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Obsidian.copy(alpha = 0.85f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -2037,7 +2091,6 @@ private fun AddressDetailRow(
 }
 
 private fun geocodeAddressToLatLng(context: android.content.Context, address: String): Pair<Double, Double> {
-    val lower = address.lowercase()
     try {
         if (android.location.Geocoder.isPresent()) {
             val geocoder = android.location.Geocoder(context)
@@ -2046,34 +2099,27 @@ private fun geocodeAddressToLatLng(context: android.content.Context, address: St
             }
             if (!addresses.isNullOrEmpty()) {
                 val addr = addresses[0]
-                return Pair(addr.latitude, addr.longitude)
+                // Only accept coordinates within Benin City bounding box (lat 6.1..6.5, lng 5.4..5.8)
+                if (addr.latitude in 6.1..6.5 && addr.longitude in 5.4..5.8) {
+                    return Pair(addr.latitude, addr.longitude)
+                }
             }
         }
     } catch (e: Exception) {
         android.util.Log.e("Geocoder", "System Geocoder failed: ${e.message}")
     }
-    return when {
-        lower.contains("city mall") || lower.contains("ikeja city") -> Pair(6.6018, 3.3515)
-        lower.contains("airport") || lower.contains("murtala") -> Pair(6.5244, 3.3792)
-        lower.contains("conservation") || lower.contains("lcc") -> Pair(6.4281, 3.4219)
-        lower.contains("theatre") || lower.contains("iganmu") -> Pair(6.4633, 3.3672)
-        lower.contains("unilag") || lower.contains("university of lagos") || lower.contains("akoka") || lower.contains("yaba") -> Pair(6.5158, 3.3897)
-        lower.contains("lekki phase 1") || lower.contains("admiralty") || lower.contains("admirality") -> Pair(6.4265, 3.4300)
-        lower.contains("chevron") -> Pair(6.4446, 3.4912)
-        lower.contains("ikoyi club") || lower.contains("ikoyi") || lower.contains("kingsway") -> Pair(6.4549, 3.4244)
-        lower.contains("nike") || lower.contains("gallery") || lower.contains("elegushi") -> Pair(6.4474, 3.4735)
-        lower.contains("island") || lower.contains("marina") -> Pair(6.4501, 3.3958)
-        lower.contains("computer") || lower.contains("village") || lower.contains("isaac") -> Pair(6.6250, 3.3421)
-        lower.contains("ozumba") || lower.contains("mbadiwe") || lower.contains("victoria") || lower.contains("eko") -> Pair(6.4350, 3.4270)
-        lower.contains("surulere") || lower.contains("stadium") -> Pair(6.5000, 3.3500)
-        lower.contains("mainland") -> Pair(6.5244, 3.3792)
-        else -> {
-            val hash = address.hashCode().toLong()
-            val latOffset = (Math.abs(hash) % 100) / 1000.0
-            val lngOffset = (Math.abs(hash / 100) % 100) / 1000.0
-            Pair(6.5244 + latOffset - 0.05, 3.3792 + lngOffset - 0.05)
-        }
+
+    // Lookup authentic Benin City address catalog
+    val beninCoords = com.esdispatch.data.AddressDatabase.getCoordinates(address)
+    if (beninCoords != null) {
+        return beninCoords
     }
+
+    // Hash-based deterministic coordinate strictly within Benin City boundary
+    val hash = address.hashCode().toLong()
+    val latOffset = ((Math.abs(hash) % 80) - 40) / 1000.0
+    val lngOffset = ((Math.abs(hash / 100) % 80) - 40) / 1000.0
+    return Pair(6.3350 + latOffset, 5.6037 + lngOffset)
 }
 
 @Composable
@@ -2954,8 +3000,8 @@ fun LiveMapView(
 
                     var hasRealCoords = ${courierLatitude != null && courierLongitude != null};
                     if (hasRealCoords) {
-                        lat = ${courierLatitude ?: 6.5244};
-                        lng = ${courierLongitude ?: 3.3792};
+                        lat = ${courierLatitude ?: 6.3350};
+                        lng = ${courierLongitude ?: 5.6037};
                     }
 
                     if (courierMarker) {
@@ -3074,19 +3120,25 @@ fun DeliveryEstimationCard(
     isDark: Boolean
 ) {
     val isLight = !isDark
+    val now = remember { java.util.Date() }
+    val dayFormat = remember { java.text.SimpleDateFormat("EEEE, MMMM d, yyyy", java.util.Locale.getDefault()) }
+    val timeFormat = remember { java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()) }
+    val todayStr = remember(now) { "Today, ${dayFormat.format(now)}" }
+    val currentTimeStr = remember(now) { timeFormat.format(now) }
+
     val estimationText = when (status) {
         ParcelStatus.PENDING -> "Awaiting Assignment"
         ParcelStatus.ASSIGNED -> "Preparing for Pickup"
         ParcelStatus.PICKED_UP -> "Parcel Picked Up"
         ParcelStatus.ARRIVED -> "Arrived at Destination"
-        ParcelStatus.DELIVERED -> "Delivered"
-        ParcelStatus.OUT_FOR_DELIVERY -> "Today, July 7, 2026"
+        ParcelStatus.DELIVERED -> "Delivered ($currentTimeStr)"
+        ParcelStatus.OUT_FOR_DELIVERY -> todayStr
         ParcelStatus.CANCELLED -> "No Delivery (Cancelled)"
         ParcelStatus.TRANSIT -> {
             when {
-                progress >= 0.8f -> "Today, July 7, 2026"
-                progress >= 0.45f -> "Tomorrow, July 8, 2026"
-                else -> "Thursday, July 9, 2026"
+                progress >= 0.7f -> todayStr
+                progress >= 0.3f -> "Estimated: $todayStr"
+                else -> "In Dispatch Queue"
             }
         }
     }
@@ -3096,15 +3148,12 @@ fun DeliveryEstimationCard(
         ParcelStatus.ASSIGNED -> "Courier has been dispatched to pickup location"
         ParcelStatus.PICKED_UP -> "Courier has picked up the parcel"
         ParcelStatus.ARRIVED -> "Courier is at the delivery location"
-        ParcelStatus.DELIVERED -> "Delivered at 1:15 PM"
-        ParcelStatus.OUT_FOR_DELIVERY -> "Expected between 2:00 PM - 6:00 PM"
+        ParcelStatus.DELIVERED -> "Successfully handed over to recipient"
+        ParcelStatus.OUT_FOR_DELIVERY -> "Active courier on route in Benin City"
         ParcelStatus.CANCELLED -> "Shipment was cancelled by sender"
         ParcelStatus.TRANSIT -> {
-            when {
-                progress >= 0.8f -> "Expected between 3:00 PM - 7:00 PM"
-                progress >= 0.45f -> "Expected between 9:00 AM - 1:00 PM"
-                else -> "Expected between 10:00 AM - 5:00 PM"
-            }
+            val remainingMins = (35 * (1f - progress.coerceIn(0f, 0.95f))).toInt().coerceAtLeast(4)
+            "Estimated arrival in ~$remainingMins mins"
         }
     }
 

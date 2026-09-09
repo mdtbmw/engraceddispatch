@@ -37,11 +37,11 @@ open class AuthViewModel : BaseViewModel() {
         _loginMode.value = mode
     }
 
-    fun setBiometricRegistered(reg: Boolean) {
+    open fun setBiometricRegistered(reg: Boolean) {
         _biometricRegistered.value = reg
     }
 
-    fun setBiometricEnabled(en: Boolean) {
+    open fun setBiometricEnabled(en: Boolean) {
         _biometricEnabled.value = en
     }
 

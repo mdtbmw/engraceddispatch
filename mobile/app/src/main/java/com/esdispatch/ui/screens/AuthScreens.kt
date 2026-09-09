@@ -138,6 +138,8 @@ fun LoginScreen(
     // Google Sign-In & Biometrics
     var showBiometricEnroll by remember { mutableStateOf(false) }
     var showBiometricAuth by remember { mutableStateOf(false) }
+    var showGoogleErrorDialog by remember { mutableStateOf(false) }
+    var googleErrorCode by remember { mutableIntStateOf(0) }
 
     val registeredPin by viewModel.userPin.collectAsState()
     val scope = rememberCoroutineScope()
@@ -183,11 +185,12 @@ fun LoginScreen(
             val isCancelled = e.statusCode == 12501 || e.statusCode == 12502 || e.statusCode == 16 || e.statusCode == 4
             if (isCancelled) {
                 Toast.makeText(context, "Google Sign-In cancelled.", Toast.LENGTH_SHORT).show()
+            } else if (e.statusCode == 10 || e.statusCode == 12500) {
+                googleErrorCode = e.statusCode
+                showGoogleErrorDialog = true
             } else {
                 val msg = when (e.statusCode) {
                     7 -> "Network error. Please check your internet connection."
-                    10 -> "Google OAuth setup in progress. Please sign in with Email/Password."
-                    12500 -> "Google configuration mismatch. Please use Email/Password."
                     else -> "Google Sign-In unavailable (code: ${e.statusCode}). Please sign in with Email."
                 }
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
@@ -491,22 +494,26 @@ fun LoginScreen(
                                 val authEmail = creds?.first ?: email.ifEmpty { viewModel.userEmail.value }
                                 val biometricPin = creds?.second ?: registeredPin
 
-                                if (activity != null && authEmail.isNotBlank() && biometricPin.isNotBlank()) {
+                                if (activity != null) {
                                     com.esdispatch.util.BiometricHelper.authenticate(
                                         activity = activity,
                                         title = "ESDispatch Biometric Verification",
                                         subtitle = "Authorize secure access",
-                                        description = "Scan your fingerprint or use your face to unlock your secure dispatcher console.",
+                                        description = "Scan your fingerprint or screen lock credentials to unlock.",
                                         onSuccess = {
-                                            isValidatingPin = true
-                                            viewModel.signInWithFirebase(authEmail, biometricPin) { success, errorText ->
-                                                if (success) {
-                                                    Toast.makeText(context, "Biometrics Verified! Welcome Back.", Toast.LENGTH_SHORT).show()
-                                                    onNavigate("Preloader")
-                                                } else {
-                                                    Toast.makeText(context, errorText ?: "Invalid credentials loaded from biometrics.", Toast.LENGTH_SHORT).show()
+                                            if (authEmail.isNotBlank() && biometricPin.isNotBlank()) {
+                                                isValidatingPin = true
+                                                viewModel.signInWithFirebase(authEmail, biometricPin) { success, errorText ->
+                                                    if (success) {
+                                                        Toast.makeText(context, "Biometrics Verified! Welcome Back.", Toast.LENGTH_SHORT).show()
+                                                        onNavigate("Preloader")
+                                                    } else {
+                                                        Toast.makeText(context, errorText ?: "Invalid credentials loaded from biometrics.", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                    isValidatingPin = false
                                                 }
-                                                isValidatingPin = false
+                                            } else {
+                                                Toast.makeText(context, "Biometrics verified! Please enter your email to proceed.", Toast.LENGTH_LONG).show()
                                             }
                                         },
                                         onError = { err ->
@@ -648,6 +655,75 @@ fun LoginScreen(
         )
     }
 
+    if (showGoogleErrorDialog) {
+        AlertDialog(
+            onDismissRequest = { showGoogleErrorDialog = false },
+            modifier = if (isDark) Modifier.border(1.5.dp, Gold, RoundedCornerShape(28.dp)) else Modifier,
+            shape = RoundedCornerShape(28.dp),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Security, contentDescription = null, tint = Gold, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Google Sign-In Notice",
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = SpaceGrotesk,
+                        color = if (isDark) Color.White else Obsidian
+                    )
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Google OAuth is awaiting SHA-1 fingerprint registration for package com.esdispatch.app in Firebase Console (Error code: $googleErrorCode).",
+                        color = TextGray,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        color = (if (isDark) Gold else Obsidian).copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Release Keystore SHA-1:\nF0:34:05:B5:0C:D7:26:39:50:B4:AC:4E:AC:D3:B0:8D:AC:35:61:04",
+                            fontSize = 10.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = if (isDark) Gold else Obsidian,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "You can seamlessly sign in right now using your Email and 4-digit PIN.",
+                        color = if (isDark) Color.White else Obsidian,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showGoogleErrorDialog = false
+                        step = LoginStep.EMAIL
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text("Sign in with Email & PIN", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGoogleErrorDialog = false }) {
+                    Text("Dismiss", color = TextGray)
+                }
+            },
+            containerColor = if (isDark) Obsidian else Color.White
+        )
+    }
+
     if (showBiometricEnroll) {
         if (registeredPin.isNotEmpty()) {
             FingerprintRegisterDialog(
@@ -731,6 +807,8 @@ fun SignUpScreen(
     
     var isEmailTaken by remember { mutableStateOf(false) }
     var isPhoneTaken by remember { mutableStateOf(false) }
+    var showGoogleErrorDialog by remember { mutableStateOf(false) }
+    var googleErrorCode by remember { mutableIntStateOf(0) }
 
     val currentAuthUser = com.esdispatch.data.FirebaseManager.auth?.currentUser
     val isGoogleUser = googleAuthInProg || (currentAuthUser != null && currentAuthUser.providerData.any { it.providerId == "google.com" })
@@ -841,12 +919,13 @@ fun SignUpScreen(
             val isCancelled = e.statusCode == 12501 || e.statusCode == 12502 || e.statusCode == 16 || e.statusCode == 4
             if (isCancelled) {
                 Toast.makeText(context, "Google Sign-In cancelled.", Toast.LENGTH_SHORT).show()
+            } else if (e.statusCode == 10 || e.statusCode == 12500) {
+                googleErrorCode = e.statusCode
+                showGoogleErrorDialog = true
             } else {
                 val msg = when (e.statusCode) {
                     7 -> "Network error. Please check your internet connection."
-                    10 -> "Google OAuth setup in progress. Please sign in with Email/Password."
-                    12500 -> "Google configuration mismatch. Please use Email/Password."
-                    else -> "Google Sign-In unavailable (code: ${e.statusCode}). Please sign in with Email."
+                    else -> "Google Sign-In unavailable (code: ${e.statusCode}). Please sign up with Email & PIN."
                 }
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             }
@@ -1635,6 +1714,74 @@ fun SignUpScreen(
                 modifier = Modifier.size(20.dp)
             )
         }
+    }
+
+    if (showGoogleErrorDialog) {
+        AlertDialog(
+            onDismissRequest = { showGoogleErrorDialog = false },
+            modifier = if (isDark) Modifier.border(1.5.dp, Gold, RoundedCornerShape(28.dp)) else Modifier,
+            shape = RoundedCornerShape(28.dp),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Security, contentDescription = null, tint = Gold, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Google Sign-In Notice",
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = SpaceGrotesk,
+                        color = if (isDark) Color.White else Obsidian
+                    )
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Google OAuth is awaiting SHA-1 fingerprint registration for package com.esdispatch.app in Firebase Console (Error code: $googleErrorCode).",
+                        color = TextGray,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        color = (if (isDark) Gold else Obsidian).copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Release Keystore SHA-1:\nF0:34:05:B5:0C:D7:26:39:50:B4:AC:4E:AC:D3:B0:8D:AC:35:61:04",
+                            fontSize = 10.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = if (isDark) Gold else Obsidian,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "You can seamlessly complete your registration directly below using your phone number and 4-digit PIN.",
+                        color = if (isDark) Color.White else Obsidian,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showGoogleErrorDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text("Continue Registration", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGoogleErrorDialog = false }) {
+                    Text("Dismiss", color = TextGray)
+                }
+            },
+            containerColor = if (isDark) Obsidian else Color.White
+        )
     }
 }
 

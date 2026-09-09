@@ -1632,7 +1632,9 @@ fun SettingsScreen(
     val biometricStatus = remember(context) {
         try {
             BiometricManager.from(context).canAuthenticate(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
             )
         } catch (e: Exception) {
             BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
@@ -1829,8 +1831,32 @@ fun SettingsScreen(
                                 onClick = {
                                     if (biometricStatus == BiometricManager.BIOMETRIC_SUCCESS) {
                                         val next = !biometricEn
-                                        viewModel.setBiometricEnabled(next)
-                                        Toast.makeText(context, if (next) "Biometric login enabled" else "Biometric login disabled", Toast.LENGTH_SHORT).show()
+                                        if (next) {
+                                            val activity = context as? androidx.fragment.app.FragmentActivity
+                                            if (activity != null) {
+                                                com.esdispatch.util.BiometricHelper.authenticate(
+                                                    activity = activity,
+                                                    title = "Enable Biometric QuickLogin",
+                                                    subtitle = "Verify identity to enable",
+                                                    description = "Confirm fingerprint or screen lock to enable quick login.",
+                                                    onSuccess = {
+                                                        viewModel.setBiometricEnabled(true)
+                                                        viewModel.setBiometricRegistered(true)
+                                                        Toast.makeText(context, "Biometric login enabled successfully!", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    onError = { err ->
+                                                        Toast.makeText(context, "Authentication failed: $err", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                )
+                                            } else {
+                                                viewModel.setBiometricEnabled(true)
+                                                viewModel.setBiometricRegistered(true)
+                                                Toast.makeText(context, "Biometric login enabled", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            viewModel.setBiometricEnabled(false)
+                                            Toast.makeText(context, "Biometric login disabled", Toast.LENGTH_SHORT).show()
+                                        }
                                     } else if (biometricStatus == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED) {
                                         Toast.makeText(context, "Please configure fingerprint or screen lock in Android Settings", Toast.LENGTH_LONG).show()
                                     } else {
@@ -5182,8 +5208,29 @@ fun BiometricEnrollSheet(
             if (!isRegistered) {
                 Button(
                     onClick = {
-                        viewModel.setBiometricRegistered(true)
-                        Toast.makeText(context, "Device fingerprint registered with ESDispatch!", Toast.LENGTH_SHORT).show()
+                        val activity = context as? androidx.fragment.app.FragmentActivity
+                        if (activity != null) {
+                            com.esdispatch.util.BiometricHelper.authenticate(
+                                activity = activity,
+                                title = "Enroll Biometrics",
+                                subtitle = "Verify device sensor",
+                                description = "Scan your fingerprint or confirm device lock to register with ESDispatch.",
+                                onSuccess = {
+                                    viewModel.setBiometricRegistered(true)
+                                    viewModel.setBiometricEnabled(true)
+                                    Toast.makeText(context, "Biometrics registered & enabled successfully!", Toast.LENGTH_SHORT).show()
+                                    dismissWithAnim()
+                                },
+                                onError = { err ->
+                                    Toast.makeText(context, "Registration failed: $err", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        } else {
+                            viewModel.setBiometricRegistered(true)
+                            viewModel.setBiometricEnabled(true)
+                            Toast.makeText(context, "Device fingerprint registered with ESDispatch!", Toast.LENGTH_SHORT).show()
+                            dismissWithAnim()
+                        }
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(24.dp),

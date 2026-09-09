@@ -47,6 +47,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -268,6 +270,7 @@ fun ExpressBookingScreen(
             .fillMaxSize()
             .background(LuxuryBlack)
     ) {
+        val focusManager = LocalFocusManager.current
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -288,6 +291,7 @@ fun ExpressBookingScreen(
                         .verticalScroll(scrollState)
                         .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
                             focusedField = null
+                            focusManager.clearFocus()
                         }
                         .padding(horizontal = 14.dp, vertical = 18.dp)
                         .padding(bottom = 140.dp) // extra space for bottom CTA bar
@@ -324,26 +328,44 @@ fun ExpressBookingScreen(
                             Card(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = Charcoal),
-                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.15f)),
+                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.2f)),
                                 modifier = Modifier
-                                    .width(200.dp)
+                                    .width(210.dp)
+                                    .height(78.dp)
                                     .clickable {
                                         delivery = addr
+                                        if (rName.isBlank()) {
+                                            rName = name
+                                            rPhone = phone
+                                        }
                                         Toast.makeText(context, "Recipient details loaded!", Toast.LENGTH_SHORT).show()
                                     }
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Filled.History, null, tint = Gold, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Icon(Icons.Filled.History, null, tint = Gold, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = name,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isLight) Obsidian else Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        addr,
+                                        text = addr,
                                         fontSize = 10.sp,
                                         color = TextGray,
-                                        lineHeight = 14.sp
+                                        lineHeight = 13.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }

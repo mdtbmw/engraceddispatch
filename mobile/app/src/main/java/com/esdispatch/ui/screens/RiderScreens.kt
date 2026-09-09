@@ -2858,15 +2858,19 @@ fun RiderWaybillBottomSheet(
                         Text("₦${String.format(java.util.Locale.getDefault(), "%,.2f", parcel.price)}", fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isDark) Gold else Obsidian)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Security OTP:", fontSize = 11.sp, color = TextGray)
-                        Surface(shape = RoundedCornerShape(6.dp), color = Gold.copy(alpha = 0.2f), border = BorderStroke(1.dp, Gold)) {
+                        Text("Customer Handover Code:", fontSize = 11.sp, color = TextGray)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = (if (isDark) Gold else Obsidian).copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, (if (isDark) Gold else Obsidian).copy(alpha = 0.3f))
+                        ) {
                             Text(
-                                text = parcel.otpCode.ifBlank { "••••" },
-                                fontSize = 12.sp,
+                                text = "ENTER UPON HANDOVER",
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Black,
-                                color = Gold,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                letterSpacing = 0.5.sp,
+                                color = if (isDark) Gold else Obsidian,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
                     }

@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
@@ -229,122 +230,145 @@ fun OrderHistoryItem(
                     .background(accentColor)
             )
 
-            Column(modifier = Modifier.weight(1f).padding(20.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(innerBgColor),
-                        contentAlignment = Alignment.Center
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (parcel.status == ParcelStatus.DELIVERED) {
-                            Icon(Icons.Filled.Inbox, null, tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(24.dp))
-                        } else {
-                            Image(
-                                painter = rememberAsyncImagePainter(parcel.imageUrl),
-                                contentDescription = parcel.itemName,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(innerBgColor),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (parcel.status == ParcelStatus.DELIVERED) {
+                                Icon(Icons.Filled.Inbox, null, tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(22.dp))
+                            } else {
+                                Image(
+                                    painter = rememberAsyncImagePainter(parcel.imageUrl),
+                                    contentDescription = parcel.itemName,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "ID: ${parcel.id}",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp,
+                                color = AppTextColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = parcel.itemName.ifBlank { "Standard Delivery" },
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextGray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(16.dp))
+                    // Dynamic Styled Tag
+                    val tagColor = when (parcel.status) {
+                        ParcelStatus.PENDING -> Color(0xFF2196F3)
+                        ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
+                        ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
+                        ParcelStatus.ARRIVED -> Color(0xFF00897B)
+                        ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
+                        ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
+                        ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
+                        ParcelStatus.CANCELLED -> Color(0xFFF44336)
+                    }
 
-                    Column {
-                        Text("ID: ${parcel.id}", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = AppTextColor)
-                        Text(parcel.itemName, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextGray)
+                    val tagBg = when (parcel.status) {
+                        ParcelStatus.PENDING -> Color(0x202196F3)
+                        ParcelStatus.ASSIGNED -> Color(0x209C27B0)
+                        ParcelStatus.PICKED_UP -> Color(0x205E35B1)
+                        ParcelStatus.ARRIVED -> Color(0x2000897B)
+                        ParcelStatus.TRANSIT -> if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)
+                        ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
+                        ParcelStatus.DELIVERED -> Color(0x204CAF50)
+                        ParcelStatus.CANCELLED -> Color(0x20F44336)
+                    }
+
+                    val tagText = when (parcel.status) {
+                        ParcelStatus.PENDING -> "PENDING"
+                        ParcelStatus.ASSIGNED -> "ASSIGNED"
+                        ParcelStatus.PICKED_UP -> "PICKED UP"
+                        ParcelStatus.ARRIVED -> "ARRIVED"
+                        ParcelStatus.TRANSIT -> "IN TRANSIT"
+                        ParcelStatus.OUT_FOR_DELIVERY -> "OUT FOR DELIVERY"
+                        ParcelStatus.DELIVERED -> "DELIVERED"
+                        ParcelStatus.CANCELLED -> "CANCELLED"
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .background(tagBg, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = tagText,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = tagColor,
+                            maxLines = 1
+                        )
                     }
                 }
 
-                // Dynamic Styled Tag
-                val tagColor = when (parcel.status) {
-                    ParcelStatus.PENDING -> Color(0xFF2196F3)
-                    ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
-                    ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
-                    ParcelStatus.ARRIVED -> Color(0xFF00897B)
-                    ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
-                    ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
-                    ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
-                    ParcelStatus.CANCELLED -> Color(0xFFF44336)
-                }
+                Spacer(modifier = Modifier.height(12.dp))
 
-                val tagBg = when (parcel.status) {
-                    ParcelStatus.PENDING -> Color(0x202196F3)
-                    ParcelStatus.ASSIGNED -> Color(0x209C27B0)
-                    ParcelStatus.PICKED_UP -> Color(0x205E35B1)
-                    ParcelStatus.ARRIVED -> Color(0x2000897B)
-                    ParcelStatus.TRANSIT -> if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)
-                    ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
-                    ParcelStatus.DELIVERED -> Color(0x204CAF50)
-                    ParcelStatus.CANCELLED -> Color(0x20F44336)
-                }
-
-                val tagText = when (parcel.status) {
-                    ParcelStatus.PENDING -> "PENDING DISPATCH"
-                    ParcelStatus.ASSIGNED -> "COURIER ASSIGNED"
-                    ParcelStatus.PICKED_UP -> "PICKED UP"
-                    ParcelStatus.ARRIVED -> "ARRIVED"
-                    ParcelStatus.TRANSIT -> "IN TRANSIT"
-                    ParcelStatus.OUT_FOR_DELIVERY -> "OUT FOR DELIVERY"
-                    ParcelStatus.DELIVERED -> "DELIVERED"
-                    ParcelStatus.CANCELLED -> "CANCELLED"
-                }
-
-                Box(
-                    modifier = Modifier
-                        .background(tagBg, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                // Footer info: delivery progress date / price metrics
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Row(
+                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (parcel.status == ParcelStatus.TRANSIT) Icons.Filled.LocalShipping else Icons.Filled.AccessTime,
+                            contentDescription = "Timing",
+                            tint = TextGray,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (parcel.status == ParcelStatus.TRANSIT) "In Transit" else parcel.dateString,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
                     Text(
-                        text = tagText,
-                        fontSize = 10.sp,
+                        text = "₦${String.format("%,.0f", parcel.price)}",
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Black,
-                        color = tagColor
+                        color = if (isDark) Gold else Obsidian
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Footer info: delivery progress date / price metrics
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (parcel.status == ParcelStatus.TRANSIT) Icons.Filled.LocalShipping else Icons.Filled.AccessTime,
-                        contentDescription = "Timing",
-                        tint = TextGray,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (parcel.status == ParcelStatus.TRANSIT) "Arriving Today" else parcel.dateString,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextGray
-                    )
-                }
-
-                Text(
-                    text = "₦${String.format("%,.2f", parcel.price)}",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black,
-                    color = if (isDark) Gold else Obsidian
-                )
             }
         }
     }
-}
 }
 
 @Composable

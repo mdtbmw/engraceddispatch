@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.esdispatch.ui.components.ScreenHeader
@@ -92,50 +93,45 @@ fun SendParcelScreen(
     }
 
     val contactPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.PickContact()
-    ) { uri ->
-        if (uri != null) {
-            try {
-                val cursor = context.contentResolver.query(uri, null, null, null, null)
-                if (cursor != null && cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndex(android.provider.ContactsContract.Contacts.DISPLAY_NAME)
-                    if (nameIndex >= 0) {
-                        rName = cursor.getString(nameIndex) ?: ""
-                    }
-                    val hasPhoneIndex = cursor.getColumnIndex(android.provider.ContactsContract.Contacts.HAS_PHONE_NUMBER)
-                    if (hasPhoneIndex >= 0 && cursor.getString(hasPhoneIndex) == "1") {
-                        val idIndex = cursor.getColumnIndex(android.provider.ContactsContract.Contacts._ID)
-                        if (idIndex >= 0) {
-                            val contactId = cursor.getString(idIndex)
-                            val phones = context.contentResolver.query(
-                                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                                null,
-                                android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = " + contactId,
-                                null, null
-                            )
-                            if (phones != null && phones.moveToFirst()) {
-                                val numberIndex = phones.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-                                if (numberIndex >= 0) {
-                                    rPhone = phones.getString(numberIndex) ?: ""
-                                }
-                                phones.close()
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val contactUri = result.data?.data
+            if (contactUri != null) {
+                try {
+                    val projection = arrayOf(
+                        android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+                    )
+                    context.contentResolver.query(contactUri, projection, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIndex = cursor.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                            val numberIndex = cursor.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
+                            if (nameIndex >= 0) {
+                                val name = cursor.getString(nameIndex)
+                                if (!name.isNullOrBlank()) rName = name
                             }
+                            if (numberIndex >= 0) {
+                                val num = cursor.getString(numberIndex)
+                                if (!num.isNullOrBlank()) {
+                                    rPhone = num.replace(" ", "").replace("-", "")
+                                }
+                            }
+                            Toast.makeText(context, "Contact loaded successfully!", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    cursor.close()
-                    Toast.makeText(context, "Contact loaded successfully!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Failed to read contact", Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed to read contact", Toast.LENGTH_SHORT).show()
             }
         }
     }
     LaunchedEffect(Unit) {
-        if (pickup.isBlank() || pickup.contains("Murtala") || pickup.contains("Lekki")) {
+        if (pickup.isBlank()) {
             val detected = withContext(Dispatchers.IO) {
                 detectUserLocation(context)
             }
-            if (pickup.isBlank() || pickup.contains("Murtala") || pickup.contains("Lekki")) {
+            if (pickup.isBlank()) {
                 pickup = detected
             }
         }
@@ -277,9 +273,10 @@ fun SendParcelScreen(
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
                                     color = Charcoal,
-                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.3f)),
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f)),
                                     modifier = Modifier
                                         .width(220.dp)
+                                        .height(94.dp)
                                         .clickable {
                                             viewModel.bookAgainFromParcel(p)
                                             pickup = p.pickupAddress
@@ -287,11 +284,27 @@ fun SendParcelScreen(
                                             Toast.makeText(context, "Loaded delivery history for ${p.itemName}!", Toast.LENGTH_SHORT).show()
                                         }
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(text = p.itemName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(text = "To: ${p.deliveryAddress}", fontSize = 10.sp, color = TextGray, maxLines = 1)
-                                        Spacer(modifier = Modifier.height(6.dp))
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = p.itemName,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDark) Color.White else Obsidian,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "To: ${p.deliveryAddress}",
+                                            fontSize = 10.sp,
+                                            color = TextGray,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -741,7 +754,12 @@ fun SendParcelScreen(
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(Gold)
                                     .clickable {
-                                        contactPickerLauncher.launch(null)
+                                        contactPickerLauncher.launch(
+                                            android.content.Intent(
+                                                android.content.Intent.ACTION_PICK,
+                                                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+                                            )
+                                        )
                                     }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             )

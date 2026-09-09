@@ -276,14 +276,14 @@ async function seedDeliveries(db: any, addLog: any, addToast: any, createNotific
     const now = new Date();
     const ds = (d: number) => new Date(now.getTime() + d * 86400000).toISOString().slice(0, 10);
     const deliveries = [
-      { receiverName: "Alice Johnson", deliveryAddress: "Victoria Island, Lagos", senderName: "Shopify Store", senderPhone: "08011122233", receiverPhone: "08044455566", price: 2500, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Laptop", pickupAddress: "Ikeja, Lagos", quantity: 1, weight: 1.5, dateString: ds(-1), tipAmount: 500, userId: "seed_u2", otpCode: "1234", status: "DELIVERED", category: "Express" },
-      { receiverName: "Bob Brown", deliveryAddress: "Lekki Phase 1, Lagos", senderName: "Amazon Hub", senderPhone: "08099988877", receiverPhone: "08077766655", price: 1500, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Books", pickupAddress: "Surulere, Lagos", quantity: 2, weight: 0.8, dateString: ds(0), tipAmount: 200, userId: "seed_u2", otpCode: "5678", status: "TRANSIT", category: "Standard" },
-      { receiverName: "Charlie Davis", deliveryAddress: "Ajah, Lagos", senderName: "Fresh Foods", senderPhone: "08022233344", receiverPhone: "08055566677", price: 3000, riderId: "seed_u1", courierName: couriers[2], courierPhone: "08066677788", itemName: "Groceries", pickupAddress: "Yaba, Lagos", quantity: 5, weight: 4.2, dateString: ds(0), tipAmount: 0, userId: "seed_u2", otpCode: "9012", status: "PENDING", category: "Cold Chain" },
-      { receiverName: "Diana Okonkwo", deliveryAddress: "GRA, Port Harcourt", senderName: "Jumia Foods", senderPhone: "08033344455", receiverPhone: "08088899900", price: 1800, riderId: "seed_u3", courierName: couriers[3], courierPhone: "08011122200", itemName: "Documents", pickupAddress: "Trans Amadi, PH", quantity: 1, weight: 0.3, dateString: ds(1), tipAmount: 100, userId: "seed_u2", otpCode: "3456", status: "DELIVERED", category: "Economy" },
-      { receiverName: "Efe Martins", deliveryAddress: "Warri, Delta", senderName: "PharmaCo", senderPhone: "08055566688", receiverPhone: "08099900011", price: 4200, riderId: "", courierName: couriers[4], courierPhone: "08022233300", itemName: "Medical Supplies", pickupAddress: "Benin City", quantity: 3, weight: 6.0, dateString: ds(2), tipAmount: 0, userId: "seed_u2", otpCode: "7890", status: "ASSIGNED", category: "Express" },
-      { receiverName: "Fatima Yusuf", deliveryAddress: "Kano City Mall, Kano", senderName: "MegaMart", senderPhone: "08077788899", receiverPhone: "08011122255", price: 3500, riderId: "", courierName: couriers[5], courierPhone: "08044455500", itemName: "Home Appliances", pickupAddress: "Kano Market", quantity: 2, weight: 8.0, dateString: ds(1), tipAmount: 300, userId: "seed_u2", otpCode: "2345", status: "TRANSIT", category: "Batch" },
-      { receiverName: "Gloria Adebayo", deliveryAddress: "Bodija, Ibadan", senderName: "PrintHub", senderPhone: "08033322211", receiverPhone: "08066655544", price: 2200, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Print Materials", pickupAddress: "Dugbe, Ibadan", quantity: 4, weight: 2.5, dateString: ds(3), tipAmount: 150, userId: "seed_u2", otpCode: "6789", status: "PENDING", category: "Multi" },
-      { receiverName: "Henry Okafor", deliveryAddress: "Enugu Urban, Enugu", senderName: "TechWorld", senderPhone: "08044455566", receiverPhone: "08077788822", price: 2800, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Smartphone", pickupAddress: "Awka, Anambra", quantity: 1, weight: 0.6, dateString: ds(4), tipAmount: 250, userId: "seed_u2", otpCode: "1111", status: "PENDING", category: "Standard" },
+      { receiverName: "Osasere Igbinedion", deliveryAddress: "14 Ihama Road, GRA, Benin City", senderName: "Shopify Hub", senderPhone: "08011122233", receiverPhone: "08044455566", price: 2500, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Laptop", pickupAddress: "Ring Road, Kings Square, Benin City", quantity: 1, weight: 1.5, dateString: ds(-1), tipAmount: 500, userId: "seed_u2", otpCode: "1234", status: "DELIVERED", category: "Express" },
+      { receiverName: "Nosakhare Edokpayi", deliveryAddress: "Airport Road, GRA, Benin City", senderName: "Amazon Hub", senderPhone: "08099988877", receiverPhone: "08077766655", price: 1500, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Books", pickupAddress: "Ekehuan Road, UNIBEN Ekehuan, Benin City", quantity: 2, weight: 0.8, dateString: ds(0), tipAmount: 200, userId: "seed_u2", otpCode: "5678", status: "TRANSIT", category: "Standard" },
+      { receiverName: "Efosa Osagie", deliveryAddress: "Ugbowo Campus, University of Benin, Benin City", senderName: "Fresh Foods", senderPhone: "08022233344", receiverPhone: "08055566677", price: 3000, riderId: "seed_u1", courierName: couriers[2], courierPhone: "08066677788", itemName: "Groceries", pickupAddress: "Sapele Road, Benin City", quantity: 5, weight: 4.2, dateString: ds(0), tipAmount: 0, userId: "seed_u2", otpCode: "9012", status: "PENDING", category: "Cold Chain" },
+      { receiverName: "Ekiuwa Omoruyi", deliveryAddress: "UBTH, Ugbowo, Benin City", senderName: "Jumia Hub", senderPhone: "08033344455", receiverPhone: "08088899900", price: 1800, riderId: "seed_u3", courierName: couriers[3], courierPhone: "08011122200", itemName: "Documents", pickupAddress: "Mission Road, Benin City", quantity: 1, weight: 0.3, dateString: ds(1), tipAmount: 100, userId: "seed_u2", otpCode: "3456", status: "DELIVERED", category: "Economy" },
+      { receiverName: "Efe Martins", deliveryAddress: "Ikpoba Hill, Benin City", senderName: "PharmaCo", senderPhone: "08055566688", receiverPhone: "08099900011", price: 4200, riderId: "", courierName: couriers[4], courierPhone: "08022233300", itemName: "Medical Supplies", pickupAddress: "Upper Sakponba Road, Benin City", quantity: 3, weight: 6.0, dateString: ds(2), tipAmount: 0, userId: "seed_u2", otpCode: "7890", status: "ASSIGNED", category: "Express" },
+      { receiverName: "Aisosa Obasuyi", deliveryAddress: "Boundary Road, GRA, Benin City", senderName: "MegaMart", senderPhone: "08077788899", receiverPhone: "08011122255", price: 3500, riderId: "", courierName: couriers[5], courierPhone: "08044455500", itemName: "Home Appliances", pickupAddress: "Akpakpava Road, Benin City", quantity: 2, weight: 8.0, dateString: ds(1), tipAmount: 300, userId: "seed_u2", otpCode: "2345", status: "TRANSIT", category: "Batch" },
+      { receiverName: "Isoken Agho", deliveryAddress: "New Lagos Road, Benin City", senderName: "PrintHub", senderPhone: "08033322211", receiverPhone: "08066655544", price: 2200, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Print Materials", pickupAddress: "Siluko Road, Benin City", quantity: 4, weight: 2.5, dateString: ds(3), tipAmount: 150, userId: "seed_u2", otpCode: "6789", status: "PENDING", category: "Multi" },
+      { receiverName: "Amenze Osunde", deliveryAddress: "Country Home Motel Road, Benin City", senderName: "TechWorld", senderPhone: "08044455566", receiverPhone: "08077788822", price: 2800, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Smartphone", pickupAddress: "Adesuwa Road, GRA, Benin City", quantity: 1, weight: 0.6, dateString: ds(4), tipAmount: 250, userId: "seed_u2", otpCode: "1111", status: "PENDING", category: "Standard" },
     ];
     deliveries.forEach(d => batch.set(doc(collection(db, "deliveries")), d));
     await batch.commit();
@@ -338,16 +338,16 @@ async function seedMarketplace(db: any, addLog: any, addToast: any, createNotifi
     const today = new Date().toISOString().slice(0, 10);
     // Deterministic owner ids so products link to storefronts in the mobile app
     const storeOwners = [
-      { id: "seed_store_esdispatch", storeName: "ESDispatch Fleet Supplies", ownerName: "Official Store", email: "supplies@engraced.com", phone: "08012345678", category: "Fleet Equipment", commissionRate: 5, description: "Official ESDispatch fleet equipment, rider kits and dispatch consumables for the whole team.", address: "14 Adeola Odeku Street, Victoria Island, Lagos" },
-      { id: "seed_store_prorider", storeName: "ProRider Wear", ownerName: "Chidi Okonkwo", email: "chidi@prorider.com", phone: "08087654321", category: "Apparel", commissionRate: 10, description: "Premium reflective courier jackets, riding apparel and protective wear engineered for Nigerian roads.", address: "22 Allen Avenue, Ikeja, Lagos" },
-      { id: "seed_store_autocare", storeName: "Lagos Auto Care", ownerName: "Bisi Adebayo", email: "bisi@autocare.ng", phone: "08055544433", category: "Lubricants", commissionRate: 8, description: "High-performance engine oils, brake pads and workshop supplies for fleet maintenance.", address: "5 Opebi Road, Ikeja, Lagos" },
-      { id: "seed_store_safetyfirst", storeName: "SafetyFirst Nigeria", ownerName: "Amina Yusuf", email: "amina@safetyfirst.ng", phone: "08099900011", category: "Safety", commissionRate: 11, description: "Certified helmets, high-visibility vests and DOT-approved rider safety equipment.", address: "77 Toyin Street, Ikeja, Lagos" },
-      { id: "seed_store_techrider", storeName: "TechRider Solutions", ownerName: "Femi Adewale", email: "femi@techrider.ng", phone: "08044455667", category: "Electronics", commissionRate: 12, description: "Smartphone mounts, power banks, dashcams and rider tech accessories.", address: "101 Admiralty Way, Lekki Phase 1, Lagos" },
+      { id: "seed_store_esdispatch", storeName: "ESDispatch Fleet Supplies", ownerName: "Official Store", email: "supplies@engraced.com", phone: "08012345678", category: "Fleet Equipment", commissionRate: 5, description: "Official ESDispatch fleet equipment, rider kits and dispatch consumables for the whole team.", address: "17 Upper Adesuwa Road, GRA, Benin City" },
+      { id: "seed_store_prorider", storeName: "ProRider Wear", ownerName: "Chidi Okonkwo", email: "chidi@prorider.com", phone: "08087654321", category: "Apparel", commissionRate: 10, description: "Premium reflective courier jackets, riding apparel and protective wear engineered for Nigerian roads.", address: "14 Ihama Road, GRA, Benin City" },
+      { id: "seed_store_autocare", storeName: "Benin Auto Care", ownerName: "Osagie Adebayo", email: "osagie@autocare.ng", phone: "08055544433", category: "Lubricants", commissionRate: 8, description: "High-performance engine oils, brake pads and workshop supplies for fleet maintenance.", address: "45 Airport Road, GRA, Benin City" },
+      { id: "seed_store_safetyfirst", storeName: "SafetyFirst Nigeria", ownerName: "Amina Yusuf", email: "amina@safetyfirst.ng", phone: "08099900011", category: "Safety", commissionRate: 11, description: "Certified helmets, high-visibility vests and DOT-approved rider safety equipment.", address: "88 Sapele Road, Benin City" },
+      { id: "seed_store_techrider", storeName: "TechRider Solutions", ownerName: "Efosa Adewale", email: "efosa@techrider.ng", phone: "08044455667", category: "Electronics", commissionRate: 12, description: "Smartphone mounts, power banks, dashcams and rider tech accessories.", address: "12 Mission Road, Kings Square, Benin City" },
     ];
     const productSeeds = [
       { name: "Heavy Duty Bike Delivery Box", category: "Delivery Gear", price: 35000, stock: 45, imageUrl: "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=500", status: "In Stock", description: "Waterproof insulated delivery cargo box with lock", vendorStore: "ESDispatch Fleet Supplies", vendorId: "seed_store_esdispatch", rating: 4.9 },
       { name: "Executive Courier Rider Jacket", category: "Apparel", price: 18500, stock: 120, imageUrl: "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=500", status: "In Stock", description: "High-visibility reflective windproof jacket", vendorStore: "ProRider Wear", vendorId: "seed_store_prorider", rating: 4.8 },
-      { name: "Engine Synthetic Oil 1L (4T)", category: "Lubricants", price: 4200, stock: 8, imageUrl: "https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500", status: "Low Stock", description: "High performance synthetic motor oil", vendorStore: "Lagos Auto Care", vendorId: "seed_store_autocare", rating: 4.7 },
+      { name: "Engine Synthetic Oil 1L (4T)", category: "Lubricants", price: 4200, stock: 8, imageUrl: "https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500", status: "Low Stock", description: "High performance synthetic motor oil", vendorStore: "Benin Auto Care", vendorId: "seed_store_autocare", rating: 4.7 },
       { name: "Heavy Duty Phone Mount & Charger", category: "Electronics", price: 9500, stock: 65, imageUrl: "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=500", status: "In Stock", description: "Anti-vibration aluminum handlebar phone holder", vendorStore: "TechRider Solutions", vendorId: "seed_store_techrider", rating: 4.9 },
       { name: "Full Face Protective Helmet", category: "Safety", price: 28000, stock: 0, imageUrl: "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500", status: "Out of Stock", description: "DOT certified aerodynamic protective helmet", vendorStore: "SafetyFirst Nigeria", vendorId: "seed_store_safetyfirst", rating: 4.9 },
       { name: "Reflective Safety Vest", category: "Safety", price: 6500, stock: 30, imageUrl: "https://images.unsplash.com/photo-1550989460-0adf9ea622e2?w=500", status: "In Stock", description: "High-visibility neon vest for night-time dispatch", vendorStore: "SafetyFirst Nigeria", vendorId: "seed_store_safetyfirst", rating: 4.8 },
@@ -1750,6 +1750,34 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
     const updateStatus = async (id: string, s: string) => {
       await updateDoc(doc(db, "deliveries", id), { status: s, updatedAt: Timestamp.now() });
       addLog("Status", idShort(id) + " -> " + s);
+      const del = deliveries.find(d => d.id === id);
+      if (del && del.userId) {
+        try {
+          const statusMessages: Record<string, string> = {
+            ASSIGNED: `${del.courierName || "A rider"} has been assigned to your shipment.`,
+            PICKED_UP: `Your package has been picked up by ${del.courierName || "courier"}.`,
+            TRANSIT: "Your shipment is in transit and on the way to the delivery address.",
+            OUT_FOR_DELIVERY: `Your rider ${del.courierName || ""} is out for final delivery handover.`,
+            ARRIVED: `Your rider ${del.courierName || ""} has arrived at the destination!`,
+            DELIVERED: "Your package has been safely delivered. Thank you for choosing ESDispatch!",
+            CANCELLED: "Your shipment order has been cancelled."
+          };
+          if (statusMessages[s]) {
+            const notifRef = doc(collection(db, "users", del.userId, "notifications"));
+            await setDoc(notifRef, {
+              id: notifRef.id,
+              title: s === "DELIVERED" ? "Package Delivered 🎉" : `Shipment ${s.replace(/_/g, " ")}`,
+              message: statusMessages[s],
+              time: "Just now",
+              isRead: false,
+              parcelId: id,
+              createdAt: Timestamp.now()
+            });
+          }
+        } catch (e) {
+          console.error("Failed to post status notification:", e);
+        }
+      }
     };
 
     const assignRider = async (deliveryId: string, rider: UserProfile) => {
@@ -1759,13 +1787,47 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
         status: "ASSIGNED", updatedAt: Timestamp.now()
       });
       addLog("Assign Rider", `${rider.name} → ${idShort(deliveryId)}`);
+
+      const targetUserId = assignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
+      if (targetUserId) {
+        try {
+          const notifRef = doc(collection(db, "users", targetUserId, "notifications"));
+          await setDoc(notifRef, {
+            id: notifRef.id,
+            title: "Rider Assigned!",
+            message: `${rider.name} (${rider.phone || "Active Courier"}) has been assigned to your shipment #${idShort(deliveryId)}.`,
+            time: "Just now",
+            isRead: false,
+            parcelId: deliveryId,
+            createdAt: Timestamp.now()
+          });
+        } catch (err) {
+          console.error("Failed to notify customer of assigned rider:", err);
+        }
+      }
+
       setAssignModal({ delivery: null as any, show: false });
     };
 
     const bulkUpdate = async () => {
       if (!bulkStatus || selected.size === 0) return;
       const batch = writeBatch(db);
-      selected.forEach(id => batch.update(doc(db, "deliveries", id), { status: bulkStatus, updatedAt: Timestamp.now() }));
+      selected.forEach(id => {
+        batch.update(doc(db, "deliveries", id), { status: bulkStatus, updatedAt: Timestamp.now() });
+        const del = deliveries.find(d => d.id === id);
+        if (del && del.userId) {
+          const notifRef = doc(collection(db, "users", del.userId, "notifications"));
+          batch.set(notifRef, {
+            id: notifRef.id,
+            title: bulkStatus === "DELIVERED" ? "Package Delivered 🎉" : `Shipment ${bulkStatus.replace(/_/g, " ")}`,
+            message: `Shipment #${idShort(id)} status updated to ${bulkStatus.replace(/_/g, " ")}.`,
+            time: "Just now",
+            isRead: false,
+            parcelId: id,
+            createdAt: Timestamp.now()
+          });
+        }
+      });
       await batch.commit();
       addLog("Bulk", selected.size + " deliveries -> " + bulkStatus);
       setBulkStatus("");
@@ -3419,7 +3481,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
           <form onSubmit={handleAddStore} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Name</label>
-              <input type="text" value={sName} onChange={e => setSName(e.target.value)} placeholder="e.g. Lagos Auto Care" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+              <input type="text" value={sName} onChange={e => setSName(e.target.value)} placeholder="e.g. Benin Auto Care" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -3443,11 +3505,11 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
             </div>
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Description (shown on storefront)</label>
-              <textarea value={sDesc} onChange={e => setSDesc(e.target.value)} rows={2} placeholder="Premium spare parts and delivery accessories in Lagos…" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              <textarea value={sDesc} onChange={e => setSDesc(e.target.value)} rows={2} placeholder="Premium spare parts and delivery accessories in Benin City…" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
             </div>
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Address (full detail, shown on storefront)</label>
-              <input type="text" value={sAddr} onChange={e => setSAddr(e.target.value)} placeholder="12 Adeola Odeku St, Victoria Island, Lagos" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              <input type="text" value={sAddr} onChange={e => setSAddr(e.target.value)} placeholder="17 Upper Adesuwa Road, GRA, Benin City" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
             </div>
 <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Logo URL (optional)</label>

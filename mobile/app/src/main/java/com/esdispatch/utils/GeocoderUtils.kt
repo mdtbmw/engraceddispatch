@@ -158,7 +158,7 @@ object GeocoderUtils {
                 } else {
                     "&proximity=5.6037,6.3350"
                 }
-                val urlString = "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&autocomplete=true&country=ng&types=poi,address,neighborhood,locality,place,landmark$proxParam&limit=10"
+                val urlString = "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&autocomplete=true&country=ng&bbox=5.50,6.25,5.75,6.45&types=poi,address,neighborhood,locality,place,landmark$proxParam&limit=10"
                 val url = java.net.URL(urlString)
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
@@ -176,14 +176,21 @@ object GeocoderUtils {
                             val center = feat.optJSONArray("center")
                             val lng = if (center != null && center.length() >= 2) center.getDouble(0) else null
                             val lat = if (center != null && center.length() >= 2) center.getDouble(1) else null
+
+                            // Enforce strict Benin City boundary check if coordinates are present
+                            if (lat != null && lng != null) {
+                                if (lat !in 6.20..6.48 || lng !in 5.48..5.78) continue
+                            }
                             
                             val title = if (textName.isNotBlank() && textName != placeName) textName else placeName.split(",").firstOrNull()?.trim() ?: placeName
                             val address = if (placeName.contains(title) && placeName != title) placeName.removePrefix(title).removePrefix(",").trim() else placeName
 
-                            // Filter out generic country-only or region-only slop
+                            // Filter out generic country-only or region-only slop or non-Benin places
                             if (placeName.equals("Nigeria", ignoreCase = true) ||
                                 title.equals("Nigeria", ignoreCase = true) ||
                                 title.isBlank() ||
+                                placeName.contains("Lagos", ignoreCase = true) ||
+                                title.contains("Lagos", ignoreCase = true) ||
                                 (title.equals("Edo", ignoreCase = true) && address.isBlank())) {
                                 continue
                             }

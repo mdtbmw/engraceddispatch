@@ -2375,11 +2375,12 @@ object FirebaseManager {
             }
 
             if (enteredCode.trim() == storedCode.trim()) {
-                db.collection("users").document(userId).update(
+                db.collection("users").document(userId).set(
                     mapOf(
                         "isVerified" to true,
                         "verifiedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                    )
+                    ),
+                    com.google.firebase.firestore.SetOptions.merge()
                 ).addOnSuccessListener {
                     docRef.delete()
                     onComplete(true, "Verification successful! You are now a verified VIP member.")

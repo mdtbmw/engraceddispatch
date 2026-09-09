@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -162,41 +163,36 @@ fun BookingFormScreen(
     }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickContact()
-    ) { uri ->
-        if (uri != null) {
-            try {
-                val cursor = context.contentResolver.query(uri, null, null, null, null)
-                if (cursor != null && cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndex(android.provider.ContactsContract.Contacts.DISPLAY_NAME)
-                    if (nameIndex >= 0) {
-                        rName = cursor.getString(nameIndex) ?: ""
-                    }
-                    val hasPhoneIndex = cursor.getColumnIndex(android.provider.ContactsContract.Contacts.HAS_PHONE_NUMBER)
-                    if (hasPhoneIndex >= 0 && cursor.getString(hasPhoneIndex) == "1") {
-                        val idIndex = cursor.getColumnIndex(android.provider.ContactsContract.Contacts._ID)
-                        if (idIndex >= 0) {
-                            val contactId = cursor.getString(idIndex)
-                            val phones = context.contentResolver.query(
-                                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                                null,
-                                android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = " + contactId,
-                                null, null
-                            )
-                            if (phones != null && phones.moveToFirst()) {
-                                val numberIndex = phones.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-                                if (numberIndex >= 0) {
-                                    rPhone = phones.getString(numberIndex) ?: ""
-                                }
-                                phones.close()
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val contactUri = result.data?.data
+            if (contactUri != null) {
+                try {
+                    val projection = arrayOf(
+                        android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+                    )
+                    context.contentResolver.query(contactUri, projection, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIndex = cursor.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                            val numberIndex = cursor.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
+                            if (nameIndex >= 0) {
+                                val name = cursor.getString(nameIndex)
+                                if (!name.isNullOrBlank()) rName = name
                             }
+                            if (numberIndex >= 0) {
+                                val num = cursor.getString(numberIndex)
+                                if (!num.isNullOrBlank()) {
+                                    rPhone = num.replace(" ", "").replace("-", "")
+                                }
+                            }
+                            Toast.makeText(context, "Contact loaded successfully!", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    cursor.close()
-                    Toast.makeText(context, "Contact loaded successfully!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Failed to read contact", Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed to read contact", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -328,6 +324,10 @@ fun BookingFormScreen(
                         .imePadding()
                         .navigationBarsPadding()
                         .verticalScroll(scrollState)
+                        .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
+                            focusedField = null
+                            focusManager.clearFocus()
+                        }
                         .padding(horizontal = 0.dp, vertical = 24.dp)
                         .padding(bottom = 140.dp)
                 ) {
@@ -363,9 +363,10 @@ fun BookingFormScreen(
                                 Card(
                                     shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(containerColor = Charcoal),
-                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.15f)),
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.2f)),
                                     modifier = Modifier
-                                        .width(200.dp)
+                                        .width(210.dp)
+                                        .height(78.dp)
                                         .clickable {
                                             delivery = addr
                                             rName = name
@@ -373,18 +374,31 @@ fun BookingFormScreen(
                                             Toast.makeText(context, "Recipient details loaded!", Toast.LENGTH_SHORT).show()
                                         }
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.SpaceBetween
+                                    ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Filled.History, null, tint = Gold, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Icon(Icons.Filled.History, null, tint = Gold, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = name,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDark) Color.White else Obsidian,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
-                                        Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            addr,
+                                            text = addr,
                                             fontSize = 10.sp,
                                             color = TextGray,
-                                            lineHeight = 14.sp
+                                            lineHeight = 13.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -1210,7 +1224,12 @@ fun BookingFormScreen(
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(Gold)
                                     .clickable {
-                                        contactPickerLauncher.launch(null)
+                                        contactPickerLauncher.launch(
+                                            android.content.Intent(
+                                                android.content.Intent.ACTION_PICK,
+                                                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+                                            )
+                                        )
                                     }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             )

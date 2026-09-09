@@ -188,8 +188,8 @@ class DeliveryViewModel : WalletViewModel() {
         _loginMode.value = prefs.getString("login_mode", "free") ?: "free"
         _biometricRegistered.value = prefs.getBoolean("biometric_registered", false)
         _biometricEnabled.value = prefs.getBoolean("biometric_enabled", false)
-        _homeAddress.value = prefs.getString("home_address", "No. 12 Joel Ogunnaike Street, Ikeja GRA, Lagos") ?: "No. 12 Joel Ogunnaike Street, Ikeja GRA, Lagos"
-        _workAddress.value = prefs.getString("work_address", "Plot 14, Kingsway Road, Ikoyi, Lagos") ?: "Plot 14, Kingsway Road, Ikoyi, Lagos"
+        _homeAddress.value = prefs.getString("home_address", "14 Ihama Road, GRA, Benin City") ?: "14 Ihama Road, GRA, Benin City"
+        _workAddress.value = prefs.getString("work_address", "Airport Road, GRA, Benin City") ?: "Airport Road, GRA, Benin City"
         _preferredRider.value = prefs.getString("preferred_rider", "") ?: ""
         _bankName.value = prefs.getString("bank_name", "Access Bank") ?: "Access Bank"
         _accountNumber.value = prefs.getString("account_number", "0123456789") ?: "0123456789"
@@ -1299,8 +1299,8 @@ class DeliveryViewModel : WalletViewModel() {
         val secureCode = (100000..999999).random().toString()
         com.esdispatch.data.FirebaseManager.saveVerificationOtp(uid, secureCode) { success, err ->
             if (success) {
-                showInAppNotification("Verification OTP Sent", "Your 6-digit verification code is: $secureCode (Expires in 10 mins)")
-                onResult(true, "Verification code sent! Code: $secureCode")
+                showInAppNotification("Verification Code Dispatched", "A 6-digit verification code has been dispatched to your registered contact channel. Valid for 10 minutes.")
+                onResult(true, "Verification code sent securely to your account.")
             } else {
                 onResult(false, err ?: "Failed to generate OTP code.")
             }
@@ -3203,6 +3203,16 @@ class DeliveryViewModel : WalletViewModel() {
         setBiometricEnabled(true)
     }
 
+    override fun setBiometricRegistered(reg: Boolean) {
+        super.setBiometricRegistered(reg)
+        savePref("biometric_registered", reg)
+    }
+
+    override fun setBiometricEnabled(en: Boolean) {
+        super.setBiometricEnabled(en)
+        savePref("biometric_enabled", en)
+    }
+
     fun getBiometricCredentials(): Pair<String, String>? {
         val ctx = appContext ?: return null
         val prefs = ctx.getSharedPreferences("esdispatch_prefs", Context.MODE_PRIVATE)
@@ -3674,53 +3684,26 @@ class DeliveryViewModel : WalletViewModel() {
             addrLower.contains("benin") && addrLower.contains("secretariat") -> Pair(6.3268, 5.6216)
             addrLower.contains("textile mill") -> Pair(6.3412, 5.6388)
             addrLower.contains("dawson road") -> Pair(6.3349, 5.6289)
-            addrLower.contains("benin city") -> Pair(6.3350, 5.6278) // Benin City center
-            // Lagos areas
-            addrLower.contains("ikeja gra") || addrLower.contains("joel ogunnaike") -> Pair(6.5818, 3.3598)
-            addrLower.contains("ikoyi") || addrLower.contains("kingsway") -> Pair(6.4520, 3.4402)
-            addrLower.contains("lekki") -> Pair(6.4281, 3.4748)
-            addrLower.contains("ajah") -> Pair(6.4678, 3.5782)
-            addrLower.contains("yaba") || addrLower.contains("akoka") || addrLower.contains("unilag") -> Pair(6.5178, 3.3859)
-            addrLower.contains("murtala") || addrLower.contains("mmia") || (addrLower.contains("airport") && addrLower.contains("lagos")) -> Pair(6.5774, 3.3210)
-            addrLower.contains("victoria island") || addrLower.contains(" vi,") || addrLower.contains(", vi ") -> Pair(6.4281, 3.4219)
-            addrLower.contains("surulere") -> Pair(6.4979, 3.3512)
-            addrLower.contains("apapa") -> Pair(6.4479, 3.3601)
-            addrLower.contains("festac") -> Pair(6.4682, 3.2998)
-            addrLower.contains("gbagada") -> Pair(6.5548, 3.3889)
-            addrLower.contains("maryland") && addrLower.contains("lagos") -> Pair(6.5688, 3.3572)
-            addrLower.contains("oshodi") -> Pair(6.5575, 3.3419)
-            addrLower.contains("ikeja") -> Pair(6.5944, 3.3378)
-            addrLower.contains("ikorodu") -> Pair(6.6191, 3.5054)
-            addrLower.contains("magodo") -> Pair(6.6082, 3.3901)
-            addrLower.contains("ogba") && addrLower.contains("lagos") -> Pair(6.6071, 3.3572)
-            addrLower.contains("agege") -> Pair(6.6168, 3.3221)
-            addrLower.contains("mushin") -> Pair(6.5348, 3.3572)
-            addrLower.contains("lagos island") -> Pair(6.4551, 3.3917)
-            addrLower.contains("lagos") -> Pair(6.5244, 3.3792) // Lagos center fallback
-            else -> null
+            addrLower.contains("benin") -> Pair(6.3350, 5.6037) // Benin City center
+            else -> Pair(6.3350, 5.6037)
         }
     }
 
     private fun geocodeAddressHashOnly(address: String): Pair<Double, Double> {
-        // Determine if address is Benin City or Lagos and use appropriate center coordinates
-        val isBeninCity = com.esdispatch.data.AddressDatabase.isBeninCity(address)
-        val centerLat = if (isBeninCity) 6.3350 else 6.5244
-        val centerLng = if (isBeninCity) 5.6278 else 3.3792
+        // Strictly Benin City center coordinates
+        val centerLat = 6.3350
+        val centerLng = 5.6037
         var hash = 0
         for (char in address.trim().lowercase()) { hash = 31 * hash + char.code }
         hash = if (hash < 0) -hash else hash
-        val latOffset = (hash % 80) / 1000.0 - 0.04
-        val lngOffset = ((hash / 80) % 80) / 1000.0 - 0.04
+        val latOffset = (hash % 60) / 1000.0 - 0.03
+        val lngOffset = ((hash / 60) % 60) / 1000.0 - 0.03
         return Pair(centerLat + latOffset, centerLng + lngOffset)
     }
 
-    /** Detect if route is intercity Benin City â†” Lagos */
+    /** Strict Benin City operations */
     fun isIntercityRoute(pickup: String, delivery: String): Boolean {
-        val pickupIsBenin = com.esdispatch.data.AddressDatabase.isBeninCity(pickup)
-        val deliveryIsBenin = com.esdispatch.data.AddressDatabase.isBeninCity(delivery)
-        val pickupIsLagos = com.esdispatch.data.AddressDatabase.isLagos(pickup)
-        val deliveryIsLagos = com.esdispatch.data.AddressDatabase.isLagos(delivery)
-        return (pickupIsBenin && deliveryIsLagos) || (pickupIsLagos && deliveryIsBenin)
+        return false
     }
 
     fun estimateDistanceBetween(pickup: String, delivery: String): Double {
@@ -4494,43 +4477,95 @@ class DeliveryViewModel : WalletViewModel() {
 
         val db = com.esdispatch.data.FirebaseManager.firestore ?: return
         shipmentsListenerJob = viewModelScope.launch {
-            db.collection("shipments")
+            db.collection("deliveries")
                 .whereEqualTo("userId", userId)
                 .addSnapshotListener { snapshots, error ->
                     if (error != null) {
-                        android.util.Log.e("DeliveryViewModel", "Error listening to shipments triggers: ${error.message}")
+                        android.util.Log.e("DeliveryViewModel", "Error listening to deliveries triggers: ${error.message}")
                         return@addSnapshotListener
                     }
                     if (snapshots != null) {
                         for (docChange in snapshots.documentChanges) {
-                            if (docChange.type == com.google.firebase.firestore.DocumentChange.Type.MODIFIED) {
+                            if (docChange.type == com.google.firebase.firestore.DocumentChange.Type.MODIFIED ||
+                                docChange.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
                                 val doc = docChange.document
                                 val id = doc.id
                                 val itemName = doc.getString("itemName") ?: "Shipment"
-                                val status = doc.getString("status") ?: ""
-                                
-                                val isBooked = status.equals("Booked", ignoreCase = true) || status.equals("Pending Assignment", ignoreCase = true)
-                                val isDispatched = status.equals("Out for Delivery", ignoreCase = true) || status.equals("Transit", ignoreCase = true)
-                                val isDelivered = status.equals("Delivered", ignoreCase = true)
-                                val isCancelled = status.equals("Cancelled", ignoreCase = true)
+                                val status = doc.getString("status")?.uppercase() ?: ""
+                                val courierName = doc.getString("courierName") ?: doc.getString("driverName") ?: ""
+                                val deliveryAddress = doc.getString("deliveryAddress") ?: ""
+                                val progress = (doc.getDouble("progress") ?: 0.0).toFloat()
+
+                                val isBooked = status == "PENDING" || status == "BOOKED"
+                                val isAssigned = status == "ASSIGNED"
+                                val isDispatched = status == "OUT_FOR_DELIVERY" || status == "TRANSIT" || status == "PICKED_UP"
+                                val isArrived = status == "ARRIVED"
+                                val isDelivered = status == "DELIVERED"
+                                val isCancelled = status == "CANCELLED"
 
                                 if (isBooked && !_pushAlertsBooked.value) continue
                                 if (isDispatched && !_pushAlertsDispatched.value) continue
                                 if (isDelivered && !_pushAlertsDelivered.value) continue
                                 if (isCancelled && !_pushAlertsCancelled.value) continue
 
-                                if (isDispatched || isDelivered) {
-                                    val title = "Shipment Status: $status"
-                                    val message = "Your shipment '$itemName' (#$id) is now $status!"
-                                    
-                                    appContext?.let { ctx ->
-                                        com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                                val (title, message) = when (status) {
+                                    "ASSIGNED" -> Pair(
+                                        "Courier Assigned!",
+                                        if (courierName.isNotBlank()) "Courier $courierName has been assigned to your order '$itemName' (#${id.take(8)})." else "A courier has been assigned to your order '$itemName' (#${id.take(8)})."
+                                    )
+                                    "PICKED_UP" -> Pair(
+                                        "Parcel Picked Up",
+                                        "Courier has picked up '$itemName' (#${id.take(8)}) and started transit."
+                                    )
+                                    "TRANSIT", "OUT_FOR_DELIVERY" -> Pair(
+                                        "Shipment In Transit",
+                                        "Your parcel '$itemName' (#${id.take(8)}) is on the way to destination."
+                                    )
+                                    "ARRIVED" -> Pair(
+                                        "Courier Arrived!",
+                                        "Courier has arrived at the destination for '$itemName' (#${id.take(8)})!"
+                                    )
+                                    "DELIVERED" -> Pair(
+                                        "Delivery Completed!",
+                                        "Your shipment '$itemName' (#${id.take(8)}) has been successfully delivered and verified."
+                                    )
+                                    "CANCELLED" -> Pair(
+                                        "Delivery Cancelled",
+                                        "Shipment '$itemName' (#${id.take(8)}) was cancelled."
+                                    )
+                                    else -> Pair(
+                                        "Order Update",
+                                        "Order '$itemName' (#${id.take(8)}) status: $status"
+                                    )
+                                }
+
+                                appContext?.let { ctx ->
+                                    com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                                        context = ctx,
+                                        title = title,
+                                        message = message,
+                                        parcelId = id,
+                                        status = status
+                                    )
+                                    showInAppNotification(title, message)
+                                    try {
+                                        val progressPercent = when (status) {
+                                            "ASSIGNED" -> 20
+                                            "PICKED_UP" -> 40
+                                            "TRANSIT" -> 65
+                                            "OUT_FOR_DELIVERY" -> 85
+                                            "ARRIVED" -> 90
+                                            "DELIVERED" -> 100
+                                            else -> 10
+                                        }
+                                        com.esdispatch.data.TrackingAppWidget.updateWidgetData(
                                             context = ctx,
-                                            title = title,
-                                            message = message,
-                                            parcelId = id
+                                            parcelId = id,
+                                            statusText = status,
+                                            progressPercent = progressPercent
                                         )
-                                        com.esdispatch.data.FirebaseManager.triggerFcmNotification(title, message)
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("DeliveryViewModel", "Widget update error: ${e.message}")
                                     }
                                 }
                             }
