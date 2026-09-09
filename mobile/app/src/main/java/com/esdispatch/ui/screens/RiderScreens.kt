@@ -1403,7 +1403,7 @@ fun RiderUpdateBottomSheetContent(
                     viewModel.verifyDeliveryOtpByRider(parcel.id, otpInput) { success, err ->
                         isSubmitting = false
                         if (success) {
-                            Toast.makeText(context, "Delivery completed! Proceeding to Proof of Delivery.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Handover verified! Capturing Proof of Delivery to complete.", Toast.LENGTH_LONG).show()
                             onDismiss()
                             onNavigateToPOD("ProofOfDelivery/${parcel.id}")
                         } else {
@@ -1807,77 +1807,23 @@ fun GpsMovementSimulator(
                         ) == androidx.core.content.PermissionChecker.PERMISSION_GRANTED
 
                         if (hasLocationPermission) {
+                            statusMessage = "Live GPS Active • Hardware Telemetry Connected"
                             viewModel.startRealTimeGpsTracking(parcelId) { lat, lng ->
-                                android.util.Log.d("GpsMovementSimulator", "Hardware GPS tick: Lat $lat, Lng $lng")
+                                android.util.Log.d("GpsTelemetry", "Hardware GPS: Lat $lat, Lng $lng")
+                                viewModel.updateCourierLocationByRider(parcelId, lat, lng) { _, _ -> }
                                 val dist = calculateDistanceMeters(lat, lng, deliveryLat, deliveryLng)
                                 distanceRemaining = dist
+                                statusMessage = "Broadcasting GPS • ${formatDistance(dist)} to destination"
                                 if (dist <= 50.0) {
                                     showArrivedDialog = true
                                 }
                             }
-                        }
-
-                        val coordList = if (routeCoords.isNotEmpty()) routeCoords else {
-                            val total = totalSteps
-                            (0 until total).map { idx ->
-                                val fraction = idx.toFloat() / total
-                                Pair(
-                                    pickupLat + fraction * (deliveryLat - pickupLat),
-                                    pickupLng + fraction * (deliveryLng - pickupLng)
-                                )
-                            }
-                        }
-
-                        val simJob = scope.launch {
-                            for (idx in coordList.indices) {
-                                if (!isSimulating) break
-                                while (isPaused) {
-                                    delay(500)
-                                    if (!isSimulating) break
-                                }
-                                if (!isSimulating) break
-
-                                currentStep = idx
-                                val (lat, lng) = coordList[idx]
-
-                                viewModel.updateCourierLocationByRider(parcelId, lat, lng) { success, _ ->
-                                    if (!success) {
-                                        android.util.Log.e("RiderScreens", "Failed to update GPS location")
-                                    }
-                                }
-
-                                val dist = calculateDistanceMeters(lat, lng, deliveryLat, deliveryLng)
-                                distanceRemaining = dist
-
-                                if (dist > 0) {
-                                    val traveled = totalDistance - dist
-                                    val elapsedHrs = (idx.toDouble() / coordList.size) * 0.5
-                                    currentSpeed = if (elapsedHrs > 0) (traveled / 1000.0) / elapsedHrs else 0.0
-                                }
-
-                                val pct = ((idx * 100) / coordList.size).coerceAtMost(100)
-                                statusMessage = "Transmitting GPS • $pct% complete • ${formatDistance(dist)} to destination"
-
-                                if (dist <= 50.0) {
-                                    showArrivedDialog = true
-                                }
-
-                                val parcelProgress = 0.30f + (idx.toFloat() / coordList.size) * 0.50f
-                                viewModel.updateParcelStatusByRider(
-                                    parcelId,
-                                    if (idx < coordList.size - 1) ParcelStatus.TRANSIT else ParcelStatus.OUT_FOR_DELIVERY,
-                                    parcelProgress
-                                ) { _, _ -> }
-
-                                delay((2000 / simulationSpeed).toLong())
-                            }
-
-                            viewModel.stopRealTimeGpsTracking(parcelId)
+                            Toast.makeText(context, "Hardware GPS tracking started.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            statusMessage = "Location permission required for live GPS"
+                            Toast.makeText(context, "Please grant Location permission in Settings.", Toast.LENGTH_LONG).show()
                             isSimulating = false
-                            statusMessage = "Transmission complete"
-                            Toast.makeText(context, "GPS route transmission completed. Customer notified.", Toast.LENGTH_SHORT).show()
                         }
-                        job.value = simJob
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

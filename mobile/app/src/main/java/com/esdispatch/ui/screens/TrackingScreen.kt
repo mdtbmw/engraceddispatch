@@ -350,10 +350,13 @@ fun ActiveTrackingScreen(
     LaunchedEffect(hasNoBooking, parcel.id, parcel.status, parcel.progress) {
         val statusText = when (parcel.status) {
             ParcelStatus.PENDING -> "Pending Dispatch"
+            ParcelStatus.QUEUED -> "Queued in Dispatch"
+            ParcelStatus.RESERVED_NEXT -> "Courier Reserved"
             ParcelStatus.ASSIGNED -> "Courier Assigned"
             ParcelStatus.TRANSIT -> "In Transit to destination"
             ParcelStatus.PICKED_UP -> "Parcel picked up by courier"
             ParcelStatus.ARRIVED -> "Courier has arrived!"
+            ParcelStatus.HANDOVER_VERIFIED -> "Handover Verified"
             ParcelStatus.OUT_FOR_DELIVERY -> "Out for delivery now!"
             ParcelStatus.DELIVERED -> "Delivered safely!"
             ParcelStatus.CANCELLED -> "Cancelled"
@@ -1063,7 +1066,7 @@ fun ActiveTrackingScreen(
                                                 )
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
-                                                    text = "AI Optimized Delivery Match (98.6% precision)",
+                                                    text = "Real-Time Fleet Routing • Benin City Zone",
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = if (isLight) Obsidian.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.7f)
@@ -1624,36 +1627,45 @@ is ZodResult.Error -> {
                                                                  
                                                                  val parcelForId = viewModel.parcels.collectAsState().value.find { it.id.equals(searchId, ignoreCase = true) }
                                                                  if (parcelForId != null) {
-val badgeText = when (parcelForId.status) {
-                                                                     ParcelStatus.PENDING -> "Pending"
-                                                                     ParcelStatus.ASSIGNED -> "Assigned"
-                                                                     ParcelStatus.TRANSIT -> "In Transit"
-                                                                     ParcelStatus.PICKED_UP -> "Picked Up"
-                                                                     ParcelStatus.ARRIVED -> "Arrived"
-                                                                     ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
-                                                                     ParcelStatus.DELIVERED -> "Delivered"
-                                                                     ParcelStatus.CANCELLED -> "Cancelled"
-                                                                 }
-                                                                 val badgeBgColor = when (parcelForId.status) {
-                                                                     ParcelStatus.PENDING -> Color(0x202196F3)
-                                                                     ParcelStatus.ASSIGNED -> Color(0x209C27B0)
-                                                                     ParcelStatus.PICKED_UP -> Color(0x205E35B1)
-                                                                     ParcelStatus.ARRIVED -> Color(0x2000897B)
-                                                                     ParcelStatus.DELIVERED -> Color(0x204CAF50)
-                                                                     ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
-                                                                     ParcelStatus.CANCELLED -> Color(0x20F44336)
-                                                                     ParcelStatus.TRANSIT -> if (isDark) Gold.copy(alpha = 0.15f) else Color(0x100E0E10)
-                                                                 }
-                                                                 val badgeTextColor = when (parcelForId.status) {
-                                                                     ParcelStatus.PENDING -> Color(0xFF2196F3)
-                                                                     ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
-                                                                     ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
-                                                                     ParcelStatus.ARRIVED -> Color(0xFF00897B)
-                                                                     ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
-                                                                     ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
-                                                                     ParcelStatus.CANCELLED -> Color(0xFFF44336)
-                                                                     ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
-                                                                 }
+                                                                     val badgeText = when (parcelForId.status) {
+                                                                         ParcelStatus.PENDING -> "Pending"
+                                                                         ParcelStatus.QUEUED -> "Queued"
+                                                                         ParcelStatus.RESERVED_NEXT -> "Reserved"
+                                                                         ParcelStatus.ASSIGNED -> "Assigned"
+                                                                         ParcelStatus.TRANSIT -> "In Transit"
+                                                                         ParcelStatus.PICKED_UP -> "Picked Up"
+                                                                         ParcelStatus.ARRIVED -> "Arrived"
+                                                                         ParcelStatus.HANDOVER_VERIFIED -> "Handover Verified"
+                                                                         ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
+                                                                         ParcelStatus.DELIVERED -> "Delivered"
+                                                                         ParcelStatus.CANCELLED -> "Cancelled"
+                                                                     }
+                                                                     val badgeBgColor = when (parcelForId.status) {
+                                                                         ParcelStatus.PENDING -> Color(0x202196F3)
+                                                                         ParcelStatus.QUEUED -> Color(0x20FF9800)
+                                                                         ParcelStatus.RESERVED_NEXT -> Color(0x209C27B0)
+                                                                         ParcelStatus.ASSIGNED -> Color(0x203F51B5)
+                                                                         ParcelStatus.PICKED_UP -> Color(0x205E35B1)
+                                                                         ParcelStatus.ARRIVED -> Color(0x2000897B)
+                                                                         ParcelStatus.HANDOVER_VERIFIED -> Color(0x20009688)
+                                                                         ParcelStatus.DELIVERED -> Color(0x204CAF50)
+                                                                         ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
+                                                                         ParcelStatus.CANCELLED -> Color(0x20F44336)
+                                                                         ParcelStatus.TRANSIT -> if (isDark) Gold.copy(alpha = 0.15f) else Color(0x100E0E10)
+                                                                     }
+                                                                     val badgeTextColor = when (parcelForId.status) {
+                                                                         ParcelStatus.PENDING -> Color(0xFF2196F3)
+                                                                         ParcelStatus.QUEUED -> Color(0xFFFF9800)
+                                                                         ParcelStatus.RESERVED_NEXT -> Color(0xFF9C27B0)
+                                                                         ParcelStatus.ASSIGNED -> Color(0xFF3F51B5)
+                                                                         ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
+                                                                         ParcelStatus.ARRIVED -> Color(0xFF00897B)
+                                                                         ParcelStatus.HANDOVER_VERIFIED -> Color(0xFF009688)
+                                                                         ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
+                                                                         ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
+                                                                         ParcelStatus.CANCELLED -> Color(0xFFF44336)
+                                                                         ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
+                                                                     }
                                                                      Surface(
                                                                          color = badgeBgColor,
                                                                          shape = RoundedCornerShape(6.dp),
@@ -1915,14 +1927,24 @@ val badgeText = when (parcelForId.status) {
                                                     }
                                                     Spacer(modifier = Modifier.width(12.dp))
                                                     Column {
+                                                        val isReserved = parcel.status == ParcelStatus.RESERVED_NEXT || parcel.reservedCourierName.isNotEmpty()
+                                                        val isQueued = parcel.status == ParcelStatus.QUEUED || parcel.status == ParcelStatus.PENDING
                                                         Text(
-                                                            text = "Assigning Nearest Courier...",
+                                                            text = when {
+                                                                isReserved -> "Rider Reserved"
+                                                                isQueued -> "Request Queued"
+                                                                else -> "Dispatch Matching"
+                                                            },
                                                             fontWeight = FontWeight.Bold,
                                                             fontSize = 14.sp,
                                                             color = Color.White
                                                         )
                                                         Text(
-                                                            text = "Matching active riders in your dispatch zone",
+                                                            text = when {
+                                                                isReserved -> "${parcel.reservedCourierName.ifBlank { "A fleet rider" }} is finishing an ongoing delivery and will start yours next"
+                                                                isQueued -> "In line for next available fleet rider in Benin City"
+                                                                else -> "Connecting with Benin City dispatch fleet"
+                                                            },
                                                             fontSize = 11.sp,
                                                             color = TextGray
                                                         )
@@ -3142,9 +3164,12 @@ fun DeliveryEstimationCard(
 
     val estimationText = when (status) {
         ParcelStatus.PENDING -> "Awaiting Assignment"
+        ParcelStatus.QUEUED -> "Queued in Dispatch"
+        ParcelStatus.RESERVED_NEXT -> "Courier Reserved"
         ParcelStatus.ASSIGNED -> "Preparing for Pickup"
         ParcelStatus.PICKED_UP -> "Parcel Picked Up"
         ParcelStatus.ARRIVED -> "Arrived at Destination"
+        ParcelStatus.HANDOVER_VERIFIED -> "Handover Verified"
         ParcelStatus.DELIVERED -> "Delivered ($currentTimeStr)"
         ParcelStatus.OUT_FOR_DELIVERY -> todayStr
         ParcelStatus.CANCELLED -> "No Delivery (Cancelled)"
@@ -3159,9 +3184,12 @@ fun DeliveryEstimationCard(
 
     val windowText = when (status) {
         ParcelStatus.PENDING -> "Waiting for dispatcher to assign a courier"
+        ParcelStatus.QUEUED -> "All couriers active; order will dispatch shortly"
+        ParcelStatus.RESERVED_NEXT -> "Courier is finishing a nearby delivery and will proceed next"
         ParcelStatus.ASSIGNED -> "Courier has been dispatched to pickup location"
         ParcelStatus.PICKED_UP -> "Courier has picked up the parcel"
         ParcelStatus.ARRIVED -> "Courier is at the delivery location"
+        ParcelStatus.HANDOVER_VERIFIED -> "OTP verified • Courier is uploading final Proof of Delivery"
         ParcelStatus.DELIVERED -> "Successfully handed over to recipient"
         ParcelStatus.OUT_FOR_DELIVERY -> "Active courier on route in Benin City"
         ParcelStatus.CANCELLED -> "Shipment was cancelled by sender"
@@ -3172,20 +3200,17 @@ fun DeliveryEstimationCard(
     }
 
     val confidenceScore = when (status) {
-        ParcelStatus.PENDING -> "N/A"
-        ParcelStatus.ASSIGNED -> "96.5% Precision"
-        ParcelStatus.PICKED_UP -> "97.8% Precision"
-        ParcelStatus.ARRIVED -> "99.5% On-Time"
-        ParcelStatus.DELIVERED -> "100% Verified"
-        ParcelStatus.OUT_FOR_DELIVERY -> "99.2% Accurate"
-        ParcelStatus.CANCELLED -> "N/A"
-        ParcelStatus.TRANSIT -> {
-            when {
-                progress >= 0.8f -> "98.6% Precision"
-                progress >= 0.45f -> "95.4% Precision"
-                else -> "92.1% Precision"
-            }
-        }
+        ParcelStatus.PENDING -> "Received"
+        ParcelStatus.QUEUED -> "Queued"
+        ParcelStatus.RESERVED_NEXT -> "Reserved"
+        ParcelStatus.ASSIGNED -> "Assigned"
+        ParcelStatus.PICKED_UP -> "In Custody"
+        ParcelStatus.ARRIVED -> "Arrived"
+        ParcelStatus.HANDOVER_VERIFIED -> "Verified"
+        ParcelStatus.DELIVERED -> "Completed"
+        ParcelStatus.OUT_FOR_DELIVERY -> "Active"
+        ParcelStatus.CANCELLED -> "Cancelled"
+        ParcelStatus.TRANSIT -> "In Transit"
     }
 
     Card(
@@ -3268,9 +3293,12 @@ fun AnimatedStatusBadge(
 ) {
     val targetBgColor = when (status) {
         ParcelStatus.PENDING -> Color(0x202196F3)
-        ParcelStatus.ASSIGNED -> Color(0x209C27B0)
+        ParcelStatus.QUEUED -> Color(0x20FF9800)
+        ParcelStatus.RESERVED_NEXT -> Color(0x209C27B0)
+        ParcelStatus.ASSIGNED -> Color(0x203F51B5)
         ParcelStatus.PICKED_UP -> Color(0x205E35B1)
         ParcelStatus.ARRIVED -> Color(0x2000897B)
+        ParcelStatus.HANDOVER_VERIFIED -> Color(0x20009688)
         ParcelStatus.DELIVERED -> Color(0x204CAF50)
         ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
         ParcelStatus.CANCELLED -> Color(0x20F44336)
@@ -3278,9 +3306,12 @@ fun AnimatedStatusBadge(
     }
     val targetTextColor = when (status) {
         ParcelStatus.PENDING -> Color(0xFF2196F3)
-        ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
+        ParcelStatus.QUEUED -> Color(0xFFFF9800)
+        ParcelStatus.RESERVED_NEXT -> Color(0xFF9C27B0)
+        ParcelStatus.ASSIGNED -> Color(0xFF3F51B5)
         ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
         ParcelStatus.ARRIVED -> Color(0xFF00897B)
+        ParcelStatus.HANDOVER_VERIFIED -> Color(0xFF009688)
         ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
         ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
         ParcelStatus.CANCELLED -> Color(0xFFF44336)
@@ -3288,9 +3319,12 @@ fun AnimatedStatusBadge(
     }
     val badgeText = when (status) {
         ParcelStatus.PENDING -> "Pending Dispatch"
+        ParcelStatus.QUEUED -> "Queued"
+        ParcelStatus.RESERVED_NEXT -> "Courier Reserved"
         ParcelStatus.ASSIGNED -> "Courier Assigned"
         ParcelStatus.PICKED_UP -> "Picked Up"
         ParcelStatus.ARRIVED -> "Arrived"
+        ParcelStatus.HANDOVER_VERIFIED -> "Handover Verified"
         ParcelStatus.TRANSIT -> "In Transit"
         ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
         ParcelStatus.DELIVERED -> "Delivered"

@@ -36,7 +36,47 @@ import LiveTrackingMap from "./LiveTrackingMap";
 import { SoundEngine } from "@/lib/interaction/SoundEngine";
 type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking" | "support";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
-interface Delivery { id: string; status: string; category?: string; receiverName: string; deliveryAddress: string; senderName: string; senderPhone: string; receiverPhone: string; price: number; riderId: string; courierName: string; courierPhone: string; courierLatitude?: number; courierLongitude?: number; itemName: string; pickupAddress: string; quantity: number; weight: number; dateString: string; tipAmount: number; userId: string; otpCode: string; riderBikeNumber?: string; pickupLat?: number; pickupLng?: number; deliveryLat?: number; deliveryLng?: number; driverId?: string; driverName?: string; }
+interface Delivery {
+  id: string;
+  status: string;
+  category?: string;
+  receiverName: string;
+  deliveryAddress: string;
+  senderName: string;
+  senderPhone: string;
+  receiverPhone: string;
+  price: number;
+  deliveryFee?: number;
+  riderId: string;
+  courierName: string;
+  courierPhone: string;
+  courierLatitude?: number;
+  courierLongitude?: number;
+  itemName: string;
+  pickupAddress: string;
+  quantity: number;
+  weight: number;
+  dateString: string;
+  tipAmount: number;
+  userId: string;
+  otpCode: string;
+  riderBikeNumber?: string;
+  pickupLat?: number;
+  pickupLng?: number;
+  deliveryLat?: number;
+  deliveryLng?: number;
+  driverId?: string;
+  driverName?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  reservedRiderId?: string;
+  reservedCourierName?: string;
+  reservedCourierPhone?: string;
+  paymentStatus?: string;
+  podUrl?: string;
+  exceptionType?: string;
+  exceptionReason?: string;
+}
 interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
 interface Referral { id: string; referrerId: string; referrerName: string; referrerEmail: string; refereeId: string; refereeName: string; refereeEmail: string; rewardAmount: number; status: string; }
 interface Promotion { id: string; title: string; description: string; discountType: string; discountValue: number; discountDisplay: string; minOrderAmount: number; maxDiscount: number; code: string; usageLimit: number; usedCount: number; active: boolean; }
@@ -558,65 +598,137 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
       {/* Inspect Category Deliveries Modal */}
       {inspectingCategory && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setInspectingCategory(null)}>
-          <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-2xl shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-3xl shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between pb-3 border-b border-black/10 dark:border-white/10 shrink-0">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-[#FFC542] text-[#111]">{inspectingCategory.tag}</span>
-                  <h3 className="text-base font-black text-[#111] dark:text-white">Active Deliveries ({inspectingCategory.total})</h3>
+                  <h3 className="text-base font-black text-[#111] dark:text-white">Active Dispatch Queue ({deliveries.filter((d: any) => (d.category || "General") === inspectingCategory.tag && d.status !== "DELIVERED" && d.status !== "CANCELLED").length})</h3>
                 </div>
-                <p className="text-[11px] text-black/50 dark:text-white/50 mt-0.5">Real-time scheduled drop-offs for today in this service tier</p>
+                <p className="text-[11px] text-black/50 dark:text-white/50 mt-0.5">Real-time live queue for today in Benin City • Ordered FIFO (Oldest requests first)</p>
               </div>
-              <button onClick={() => setInspectingCategory(null)} className="p-2 text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5">
+              <button onClick={() => setInspectingCategory(null)} className="p-2 text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
                 <X size={18} />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              {(inspectingCategory.deliveries || []).map((d: any) => (
-                <div key={d.id} className="p-3 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 flex items-center justify-between gap-3 hover:border-[#FFC542]/40 transition-all">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-xl bg-[#FFC542]/20 flex items-center justify-center text-[#FFC542] shrink-0 font-bold text-xs">
-                      <Package size={16} />
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {deliveries
+                .filter((d: any) => (d.category || "General") === inspectingCategory.tag && d.status !== "DELIVERED" && d.status !== "CANCELLED")
+                .sort((a: any, b: any) => {
+                  const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+                  const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+                  return tA - tB;
+                })
+                .map((d: any, qIdx: number) => {
+                  const createdAgo = d.createdAt?.toMillis
+                    ? Math.max(1, Math.round((Date.now() - d.createdAt.toMillis()) / 60000)) + "m ago"
+                    : (d.dateString || "Today");
+                  return (
+                    <div key={d.id} className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 flex flex-col gap-3 hover:border-[#FFC542]/50 transition-all">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-[#FFC542]/20 flex items-center justify-center text-[#FFC542] shrink-0 font-bold text-xs">
+                            <Package size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-xs text-[#111] dark:text-white">{d.itemName || "Consignment"}</span>
+                              <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">#{idShort(d.id)}</span>
+                              <span className={"text-[9px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status}</span>
+                              <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                                FIFO #{qIdx + 1} • {createdAgo}
+                              </span>
+                            </div>
+                            <p className="text-[11px] font-semibold text-black/70 dark:text-white/70 mt-1">
+                              ₦{(d.price || 0).toLocaleString()} • {d.paymentStatus || "PAID"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <button 
+                            onClick={() => { 
+                              setInspectingCategory(null); 
+                              if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id });
+                              setTab("shipments"); 
+                            }} 
+                            className="px-3.5 py-1.5 bg-[#111] dark:bg-white text-white dark:text-[#111] text-[10px] font-black rounded-lg hover:opacity-80 transition-all cursor-pointer shadow-xs"
+                          >
+                            Manage in Shipments →
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Route & Contact info */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] bg-white dark:bg-[#1a1a1a] p-2.5 rounded-xl border border-black/5 dark:border-white/5">
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-black/40 dark:text-white/40">Pickup (Sender)</p>
+                          <p className="font-bold text-[#111] dark:text-white truncate">{d.senderName || "Sender"}</p>
+                          <p className="text-black/60 dark:text-white/60 text-[10px] truncate">{d.pickupAddress || "Benin City"}</p>
+                          {d.senderPhone && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <a href={`tel:${d.senderPhone}`} className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5">
+                                <Phone size={10} /> Call {d.senderPhone}
+                              </a>
+                              <a href={`https://wa.me/${d.senderPhone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-[#FFC542] hover:underline">
+                                WhatsApp
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-black/40 dark:text-white/40">Dropoff (Receiver)</p>
+                          <p className="font-bold text-[#111] dark:text-white truncate">{d.receiverName || "Receiver"}</p>
+                          <p className="text-black/60 dark:text-white/60 text-[10px] truncate">{d.deliveryAddress || "Benin City"}</p>
+                          {d.receiverPhone && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <a href={`tel:${d.receiverPhone}`} className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5">
+                                <Phone size={10} /> Call {d.receiverPhone}
+                              </a>
+                              <a href={`https://wa.me/${d.receiverPhone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-[#FFC542] hover:underline">
+                                WhatsApp
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Courier & Assignment Status */}
+                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-black/5 dark:border-white/5">
+                        <div className="text-black/60 dark:text-white/60 flex items-center gap-1.5 flex-wrap">
+                          <Users size={12} className="text-[#FFC542]" />
+                          <span>Rider: <b>{d.courierName || d.driverName || "Unassigned"}</b> {d.courierPhone ? `(${d.courierPhone})` : ""}</span>
+                          {d.reservedCourierName && (
+                            <span className="text-[9px] bg-purple-500/10 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full font-bold">
+                              Reserved Next: {d.reservedCourierName}
+                            </span>
+                          )}
+                        </div>
+                        {(!d.riderId && !d.driverId) && (
+                          <button
+                            onClick={() => {
+                              setInspectingCategory(null);
+                              if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id });
+                              setTab("shipments");
+                            }}
+                            className="text-[10px] font-bold px-2.5 py-1 bg-[#FFC542] text-[#111] rounded-lg hover:bg-[#FFC542]/80 transition-all cursor-pointer"
+                          >
+                            Assign Rider
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-xs text-[#111] dark:text-white truncate">{d.itemName || "Delivery"}</span>
-                        <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">#{idShort(d.id)}</span>
-                        <span className={"text-[9px] font-bold px-2 py-0.2 rounded-full " + sStyle(d.status)}>{d.status}</span>
-                      </div>
-                      <div className="text-[10px] text-black/50 dark:text-white/50 truncate mt-0.5">
-                        {d.senderName || "Sender"} → <b className="text-[#111] dark:text-white">{d.receiverName}</b> ({d.deliveryAddress})
-                      </div>
-                      <div className="text-[10px] text-[#FFC542] font-semibold mt-0.5 flex items-center gap-1">
-                        <Users size={10} /> Courier: {d.courierName || "Unassigned"} {d.courierPhone ? `(${d.courierPhone})` : ""}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-black text-xs text-[#111] dark:text-white">₦{(d.price || 0).toLocaleString()}</div>
-                    <button 
-                      onClick={() => { 
-                        setInspectingCategory(null); 
-                        if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id });
-                        setTab("shipments"); 
-                      }} 
-                      className="mt-1.5 px-3 py-1 bg-[#111] dark:bg-white text-white dark:text-[#111] text-[10px] font-bold rounded-lg hover:opacity-80 transition-all"
-                    >
-                      Manage
-                    </button>
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
             </div>
             <div className="pt-2 border-t border-black/10 dark:border-white/10 flex justify-between items-center text-xs shrink-0">
-              <span className="text-black/50 dark:text-white/50 text-[11px] font-medium">Click manage to view tracking, OTP, and driver re-assignment</span>
+              <span className="text-black/50 dark:text-white/50 text-[11px] font-medium">Click Manage to access live GPS, OTP, and waybill printing</span>
               <button 
                 onClick={() => { 
                   setInspectingCategory(null); 
                   if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ category: inspectingCategory.tag });
                   setTab("shipments"); 
                 }} 
-                className="px-4 py-2 bg-[#FFC542] text-[#111] font-black text-xs rounded-xl hover:bg-[#FFC542]/90 transition-all"
+                className="px-4 py-2 bg-[#FFC542] text-[#111] font-black text-xs rounded-xl hover:bg-[#FFC542]/90 transition-all cursor-pointer"
               >
                 Open All in Shipments Tab →
               </button>
@@ -1053,6 +1165,16 @@ function AdminDashboardPage() {
         pickupLng: x.pickupLng || x.pickupLongitude || null,
         deliveryLat: x.deliveryLat || x.deliveryLatitude || null,
         deliveryLng: x.deliveryLng || x.deliveryLongitude || null,
+        createdAt: x.createdAt || null,
+        updatedAt: x.updatedAt || null,
+        deliveryFee: x.deliveryFee || 0,
+        paymentStatus: x.paymentStatus || "PAID",
+        reservedRiderId: x.reservedRiderId || "",
+        reservedCourierName: x.reservedCourierName || "",
+        reservedCourierPhone: x.reservedCourierPhone || "",
+        podUrl: x.podUrl || "",
+        exceptionType: x.exceptionType || "",
+        exceptionReason: x.exceptionReason || "",
       }); });
       setDeliveries(list);
     }, console.error));
@@ -1239,11 +1361,12 @@ function AdminDashboardPage() {
   const customers = activeUsers.filter(u => u.role === "customer" || u.role === "");
   const drivers = activeUsers.filter(u => u.role === "rider");
   const adminUsers = activeUsers.filter(u => u.role === "admin" || u.role === "super_admin");
-  const pendingDeliveries = deliveries.filter(d => d.status === "PENDING");
-  const inTransit = deliveries.filter(d => ["TRANSIT", "ASSIGNED", "OUT_FOR_DELIVERY"].includes(d.status));
+  const pendingDeliveries = deliveries.filter(d => ["PENDING", "QUEUED", "RESERVED_NEXT"].includes(d.status));
+  const inTransit = deliveries.filter(d => ["TRANSIT", "ASSIGNED", "PICKED_UP", "ARRIVED", "OUT_FOR_DELIVERY", "HANDOVER_VERIFIED"].includes(d.status));
   const delivered = deliveries.filter(d => d.status === "DELIVERED");
-  const totalRevenue = deliveries.reduce((s, d) => s + (d.price || 0), 0);
-  const totalTips = deliveries.reduce((s, d) => s + (d.tipAmount || 0), 0);
+  const totalRevenue = delivered.reduce((s, d) => s + (d.price || 0), 0);
+  const totalBookedGmv = deliveries.reduce((s, d) => s + (d.price || 0), 0);
+  const totalTips = delivered.reduce((s, d) => s + (d.tipAmount || 0), 0);
   const completedReferrals = referrals.filter(r => r.status === "completed");
 
   if (loading) return (
@@ -1299,7 +1422,8 @@ function AdminDashboardPage() {
 
   const activeDeliveriesData = categoriesWithActive.map((cat, idx) => {
     const catActive = activeDeliveriesToday.filter(d => (d.category || "General") === cat);
-    const catInTransit = catActive.filter(d => ["TRANSIT", "OUT_FOR_DELIVERY"].includes(d.status));
+    const catInTransit = catActive.filter(d => ["TRANSIT", "OUT_FOR_DELIVERY", "PICKED_UP", "ARRIVED", "HANDOVER_VERIFIED"].includes(d.status));
+    const catPending = catActive.filter(d => ["PENDING", "QUEUED", "RESERVED_NEXT"].includes(d.status));
     return {
       tag: cat,
       title: cat + " Deliveries",
@@ -1308,6 +1432,7 @@ function AdminDashboardPage() {
       unit: "drops",
       active: catActive.length,
       inTransit: catInTransit.length,
+      pending: catPending.length,
       theme: themes[idx % themes.length],
       deliveries: catActive,
     };
@@ -1408,12 +1533,13 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       if (isNaN(amt) || amt <= 0 || !fundUser) return;
       setFundingWallet(true);
       try {
-        const delta = fundAction === "credit" ? amt : -amt;
         const currentBal = fundUser.walletBalance || 0;
-        const newBal = Math.max(0, currentBal + delta);
+        const requestedDelta = fundAction === "credit" ? amt : -amt;
+        const newBal = Math.max(0, currentBal + requestedDelta);
+        const actualDelta = newBal - currentBal;
         
         await updateDoc(doc(db, "users", fundUser.id), {
-          walletBalance: increment(delta),
+          walletBalance: newBal,
           updatedAt: Timestamp.now()
         });
 
@@ -1423,7 +1549,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
           userId: fundUser.id,
           userName: fundUser.name,
           title: fundReason || (fundAction === "credit" ? "Admin Wallet Credit" : "Admin Wallet Debit"),
-          amount: delta,
+          amount: actualDelta,
           type: fundAction === "credit" ? "CREDIT" : "DEBIT",
           date: new Date().toISOString(),
           status: "SUCCESS",
@@ -1439,7 +1565,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
             message: fundReason 
               ? `${fundReason} (₦${amt.toLocaleString()})`
               : `Your account was ${fundAction === "credit" ? "credited with" : "debited by"} ₦${amt.toLocaleString()} by Admin.`,
-            amount: delta,
+            amount: actualDelta,
             read: false,
             createdAt: Timestamp.now()
           });
@@ -1856,7 +1982,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
 
     const filtered = deliveries.filter(d => {
       const q = (searchQuery || search).toLowerCase();
-      const matchSearch = d.receiverName.toLowerCase().includes(q) || d.senderName.toLowerCase().includes(q) || d.id.includes(q) || (d.itemName && d.itemName.toLowerCase().includes(q)) || (d.deliveryAddress && d.deliveryAddress.toLowerCase().includes(q));
+      const matchSearch = d.receiverName.toLowerCase().includes(q) || d.senderName.toLowerCase().includes(q) || d.id.toLowerCase().includes(q) || (d.itemName && d.itemName.toLowerCase().includes(q)) || (d.deliveryAddress && d.deliveryAddress.toLowerCase().includes(q));
       const matchStatus = statusFilter === "ALL" || d.status === statusFilter;
       const matchCat = categoryFilter === "ALL" || d.category === categoryFilter;
       return matchSearch && matchStatus && matchCat;
@@ -1869,10 +1995,15 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
     const isValidStatusTransition = (current: string, next: string): boolean => {
       if (next === "CANCELLED") return true;
       const allowed: Record<string, string[]> = {
-        PENDING: ["ASSIGNED", "CANCELLED"],
-        ASSIGNED: ["TRANSIT", "CANCELLED"],
-        TRANSIT: ["OUT_FOR_DELIVERY", "CANCELLED"],
-        OUT_FOR_DELIVERY: ["DELIVERED", "CANCELLED"],
+        PENDING: ["QUEUED", "RESERVED_NEXT", "ASSIGNED", "CANCELLED"],
+        QUEUED: ["RESERVED_NEXT", "ASSIGNED", "CANCELLED"],
+        RESERVED_NEXT: ["ASSIGNED", "CANCELLED"],
+        ASSIGNED: ["PICKED_UP", "TRANSIT", "CANCELLED"],
+        PICKED_UP: ["TRANSIT", "ARRIVED", "CANCELLED"],
+        TRANSIT: ["ARRIVED", "OUT_FOR_DELIVERY", "CANCELLED"],
+        ARRIVED: ["HANDOVER_VERIFIED", "OUT_FOR_DELIVERY", "CANCELLED"],
+        OUT_FOR_DELIVERY: ["ARRIVED", "HANDOVER_VERIFIED", "DELIVERED", "CANCELLED"],
+        HANDOVER_VERIFIED: ["DELIVERED", "CANCELLED"],
         DELIVERED: [],
         CANCELLED: []
       };
@@ -1880,7 +2011,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
     };
 
     const requiresRider = (status: string): boolean => {
-      return ["ASSIGNED", "TRANSIT", "OUT_FOR_DELIVERY"].includes(status);
+      return ["ASSIGNED", "PICKED_UP", "TRANSIT", "ARRIVED", "OUT_FOR_DELIVERY", "HANDOVER_VERIFIED", "DELIVERED"].includes(status);
     };
 
     const updateStatus = async (id: string, s: string) => {
@@ -1963,6 +2094,37 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
           });
         } catch (err) {
           console.error("Failed to notify customer of assigned rider:", err);
+        }
+      }
+
+      setAssignModal({ delivery: null as any, show: false });
+    };
+
+    const reserveRider = async (deliveryId: string, rider: UserProfile) => {
+      await updateDoc(doc(db, "deliveries", deliveryId), {
+        reservedRiderId: rider.id,
+        reservedCourierName: rider.name,
+        reservedCourierPhone: rider.phone,
+        status: "RESERVED_NEXT",
+        updatedAt: Timestamp.now()
+      });
+      addLog("Reserve Rider", `${rider.name} (Next) → ${idShort(deliveryId)}`);
+
+      const targetUserId = assignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
+      if (targetUserId) {
+        try {
+          const notifRef = doc(collection(db, "users", targetUserId, "notifications"));
+          await setDoc(notifRef, {
+            id: notifRef.id,
+            title: "Rider Reserved",
+            message: `${rider.name} has been reserved for your shipment #${idShort(deliveryId)} and will be dispatched once their current drop is finished.`,
+            time: "Just now",
+            isRead: false,
+            parcelId: deliveryId,
+            createdAt: Timestamp.now()
+          });
+        } catch (err) {
+          console.error("Failed to notify customer of reserved rider:", err);
         }
       }
 
@@ -2369,11 +2531,16 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                           onChange={v => updateStatus(d.id, v)}
                           compact
                           options={[
-                            { value: "PENDING", label: "PENDING" },
-                            ...(d.status === "PENDING" ? [{ value: "ASSIGNED", label: "ASSIGNED" }] : []),
-                            ...(d.status === "ASSIGNED" ? [{ value: "TRANSIT", label: "TRANSIT" }] : []),
-                            ...(d.status === "TRANSIT" ? [{ value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" }] : []),
-                            ...(d.status === "OUT_FOR_DELIVERY" ? [{ value: "DELIVERED", label: "DELIVERED" }] : []),
+                            { value: d.status, label: d.status.replace(/_/g, " ") },
+                            ...(d.status === "PENDING" ? [{ value: "QUEUED", label: "QUEUED" }, { value: "ASSIGNED", label: "ASSIGNED" }] : []),
+                            ...(d.status === "QUEUED" ? [{ value: "RESERVED_NEXT", label: "RESERVE NEXT" }, { value: "ASSIGNED", label: "ASSIGNED" }] : []),
+                            ...(d.status === "RESERVED_NEXT" ? [{ value: "ASSIGNED", label: "ASSIGNED" }] : []),
+                            ...(d.status === "ASSIGNED" ? [{ value: "PICKED_UP", label: "PICKED UP" }, { value: "TRANSIT", label: "TRANSIT" }] : []),
+                            ...(d.status === "PICKED_UP" ? [{ value: "TRANSIT", label: "TRANSIT" }, { value: "ARRIVED", label: "ARRIVED" }] : []),
+                            ...(d.status === "TRANSIT" ? [{ value: "ARRIVED", label: "ARRIVED" }, { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" }] : []),
+                            ...(d.status === "ARRIVED" ? [{ value: "HANDOVER_VERIFIED", label: "HANDOVER VERIFIED" }, { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" }] : []),
+                            ...(d.status === "OUT_FOR_DELIVERY" ? [{ value: "HANDOVER_VERIFIED", label: "HANDOVER VERIFIED" }, { value: "DELIVERED", label: "DELIVERED" }] : []),
+                            ...(d.status === "HANDOVER_VERIFIED" ? [{ value: "DELIVERED", label: "DELIVERED" }] : []),
                             ...((d.status !== "DELIVERED" && d.status !== "CANCELLED") ? [{ value: "CANCELLED", label: "CANCELLED" }] : [])
                           ]}
                           renderOption={(o) => <span className={"px-2.5 py-1 rounded-xl text-[10px] font-extrabold shadow-2xs " + sStyle(o.value)}>{o.label}</span>}
@@ -2875,12 +3042,23 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                             </span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => { assignRider(assignModal.delivery.id, r); setRiderSearch(""); }}
-                          className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
-                        >
-                          Assign
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {load > 0 && (
+                            <button
+                              onClick={() => { reserveRider(assignModal.delivery.id, r); setRiderSearch(""); }}
+                              className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[11px] font-bold transition-colors shadow-xs cursor-pointer"
+                              title="Reserve this rider to automatically dispatch once their current drop is completed"
+                            >
+                              Reserve Next
+                            </button>
+                          )}
+                          <button
+                            onClick={() => { assignRider(assignModal.delivery.id, r); setRiderSearch(""); }}
+                            className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer"
+                          >
+                            {load === 0 ? "Assign Now" : "Assign"}
+                          </button>
+                        </div>
                       </div>
                     );
                   })
@@ -2953,12 +3131,23 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                             </span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => { reassignRider(reassignModal.delivery.id, r); setRiderSearch(""); }}
-                          className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
-                        >
-                          Reassign
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {load > 0 && (
+                            <button
+                              onClick={() => { reserveRider(reassignModal.delivery.id, r); setRiderSearch(""); }}
+                              className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[11px] font-bold transition-colors shadow-xs cursor-pointer"
+                              title="Reserve this rider as next in sequence"
+                            >
+                              Reserve Next
+                            </button>
+                          )}
+                          <button
+                            onClick={() => { reassignRider(reassignModal.delivery.id, r); setRiderSearch(""); }}
+                            className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
+                          >
+                            Reassign
+                          </button>
+                        </div>
                       </div>
                     );
                   })

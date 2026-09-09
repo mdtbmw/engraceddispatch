@@ -1775,52 +1775,20 @@ object FirebaseManager {
                     val payoutAmount = price * 0.80
 
                     db.runTransaction { transaction ->
-                        transaction.update(docRef, "status", "DELIVERED")
-                        transaction.update(docRef, "progress", 1.0f)
+                        transaction.update(docRef, "status", "HANDOVER_VERIFIED")
+                        transaction.update(docRef, "progress", 0.95f)
                         transaction.update(docRef, "otpVerified", true)
                         transaction.update(docRef, "otpAttempts", 0)
                         transaction.update(docRef, "otpVerifiedAt", System.currentTimeMillis())
                         transaction.update(docRef, "lastUpdated", System.currentTimeMillis())
-
-                        if (!alreadyPaid && riderId.isNotEmpty() && payoutAmount > 0) {
-                            transaction.update(docRef, "payoutCredited", true)
-                            transaction.update(docRef, "payoutAmount", payoutAmount)
-                            val riderRef = db.collection("users").document(riderId)
-                            val riderSnap = transaction.get(riderRef)
-                            if (riderSnap.exists()) {
-                                val curBal = riderSnap.getDouble("walletBalance") ?: 0.0
-                                val curCount = riderSnap.getLong("deliveryCount") ?: 0L
-                                transaction.update(riderRef, "walletBalance", curBal + payoutAmount)
-                                transaction.update(riderRef, "deliveryCount", curCount + 1)
-                            }
-                        }
                     }.addOnSuccessListener {
-                        // Create transaction ledger record for rider if payout was credited
-                        if (!alreadyPaid && riderId.isNotEmpty() && payoutAmount > 0) {
-                            try {
-                                val txRef = db.collection("users").document(riderId).collection("transactions").document()
-                                val txData = hashMapOf(
-                                    "id" to txRef.id,
-                                    "title" to "Delivery Payout (80%)",
-                                    "date" to java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date()),
-                                    "amount" to payoutAmount,
-                                    "isTopUp" to true,
-                                    "parcelId" to parcelId,
-                                    "timestamp" to com.google.firebase.Timestamp.now()
-                                )
-                                txRef.set(txData)
-                            } catch (te: Exception) {
-                                Log.e(TAG, "Failed to record payout transaction: ${te.message}")
-                            }
-                        }
-
-                        // Update subcollection
+                        // Update subcollection to HANDOVER_VERIFIED
                         if (parcelUserId.isNotEmpty()) {
                             val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
                             userDocRef.update(
                                 mapOf(
-                                    "status" to "DELIVERED",
-                                    "progress" to 1.0f,
+                                    "status" to "HANDOVER_VERIFIED",
+                                    "progress" to 0.95f,
                                     "otpVerified" to true,
                                     "lastUpdated" to System.currentTimeMillis()
                                 )

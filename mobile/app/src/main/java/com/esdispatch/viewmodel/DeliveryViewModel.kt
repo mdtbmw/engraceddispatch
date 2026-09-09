@@ -1435,10 +1435,10 @@ class DeliveryViewModel : WalletViewModel() {
     private val _defaultDeliveryType = MutableStateFlow("Express")
     val defaultDeliveryType: StateFlow<String> = _defaultDeliveryType.asStateFlow()
 
-    private val _homeAddress = MutableStateFlow("No. 12 Joel Ogunnaike Street, Ikeja GRA, Lagos")
+    private val _homeAddress = MutableStateFlow("14 Boundary Road, GRA, Benin City, Edo State")
     val homeAddress: StateFlow<String> = _homeAddress.asStateFlow()
 
-    private val _workAddress = MutableStateFlow("Plot 14, Kingsway Road, Ikoyi, Lagos")
+    private val _workAddress = MutableStateFlow("28 Airport Road, GRA, Benin City, Edo State")
     val workAddress: StateFlow<String> = _workAddress.asStateFlow()
 
     private val _preferredRider = MutableStateFlow("")
@@ -3560,10 +3560,13 @@ class DeliveryViewModel : WalletViewModel() {
                                 appContext?.let { ctx ->
                                     val statusText = when (updatedParcel.status) {
                                         ParcelStatus.PENDING -> "Pending Dispatch"
+                                        ParcelStatus.QUEUED -> "Queued in Dispatch"
+                                        ParcelStatus.RESERVED_NEXT -> "Courier Reserved"
                                         ParcelStatus.ASSIGNED -> "Courier Assigned"
                                         ParcelStatus.TRANSIT -> "In Transit"
                                         ParcelStatus.PICKED_UP -> "Picked Up"
                                         ParcelStatus.ARRIVED -> "Arrived"
+                                        ParcelStatus.HANDOVER_VERIFIED -> "Handover Verified"
                                         ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
                                         ParcelStatus.DELIVERED -> "Delivered"
                                         ParcelStatus.CANCELLED -> "Cancelled"
@@ -3737,27 +3740,24 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
-    private fun geocodeAddressHashOnly(address: String): Pair<Double, Double> {
-        // Strictly Benin City center coordinates
-        val centerLat = 6.3350
-        val centerLng = 5.6037
-        var hash = 0
-        for (char in address.trim().lowercase()) { hash = 31 * hash + char.code }
-        hash = if (hash < 0) -hash else hash
-        val latOffset = (hash % 60) / 1000.0 - 0.03
-        val lngOffset = ((hash / 60) % 60) / 1000.0 - 0.03
-        return Pair(centerLat + latOffset, centerLng + lngOffset)
+    /** Checks if coordinates fall within the authorized Benin City operating service zone */
+    fun isWithinBeninCityBounds(lat: Double, lng: Double): Boolean {
+        return lat in 6.15..6.55 && lng in 5.45..5.80
     }
 
-    /** Strict Benin City operations */
+    /** Strict Benin City operations - routes outside Benin City are intercity */
     fun isIntercityRoute(pickup: String, delivery: String): Boolean {
+        val coords1 = geocodeAddressLocalOnly(pickup)
+        val coords2 = geocodeAddressLocalOnly(delivery)
+        if (coords1 != null && !isWithinBeninCityBounds(coords1.first, coords1.second)) return true
+        if (coords2 != null && !isWithinBeninCityBounds(coords2.first, coords2.second)) return true
         return false
     }
 
     fun estimateDistanceBetween(pickup: String, delivery: String): Double {
-        if (pickup.isBlank() || delivery.isBlank()) return 8.2
-        val coords1 = geocodeAddressLocalOnly(pickup) ?: geocodeAddressHashOnly(pickup)
-        val coords2 = geocodeAddressLocalOnly(delivery) ?: geocodeAddressHashOnly(delivery)
+        if (pickup.isBlank() || delivery.isBlank()) return 5.0
+        val coords1 = geocodeAddressLocalOnly(pickup) ?: Pair(6.3350, 5.6037)
+        val coords2 = geocodeAddressLocalOnly(delivery) ?: Pair(6.3350, 5.6037)
         return haversineDistance(coords1.first, coords1.second, coords2.first, coords2.second)
     }
 
@@ -3781,16 +3781,16 @@ class DeliveryViewModel : WalletViewModel() {
     suspend fun geocodeAddress(address: String): Pair<Double, Double>? {
         if (address.isBlank()) return null
         
-        // 1. Check local AddressDatabase first (fastest, most accurate for Benin + Lagos)
+        // 1. Check local AddressDatabase first (fastest, accurate for Benin City)
         val localResult = geocodeAddressLocalOnly(address)
         if (localResult != null) return localResult
 
         // 2. Query Google native Geocoder
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val context = appContext ?: return@withContext geocodeAddressHashOnly(address)
+                val context = appContext ?: return@withContext null
                 val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
-                val addresses = com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, address, 1)
+                val addresses = com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, "$address, Benin City, Edo State", 1)
                 if (!addresses.isNullOrEmpty()) {
                     val addr = addresses[0]
                     return@withContext Pair(addr.latitude, addr.longitude)
@@ -3798,9 +3798,8 @@ class DeliveryViewModel : WalletViewModel() {
             } catch (e: Exception) {
                 android.util.Log.e("Geocoding", "Google Geocoder failed: ${e.message}")
             }
-            
-            // 3. Fallback: stable hash-based coordinates centered on Benin City or Lagos
-            geocodeAddressHashOnly(address)
+            // If address is unresolved, return null to prompt user for confirmation rather than fabricating fake coordinates
+            null
         }
     }
 
@@ -4803,53 +4802,52 @@ class DeliveryViewModel : WalletViewModel() {
         return when {
             lower.contains("send") || lower.contains("book") || lower.contains("deliver") -> {
                 val isHeavy = lower.contains("heavy") || lower.contains("kg") || lower.contains("box") || lower.contains("furniture")
-                val addressMatch = if (lower.contains("airport")) "Murtala Muhammed Airport Rd, Ikeja (Spell corrected from: Airpot)" else "Herbert Macaulay Way, Yaba, Lagos"
+                val addressMatch = if (lower.contains("airport")) "Airport Road, GRA, Benin City" else "Ring Road, Central Benin City"
                 val vehicleRec = if (isHeavy) "Van or Truck (Heavy Package recommended)" else "Motorcycle (Standard Fast delivery suitability)"
                 
                 "**Smart Order Setup Initialized**:\n" +
-                "• **Smart Address Prediction**: $addressMatch\n" +
+                "• **Service Zone**: Benin City Central Hub\n" +
+                "• **Suggested Landmark**: $addressMatch\n" +
                 "• **Suggested Vehicle recommendation**: $vehicleRec\n" +
                 "• **Price Estimate**: ₦${if(isHeavy) "7,500.00" else "2,500.00"}\n" +
-                "Would you like me to book this ESDispatch shipment?"
+                "Would you like me to open the booking portal?"
             }
             lower.contains("status") || lower.contains("track") || lower.contains("where") || lower.contains("rolex") || lower.contains("mac") -> {
-                val active = _parcels.value.firstOrNull { it.status == ParcelStatus.TRANSIT }
+                val active = _parcels.value.firstOrNull { it.status == ParcelStatus.TRANSIT || it.status == ParcelStatus.OUT_FOR_DELIVERY }
                 if (active != null) {
                     "**Live Delivery Status for #${active.id}**:\n" +
                     "• **Item**: ${active.itemName}\n" +
-                    "• **Current Rider**: ${active.courierName}\n" +
-                    "• **Smart ETA**: ${if(_aiTrafficCongested.value) "Arriving in 35 mins (Heavy Traffic delays)" else "Arriving in 14 mins (Optimal route)"}\n" +
-                    "• **Rider Location**: Third Mainland Bridge, Lagos\n" +
-                    "Would you like me to ping the rider or request a route re-evaluation?"
+                    "• **Current Rider**: ${active.courierName.ifBlank { "Assigned Fleet Rider" }}\n" +
+                    "• **Operating Hub**: Benin City Fleet Hub\n" +
+                    "• **Status**: ${active.status.name.replace('_', ' ')}\n" +
+                    "Would you like to view real-time tracking on the map?"
                 } else {
                     "No active shipments are currently in transit. Your past shipments have been successfully delivered to their destinations."
                 }
             }
             lower.contains("rider") || lower.contains("richard") || lower.contains("musa") || lower.contains("best") -> {
-                "**Smart Rider Assignment Recommendation**:\n" +
-                "• **Richard Dheo** (Rating: 4.9, Distance: 0.8km) — **Score: 98% (Best Match)**\n" +
-                "• **Adebayo Musa** (Rating: 4.8, Distance: 1.6km) — **Score: 82%**\n" +
-                "• **Chinedu Okafor** (Rating: 4.7, Distance: 3.2km) — **Score: 65%**\n" +
-                "Would you like me to lock Richard Dheo for your next booking?"
+                "**Fleet Assignment Protocol**:\n" +
+                "ESDispatch couriers are dynamically assigned based on proximity, capacity, and active route schedule in Benin City.\n" +
+                "Once you place a booking, the nearest verified fleet rider will be assigned immediately."
             }
             lower.contains("risk") || lower.contains("weather") || lower.contains("rain") || lower.contains("flood") -> {
                 val score = if (_aiTrafficCongested.value) 68 else 15
-                "**AI Risk Assessment Station**:\n" +
+                "**Dispatch Risk Assessment**:\n" +
+                "• **Operating Zone**: Benin City, Edo State\n" +
                 "• **Risk Score**: $score/100 (${if(score > 50) "Moderate Risk" else "Safe"})\n" +
                 "• **Weather**: Clear, dry skies\n" +
-                "• **Traffic**: ${if(_aiTrafficCongested.value) "Severe Congestion on Expressways" else "Free, clear lanes"}\n" +
-                "• **Mitigation**: Approved for motorcycle. ${if(score > 50) "Rerouting around flooded zones active." else "Standard paths approved."}"
+                "• **Mitigation**: Standard motorcycle dispatch active."
             }
             lower.contains("cancel") -> {
-                "**Cancellation Verification System**:\n" +
-                "Your cancellation has been processed safely. To maintain high account scores and prevent suspicious anti-cancellation flags, please avoid repeated booking rejections."
+                "**Cancellation Assistance**:\n" +
+                "To cancel your booking, please navigate to your active shipment screen and tap 'Cancel Request', or connect with Dispatch Support in the Live Support tab. If a rider has already picked up your package, custody exception rules apply."
             }
             lower.contains("change") -> {
-                "**Smart Address Modification**:\n" +
-                "Please enter your new destination. I will instantly correct spelling, verify landmarks, and recalculate ETAs for your rider."
+                "**Address Modification**:\n" +
+                "To modify your delivery destination within Benin City, please update your order in the tracking view before the rider begins the transit stage."
             }
             else -> {
-                "I have compiled your operational request. Our AI Dispatch Manager has verified that our dispatch rider fleet is fully synchronized and running under safe weather conditions. How else can I assist you with logistically advanced route predictions?"
+                "Welcome to ESDispatch — Premium Logistics & Dispatch operating in Benin City, Edo State. How can I assist you with your booking, parcel tracking, or fleet dispatch today?"
             }
         }
     }
@@ -5230,7 +5228,7 @@ class DeliveryViewModel : WalletViewModel() {
 
     fun aiCorrectAddress(rawInput: String): String {
         val trimmed = rawInput.trim()
-        if (trimmed.isBlank()) return "Lagos Central Dispatch Hub, Victoria Island, Lagos"
+        if (trimmed.isBlank()) return "ESDispatch Central Hub, Ring Road, Benin City, Edo State"
         val dbMatch = com.esdispatch.data.AddressDatabase.search(trimmed).firstOrNull()
         if (dbMatch != null) return dbMatch.displayName
         return trimmed.split(" ").joinToString(" ") { word ->

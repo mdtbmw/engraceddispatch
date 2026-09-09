@@ -214,9 +214,12 @@ fun OrderHistoryItem(
             // A subtle left status accent indicator bar
             val accentColor = when (parcel.status) {
                 ParcelStatus.PENDING -> Color(0xFF2196F3)
-                ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
+                ParcelStatus.QUEUED -> Color(0xFFFF9800)
+                ParcelStatus.RESERVED_NEXT -> Color(0xFF9C27B0)
+                ParcelStatus.ASSIGNED -> Color(0xFF3F51B5)
                 ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
                 ParcelStatus.ARRIVED -> Color(0xFF00897B)
+                ParcelStatus.HANDOVER_VERIFIED -> Color(0xFF009688)
                 ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
                 ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
                 ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
@@ -284,9 +287,12 @@ fun OrderHistoryItem(
                     // Dynamic Styled Tag
                     val tagColor = when (parcel.status) {
                         ParcelStatus.PENDING -> Color(0xFF2196F3)
-                        ParcelStatus.ASSIGNED -> Color(0xFF9C27B0)
+                        ParcelStatus.QUEUED -> Color(0xFFFF9800)
+                        ParcelStatus.RESERVED_NEXT -> Color(0xFF9C27B0)
+                        ParcelStatus.ASSIGNED -> Color(0xFF3F51B5)
                         ParcelStatus.PICKED_UP -> Color(0xFF5E35B1)
                         ParcelStatus.ARRIVED -> Color(0xFF00897B)
+                        ParcelStatus.HANDOVER_VERIFIED -> Color(0xFF009688)
                         ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
                         ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
                         ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
@@ -295,9 +301,12 @@ fun OrderHistoryItem(
 
                     val tagBg = when (parcel.status) {
                         ParcelStatus.PENDING -> Color(0x202196F3)
-                        ParcelStatus.ASSIGNED -> Color(0x209C27B0)
+                        ParcelStatus.QUEUED -> Color(0x20FF9800)
+                        ParcelStatus.RESERVED_NEXT -> Color(0x209C27B0)
+                        ParcelStatus.ASSIGNED -> Color(0x203F51B5)
                         ParcelStatus.PICKED_UP -> Color(0x205E35B1)
                         ParcelStatus.ARRIVED -> Color(0x2000897B)
+                        ParcelStatus.HANDOVER_VERIFIED -> Color(0x20009688)
                         ParcelStatus.TRANSIT -> if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)
                         ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
                         ParcelStatus.DELIVERED -> Color(0x204CAF50)
@@ -306,9 +315,12 @@ fun OrderHistoryItem(
 
                     val tagText = when (parcel.status) {
                         ParcelStatus.PENDING -> "PENDING"
+                        ParcelStatus.QUEUED -> "QUEUED"
+                        ParcelStatus.RESERVED_NEXT -> "RESERVED"
                         ParcelStatus.ASSIGNED -> "ASSIGNED"
                         ParcelStatus.PICKED_UP -> "PICKED UP"
                         ParcelStatus.ARRIVED -> "ARRIVED"
+                        ParcelStatus.HANDOVER_VERIFIED -> "HANDOVER VERIFIED"
                         ParcelStatus.TRANSIT -> "IN TRANSIT"
                         ParcelStatus.OUT_FOR_DELIVERY -> "OUT FOR DELIVERY"
                         ParcelStatus.DELIVERED -> "DELIVERED"

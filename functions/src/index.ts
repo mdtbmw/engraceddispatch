@@ -93,20 +93,48 @@ export const onDeliveryCreatedAutoDispatch = functions.firestore
         .get();
 
       if (ridersSnap.empty) {
-        console.log(`[Auto Dispatch] No online riders currently available for ${deliveryId}. Delivery queued in unassigned pool.`);
+        console.log(`[Auto Dispatch] No online riders currently available for ${deliveryId}. Setting status to QUEUED.`);
+        await db.collection('deliveries').doc(deliveryId).update({
+          status: 'QUEUED',
+          queueReason: 'Waiting for an available fleet rider in Benin City',
+          queuedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
         return null;
       }
 
-      const pickupLat = deliveryData.pickupLat || 6.5244; // Default to Lagos center if coords missing
-      const pickupLng = deliveryData.pickupLng || 3.3792;
+      // Check active workload to enforce capacity (exclude busy riders)
+      const activeDeliveriesSnap = await db.collection('deliveries')
+        .where('status', 'in', ['ASSIGNED', 'PICKED_UP', 'TRANSIT', 'OUT_FOR_DELIVERY', 'ARRIVED'])
+        .get();
+
+      const busyRiderIds = new Set<string>();
+      activeDeliveriesSnap.docs.forEach(doc => {
+        const d = doc.data();
+        if (d.riderId) busyRiderIds.add(d.riderId);
+        if (d.driverId) busyRiderIds.add(d.driverId);
+      });
+
+      const freeRiders = ridersSnap.docs.filter(doc => !busyRiderIds.has(doc.id));
+      if (freeRiders.length === 0) {
+        console.log(`[Auto Dispatch] All online riders have active jobs. Setting ${deliveryId} to QUEUED.`);
+        await db.collection('deliveries').doc(deliveryId).update({
+          status: 'QUEUED',
+          queueReason: 'All fleet couriers are currently completing ongoing deliveries',
+          queuedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return null;
+      }
+
+      const pickupLat = deliveryData.pickupLat || 6.3350; // Benin City center
+      const pickupLng = deliveryData.pickupLng || 5.6037;
 
       let nearestRider: any = null;
       let minDistance = Infinity;
 
-      for (const doc of ridersSnap.docs) {
+      for (const doc of freeRiders) {
         const rData = doc.data();
-        const rLat = rData.lat || rData.latitude || 6.5244;
-        const rLng = rData.lng || rData.longitude || 3.3792;
+        const rLat = rData.lat || rData.latitude || 6.3350;
+        const rLng = rData.lng || rData.longitude || 5.6037;
         const dist = haversineDistanceKm(pickupLat, pickupLng, rLat, rLng);
 
         if (dist < minDistance) {
@@ -116,10 +144,12 @@ export const onDeliveryCreatedAutoDispatch = functions.firestore
       }
 
       if (nearestRider) {
-        console.log(`[Auto Dispatch] Matched nearest rider ${nearestRider.name || nearestRider.id} (${minDistance.toFixed(2)} km away)`);
+        console.log(`[Auto Dispatch] Matched nearest free rider ${nearestRider.name || nearestRider.id} (${minDistance.toFixed(2)} km away)`);
 
         await db.collection('deliveries').doc(deliveryId).update({
           riderId: nearestRider.id,
+          driverId: nearestRider.id,
+          driverName: nearestRider.name || nearestRider.fullName || 'Fleet Rider',
           courierName: nearestRider.name || nearestRider.fullName || 'Fleet Rider',
           courierPhone: nearestRider.phone || '',
           riderBikeNumber: nearestRider.bikeNumber || 'ES-MOTO-01',
@@ -179,67 +209,108 @@ export const onDeliveryStatusUpdated = functions.firestore
 
     console.log(`[Delivery Trigger] Status updated for delivery ${deliveryId}: ${oldStatus} -> ${newStatus}`);
 
-    // --- Automated Escrow Release on Delivery ---
+    // --- Sync Redacted Public Tracking Projection ---
+    try {
+      await db.collection('public_tracking').doc(deliveryId).set({
+        id: deliveryId,
+        itemName: itemName,
+        status: newStatus,
+        progress: Number(afterData.progress) || 0.0,
+        pickupAddress: afterData.pickupAddress || '',
+        deliveryAddress: afterData.deliveryAddress || '',
+        courierName: afterData.courierName || '',
+        riderBikeNumber: afterData.riderBikeNumber || '',
+        courierLatitude: afterData.courierLatitude || null,
+        courierLongitude: afterData.courierLongitude || null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (pubErr) {
+      console.warn(`[Public Tracking Sync Error] ${deliveryId}:`, pubErr);
+    }
+
+    // --- Automated Escrow Release on Delivery (Strictly Idempotent) ---
     if (newStatus.toUpperCase() === 'DELIVERED') {
       try {
-        // 1. If linked to a marketplace order, settle vendor split amounts
-        const orderSnap = await db.collection('marketplace_orders').doc(deliveryId).get();
-        if (orderSnap.exists) {
-          const orderData = orderSnap.data();
-          const splits = orderData?.vendorSplits || [];
+        const settlementDocRef = db.collection('settlement_records').doc(deliveryId);
+        const settlementSnap = await settlementDocRef.get();
 
-          for (const s of splits) {
-            if (s.storeId && s.vendorPayout > 0) {
-              const storeRef = db.collection('marketplace_stores').doc(s.storeId);
-              await storeRef.update({
-                vendorWallet: admin.firestore.FieldValue.increment(s.vendorPayout),
-                vendorBalance: admin.firestore.FieldValue.increment(s.vendorPayout),
-                totalSales: admin.firestore.FieldValue.increment(1),
-                totalSettled: admin.firestore.FieldValue.increment(s.vendorPayout),
+        if (settlementSnap.exists || afterData.payoutCredited === true) {
+          console.log(`[Escrow Release] Delivery ${deliveryId} already settled. Skipping duplicate payout.`);
+        } else {
+          // 1. If linked to a marketplace order, settle vendor split amounts
+          const orderSnap = await db.collection('marketplace_orders').doc(deliveryId).get();
+          if (orderSnap.exists) {
+            const orderData = orderSnap.data();
+            const splits = orderData?.vendorSplits || [];
+
+            for (const s of splits) {
+              if (s.storeId && s.vendorPayout > 0) {
+                const storeRef = db.collection('marketplace_stores').doc(s.storeId);
+                await storeRef.update({
+                  vendorWallet: admin.firestore.FieldValue.increment(s.vendorPayout),
+                  vendorBalance: admin.firestore.FieldValue.increment(s.vendorPayout),
+                  totalSales: admin.firestore.FieldValue.increment(1),
+                  totalSettled: admin.firestore.FieldValue.increment(s.vendorPayout),
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                }).catch(err => console.warn(`[Escrow Release] Failed store balance credit for ${s.storeId}:`, err));
+              }
+            }
+
+            await orderSnap.ref.update({
+              status: 'SETTLED',
+              settledAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`[Escrow Release] Marketplace order ${deliveryId} settled successfully.`);
+          }
+
+          // 2. Credit rider delivery earnings / tip if riderId present
+          const effectiveRiderId = riderId || afterData.driverId;
+          if (effectiveRiderId) {
+            const tipAmount = Number(afterData.tipAmount) || 0;
+            const priceOrFee = Number(afterData.deliveryFee) || Number(afterData.price) || (afterData.type === 'EXPRESS' ? 2500 : 1500);
+            const riderPayout = (priceOrFee * 0.80) + tipAmount; // 80% rider split + 100% customer tip
+
+            if (riderPayout > 0) {
+              const riderRef = db.collection('users').doc(effectiveRiderId);
+              await riderRef.update({
+                walletBalance: admin.firestore.FieldValue.increment(riderPayout),
+                deliveryCount: admin.firestore.FieldValue.increment(1),
+                totalEarned: admin.firestore.FieldValue.increment(riderPayout),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
-              }).catch(err => console.warn(`[Escrow Release] Failed store balance credit for ${s.storeId}:`, err));
+              });
+
+              // Ledger log
+              const riderTxRef = riderRef.collection('transactions').doc(`EARN-${deliveryId}`);
+              await riderTxRef.set({
+                id: `EARN-${deliveryId}`,
+                userId: effectiveRiderId,
+                title: `Delivery Earnings & Tip (#${deliveryId})`,
+                amount: riderPayout,
+                isTopUp: true,
+                type: 'CREDIT',
+                status: 'SUCCESS',
+                reference: deliveryId,
+                date: new Date().toLocaleDateString('en-GB'),
+                timestamp: Date.now(),
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+              console.log(`[Escrow Release] Rider ${effectiveRiderId} credited ₦${riderPayout} for delivery ${deliveryId}`);
             }
           }
 
-          await orderSnap.ref.update({
+          // Mark settlement complete on both delivery and immutable ledger record
+          await settlementDocRef.set({
+            deliveryId,
+            riderId: effectiveRiderId || null,
             status: 'SETTLED',
             settledAt: admin.firestore.FieldValue.serverTimestamp()
           });
-          console.log(`[Escrow Release] Marketplace order ${deliveryId} settled successfully.`);
-        }
 
-        // 2. Credit rider delivery earnings / tip if riderId present
-        if (riderId) {
-          const tipAmount = Number(afterData.tipAmount) || 0;
-          const deliveryFee = Number(afterData.deliveryFee) || (afterData.type === 'EXPRESS' ? 2500 : 1500);
-          const riderPayout = (deliveryFee * 0.70) + tipAmount; // 70% rider split + 100% customer tip
-
-          if (riderPayout > 0) {
-            const riderRef = db.collection('users').doc(riderId);
-            await riderRef.update({
-              walletBalance: admin.firestore.FieldValue.increment(riderPayout),
-              deliveryCount: admin.firestore.FieldValue.increment(1),
-              totalEarned: admin.firestore.FieldValue.increment(riderPayout),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            // Ledger log
-            const riderTxRef = riderRef.collection('transactions').doc(`EARN-${deliveryId}`);
-            await riderTxRef.set({
-              id: `EARN-${deliveryId}`,
-              userId: riderId,
-              title: `Delivery Earnings & Tip (#${deliveryId})`,
-              amount: riderPayout,
-              isTopUp: true,
-              type: 'CREDIT',
-              status: 'SUCCESS',
-              reference: deliveryId,
-              date: new Date().toLocaleDateString('en-GB'),
-              timestamp: Date.now(),
-              createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-            console.log(`[Escrow Release] Rider ${riderId} credited ₦${riderPayout} for delivery ${deliveryId}`);
-          }
+          await change.after.ref.update({
+            payoutCredited: true,
+            settlementStatus: 'SETTLED',
+            settledAt: admin.firestore.FieldValue.serverTimestamp()
+          });
         }
       } catch (escrowErr) {
         console.error(`[Escrow Release Error] Error settling delivery ${deliveryId}:`, escrowErr);
@@ -317,6 +388,12 @@ export const verifyPaymentAndTopUp = functions.https.onCall(async (data, context
       if (!resJson.status || resJson.data?.status !== 'success') {
         throw new functions.https.HttpsError('permission-denied', `Paystack verification failed: ${resJson.message || 'Unsuccessful'}`);
       }
+
+      // Validate amount from gateway (Paystack returns in kobo)
+      const verifiedAmountNaira = (Number(resJson.data?.amount) || 0) / 100;
+      if (Math.abs(verifiedAmountNaira - amount) > 0.05) {
+        throw new functions.https.HttpsError('invalid-argument', `Amount mismatch: Gateway received ₦${verifiedAmountNaira}, but requested ₦${amount}`);
+      }
     } catch (err: any) {
       console.error('[Paystack Verification Error]', err);
       if (err instanceof functions.https.HttpsError) throw err;
@@ -393,6 +470,8 @@ export const verifyPaymentAndTopUp = functions.https.onCall(async (data, context
 
 /**
  * Callable function to securely verify delivery OTP code.
+ * Requires caller to be the assigned rider or an admin/dispatcher.
+ * Enforces attempt limits and transitions state to HANDOVER_VERIFIED so POD can be captured next.
  */
 export const verifyDeliveryOtp = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -412,20 +491,85 @@ export const verifyDeliveryOtp = functions.https.onCall(async (data, context) =>
   }
 
   const deliveryData = snap.data();
+  const callerUid = context.auth.uid;
+  const isAssignedRider = callerUid === deliveryData?.riderId || callerUid === deliveryData?.driverId;
+
+  const callerDoc = await db.collection('users').doc(callerUid).get();
+  const role = callerDoc.data()?.role;
+  const isPrivileged = role === 'admin' || role === 'super_admin' || role === 'dispatcher';
+
+  if (!isAssignedRider && !isPrivileged) {
+    throw new functions.https.HttpsError('permission-denied', 'Only the assigned rider or dispatcher can verify delivery OTP.');
+  }
+
+  const currentAttempts = Number(deliveryData?.otpAttempts) || 0;
+  if (currentAttempts >= 5) {
+    throw new functions.https.HttpsError('failed-precondition', 'Maximum verification attempts exceeded. Please contact dispatch.');
+  }
+
   const storedOtp = String(deliveryData?.otpCode || '').trim();
   const inputOtp = String(otpInput).trim();
 
   if (storedOtp !== inputOtp) {
-    throw new functions.https.HttpsError('invalid-argument', 'Invalid OTP code. Please check with the recipient.');
+    await deliveryRef.update({
+      otpAttempts: admin.firestore.FieldValue.increment(1)
+    });
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid OTP code. Please verify with recipient.');
+  }
+
+  // Handover verified! Ready for Proof of Delivery capture
+  await deliveryRef.update({
+    otpVerified: true,
+    otpAttempts: 0,
+    status: 'ARRIVED',
+    handoverVerifiedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  return { success: true, message: 'OTP verified successfully. Please proceed to capture Proof of Delivery.' };
+});
+
+/**
+ * Callable function to submit Proof of Delivery and complete shipment.
+ * Enforces that handover verification must occur before final DELIVERED state.
+ */
+export const completeDeliveryWithProof = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+  }
+
+  const { deliveryId, podUrl, podType } = data;
+  if (!deliveryId || !podUrl) {
+    throw new functions.https.HttpsError('invalid-argument', 'deliveryId and podUrl are required.');
+  }
+
+  const deliveryRef = db.collection('deliveries').doc(deliveryId);
+  const snap = await deliveryRef.get();
+
+  if (!snap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Delivery not found.');
+  }
+
+  const deliveryData = snap.data();
+  const callerUid = context.auth.uid;
+  const isAssigned = callerUid === deliveryData?.riderId || callerUid === deliveryData?.driverId;
+  const callerDoc = await db.collection('users').doc(callerUid).get();
+  const isPrivileged = ['admin', 'super_admin', 'dispatcher'].includes(callerDoc.data()?.role);
+
+  if (!isAssigned && !isPrivileged) {
+    throw new functions.https.HttpsError('permission-denied', 'Only assigned rider or dispatcher can complete delivery.');
   }
 
   await deliveryRef.update({
-    otpVerified: true,
     status: 'DELIVERED',
-    deliveredAt: admin.firestore.FieldValue.serverTimestamp()
+    progress: 1.0,
+    podUrl: podUrl,
+    podType: podType || 'PHOTO',
+    podStatus: 'VERIFIED',
+    deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastUpdated: Date.now()
   });
 
-  return { success: true, message: 'OTP verified and delivery marked completed.' };
+  return { success: true, message: 'Proof of delivery verified. Shipment marked DELIVERED.' };
 });
 
 /**

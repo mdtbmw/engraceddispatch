@@ -163,7 +163,7 @@ service cloud.firestore {
     // Customers receive courier positions via the deliveries document instead.
 
     match /fleet_locations/{riderId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && (isOwner(riderId) || isDispatcher() || isAdmin());
       allow create, update: if isOwner(riderId) || isAdmin();
       allow delete: if isAdmin();
     }
@@ -173,24 +173,34 @@ service cloud.firestore {
     // =========================================================
 
     match /deliveries/{deliveryId} {
-      // Publicly trackable by direct shipment ID (for SMS/web recipients)
-      allow read: if true;
-      allow create: if isAuth() && isReasonableWrite() && request.resource.data.userId == request.auth.uid
-        || isDispatcher() || isAdmin();
-      // Riders are permitted to advance their own deliveries (status/OTP/POD);
-      // active riders can also claim an unassigned PENDING shipment.
+      // Secure authenticated access: customer owner, assigned/reserved rider, or dispatchers/admins
+      allow read: if isAuth() && (
+        isAdmin() || isDispatcher() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.riderId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        resource.data.reservedRiderId == request.auth.uid
+      );
+      allow create: if isAuth() && isReasonableWrite() && (request.resource.data.userId == request.auth.uid || isDispatcher() || isAdmin());
+      // Disallow non-admin tampering with financial amounts, fee splits, or user ownership
       allow update: if isDispatcher() || isAdmin()
-        || (isAuth() && (isOwner(resource.data.riderId) || isOwner(resource.data.userId)))
-        || (isAuth() && resource.data.status == 'PENDING'
-            && request.resource.data.status == 'ASSIGNED'
-            && request.resource.data.riderId == request.auth.uid);
+        || (isAuth() && (resource.data.riderId == request.auth.uid || resource.data.driverId == request.auth.uid)
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['price', 'deliveryFee', 'payoutAmount', 'payoutCredited', 'userId']))
+        || (isAuth() && resource.data.userId == request.auth.uid
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['price', 'deliveryFee', 'payoutAmount', 'payoutCredited', 'status', 'riderId', 'driverId']));
       allow delete: if isAdmin();
 
       match /chats/{chatId} {
-        allow read: if true;
+        allow read: if isAuth() && (isAdmin() || isDispatcher() || resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
         allow create: if isAuth() && isReasonableWrite();
         allow update, delete: if isAdmin();
       }
+    }
+
+    // Redacted public tracking projection (non-PII, no phone numbers, no OTP secrets)
+    match /public_tracking/{deliveryId} {
+      allow read: if true;
+      allow write: if isDispatcher() || isAdmin();
     }
 
     // =========================================================
@@ -317,7 +327,7 @@ service cloud.firestore {
     match /audit_logs/{docId} {
       allow read: if isAdmin();
       allow create: if isAdmin();
-      allow update, delete: if isAdmin();
+      allow update, delete: if false; // Immutable audit trail
     }
 
     // =========================================================

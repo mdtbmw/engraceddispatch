@@ -199,7 +199,7 @@ interface OfflineSyncQueueDao {
         ShiftRoster::class,
         OfflineSyncQueue::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(DatabaseConverters::class)

@@ -2384,11 +2384,14 @@ fun ParcelCard(
                     // Middle Point (Transit / status text)
                     val middleStatusText = when (parcel.status) {
                         ParcelStatus.PENDING -> "Pending"
+                        ParcelStatus.QUEUED -> "Queued"
+                        ParcelStatus.RESERVED_NEXT -> "Reserved"
                         ParcelStatus.ASSIGNED -> "Assigned"
                         ParcelStatus.TRANSIT -> "Transit"
                         ParcelStatus.OUT_FOR_DELIVERY -> "Out"
                         ParcelStatus.PICKED_UP -> "Picked Up"
                         ParcelStatus.ARRIVED -> "Arrived"
+                        ParcelStatus.HANDOVER_VERIFIED -> "Verified"
                         ParcelStatus.DELIVERED -> "Transit"
                         ParcelStatus.CANCELLED -> "Cancelled"
                     }

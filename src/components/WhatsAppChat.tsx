@@ -3,14 +3,15 @@ import { MessageCircle, X, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const BRANCHES = [
-  { value: 'benin', label: 'Benin', phone: '2348185840000', office: 'Benin City' },
-  { value: 'asaba', label: 'Asaba', phone: '2348185880000', office: 'Asaba' },
-  { value: 'lagos', label: 'Lagos', phone: '2349056263010', office: 'Lagos' },
+  { value: 'benin', label: 'Benin HQ', phone: '2348185840000', office: 'Benin City (Dispatch & Operations HQ)' },
+  { value: 'asaba', label: 'Asaba', phone: '2348185880000', office: 'Asaba (Car Rental & Charters)' },
+  { value: 'lagos', label: 'Lagos', phone: '2349056263010', office: 'Lagos (Corporate Car Rental)' },
 ];
 
 const SUGGESTIONS = [
-  'I want to book a ride',
-  'What vehicles do you have?',
+  'I want to send a parcel in Benin City',
+  'I want to track a package',
+  'I want to book a ride / car rental',
 ];
 
 export default function WhatsAppChat() {
