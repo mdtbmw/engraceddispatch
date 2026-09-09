@@ -66,6 +66,7 @@ fun RiderDashboardScreen(
     val availableDeliveries by viewModel.availableDeliveries.collectAsState()
     val scannedRiderParcel by viewModel.scannedRiderParcel.collectAsState()
     val totalEarned by viewModel.totalEarned.collectAsState()
+    val totalTipsEarned by viewModel.totalTipsEarned.collectAsState()
     val userName by viewModel.userName.collectAsState()
     val aiTrafficCongested by viewModel.aiTrafficCongested.collectAsState()
 
@@ -120,7 +121,7 @@ fun RiderDashboardScreen(
     }
 
     Scaffold(
-        containerColor = LuxuryBlack,
+        containerColor = AppBackground,
         bottomBar = { BottomNav(currentScreen = "Dashboard", onNavigate = onNavigate, activeViewMode = "rider") },
         floatingActionButton = {
             SupportButton(onClick = { showSupportDialog = true })
@@ -155,7 +156,7 @@ fun RiderDashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(LuxuryBlack)
+                .background(AppBackground)
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -232,7 +233,7 @@ fun RiderDashboardScreen(
                                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                             Column {
                                                 Text("Total Tips Earned", fontSize = 8.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                                                Text("—", fontSize = 15.sp, fontWeight = FontWeight.Black, color = AppTextColor)
+                                                Text("₦${String.format("%,.2f", totalTipsEarned)}", fontSize = 15.sp, fontWeight = FontWeight.Black, color = AppTextColor)
                                             }
                                             Column {
                                                 Text("Total Earnings", fontSize = 8.sp, color = TextGray, fontWeight = FontWeight.Bold)
@@ -976,6 +977,9 @@ fun RiderParcelCard(
                                         if (parcel.progress <= 0.35f) Gold.copy(alpha = 0.15f) else SuccessGreen.copy(alpha = 0.15f)
                                     }
                                     ParcelStatus.OUT_FOR_DELIVERY -> WarningOrange.copy(alpha = 0.15f)
+                                    ParcelStatus.ARRIVED -> Color(0xFF00897B).copy(alpha = 0.15f)
+                                    ParcelStatus.DELIVERED -> SuccessGreen.copy(alpha = 0.15f)
+                                    ParcelStatus.CANCELLED -> Color.Red.copy(alpha = 0.15f)
                                     else -> SuccessGreen.copy(alpha = 0.15f)
                                 }
                             )
@@ -989,7 +993,10 @@ fun RiderParcelCard(
                                     if (parcel.progress <= 0.35f) "PICKUP" else "PICKED UP"
                                 }
                                 ParcelStatus.OUT_FOR_DELIVERY -> "OUT FOR DELIVERY"
-                                else -> "DELIVERED"
+                                ParcelStatus.ARRIVED -> "ARRIVED"
+                                ParcelStatus.DELIVERED -> "DELIVERED"
+                                ParcelStatus.CANCELLED -> "CANCELLED"
+                                else -> "UNKNOWN"
                             },
                             color = when (parcel.status) {
                                 ParcelStatus.PENDING -> Gold
@@ -998,7 +1005,10 @@ fun RiderParcelCard(
                                     if (parcel.progress <= 0.35f) Gold else SuccessGreen
                                 }
                                 ParcelStatus.OUT_FOR_DELIVERY -> WarningOrange
-                                else -> SuccessGreen
+                                ParcelStatus.ARRIVED -> Color(0xFF00897B)
+                                ParcelStatus.DELIVERED -> SuccessGreen
+                                ParcelStatus.CANCELLED -> Color.Red
+                                else -> TextGray
                             },
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black
@@ -1423,35 +1433,27 @@ fun RiderUpdateBottomSheetContent(
 }
 
 private fun geocodeAddressToLatLng(context: android.content.Context, address: String): Pair<Double, Double> {
+    val dbCoord = com.esdispatch.data.AddressDatabase.getCoordinates(address)
+    if (dbCoord != null) return dbCoord
+
     val lower = address.lowercase()
     return when {
-        lower.contains("city mall") || lower.contains("ikeja city") || lower.contains("ikeja") -> Pair(6.6018, 3.3515)
-        lower.contains("airport") || lower.contains("murtala") || lower.contains("mma") -> Pair(6.5244, 3.3792)
-        lower.contains("victoria island") || lower.contains("vi ") || lower.contains("vi,") -> Pair(6.4281, 3.4219)
-        lower.contains("ikoyi") -> Pair(6.4549, 3.4316)
-        lower.contains("lekki") -> Pair(6.4698, 3.5852)
-        lower.contains("yaba") -> Pair(6.5095, 3.3711)
-        lower.contains("surulere") -> Pair(6.4994, 3.3581)
-        lower.contains("maryland") -> Pair(6.5658, 3.3664)
-        lower.contains("gbagada") -> Pair(6.5549, 3.3881)
-        lower.contains("allen") || lower.contains("alausa") -> Pair(6.6150, 3.3580)
-        lower.contains("festac") || lower.contains("amuwo") -> Pair(6.4667, 3.2833)
-        lower.contains("ajah") || lower.contains("sangotedo") -> Pair(6.4686, 3.6014)
-        lower.contains("ikotun") || lower.contains("egbeda") -> Pair(6.5492, 3.2642)
-        lower.contains("conservation") || lower.contains("lcc") -> Pair(6.4281, 3.4219)
-        lower.contains("theatre") || lower.contains("iganmu") -> Pair(6.4633, 3.3672)
-        lower.contains("unilag") || lower.contains("university of lagos") || lower.contains("akoka") -> Pair(6.5158, 3.3897)
-        lower.contains("lekki phase 1") || lower.contains("admiralty") || lower.contains("admirality") -> Pair(6.4265, 3.4300)
-        lower.contains("chevron") -> Pair(6.4446, 3.4912)
-        lower.contains("ikoyi club") || lower.contains("kingsway") -> Pair(6.4549, 3.4244)
-        lower.contains("nike") || lower.contains("gallery") || lower.contains("elegushi") -> Pair(6.4474, 3.4735)
-        lower.contains("island") || lower.contains("marina") -> Pair(6.4501, 3.3958)
-        lower.contains("computer") || lower.contains("village") || lower.contains("isaac") -> Pair(6.6250, 3.3421)
-        lower.contains("ozumba") || lower.contains("mbadiwe") || lower.contains("eko") -> Pair(6.4350, 3.4270)
+        lower.contains("ring road") || lower.contains("ring road benin") -> Pair(6.3350, 5.6037)
+        lower.contains("uba") || lower.contains("uba junction") || lower.contains("uba roundabout") -> Pair(6.3400, 5.6100)
+        lower.contains("sapele road") || lower.contains("sapele") -> Pair(6.3200, 5.5900)
+        lower.contains("broadcasting") || lower.contains("bcos") || lower.contains("gba") -> Pair(6.3450, 5.6200)
+        lower.contains("edo") || lower.contains("edo state") || lower.contains("edo government") -> Pair(6.3400, 5.6150)
+        lower.contains("obakhavbe") || lower.contains("obakhavbay") -> Pair(6.3300, 5.5950)
+        lower.contains("iguomon") || lower.contains("iguomon road") -> Pair(6.3500, 5.6250)
+        lower.contains("iyekogba") || lower.contains("iyekogba road") -> Pair(6.3420, 5.6080)
+        lower.contains("evboekhae") || lower.contains("evboekhae road") -> Pair(6.3380, 5.6020)
+        lower.contains("ogida") || lower.contains("ogida quarter") -> Pair(6.3280, 5.5980)
+        lower.contains("benin") || lower.contains("benin city") -> Pair(6.3350, 5.6037)
+        lower.contains("edo") -> Pair(6.3400, 5.6100)
         else -> {
             val hash = Math.abs(address.hashCode())
-            val lat = 6.4281 + ((hash % 150) / 1000.0)
-            val lng = 3.4219 + (((hash / 150) % 150) / 1000.0)
+            val lat = 6.3350 + ((hash % 150) / 1000.0)
+            val lng = 5.6037 + (((hash / 150) % 150) / 1000.0)
             Pair(lat, lng)
         }
     }

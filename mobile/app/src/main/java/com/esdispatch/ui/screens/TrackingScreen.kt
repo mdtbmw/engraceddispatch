@@ -403,8 +403,8 @@ fun ActiveTrackingScreen(
     }
     LaunchedEffect(parcel.id) {
         val validationResult = Zod.string(parcel.id)
-            .min(7, "Tracking ID must be at least 7 characters.")
-            .max(12, "Tracking ID must not exceed 12 characters.")
+            .min(4, "Tracking ID must be at least 4 characters.")
+            .max(36, "Tracking ID must not exceed 36 characters.")
             .regex("^[a-zA-Z0-9\\s-]+$", "Only letters, numbers, and hyphens allowed.")
             .safeParse()
 
@@ -1451,20 +1451,34 @@ fun ActiveTrackingScreen(
                                                             )
                                                         }
                                                         
-                                                        // Realistic status timestamp
-                                                        val timestampText = when (index) {
-                                                            0 -> "12:30 PM"
-                                                            1 -> "12:45 PM"
-                                                            2 -> if (parcel.progress >= 0.8f) "1:05 PM" else "--:--"
-                                                            3 -> if (parcel.progress >= 1.0f) "1:15 PM" else "--:--"
-                                                            else -> ""
-                                                        }
-                                                        Text(
-                                                            text = timestampText,
-                                                            fontSize = 10.sp,
-                                                            color = TextGray,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
+                                                        // Realistic dynamic status timestamp
+                                                         val baseTime = remember(parcel.id, parcel.dateString) {
+                                                             val hash = kotlin.math.abs(parcel.id.hashCode())
+                                                             val hour = (hash % 12).coerceAtLeast(1)
+                                                             val min = (hash % 50)
+                                                             Pair(hour, min)
+                                                         }
+                                                         val timestampText = when (index) {
+                                                             0 -> String.format(java.util.Locale.US, "%d:%02d AM", baseTime.first, baseTime.second)
+                                                             1 -> if (parcel.progress >= 0.25f || parcel.status != ParcelStatus.PENDING) {
+                                                                 String.format(java.util.Locale.US, "%d:%02d AM", baseTime.first, (baseTime.second + 15) % 60)
+                                                             } else "--:--"
+                                                             2 -> if (parcel.progress >= 0.6f || parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.DELIVERED) {
+                                                                 val transitHour = if (baseTime.second + 35 >= 60) (baseTime.first % 12) + 1 else baseTime.first
+                                                                 String.format(java.util.Locale.US, "%d:%02d PM", transitHour, (baseTime.second + 35) % 60)
+                                                             } else "--:--"
+                                                             3 -> if (parcel.progress >= 1.0f || parcel.status == ParcelStatus.DELIVERED) {
+                                                                 val delivHour = if (baseTime.second + 55 >= 60) (baseTime.first % 12) + 1 else baseTime.first
+                                                                 String.format(java.util.Locale.US, "%d:%02d PM", delivHour, (baseTime.second + 55) % 60)
+                                                             } else "--:--"
+                                                             else -> ""
+                                                         }
+                                                         Text(
+                                                             text = timestampText,
+                                                             fontSize = 10.sp,
+                                                             color = TextGray,
+                                                             fontWeight = FontWeight.Bold
+                                                         )
                                                     }
                                                 }
                                             }
@@ -1513,8 +1527,8 @@ fun ActiveTrackingScreen(
                                                  Button(
                                                      onClick = {
                                                          val validationResult = Zod.string(inlineSearchQuery)
-                                                             .min(7, "Tracking ID must be at least 7 characters.")
-                                                             .max(12, "Tracking ID must not exceed 12 characters.")
+                                                             .min(4, "Tracking ID must be at least 4 characters.")
+                                                             .max(36, "Tracking ID must not exceed 36 characters.")
                                                              .regex("^[a-zA-Z0-9\\s-]+$", "Only letters, numbers, and hyphens allowed.")
                                                              .safeParse()
 

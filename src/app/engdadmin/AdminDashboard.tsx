@@ -30,9 +30,10 @@ function useOnlineStatus() {
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment } from "firebase/firestore";
-import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power } from "lucide-react";
+import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
+import { SoundEngine } from "@/lib/interaction/SoundEngine";
 type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking" | "support";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
 interface Delivery { id: string; status: string; category?: string; receiverName: string; deliveryAddress: string; senderName: string; senderPhone: string; receiverPhone: string; price: number; riderId: string; courierName: string; courierPhone: string; courierLatitude?: number; courierLongitude?: number; itemName: string; pickupAddress: string; quantity: number; weight: number; dateString: string; tipAmount: number; userId: string; otpCode: string; riderBikeNumber?: string; pickupLat?: number; pickupLng?: number; deliveryLat?: number; deliveryLng?: number; driverId?: string; driverName?: string; }
@@ -375,7 +376,8 @@ async function seedMarketplace(db: any, addLog: any, addToast: any, createNotifi
   }
 }
 
-function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, seedUsers, seedDeliveries, seedBanners, seedPromos, seedReferrals, seedAppContent, seeding, setTab, marketplaceEnabled, toggleMarketplace }: any) {
+function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, seedUsers, seedDeliveries, seedBanners, seedPromos, seedReferrals, seedAppContent, seeding, setTab, setShipmentsFilterPrefill, marketplaceEnabled, toggleMarketplace }: any) {
+  const [showSeedUtils, setShowSeedUtils] = useState(false);
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = (d: any) => {
     if (!d.dateString) return true;
@@ -512,7 +514,14 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                   <div className="mt-auto z-10">
                     <div className={"flex justify-between items-end font-extrabold text-[10px] mb-1.5 " + tc}>
                       <span>Active</span>
-                      <span>{a.progress}/{a.total} in transit</span>
+                      <div className="flex items-center gap-1.5">
+                        <span>{a.progress}/{a.total} in transit</span>
+                        {a.pending > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-black text-[9px] font-black animate-pulse">
+                            {a.pending} unassigned
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className={"w-full h-1.5 rounded-full mb-3 " + p}>
                       <div className={"h-full rounded-full " + pf} style={{ width: pct + "%" }}></div>
@@ -586,7 +595,11 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                   <div className="text-right shrink-0">
                     <div className="font-black text-xs text-[#111] dark:text-white">₦{(d.price || 0).toLocaleString()}</div>
                     <button 
-                      onClick={() => { setInspectingCategory(null); setTab("shipments"); }} 
+                      onClick={() => { 
+                        setInspectingCategory(null); 
+                        if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id });
+                        setTab("shipments"); 
+                      }} 
                       className="mt-1.5 px-3 py-1 bg-[#111] dark:bg-white text-white dark:text-[#111] text-[10px] font-bold rounded-lg hover:opacity-80 transition-all"
                     >
                       Manage
@@ -597,7 +610,14 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
             </div>
             <div className="pt-2 border-t border-black/10 dark:border-white/10 flex justify-between items-center text-xs shrink-0">
               <span className="text-black/50 dark:text-white/50 text-[11px] font-medium">Click manage to view tracking, OTP, and driver re-assignment</span>
-              <button onClick={() => { setInspectingCategory(null); setTab("shipments"); }} className="px-4 py-2 bg-[#FFC542] text-[#111] font-black text-xs rounded-xl hover:bg-[#FFC542]/90 transition-all">
+              <button 
+                onClick={() => { 
+                  setInspectingCategory(null); 
+                  if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ category: inspectingCategory.tag });
+                  setTab("shipments"); 
+                }} 
+                className="px-4 py-2 bg-[#FFC542] text-[#111] font-black text-xs rounded-xl hover:bg-[#FFC542]/90 transition-all"
+              >
                 Open All in Shipments Tab →
               </button>
             </div>
@@ -658,13 +678,27 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
           <button onClick={() => setTab("shipments")} className="w-full bg-[#FFC542] text-[#111] py-4 rounded-[18px] text-[15px] font-extrabold shadow-md hover:bg-[#FFC542]/90 transition-all mt-4">Assign riders</button>
         </div>
       </section>
-      <div className="flex flex-wrap gap-3">
-        <QuickBtn label="Seed Users" desc="Create sample users" onClick={seedUsers} loading={seeding === "users"} />
-        <QuickBtn label="Seed Deliveries" desc="Create sample shipments" onClick={seedDeliveries} loading={seeding === "deliveries"} />
-        <QuickBtn label="Seed Banners" desc="Create 3 sample hero slides" onClick={seedBanners} loading={seeding === "banners"} />
-        <QuickBtn label="Seed Promos" desc="Create 3 sample promotions" onClick={seedPromos} loading={seeding === "promos"} />
-        <QuickBtn label="Seed Referrals" desc="Create sample referral records" onClick={seedReferrals} loading={seeding === "referrals"} />
-        <QuickBtn label="Seed App Content" desc="Set default dashboard card content" onClick={seedAppContent} loading={seeding === "appcontent"} />
+      {/* Developer & Demo Seed Utilities (Collapsible Accordion) */}
+      <div className="border border-black/10 dark:border-white/10 rounded-2xl bg-white dark:bg-[#1a1a1a] p-4 transition-all shadow-xs">
+        <button 
+          onClick={() => setShowSeedUtils(!showSeedUtils)} 
+          className="w-full flex items-center justify-between text-xs font-black text-black/50 dark:text-white/50 hover:text-[#FFC542] transition-colors"
+        >
+          <span className="flex items-center gap-2">
+            <Wrench className="w-4 h-4 text-[#FFC542]" /> Developer & Demo Seed Utilities
+          </span>
+          <span className="text-[10px] uppercase tracking-wider">{showSeedUtils ? "Collapse ▲" : "Expand ▼"}</span>
+        </button>
+        {showSeedUtils && (
+          <div className="flex flex-wrap gap-3 mt-4 pt-3 border-t border-black/5 dark:border-white/5 animate-fade-in">
+            <QuickBtn label="Seed Users" desc="Create sample users" onClick={seedUsers} loading={seeding === "users"} />
+            <QuickBtn label="Seed Deliveries" desc="Create sample shipments" onClick={seedDeliveries} loading={seeding === "deliveries"} />
+            <QuickBtn label="Seed Banners" desc="Create 3 sample hero slides" onClick={seedBanners} loading={seeding === "banners"} />
+            <QuickBtn label="Seed Promos" desc="Create 3 sample promotions" onClick={seedPromos} loading={seeding === "promos"} />
+            <QuickBtn label="Seed Referrals" desc="Create sample referral records" onClick={seedReferrals} loading={seeding === "referrals"} />
+            <QuickBtn label="Seed App Content" desc="Set default dashboard card content" onClick={seedAppContent} loading={seeding === "appcontent"} />
+          </div>
+        )}
       </div>
     </div>;
   }
@@ -678,7 +712,7 @@ interface SidebarProps {
   setTab: (v: TabId) => void;
   mobileSidebar: boolean;
   setMobileSidebar: (v: boolean) => void;
-  navItems: { id: TabId; label: string; icon: React.ReactNode }[];
+  navItems: { id: TabId; label: string; icon: React.ReactNode; badge?: number }[];
 }
 
 function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSidebar, navItems }: SidebarProps) {
@@ -697,9 +731,25 @@ function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSid
       <nav className="flex flex-col gap-1 w-full px-3 flex-1 overflow-y-auto pb-4">
         {navItems.map(n => (
           <button key={n.id} onClick={() => { setTab(n.id); setMobileSidebar(false); }}
-            className={"flex items-center gap-3 p-3 rounded-3xl transition-all " + (tab === n.id ? "bg-[#FFC542] text-[#111] shadow-lg" : "text-white/50 hover:text-white hover:bg-white/5")}>
-            <span className="shrink-0">{n.icon}</span>
-            {sidebar && <span className="text-xs font-bold whitespace-nowrap">{n.label}</span>}
+            className={"flex items-center gap-3 p-3 rounded-3xl transition-all relative " + (tab === n.id ? "bg-[#FFC542] text-[#111] shadow-lg" : "text-white/50 hover:text-white hover:bg-white/5")}>
+            <span className="shrink-0 relative">
+              {n.icon}
+              {!sidebar && n.badge !== undefined && n.badge > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#FFC542] text-[#111] text-[9px] font-black flex items-center justify-center">
+                  {n.badge > 99 ? "99+" : n.badge}
+                </span>
+              )}
+            </span>
+            {sidebar && (
+              <div className="flex items-center justify-between flex-1 min-w-0">
+                <span className="text-xs font-bold whitespace-nowrap">{n.label}</span>
+                {n.badge !== undefined && n.badge > 0 && (
+                  <span className={"px-2 py-0.5 rounded-full text-[10px] font-black " + (tab === n.id ? "bg-[#111] text-[#FFC542]" : "bg-[#FFC542] text-[#111]")}>
+                    {n.badge > 99 ? "99+" : n.badge}
+                  </span>
+                )}
+              </div>
+            )}
           </button>
         ))}
       </nav>
@@ -809,6 +859,16 @@ function AdminDashboardPage() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [showNotifs, setShowNotifs] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const isFirstDeliveriesLoad = useRef(true);
+  const [newOrderAlert, setNewOrderAlert] = useState<{
+    id: string;
+    itemName: string;
+    receiverName: string;
+    deliveryAddress: string;
+    category: string;
+    price: number;
+  } | null>(null);
+  const [shipmentsFilterPrefill, setShipmentsFilterPrefill] = useState<{ status?: string; category?: string; search?: string } | null>(null);
 
   const addToast = useCallback((type: Toast["type"], message: string) => {
     const id = Date.now() + Math.random();
@@ -947,6 +1007,33 @@ function AdminDashboardPage() {
       setUsers(list); setConnected(true); setRefreshT(new Date().toLocaleTimeString());
     }, () => setConnected(false)));
     unsubs.push(onSnapshot(collection(db, "deliveries"), snap => {
+      if (!isFirstDeliveriesLoad.current) {
+        snap.docChanges().forEach(change => {
+          if (change.type === "added") {
+            const data = change.doc.data();
+            const status = data.status || "PENDING";
+            if (status === "PENDING") {
+              try {
+                SoundEngine.playCue("dispatch_broadcast");
+              } catch (e) {
+                console.error("Audio chime error:", e);
+              }
+              const newOrder = {
+                id: change.doc.id,
+                itemName: data.itemName || "Consignment",
+                receiverName: data.receiverName || "Customer",
+                deliveryAddress: data.deliveryAddress || "Benin City",
+                category: data.category || "General",
+                price: data.price || 0,
+              };
+              setNewOrderAlert(newOrder);
+              addToast("info", `🔔 New order incoming: ${newOrder.itemName} for ${newOrder.receiverName}!`);
+            }
+          }
+        });
+      } else {
+        isFirstDeliveriesLoad.current = false;
+      }
       const list: Delivery[] = [];
       snap.forEach(d => { const x = d.data(); list.push({
         id: d.id, status: x.status || "PENDING", receiverName: x.receiverName || "",
@@ -1226,10 +1313,10 @@ function AdminDashboardPage() {
     };
   });
 
-  const allNavItems: { id: TabId; label: string; icon: React.ReactNode; roles: string[] }[] = [
+  const allNavItems: { id: TabId; label: string; icon: React.ReactNode; roles: string[]; badge?: number }[] = [
     { id: "dashboard", label: "Dashboard", icon: <Folder size={22} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "marketplace", label: "Marketplace & Stores", icon: <ShoppingBag size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
-    { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
+    { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"], badge: pendingDeliveries.length > 0 ? pendingDeliveries.length : undefined },
     { id: "tracking", label: "Live Tracking", icon: <MapPin size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "users", label: "Users", icon: <Users size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "banners", label: "Hero Slides", icon: <ImageIcon size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
@@ -1720,7 +1807,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
     </div>;
   }
 
-function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string; db: any; addLog: any }) {
+function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, filterPrefill, setFilterPrefill }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string; db: any; addLog: any; addToast?: (type: Toast["type"], message: string) => void; filterPrefill?: { status?: string; category?: string; search?: string } | null; setFilterPrefill?: (v: any) => void }) {
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("ALL");
     const [categoryFilter, setCategoryFilter] = useState("ALL");
@@ -1731,9 +1818,41 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
     const [assignModal, setAssignModal] = useState<{ delivery: Delivery; show: boolean }>({ delivery: null as any, show: false });
     const [detailsModal, setDetailsModal] = useState<{ delivery: Delivery; show: boolean }>({ delivery: null as any, show: false });
     const [waybillModal, setWaybillModal] = useState<{ delivery: Delivery; show: boolean }>({ delivery: null as any, show: false });
-    const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
+    const [reassignModal, setReassignModal] = useState<{ delivery: Delivery; show: boolean }>({ delivery: null as any, show: false });
+    const [confirmStatusModal, setConfirmStatusModal] = useState<{ delivery: Delivery; newStatus: string; show: boolean }>({ delivery: null as any, newStatus: "", show: false });
+    const [confirmBulkModal, setConfirmBulkModal] = useState<{ show: boolean }>({ show: false });
+    const [bulkAssignModal, setBulkAssignModal] = useState(false);
+    const [riderSearch, setRiderSearch] = useState("");
+    const [riderOnlineOnly, setRiderOnlineOnly] = useState(false);
+    const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
     const [creating, setCreating] = useState(false);
     const perPage = 15;
+
+    useEffect(() => {
+      if (filterPrefill) {
+        if (filterPrefill.status) setStatusFilter(filterPrefill.status);
+        if (filterPrefill.category) setCategoryFilter(filterPrefill.category);
+        if (filterPrefill.search) setSearch(filterPrefill.search);
+        if (setFilterPrefill) setFilterPrefill(null);
+      }
+    }, [filterPrefill, setFilterPrefill]);
+
+    const getRiderActiveLoad = (riderId: string) => {
+      return deliveries.filter(d => (d.riderId === riderId || d.driverId === riderId) && ["ASSIGNED", "TRANSIT", "OUT_FOR_DELIVERY"].includes(d.status)).length;
+    };
+
+    const filteredDrivers = drivers.filter(r => {
+      if (riderOnlineOnly && !r.isOnline) return false;
+      if (!riderSearch.trim()) return true;
+      const q = riderSearch.toLowerCase();
+      return (
+        (r.name || "").toLowerCase().includes(q) ||
+        (r.phone || "").toLowerCase().includes(q) ||
+        (r.bikeNumber || "").toLowerCase().includes(q)
+      );
+    });
+
+    const categories = ["ALL", "Express", "Standard", "Economy", "Batch", "Multi-Stop"];
 
     const filtered = deliveries.filter(d => {
       const q = (searchQuery || search).toLowerCase();
@@ -1747,37 +1866,78 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
     const paged = filtered.slice(page * perPage, (page + 1) * perPage);
     useEffect(() => { setPage(0); }, [search, searchQuery, statusFilter, categoryFilter]);
 
+    const isValidStatusTransition = (current: string, next: string): boolean => {
+      if (next === "CANCELLED") return true;
+      const allowed: Record<string, string[]> = {
+        PENDING: ["ASSIGNED", "CANCELLED"],
+        ASSIGNED: ["TRANSIT", "CANCELLED"],
+        TRANSIT: ["OUT_FOR_DELIVERY", "CANCELLED"],
+        OUT_FOR_DELIVERY: ["DELIVERED", "CANCELLED"],
+        DELIVERED: [],
+        CANCELLED: []
+      };
+      return allowed[current]?.includes(next) || false;
+    };
+
+    const requiresRider = (status: string): boolean => {
+      return ["ASSIGNED", "TRANSIT", "OUT_FOR_DELIVERY"].includes(status);
+    };
+
     const updateStatus = async (id: string, s: string) => {
-      await updateDoc(doc(db, "deliveries", id), { status: s, updatedAt: Timestamp.now() });
-      addLog("Status", idShort(id) + " -> " + s);
       const del = deliveries.find(d => d.id === id);
-      if (del && del.userId) {
-        try {
-          const statusMessages: Record<string, string> = {
-            ASSIGNED: `${del.courierName || "A rider"} has been assigned to your shipment.`,
-            PICKED_UP: `Your package has been picked up by ${del.courierName || "courier"}.`,
-            TRANSIT: "Your shipment is in transit and on the way to the delivery address.",
-            OUT_FOR_DELIVERY: `Your rider ${del.courierName || ""} is out for final delivery handover.`,
-            ARRIVED: `Your rider ${del.courierName || ""} has arrived at the destination!`,
-            DELIVERED: "Your package has been safely delivered. Thank you for choosing ESDispatch!",
-            CANCELLED: "Your shipment order has been cancelled."
-          };
-          if (statusMessages[s]) {
-            const notifRef = doc(collection(db, "users", del.userId, "notifications"));
-            await setDoc(notifRef, {
-              id: notifRef.id,
-              title: s === "DELIVERED" ? "Package Delivered 🎉" : `Shipment ${s.replace(/_/g, " ")}`,
-              message: statusMessages[s],
-              time: "Just now",
-              isRead: false,
-              parcelId: id,
-              createdAt: Timestamp.now()
-            });
-          }
-        } catch (e) {
-          console.error("Failed to post status notification:", e);
-        }
+      if (!del) return;
+
+      if (!isValidStatusTransition(del.status, s)) {
+        alert(`Cannot change status from ${del.status} to ${s}. Invalid transition.`);
+        return;
       }
+
+      if (requiresRider(s) && !del.riderId && !del.driverId) {
+        alert(`Cannot set status to ${s} without assigning a rider first.`);
+        return;
+      }
+
+      setConfirmStatusModal({ delivery: del, newStatus: s, show: true });
+    };
+
+    const confirmUpdateStatus = async () => {
+      const { delivery, newStatus } = confirmStatusModal;
+      if (!delivery || !newStatus) return;
+
+      try {
+        await updateDoc(doc(db, "deliveries", delivery.id), { status: newStatus, updatedAt: Timestamp.now() });
+        addLog("Status", idShort(delivery.id) + " -> " + newStatus);
+        const del = deliveries.find(d => d.id === delivery.id);
+        if (del && del.userId) {
+          try {
+            const statusMessages: Record<string, string> = {
+              ASSIGNED: `${del.courierName || "A rider"} has been assigned to your shipment.`,
+              TRANSIT: "Your shipment is in transit and on the way to the delivery address.",
+              OUT_FOR_DELIVERY: `Your rider ${del.courierName || ""} is out for final delivery handover.`,
+              DELIVERED: "Your package has been safely delivered. Thank you for choosing ESDispatch!",
+              CANCELLED: "Your shipment order has been cancelled."
+            };
+            if (statusMessages[newStatus]) {
+              const notifRef = doc(collection(db, "users", del.userId, "notifications"));
+              await setDoc(notifRef, {
+                id: notifRef.id,
+                title: newStatus === "DELIVERED" ? "Package Delivered" : `Shipment ${newStatus.replace(/_/g, " ")}`,
+                message: statusMessages[newStatus],
+                time: "Just now",
+                isRead: false,
+                parcelId: delivery.id,
+                createdAt: Timestamp.now()
+              });
+            }
+          } catch (e) {
+            console.error("Failed to post status notification:", e);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to update status:", e);
+        alert("Failed to update status. Please try again.");
+      }
+      setConfirmStatusModal({ delivery: null as any, newStatus: "", show: false });
     };
 
     const assignRider = async (deliveryId: string, rider: UserProfile) => {
@@ -1809,7 +1969,67 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
       setAssignModal({ delivery: null as any, show: false });
     };
 
+    const reassignRider = async (deliveryId: string, rider: UserProfile) => {
+      await updateDoc(doc(db, "deliveries", deliveryId), {
+        riderId: rider.id, driverId: rider.id, driverName: rider.name,
+        courierName: rider.name, courierPhone: rider.phone, riderBikeNumber: rider.bikeNumber || "",
+        updatedAt: Timestamp.now()
+      });
+      addLog("Reassign Rider", `${rider.name} → ${idShort(deliveryId)}`);
+
+      const targetUserId = reassignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
+      if (targetUserId) {
+        try {
+          const notifRef = doc(collection(db, "users", targetUserId, "notifications"));
+          await setDoc(notifRef, {
+            id: notifRef.id,
+            title: "Rider Reassigned",
+            message: `${rider.name} (${rider.phone || "Active Courier"}) has been reassigned to your shipment #${idShort(deliveryId)}.`,
+            time: "Just now",
+            isRead: false,
+            parcelId: deliveryId,
+            createdAt: Timestamp.now()
+          });
+        } catch (err) {
+          console.error("Failed to notify customer of reassigned rider:", err);
+        }
+      }
+
+      setReassignModal({ delivery: null as any, show: false });
+    };
+
     const bulkUpdate = async () => {
+      if (!bulkStatus || selected.size === 0) return;
+
+      const invalidTransitions: string[] = [];
+      const missingRiders: string[] = [];
+
+      selected.forEach(id => {
+        const del = deliveries.find(d => d.id === id);
+        if (del) {
+          if (!isValidStatusTransition(del.status, bulkStatus)) {
+            invalidTransitions.push(`${idShort(id)} (${del.status} → ${bulkStatus})`);
+          }
+          if (requiresRider(bulkStatus) && !del.riderId && !del.driverId) {
+            missingRiders.push(idShort(id));
+          }
+        }
+      });
+
+      if (invalidTransitions.length > 0) {
+        alert(`Invalid transitions for ${invalidTransitions.length} shipment(s):\n${invalidTransitions.slice(0, 5).join("\n")}${invalidTransitions.length > 5 ? "\n..." : ""}`);
+        return;
+      }
+
+      if (missingRiders.length > 0) {
+        alert(`${missingRiders.length} shipment(s) have no rider assigned. Cannot set to ${bulkStatus}.\n${missingRiders.slice(0, 5).join(", ")}${missingRiders.length > 5 ? "..." : ""}`);
+        return;
+      }
+
+      setConfirmBulkModal({ show: true });
+    };
+
+    const confirmBulkUpdate = async () => {
       if (!bulkStatus || selected.size === 0) return;
       const batch = writeBatch(db);
       selected.forEach(id => {
@@ -1819,7 +2039,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
           const notifRef = doc(collection(db, "users", del.userId, "notifications"));
           batch.set(notifRef, {
             id: notifRef.id,
-            title: bulkStatus === "DELIVERED" ? "Package Delivered 🎉" : `Shipment ${bulkStatus.replace(/_/g, " ")}`,
+            title: bulkStatus === "DELIVERED" ? "Package Delivered" : `Shipment ${bulkStatus.replace(/_/g, " ")}`,
             message: `Shipment #${idShort(id)} status updated to ${bulkStatus.replace(/_/g, " ")}.`,
             time: "Just now",
             isRead: false,
@@ -1832,16 +2052,81 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
       addLog("Bulk", selected.size + " deliveries -> " + bulkStatus);
       setBulkStatus("");
       setSelected(new Set());
+      setConfirmBulkModal({ show: false });
+    };
+
+    const bulkAssignRider = async (rider: UserProfile) => {
+      if (selected.size === 0) return;
+      const batch = writeBatch(db);
+      selected.forEach(id => {
+        batch.update(doc(db, "deliveries", id), {
+          riderId: rider.id,
+          driverId: rider.id,
+          driverName: rider.name,
+          courierName: rider.name,
+          courierPhone: rider.phone || "",
+          riderBikeNumber: rider.bikeNumber || "",
+          status: "ASSIGNED",
+          updatedAt: Timestamp.now()
+        });
+        const del = deliveries.find(d => d.id === id);
+        if (del && del.userId) {
+          const notifRef = doc(collection(db, "users", del.userId, "notifications"));
+          batch.set(notifRef, {
+            id: notifRef.id,
+            title: "Rider Assigned!",
+            message: `${rider.name} (${rider.phone || "Active Courier"}) has been assigned to your shipment #${idShort(id)}.`,
+            time: "Just now",
+            isRead: false,
+            parcelId: id,
+            createdAt: Timestamp.now()
+          });
+        }
+      });
+      await batch.commit();
+      addLog("Bulk Assign", `${rider.name} assigned to ${selected.size} shipments`);
+      if (addToast) addToast("success", `Assigned ${selected.size} shipments to ${rider.name}`);
+      setSelected(new Set());
+      setBulkAssignModal(false);
     };
 
     const createDelivery = async () => {
+      if (!newForm.receiverName.trim() || !newForm.deliveryAddress.trim() || !newForm.senderName.trim() || !newForm.pickupAddress.trim()) {
+        alert("Please provide Sender Name, Pickup Address, Receiver Name, and Delivery Address.");
+        return;
+      }
       setCreating(true);
       try {
-        const ref = await addDoc(collection(db, "deliveries"), { ...newForm, quantity: Number(newForm.quantity), weight: Number(newForm.weight), price: Number(newForm.price), tipAmount: 0, userId: "", courierName: "", courierPhone: "", otpCode: Math.floor(1000 + Math.random() * 9000).toString(), dateString: new Date().toISOString().slice(0, 10), createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+        const otp = Math.floor(1000 + Math.random() * 9000).toString();
+        const selectedDriver = drivers.find(d => d.id === newForm.riderId);
+        const ref = await addDoc(collection(db, "deliveries"), {
+          ...newForm,
+          id: "",
+          quantity: Number(newForm.quantity) || 1,
+          weight: Number(newForm.weight) || 1,
+          price: Number(newForm.price) || 1500,
+          tipAmount: 0,
+          userId: "",
+          courierName: selectedDriver ? selectedDriver.name : (newForm.driverName || "Unassigned"),
+          courierPhone: selectedDriver ? (selectedDriver.phone || "") : "",
+          riderBikeNumber: selectedDriver ? (selectedDriver.bikeNumber || "") : "",
+          driverId: selectedDriver ? selectedDriver.id : "",
+          riderId: selectedDriver ? selectedDriver.id : "",
+          status: selectedDriver ? "ASSIGNED" : "PENDING",
+          otpCode: otp,
+          dateString: new Date().toISOString().slice(0, 10),
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        });
+        await updateDoc(ref, { id: ref.id });
         addLog("Create Delivery", ref.id + " — " + newForm.itemName);
+        if (addToast) addToast("success", `Created new shipment #${idShort(ref.id)} (${newForm.itemName || "Parcel"})`);
         setShowNew(false);
-        setNewForm({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1000, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
-      } catch (e: any) { addLog("Error", "Create delivery failed"); }
+        setNewForm({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
+      } catch (e: any) { 
+        addLog("Error", "Create delivery failed: " + (e?.message || "Unknown error"));
+        if (addToast) addToast("error", "Failed to create delivery: " + (e?.message || "Unknown error"));
+      }
       setCreating(false);
     };
 
@@ -1923,7 +2208,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
           </div>
 
           {/* Status Pills Bar */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-t border-black/5 dark:border-white/5 pt-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-black/5 dark:border-white/5 mb-3">
             {statuses.map(s => (
               <button
                 key={s}
@@ -1931,6 +2216,19 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                 className={"px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer " + (statusFilter === s ? "bg-[#111] text-white dark:bg-white dark:text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-[#333]")}
               >
                 {s === "ALL" ? "All Shipments" : s.replace(/_/g, " ")}
+              </button>
+            ))}
+          </div>
+
+          {/* Category Filter Bar */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {categories.map(c => (
+              <button
+                key={c}
+                onClick={() => setCategoryFilter(c)}
+                className={"px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer " + (categoryFilter === c ? "bg-[#FFC542] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-[#333]")}
+              >
+                {c === "ALL" ? "All Categories" : c}
               </button>
             ))}
           </div>
@@ -1957,6 +2255,12 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                   className="w-36"
                 />
                 <SaveBtn onClick={bulkUpdate} label="Apply" />
+                <button
+                  onClick={() => setBulkAssignModal(true)}
+                  className="px-3 py-1.5 min-h-[34px] bg-[#111] dark:bg-white text-white dark:text-[#111] rounded-xl text-xs font-black hover:opacity-90 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <UserPlus size={13} /> Assign Rider
+                </button>
                 <button onClick={() => setSelected(new Set())} className="text-xs font-bold text-black/50 dark:text-white/50 hover:text-red-500 px-2 py-1">Cancel</button>
               </div>
             </div>
@@ -2031,13 +2335,29 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                           >
                             <UserPlus size={12} /> Assign Rider
                           </button>
-                        ) : (
+                        ) : (d.status !== "DELIVERED" && d.status !== "CANCELLED") ? (
                           <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-[10px] font-black text-[#111] dark:text-white shrink-0">
                               {(d.courierName || d.driverName || "?").charAt(0)}
                             </div>
                             <div>
                               <p className="text-[11px] font-bold text-[#111] dark:text-white truncate max-w-[100px]">{d.courierName || d.driverName || "Assigned"}</p>
+                              {d.courierPhone && <p className="text-[9px] text-black/40 dark:text-white/40">{d.courierPhone}</p>}
+                              <button
+                                onClick={() => setReassignModal({ delivery: d, show: true })}
+                                className="text-[9px] font-bold text-[#FFC542] hover:underline mt-0.5"
+                              >
+                                Reassign
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-[10px] font-black text-[#111] dark:text-white shrink-0">
+                              {(d.courierName || d.driverName || "?").charAt(0)}
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-bold text-[#111] dark:text-white truncate max-w-[100px]">{d.courierName || d.driverName || "—"}</p>
                               {d.courierPhone && <p className="text-[9px] text-black/40 dark:text-white/40">{d.courierPhone}</p>}
                             </div>
                           </div>
@@ -2050,11 +2370,11 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                           compact
                           options={[
                             { value: "PENDING", label: "PENDING" },
-                            { value: "ASSIGNED", label: "ASSIGNED" },
-                            { value: "TRANSIT", label: "TRANSIT" },
-                            { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" },
-                            { value: "DELIVERED", label: "DELIVERED" },
-                            { value: "CANCELLED", label: "CANCELLED" }
+                            ...(d.status === "PENDING" ? [{ value: "ASSIGNED", label: "ASSIGNED" }] : []),
+                            ...(d.status === "ASSIGNED" ? [{ value: "TRANSIT", label: "TRANSIT" }] : []),
+                            ...(d.status === "TRANSIT" ? [{ value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" }] : []),
+                            ...(d.status === "OUT_FOR_DELIVERY" ? [{ value: "DELIVERED", label: "DELIVERED" }] : []),
+                            ...((d.status !== "DELIVERED" && d.status !== "CANCELLED") ? [{ value: "CANCELLED", label: "CANCELLED" }] : [])
                           ]}
                           renderOption={(o) => <span className={"px-2.5 py-1 rounded-xl text-[10px] font-extrabold shadow-2xs " + sStyle(o.value)}>{o.label}</span>}
                         />
@@ -2148,20 +2468,45 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
                   </div>
                 </div>
 
+                <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl">
+                  <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase mb-2">Parcel Details</p>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div><span className="text-black/40 dark:text-white/40">Item:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.itemName || "—"}</span></div>
+                    <div><span className="text-black/40 dark:text-white/40">Category:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.category || "Standard"}</span></div>
+                    <div><span className="text-black/40 dark:text-white/40">Weight:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.weight || 1} kg</span></div>
+                    <div><span className="text-black/40 dark:text-white/40">Quantity:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.quantity || 1}</span></div>
+                    <div><span className="text-black/40 dark:text-white/40">Price:</span> <span className="font-bold text-[#111] dark:text-white">{fmt(detailsModal.delivery.price || 0)}</span></div>
+                    {detailsModal.delivery.tipAmount > 0 && <div><span className="text-black/40 dark:text-white/40">Tip:</span> <span className="font-bold text-emerald-600">{fmt(detailsModal.delivery.tipAmount)}</span></div>}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl">
+                  <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase mb-2">OTP Code</p>
+                  <p className="font-mono font-black text-lg text-[#111] dark:text-white tracking-widest">{detailsModal.delivery.otpCode || "—"}</p>
+                </div>
+
                 <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between">
                   <div>
                     <p className="text-[10px] font-bold text-black/40 dark:text-white/40 uppercase">Assigned Rider</p>
                     <p className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.courierName || detailsModal.delivery.driverName || "Unassigned"}</p>
                     {detailsModal.delivery.courierPhone && <p className="text-black/60 dark:text-white/60">{detailsModal.delivery.courierPhone}</p>}
+                    {detailsModal.delivery.riderBikeNumber && <p className="text-[10px] text-black/40 dark:text-white/40">Bike: {detailsModal.delivery.riderBikeNumber}</p>}
                   </div>
-                  {detailsModal.delivery.status === "PENDING" && (
+                  {detailsModal.delivery.status === "PENDING" ? (
                     <button
                       onClick={() => { setDetailsModal({ delivery: null as any, show: false }); setAssignModal({ delivery: detailsModal.delivery, show: true }); }}
                       className="px-3 py-1.5 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black"
                     >
                       Assign
                     </button>
-                  )}
+                  ) : (detailsModal.delivery.status !== "DELIVERED" && detailsModal.delivery.status !== "CANCELLED") ? (
+                    <button
+                      onClick={() => { setDetailsModal({ delivery: null as any, show: false }); setReassignModal({ delivery: detailsModal.delivery, show: true }); }}
+                      className="px-3 py-1.5 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black"
+                    >
+                      Reassign
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -2267,33 +2612,470 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog }: { delive
           </div>
         )}
 
-        {/* Assign Rider Modal */}
-        {assignModal.show && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setAssignModal({ delivery: null as any, show: false })}>
-            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
-              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> Assign Rider</h3>
-              <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20 space-y-1">
-                <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-normal">#{idShort(assignModal.delivery.id)}</span></p>
-                <p className="text-[10px] text-black/40 dark:text-white/40">{assignModal.delivery.pickupAddress} → {assignModal.delivery.deliveryAddress}</p>
+        {/* New Delivery Creation Modal */}
+        {showNew && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setShowNew(false)}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-xl shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
+                <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
+                  <Plus className="w-5 h-5 text-[#FFC542]" /> Create New Shipment
+                </h3>
+                <button onClick={() => setShowNew(false)} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500">
+                  <X size={18} />
+                </button>
               </div>
 
-              <div className="max-h-60 overflow-y-auto space-y-2">
-                {drivers.length === 0 ? (
-                  <p className="text-xs text-black/40 dark:text-white/40 text-center py-4">No riders available.</p>
-                ) : (
-                  drivers.map(r => (
-                    <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFC542]/50 transition-all">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-[#FFC542] text-[#111] font-black flex items-center justify-center text-xs">{(r.name || "?").charAt(0)}</div>
-                        <div>
-                          <p className="text-xs font-bold text-[#111] dark:text-white">{r.name}</p>
-                          <p className="text-[10px] text-black/40 dark:text-white/40">{r.phone || r.email} {r.isOnline !== false ? "🟢 Online" : "⚪ Offline"}</p>
-                        </div>
-                      </div>
-                      <button onClick={() => assignRider(assignModal.delivery.id, r)} className="px-3 py-1.5 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black hover:bg-[#FFC542]/80">Assign</button>
+              <div className="space-y-4 text-xs">
+                {/* Consignment Item & Category */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-black/50 dark:text-white/50 mb-1 uppercase">Item Description / Name *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Legal Documents, Cake, Spare Part"
+                      value={newForm.itemName}
+                      onChange={e => setNewForm({ ...newForm, itemName: e.target.value })}
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40 outline-none"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-black/50 dark:text-white/50 mb-1 uppercase">Service Category *</label>
+                    <Select
+                      value={newForm.category}
+                      onChange={v => setNewForm({ ...newForm, category: v })}
+                      options={[
+                        { value: "Express", label: "Express Dispatch" },
+                        { value: "Standard", label: "Standard Delivery" },
+                        { value: "Economy", label: "Economy Parcel" },
+                        { value: "Batch", label: "Batch Logistics" },
+                        { value: "Multi-Stop", label: "Multi-Stop Routing" },
+                        { value: "Cold Chain", label: "Cold Chain Secure" }
+                      ]}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+
+                {/* Shipper / Sender Details */}
+                <div className="bg-gray-50 dark:bg-[#222] p-3.5 rounded-2xl border border-black/5 dark:border-white/5 space-y-2.5">
+                  <p className="text-[11px] font-black text-[#111] dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin size={13} className="text-[#FFC542]" /> Sender Information (Pickup)
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[9px] font-bold text-black/40 dark:text-white/40 mb-0.5">Sender Name *</label>
+                      <input
+                        type="text"
+                        placeholder="Sender Full Name"
+                        value={newForm.senderName}
+                        onChange={e => setNewForm({ ...newForm, senderName: e.target.value })}
+                        className="w-full bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white outline-none"
+                      />
                     </div>
-                  ))
+                    <div>
+                      <label className="block text-[9px] font-bold text-black/40 dark:text-white/40 mb-0.5">Sender Phone *</label>
+                      <input
+                        type="tel"
+                        placeholder="080XXXXXXXX"
+                        value={newForm.senderPhone}
+                        onChange={e => setNewForm({ ...newForm, senderPhone: e.target.value })}
+                        className="w-full bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-black/40 dark:text-white/40 mb-0.5">Pickup Address in Benin City *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 15 Airport Road, GRA, Benin City"
+                      value={newForm.pickupAddress}
+                      onChange={e => setNewForm({ ...newForm, pickupAddress: e.target.value })}
+                      className="w-full bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Consignee / Receiver Details */}
+                <div className="bg-gray-50 dark:bg-[#222] p-3.5 rounded-2xl border border-black/5 dark:border-white/5 space-y-2.5">
+                  <p className="text-[11px] font-black text-[#111] dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin size={13} className="text-emerald-500" /> Receiver Information (Destination)
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[9px] font-bold text-black/40 dark:text-white/40 mb-0.5">Receiver Name *</label>
+                      <input
+                        type="text"
+                        placeholder="Receiver Full Name"
+                        value={newForm.receiverName}
+                        onChange={e => setNewForm({ ...newForm, receiverName: e.target.value })}
+                        className="w-full bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-black/40 dark:text-white/40 mb-0.5">Receiver Phone *</label>
+                      <input
+                        type="tel"
+                        placeholder="080XXXXXXXX"
+                        value={newForm.receiverPhone}
+                        onChange={e => setNewForm({ ...newForm, receiverPhone: e.target.value })}
+                        className="w-full bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-black/40 dark:text-white/40 mb-0.5">Delivery Address in Benin City *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 84 Uselu Lagos Road, Benin City"
+                      value={newForm.deliveryAddress}
+                      onChange={e => setNewForm({ ...newForm, deliveryAddress: e.target.value })}
+                      className="w-full bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Specs: Weight, Quantity, Price, Driver */}
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[9px] font-bold text-black/40 dark:text-white/40 mb-0.5">Weight (kg)</label>
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={newForm.weight}
+                      onChange={e => setNewForm({ ...newForm, weight: Number(e.target.value) })}
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-black/40 dark:text-white/40 mb-0.5">Quantity</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={newForm.quantity}
+                      onChange={e => setNewForm({ ...newForm, quantity: Number(e.target.value) })}
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-black/40 dark:text-white/40 mb-0.5">Fare Price (₦) *</label>
+                    <input
+                      type="number"
+                      min="500"
+                      step="100"
+                      value={newForm.price}
+                      onChange={e => setNewForm({ ...newForm, price: Number(e.target.value) })}
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white outline-none font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Optional Immediate Rider Assignment */}
+                <div>
+                  <label className="block text-[10px] font-bold text-black/50 dark:text-white/50 mb-1 uppercase">Assign Fleet Rider (Optional)</label>
+                  <Select
+                    value={newForm.riderId}
+                    onChange={v => {
+                      const d = drivers.find(drv => drv.id === v);
+                      setNewForm({ ...newForm, riderId: v, driverId: v, driverName: d?.name || "" });
+                    }}
+                    options={[
+                      { value: "", label: "Leave Unassigned (Pending Broadcast)" },
+                      ...drivers.map(d => ({
+                        value: d.id,
+                        label: `${d.name} (${d.phone || "Active"} · ${getRiderActiveLoad(d.id)} active drops)`
+                      }))
+                    ]}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-black/10 dark:border-white/10">
+                <button
+                  onClick={() => setShowNew(false)}
+                  className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={createDelivery}
+                  disabled={creating}
+                  className="px-5 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  {creating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Create & Dispatch Booking
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Assign Rider Modal */}
+        {assignModal.show && assignModal.delivery && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => { setAssignModal({ delivery: null as any, show: false }); setRiderSearch(""); }}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
+                <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-5 h-5 text-[#FFC542]" /> Assign Rider</h3>
+                <button onClick={() => { setAssignModal({ delivery: null as any, show: false }); setRiderSearch(""); }} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500"><X size={18} /></button>
+              </div>
+
+              <div className="bg-[#FFC542]/10 rounded-2xl p-3.5 border border-[#FFC542]/30 space-y-1">
+                <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">#{idShort(assignModal.delivery.id)}</span></p>
+                <p className="text-[11px] text-black/60 dark:text-white/60">{assignModal.delivery.pickupAddress} → {assignModal.delivery.deliveryAddress}</p>
+                <p className="text-[10px] text-black/50 dark:text-white/50">Recipient: <b className="text-[#111] dark:text-white">{assignModal.delivery.receiverName}</b> ({assignModal.delivery.receiverPhone || "No phone"})</p>
+              </div>
+
+              {/* Rider Search & Online Filter */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-2.5 text-black/40 dark:text-white/40" />
+                  <input
+                    type="text"
+                    placeholder="Search rider name, phone, bike #..."
+                    value={riderSearch}
+                    onChange={e => setRiderSearch(e.target.value)}
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRiderOnlineOnly(!riderOnlineOnly)}
+                  className={"px-3 py-2 rounded-xl text-[11px] font-bold border transition-colors shrink-0 " + (riderOnlineOnly ? "bg-emerald-500 text-white border-emerald-600" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 border-black/10 dark:border-white/10")}
+                >
+                  Online Only
+                </button>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {filteredDrivers.length === 0 ? (
+                  <p className="text-xs text-black/40 dark:text-white/40 text-center py-6">No matching riders found.</p>
+                ) : (
+                  filteredDrivers.map(r => {
+                    const load = getRiderActiveLoad(r.id);
+                    const loadClass = load === 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : load <= 2 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30";
+                    const loadText = load === 0 ? "0 active (Free)" : load <= 2 ? `${load} active` : `${load} active (Busy)`;
+                    return (
+                      <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFC542]/50 transition-all gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-[#FFC542] text-[#111] font-black flex items-center justify-center text-xs shrink-0">
+                            {(r.name || "?").charAt(0)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
+                              <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline !== false ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline !== false ? "Online" : "Offline"} />
+                            </div>
+                            <p className="text-[10px] text-black/40 dark:text-white/40 truncate">
+                              {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
+                            </p>
+                            <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border mt-1 " + loadClass}>
+                              {loadText}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => { assignRider(assignModal.delivery.id, r); setRiderSearch(""); }}
+                          className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
+                        >
+                          Assign
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reassign Rider Modal */}
+        {reassignModal.show && reassignModal.delivery && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => { setReassignModal({ delivery: null as any, show: false }); setRiderSearch(""); }}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
+                <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> Reassign Rider</h3>
+                <button onClick={() => { setReassignModal({ delivery: null as any, show: false }); setRiderSearch(""); }} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500"><X size={18} /></button>
+              </div>
+
+              <div className="bg-[#FFC542]/10 rounded-2xl p-3.5 border border-[#FFC542]/30 space-y-1">
+                <p className="text-xs font-bold text-[#111] dark:text-white">{reassignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">#{idShort(reassignModal.delivery.id)}</span></p>
+                <p className="text-[10px] text-black/40 dark:text-white/40">Currently: <b className="text-[#111] dark:text-white">{reassignModal.delivery.courierName || "Unassigned"}</b></p>
+                <p className="text-[11px] text-black/60 dark:text-white/60">{reassignModal.delivery.pickupAddress} → {reassignModal.delivery.deliveryAddress}</p>
+              </div>
+
+              {/* Rider Search & Online Filter */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-2.5 text-black/40 dark:text-white/40" />
+                  <input
+                    type="text"
+                    placeholder="Search rider name, phone, bike #..."
+                    value={riderSearch}
+                    onChange={e => setRiderSearch(e.target.value)}
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRiderOnlineOnly(!riderOnlineOnly)}
+                  className={"px-3 py-2 rounded-xl text-[11px] font-bold border transition-colors shrink-0 " + (riderOnlineOnly ? "bg-emerald-500 text-white border-emerald-600" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 border-black/10 dark:border-white/10")}
+                >
+                  Online Only
+                </button>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {filteredDrivers.length === 0 ? (
+                  <p className="text-xs text-black/40 dark:text-white/40 text-center py-6">No matching riders found.</p>
+                ) : (
+                  filteredDrivers.map(r => {
+                    const load = getRiderActiveLoad(r.id);
+                    const loadClass = load === 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : load <= 2 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30";
+                    const loadText = load === 0 ? "0 active (Free)" : load <= 2 ? `${load} active` : `${load} active (Busy)`;
+                    return (
+                      <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFC542]/50 transition-all gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-[#FFC542] text-[#111] font-black flex items-center justify-center text-xs shrink-0">
+                            {(r.name || "?").charAt(0)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
+                              <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline !== false ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline !== false ? "Online" : "Offline"} />
+                            </div>
+                            <p className="text-[10px] text-black/40 dark:text-white/40 truncate">
+                              {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
+                            </p>
+                            <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border mt-1 " + loadClass}>
+                              {loadText}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => { reassignRider(reassignModal.delivery.id, r); setRiderSearch(""); }}
+                          className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
+                        >
+                          Reassign
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Assign Rider Modal */}
+        {bulkAssignModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => { setBulkAssignModal(false); setRiderSearch(""); }}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
+                <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-[#FFC542]" /> Bulk Assign {selected.size} Shipments
+                </h3>
+                <button onClick={() => { setBulkAssignModal(false); setRiderSearch(""); }} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500"><X size={18} /></button>
+              </div>
+
+              <p className="text-xs text-black/60 dark:text-white/60">
+                Select a fleet courier to assign all <b className="text-[#111] dark:text-white">{selected.size} selected shipments</b> to simultaneously:
+              </p>
+
+              {/* Rider Search & Online Filter */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-2.5 text-black/40 dark:text-white/40" />
+                  <input
+                    type="text"
+                    placeholder="Search rider name, phone, bike #..."
+                    value={riderSearch}
+                    onChange={e => setRiderSearch(e.target.value)}
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRiderOnlineOnly(!riderOnlineOnly)}
+                  className={"px-3 py-2 rounded-xl text-[11px] font-bold border transition-colors shrink-0 " + (riderOnlineOnly ? "bg-emerald-500 text-white border-emerald-600" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 border-black/10 dark:border-white/10")}
+                >
+                  Online Only
+                </button>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {filteredDrivers.length === 0 ? (
+                  <p className="text-xs text-black/40 dark:text-white/40 text-center py-6">No matching riders found.</p>
+                ) : (
+                  filteredDrivers.map(r => {
+                    const load = getRiderActiveLoad(r.id);
+                    const loadClass = load === 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : load <= 2 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30";
+                    const loadText = load === 0 ? "0 active (Free)" : load <= 2 ? `${load} active` : `${load} active (Busy)`;
+                    return (
+                      <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFC542]/50 transition-all gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-[#FFC542] text-[#111] font-black flex items-center justify-center text-xs shrink-0">
+                            {(r.name || "?").charAt(0)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
+                              <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline !== false ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline !== false ? "Online" : "Offline"} />
+                            </div>
+                            <p className="text-[10px] text-black/40 dark:text-white/40 truncate">
+                              {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
+                            </p>
+                            <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border mt-1 " + loadClass}>
+                              {loadText}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => { bulkAssignRider(r); setRiderSearch(""); }}
+                          className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
+                        >
+                          Assign All
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confirm Status Change Modal */}
+        {confirmStatusModal.show && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setConfirmStatusModal({ delivery: null as any, newStatus: "", show: false })}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-[#FFC542]" /> Confirm Status Change</h3>
+              <div className="space-y-2 text-xs">
+                <p className="text-black/60 dark:text-white/60">Are you sure you want to change the status of shipment <span className="font-bold text-[#111] dark:text-white">#{idShort(confirmStatusModal.delivery.id)}</span>?</p>
+                <div className="flex items-center gap-2">
+                  <span className={"px-2 py-1 rounded-lg text-[10px] font-bold " + sStyle(confirmStatusModal.delivery.status)}>{confirmStatusModal.delivery.status}</span>
+                  <span className="text-black/40">→</span>
+                  <span className={"px-2 py-1 rounded-lg text-[10px] font-bold " + sStyle(confirmStatusModal.newStatus)}>{confirmStatusModal.newStatus}</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button onClick={() => setConfirmStatusModal({ delivery: null as any, newStatus: "", show: false })} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-colors">Cancel</button>
+                <button onClick={confirmUpdateStatus} className="px-4 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors">Confirm Change</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confirm Bulk Update Modal */}
+        {confirmBulkModal.show && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setConfirmBulkModal({ show: false })}>
+            <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-[#FFC542]" /> Confirm Bulk Update</h3>
+              <p className="text-xs text-black/60 dark:text-white/60">Are you sure you want to change <span className="font-bold text-[#111] dark:text-white">{selected.size} shipment(s)</span> to <span className={"px-2 py-1 rounded-lg text-[10px] font-bold " + sStyle(bulkStatus)}>{bulkStatus}</span>?</p>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button onClick={() => setConfirmBulkModal({ show: false })} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-colors">Cancel</button>
+                <button onClick={confirmBulkUpdate} className="px-4 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors">Apply to All</button>
               </div>
             </div>
           </div>
@@ -4071,7 +4853,44 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
         setMobileSidebar={setMobileSidebar} notifications={notifications} markNotifRead={markNotifRead} 
       />
       <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 pb-10 pt-6">
-         {tab === "marketplace" && <MarketplaceTab products={products} stores={stores} orders={marketplaceOrders} payoutRequests={payoutRequests} db={db} addLog={addLog} addToast={addToast} seedMarketplace={seedMarketplaceWrapper} marketplaceEnabled={marketplaceEnabled} toggleMarketplace={toggleMarketplace} />}
+        {newOrderAlert && (
+          <div className="mb-6 bg-gradient-to-r from-amber-500/15 via-[#FFC542]/20 to-amber-500/10 border border-[#FFC542]/50 rounded-3xl p-4 flex items-center justify-between gap-4 animate-fade-in shadow-lg">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-[#FFC542] text-[#111] flex items-center justify-center font-black animate-pulse shrink-0">
+                <Bell size={20} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#FFC542] bg-black/40 dark:bg-black/60 px-2.5 py-0.5 rounded-full">New Booking Received</span>
+                  <span className="text-xs text-black/50 dark:text-white/50 font-mono">#{idShort(newOrderAlert.id)}</span>
+                </div>
+                <p className="text-xs sm:text-sm font-bold text-[#111] dark:text-white mt-1 truncate">
+                  {newOrderAlert.itemName} • Deliver to <span className="text-[#FFC542]">{newOrderAlert.receiverName}</span> ({newOrderAlert.deliveryAddress})
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setShipmentsFilterPrefill({ search: newOrderAlert.id });
+                  setTab("shipments");
+                  setNewOrderAlert(null);
+                }}
+                className="px-4 py-2 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:bg-[#FFC542]/80 transition-all cursor-pointer whitespace-nowrap"
+              >
+                <Truck size={15} /> Review & Assign Rider
+              </button>
+              <button
+                onClick={() => setNewOrderAlert(null)}
+                className="p-2 text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white rounded-xl cursor-pointer"
+                title="Dismiss"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+        {tab === "marketplace" && <MarketplaceTab products={products} stores={stores} orders={marketplaceOrders} payoutRequests={payoutRequests} db={db} addLog={addLog} addToast={addToast} seedMarketplace={seedMarketplaceWrapper} marketplaceEnabled={marketplaceEnabled} toggleMarketplace={toggleMarketplace} />}
         {tab === "dashboard" && <DashboardTab 
             deliveries={deliveries} 
             activeUsers={activeUsers} 
@@ -4094,9 +4913,10 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
             setTab={setTab}
             marketplaceEnabled={marketplaceEnabled}
             toggleMarketplace={toggleMarketplace}
+            setShipmentsFilterPrefill={setShipmentsFilterPrefill}
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
-        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} />}
+        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
         {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} />}

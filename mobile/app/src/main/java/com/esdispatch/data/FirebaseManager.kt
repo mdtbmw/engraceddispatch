@@ -553,7 +553,7 @@ object FirebaseManager {
                 val list = mutableListOf<Parcel>()
                 for (doc in querySnapshot.documents) {
                     try {
-                        val id = doc.getString("id") ?: continue
+                        val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
                         val itemName = doc.getString("itemName") ?: ""
                         val imageUrl = doc.getString("imageUrl") ?: ""
                         val statusStr = doc.getString("status") ?: ParcelStatus.TRANSIT.name
@@ -976,7 +976,7 @@ object FirebaseManager {
                     val list = mutableListOf<Transaction>()
                     for (doc in snapshot.documents) {
                         try {
-                            val id = doc.getString("id") ?: continue
+                            val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
                             val title = doc.getString("title") ?: ""
                             val date = doc.getString("date") ?: ""
                             val amount = doc.getSafeDouble("amount", 0.0)
@@ -1018,7 +1018,7 @@ object FirebaseManager {
                     val list = mutableListOf<Parcel>()
                     for (doc in snapshot.documents) {
                         try {
-                            val id = doc.getString("id") ?: continue
+                            val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
                             val itemName = doc.getString("itemName") ?: ""
                             val imageUrl = doc.getString("imageUrl") ?: ""
                             val statusStr = doc.getString("status") ?: ParcelStatus.TRANSIT.name
@@ -1122,7 +1122,7 @@ object FirebaseManager {
                     val list = mutableListOf<NotificationItem>()
                     for (doc in snapshot.documents) {
                         try {
-                            val id = doc.getString("id") ?: continue
+                            val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
                             val title = doc.getString("title") ?: ""
                             val message = doc.getString("message") ?: ""
                             val time = doc.getString("time") ?: "Just now"
@@ -1346,7 +1346,7 @@ object FirebaseManager {
                     val list = mutableListOf<Parcel>()
                     for (doc in snapshot.documents) {
                         try {
-                            val id = doc.getString("id") ?: continue
+                            val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
                             val itemName = doc.getString("itemName") ?: ""
                             val imageUrl = doc.getString("imageUrl") ?: ""
                             val statusStr = doc.getString("status") ?: "PENDING"
@@ -1449,7 +1449,7 @@ object FirebaseManager {
                     val list = mutableListOf<Parcel>()
                     for (doc in snapshot.documents) {
                         try {
-                            val id = doc.getString("id") ?: continue
+                            val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
                             val itemName = doc.getString("itemName") ?: ""
                             val imageUrl = doc.getString("imageUrl") ?: ""
                             val statusStr = doc.getString("status") ?: ParcelStatus.TRANSIT.name
@@ -1769,8 +1769,11 @@ object FirebaseManager {
                 if (isValid) {
                     val parcelUserId = snapshot.getString("userId") ?: ""
                     val price = snapshot.getDouble("price") ?: 0.0
-                    val riderId = snapshot.getString("riderId") ?: ""
-                    
+                    val riderId = snapshot.getString("riderId")?.takeIf { it.isNotBlank() }
+                        ?: snapshot.getString("driverId") ?: ""
+                    val alreadyPaid = snapshot.getBoolean("payoutCredited") ?: false
+                    val payoutAmount = price * 0.80
+
                     db.runTransaction { transaction ->
                         transaction.update(docRef, "status", "DELIVERED")
                         transaction.update(docRef, "progress", 1.0f)
@@ -1778,7 +1781,39 @@ object FirebaseManager {
                         transaction.update(docRef, "otpAttempts", 0)
                         transaction.update(docRef, "otpVerifiedAt", System.currentTimeMillis())
                         transaction.update(docRef, "lastUpdated", System.currentTimeMillis())
+
+                        if (!alreadyPaid && riderId.isNotEmpty() && payoutAmount > 0) {
+                            transaction.update(docRef, "payoutCredited", true)
+                            transaction.update(docRef, "payoutAmount", payoutAmount)
+                            val riderRef = db.collection("users").document(riderId)
+                            val riderSnap = transaction.get(riderRef)
+                            if (riderSnap.exists()) {
+                                val curBal = riderSnap.getDouble("walletBalance") ?: 0.0
+                                val curCount = riderSnap.getLong("deliveryCount") ?: 0L
+                                transaction.update(riderRef, "walletBalance", curBal + payoutAmount)
+                                transaction.update(riderRef, "deliveryCount", curCount + 1)
+                            }
+                        }
                     }.addOnSuccessListener {
+                        // Create transaction ledger record for rider if payout was credited
+                        if (!alreadyPaid && riderId.isNotEmpty() && payoutAmount > 0) {
+                            try {
+                                val txRef = db.collection("users").document(riderId).collection("transactions").document()
+                                val txData = hashMapOf(
+                                    "id" to txRef.id,
+                                    "title" to "Delivery Payout (80%)",
+                                    "date" to java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date()),
+                                    "amount" to payoutAmount,
+                                    "isTopUp" to true,
+                                    "parcelId" to parcelId,
+                                    "timestamp" to com.google.firebase.Timestamp.now()
+                                )
+                                txRef.set(txData)
+                            } catch (te: Exception) {
+                                Log.e(TAG, "Failed to record payout transaction: ${te.message}")
+                            }
+                        }
+
                         // Update subcollection
                         if (parcelUserId.isNotEmpty()) {
                             val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
@@ -1792,8 +1827,6 @@ object FirebaseManager {
                             )
                         }
 
-                        // NOTE: Rider payout is NOT credited here. It is awarded exactly once
-                        // in markParcelDelivered/POD completion so riders are never paid twice.
                         onComplete(true, null)
                     }.addOnFailureListener { e ->
                         onComplete(false, e.message ?: "Failed to verify OTP.")

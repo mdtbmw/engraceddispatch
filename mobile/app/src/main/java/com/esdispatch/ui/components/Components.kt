@@ -438,12 +438,18 @@ fun BottomNav(
                 .clip(CircleShape)
                 .background(GoldGradient)
                 .breathingPulse(active = true, minScale = 0.97f, maxScale = 1.05f, durationMs = 2400)
-                .tactilePress(scaleDown = 0.90f) { onNavigate("SendParcel") },
+                .tactilePress(scaleDown = 0.90f) { 
+                    if (activeViewMode == "rider") {
+                        onNavigate("Scanner")
+                    } else {
+                        onNavigate("SendParcel")
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Filled.Add,
-                contentDescription = "Create Shipment",
+                imageVector = if (activeViewMode == "rider") Icons.Filled.QrCode else Icons.Filled.Add,
+                contentDescription = if (activeViewMode == "rider") "Scan Parcel" else "Create Shipment",
                 tint = Obsidian, // STRICT LOCK: NO WHITE ON GOLD
                 modifier = Modifier.size(28.dp)
             )

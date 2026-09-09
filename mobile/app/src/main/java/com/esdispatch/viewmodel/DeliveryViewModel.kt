@@ -856,6 +856,9 @@ class DeliveryViewModel : WalletViewModel() {
         riderAssignmentsJob = viewModelScope.launch {
             com.esdispatch.data.FirebaseManager.listenToRiderAssignments(riderId).collect { list ->
                 _riderAssignments.value = list
+                val totalTips = list.filter { it.status == com.esdispatch.data.ParcelStatus.DELIVERED }
+                    .sumOf { it.tipAmount }
+                _totalTipsEarned.value = totalTips
             }
         }
     }
@@ -1226,8 +1229,45 @@ class DeliveryViewModel : WalletViewModel() {
     fun syncOfflineQueue() {
         viewModelScope.launch {
             val list = _offlineSyncQueueList.value.filter { !it.synced }
+            val db = com.esdispatch.data.FirebaseManager.firestore
             list.forEach { item ->
-                repository?.markSyncItemSynced(item.id)
+                try {
+                    if (db != null) {
+                        when (item.actionType) {
+                            "UPDATE_STATUS" -> {
+                                val json = org.json.JSONObject(item.payloadJson)
+                                val pId = json.optString("parcelId")
+                                val st = json.optString("status")
+                                if (pId.isNotBlank() && st.isNotBlank()) {
+                                    db.collection("deliveries").document(pId)
+                                        .update(mapOf("status" to st, "lastUpdated" to System.currentTimeMillis()))
+                                }
+                            }
+                            "GPS_LOG" -> {
+                                val json = org.json.JSONObject(item.payloadJson)
+                                val pId = json.optString("parcelId")
+                                val lat = json.optDouble("lat")
+                                val lng = json.optDouble("lng")
+                                if (pId.isNotBlank() && !lat.isNaN() && !lng.isNaN()) {
+                                    db.collection("deliveries").document(pId)
+                                        .update(mapOf("courierLatitude" to lat, "courierLongitude" to lng, "lastUpdated" to System.currentTimeMillis()))
+                                }
+                            }
+                            else -> {
+                                val syncLog = hashMapOf(
+                                    "actionType" to item.actionType,
+                                    "payload" to item.payloadJson,
+                                    "syncedAt" to com.google.firebase.Timestamp.now(),
+                                    "localTimestamp" to item.timestamp
+                                )
+                                db.collection("offline_sync_logs").add(syncLog)
+                            }
+                        }
+                    }
+                    repository?.markSyncItemSynced(item.id)
+                } catch (e: Exception) {
+                    android.util.Log.e("DeliveryViewModel", "Error syncing offline item ${item.id}: ${e.message}")
+                }
             }
             if (list.isNotEmpty()) {
                 showCustomToast("Successfully synchronized ${list.size} offline items with corporate server!")
@@ -1342,6 +1382,9 @@ class DeliveryViewModel : WalletViewModel() {
 
     private val _totalEarned = MutableStateFlow(0.0)
     val totalEarned: StateFlow<Double> = _totalEarned.asStateFlow()
+
+    private val _totalTipsEarned = MutableStateFlow(0.0)
+    val totalTipsEarned: StateFlow<Double> = _totalTipsEarned.asStateFlow()
 
     private val _deliveryCount = MutableStateFlow(0)
     val deliveryCount: StateFlow<Int> = _deliveryCount.asStateFlow()
@@ -3577,6 +3620,10 @@ class DeliveryViewModel : WalletViewModel() {
         _parcelDraft.update { it.copy(stops = stops) }
     }
 
+    fun updateDraftItemName(itemName: String) {
+        _parcelDraft.update { it.copy(itemName = itemName) }
+    }
+
     fun populateDraftFromParcel(parcel: com.esdispatch.data.Parcel) {
         _parcelDraft.update {
             it.copy(
@@ -3586,6 +3633,7 @@ class DeliveryViewModel : WalletViewModel() {
                 senderPhone = parcel.senderPhone,
                 receiverName = parcel.receiverName,
                 receiverPhone = parcel.receiverPhone,
+                itemName = parcel.itemName,
                 quantity = parcel.quantity,
                 weight = parcel.weight,
                 length = parcel.length,
@@ -3999,7 +4047,7 @@ class DeliveryViewModel : WalletViewModel() {
             // Create new Parcel record
             val newParcel = Parcel(
                 id = "PC-${System.currentTimeMillis().toString().substring(8)}",
-                itemName = if (draft.selectedService == "Express") "Express Parcel" else "New Parcel (${draft.selectedService})",
+                itemName = draft.itemName.ifBlank { if (draft.selectedService == "Express") "Express Parcel" else "New Parcel (${draft.selectedService})" },
                 imageUrl = "https://images.unsplash.com/photo-1589409514187-c21d14bf0d13?w=100&h=100&fit=crop",
                 status = ParcelStatus.PENDING,
                 pickupAddress = draft.pickupAddress.ifBlank { "Unspecified Pickup" },
@@ -6550,6 +6598,7 @@ data class ParcelDraft(
     val senderPhone: String = "",
     val receiverName: String = "",
     val receiverPhone: String = "",
+    val itemName: String = "",
     val quantity: Int = 1,
     val weight: Double = 1.0,
     val length: Int = 20,
