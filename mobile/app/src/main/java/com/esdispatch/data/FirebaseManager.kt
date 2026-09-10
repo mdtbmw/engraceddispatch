@@ -300,8 +300,8 @@ object FirebaseManager {
         if (role == "rider") {
             userMap["isOnline"] = true
             userMap["status"] = "active"
-            userMap["latitude"] = 6.4281
-            userMap["longitude"] = 3.4219
+            userMap["latitude"] = 6.3350
+            userMap["longitude"] = 5.6037
             userMap["rating"] = 5.0
             userMap["currentWorkload"] = 0
             userMap["batteryLevel"] = 100
@@ -1663,6 +1663,61 @@ object FirebaseManager {
             }
         }.addOnFailureListener { e ->
             onComplete(false, e.message ?: "Failed to fetch parcel.")
+        }
+    }
+
+    /**
+     * Report an operational field exception (e.g. Recipient Unreachable, Sender Delay, Inaccessible Address, Breakdown)
+     */
+    fun reportParcelException(parcelId: String, exceptionType: String, reason: String, onComplete: (Boolean, String?) -> Unit) {
+        val db = firestore
+        if (db == null) {
+            onComplete(false, "Firestore not available")
+            return
+        }
+        val docRef = db.collection("deliveries").document(parcelId)
+        val now = System.currentTimeMillis()
+        val updates = mapOf(
+            "exceptionType" to exceptionType,
+            "exceptionReason" to reason,
+            "exceptionTimestamp" to now,
+            "lastUpdated" to now
+        )
+        docRef.update(updates).addOnSuccessListener {
+            // Also log to incident_reports collection for dispatcher audit
+            val incidentMap = mapOf(
+                "parcelId" to parcelId,
+                "type" to "FIELD_EXCEPTION",
+                "exceptionType" to exceptionType,
+                "reason" to reason,
+                "timestamp" to now
+            )
+            db.collection("incident_reports").add(incidentMap)
+            onComplete(true, null)
+        }.addOnFailureListener { e ->
+            onComplete(false, e.message ?: "Failed to log exception")
+        }
+    }
+
+    /**
+     * Resolve and clear an operational field exception once field condition normalizes
+     */
+    fun resolveParcelException(parcelId: String, onComplete: (Boolean, String?) -> Unit) {
+        val db = firestore
+        if (db == null) {
+            onComplete(false, "Firestore not available")
+            return
+        }
+        val docRef = db.collection("deliveries").document(parcelId)
+        val updates = mapOf(
+            "exceptionType" to "",
+            "exceptionReason" to "",
+            "lastUpdated" to System.currentTimeMillis()
+        )
+        docRef.update(updates).addOnSuccessListener {
+            onComplete(true, null)
+        }.addOnFailureListener { e ->
+            onComplete(false, e.message ?: "Failed to clear exception")
         }
     }
 

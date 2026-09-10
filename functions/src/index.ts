@@ -69,7 +69,7 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
 });
 
 /**
- * Autonomous Dispatch Trigger:
+ * Automated Fleet Dispatch Trigger:
  * When a delivery is created in 'deliveries' with status 'PENDING',
  * finds the nearest active online rider and assigns the shipment.
  */
@@ -318,30 +318,123 @@ export const onDeliveryStatusUpdated = functions.firestore
     }
 
     try {
-      if (!userId) return null;
+      if (userId) {
+        // Customer Notification Event (Deduplicated)
+        const eventType = `delivery.${newStatus.toLowerCase()}`;
+        const dedupeKey = `${deliveryId}:${eventType}:${userId}`;
+        
+        let title = `Shipment Update: ${newStatus}`;
+        let body = `Your shipment '${itemName}' (#${deliveryId}) is now ${newStatus}.`;
 
-      const userDoc = await db.collection('users').doc(userId).get();
-      if (!userDoc.exists) return null;
+        switch (newStatus.toUpperCase()) {
+          case 'QUEUED':
+            title = 'Request Queued';
+            body = `Your order for '${itemName}' is queued in Benin dispatch. Waiting for next available rider.`;
+            break;
+          case 'RESERVED_NEXT':
+            title = 'Rider Reserved';
+            body = `${afterData.reservedCourierName || afterData.courierName || 'A rider'} has been reserved for your shipment and will start after their current delivery.`;
+            break;
+          case 'ASSIGNED':
+            title = 'Rider Assigned';
+            body = `${afterData.courierName || 'A rider'} has accepted your shipment and is heading to pickup.`;
+            break;
+          case 'PICKED_UP':
+            title = 'Parcel Picked Up';
+            body = `${afterData.courierName || 'Your courier'} picked up '${itemName}' and is en route to destination.`;
+            break;
+          case 'ARRIVED':
+            title = 'Courier Arrived';
+            body = `Your courier has arrived with '${itemName}'. Please prepare your 4-digit handover OTP.`;
+            break;
+          case 'HANDOVER_VERIFIED':
+            title = 'Handover Verified';
+            body = `Handover code verified for '${itemName}'. Capturing proof of delivery to complete.`;
+            break;
+          case 'DELIVERED':
+            title = 'Delivered Safely';
+            body = `Your shipment '${itemName}' (#${deliveryId}) has been successfully delivered!`;
+            break;
+          case 'CANCELLED':
+            title = 'Delivery Cancelled';
+            body = `Shipment #${deliveryId} has been cancelled.`;
+            break;
+        }
 
-      const userData = userDoc.data();
-      const fcmToken = userData?.fcmToken || '';
+        const notifEventRef = db.collection('users').doc(userId).collection('notification_events').doc(dedupeKey);
+        await notifEventRef.set({
+          eventId: dedupeKey,
+          recipientId: userId,
+          recipientRole: 'customer',
+          deliveryId,
+          eventType,
+          title,
+          body,
+          deepLink: `esdispatch://tracking/${deliveryId}`,
+          read: false,
+          dismissed: false,
+          deliveryStatus: newStatus,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
 
-      if (fcmToken) {
-        const title = `Shipment Status: ${newStatus}`;
-        const body = `Your shipment '${itemName}' (#${deliveryId}) is now ${newStatus}.`;
+        // Push via FCM
+        const userDoc = await db.collection('users').doc(userId).get();
+        const fcmToken = userDoc.data()?.fcmToken || '';
+        if (fcmToken) {
+          await messaging.send({
+            token: fcmToken,
+            notification: { title, body },
+            android: { notification: { sound: 'default' } },
+            data: {
+              click_action: 'ESDISPATCH_NOTIFICATION_CLICK',
+              type: 'status_update',
+              parcelId: deliveryId,
+              status: newStatus,
+              eventId: dedupeKey
+            }
+          }).catch(fcmErr => console.warn('[FCM Customer Warn]', fcmErr));
+        }
+      }
 
-        const payload = {
-          token: fcmToken,
-          notification: { title, body },
-          android: { notification: { sound: 'default' } },
-          data: {
-            click_action: 'ESDISPATCH_NOTIFICATION_CLICK',
-            type: 'status_update',
-            parcelId: deliveryId,
-            status: newStatus
-          }
-        };
-        await messaging.send(payload);
+      // Rider Notification Event (Deduplicated)
+      const targetRiderId = afterData.riderId || afterData.reservedRiderId;
+      if (targetRiderId && (newStatus === 'ASSIGNED' || newStatus === 'RESERVED_NEXT' || newStatus === 'CANCELLED')) {
+        const riderDedupeKey = `${deliveryId}:rider_${newStatus.toLowerCase()}:${targetRiderId}`;
+        const riderTitle = newStatus === 'RESERVED_NEXT' ? 'Next Mission Reserved' : (newStatus === 'ASSIGNED' ? 'New Mission Assigned' : 'Order Cancelled');
+        const riderBody = newStatus === 'RESERVED_NEXT'
+          ? `You are reserved for shipment #${deliveryId} (${itemName}) after your current drop.`
+          : `Mission #${deliveryId} (${itemName}) assigned to you. Pickup: ${afterData.pickupAddress || 'Benin City'}`;
+
+        await db.collection('users').doc(targetRiderId).collection('notification_events').doc(riderDedupeKey).set({
+          eventId: riderDedupeKey,
+          recipientId: targetRiderId,
+          recipientRole: 'rider',
+          deliveryId,
+          eventType: `rider.${newStatus.toLowerCase()}`,
+          title: riderTitle,
+          body: riderBody,
+          deepLink: `esdispatch://rider/job/${deliveryId}`,
+          read: false,
+          dismissed: false,
+          deliveryStatus: newStatus,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        const riderDoc = await db.collection('users').doc(targetRiderId).get();
+        const riderFcm = riderDoc.data()?.fcmToken || '';
+        if (riderFcm) {
+          await messaging.send({
+            token: riderFcm,
+            notification: { title: riderTitle, body: riderBody },
+            android: { notification: { sound: 'default' } },
+            data: {
+              click_action: 'ESDISPATCH_RIDER_NOTIFICATION_CLICK',
+              parcelId: deliveryId,
+              status: newStatus,
+              eventId: riderDedupeKey
+            }
+          }).catch(rErr => console.warn('[FCM Rider Warn]', rErr));
+        }
       }
     } catch (error) {
       console.error('[Shipment Trigger Error] Failed to send status notification:', error);

@@ -1,4 +1,4 @@
-/**!
+﻿/**!
 
     Template Name: 'Relik-Admin Dashboard'
     Template URI:
@@ -20,7 +20,7 @@
 --heading-color: #111;
 --body-color: #333;
 --primary-color: #111111;
---secondary-color: #FFC542;
+--secondary-color: #FFB800;
 --white-color: #ffffff;
 --gray-color: #6b7280;
 --light-color: #E6E6E6;
@@ -4701,7 +4701,7 @@ span.zubuz-title-shape {
 }
 
 [data-pricing-dynamic][data-value-active=yearly] [data-pricing-trigger] {
-  background: #FFC542;
+  background: #FFB800;
 }
 
 [data-pricing-dynamic][data-value-active=yearly] [data-pricing-trigger] span {
@@ -4943,7 +4943,7 @@ span.zubuz-title-shape {
   color: #111;
   position: relative;
   transition: all 0.4s;
-  background-color: #FFC542;
+  background-color: #FFB800;
 }
 
 .zubuz-portfolio-menu {

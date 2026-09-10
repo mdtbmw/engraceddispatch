@@ -129,7 +129,7 @@ fun SplashScreen(
         val hasFirebaseUser = com.esdispatch.data.FirebaseManager.auth?.currentUser != null && com.esdispatch.data.FirebaseManager.auth?.currentUser?.isAnonymous == false
         
         if (hasLocalUser || hasFirebaseUser) {
-            onNavigate("Preloader/Dashboard")
+            onNavigate("AppLock")
         } else {
             onNavigate("Preloader/Onboarding")
         }

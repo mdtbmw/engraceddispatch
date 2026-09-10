@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.esdispatch.ui.components.MarketplaceProductCard
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -69,6 +71,7 @@ fun MarketplaceScreen(
     val walletBalance by viewModel.walletBalance.collectAsState()
     val marketplaceStores by viewModel.marketplaceStores.collectAsState()
     val favoriteIds by viewModel.favoriteProductIds.collectAsState()
+    val isMarketplaceEnabled by viewModel.marketplaceEnabled.collectAsState()
 
     // UI state
     var searchQuery by remember { mutableStateOf("") }
@@ -188,15 +191,75 @@ fun MarketplaceScreen(
             )
 
             RoundedSheet(modifier = Modifier.weight(1f)) {
-                val verifiedStores = remember(marketplaceStores, stores) {
-                    (marketplaceStores + stores).filter { it.isVerified }.distinctBy { it.id }
-                }
+                if (!isMarketplaceEnabled) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = if (isDark) Charcoal else GoldenWhiteLight,
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(28.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(CircleShape)
+                                        .background(Gold.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Storefront,
+                                        contentDescription = null,
+                                        tint = Gold,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(18.dp))
+                                Text(
+                                    text = "Marketplace Catalog Paused",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = AppTextColor,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "The vendor storefront is currently undergoing catalog inventory maintenance. Direct express courier dispatch across Benin City remains fully available.",
+                                    fontSize = 13.sp,
+                                    color = TextGray,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 19.sp
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Button(
+                                    onClick = { onNavigate("ExpressBooking") },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                ) {
+                                    Text("BOOK EXPRESS DELIVERY", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    val verifiedStores = remember(marketplaceStores, stores) {
+                        (marketplaceStores + stores).filter { it.isVerified }.distinctBy { it.id }
+                    }
 
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 160.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 160.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                     // ── 1. Hero & Verified Stores (Scrolls Away Naturally) ──
                     item(key = "vendor_hub_banner") {
                         Card(
@@ -352,18 +415,39 @@ fun MarketplaceScreen(
                                         modifier = Modifier.size(56.dp)
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
+                                    val emptyTitle = when {
+                                        searchQuery.isNotBlank() -> "No matching products found"
+                                        selectedCategory != "All" -> "No products in $selectedCategory"
+                                        else -> "No products available"
+                                    }
+                                    val emptySub = when {
+                                        searchQuery.isNotBlank() -> "No items matched \"$searchQuery\". Try checking your spelling or reset filters."
+                                        selectedCategory != "All" -> "There are currently no items in this category. Check back soon."
+                                        else -> "Vendors are currently updating their store inventories."
+                                    }
                                     Text(
-                                        "No products found",
+                                        emptyTitle,
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = AppTextColor
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        "Try adjusting your search or category filter",
+                                        emptySub,
                                         fontSize = 12.sp,
-                                        color = TextGray
+                                        color = TextGray,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(horizontal = 24.dp)
                                     )
+                                    if (searchQuery.isNotBlank() || selectedCategory != "All") {
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        TextButton(onClick = {
+                                            searchQuery = ""
+                                            selectedCategory = "All"
+                                        }) {
+                                            Text("Reset Filters", color = Gold, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -371,7 +455,6 @@ fun MarketplaceScreen(
                         items(displayItems, key = { it.id }) { item ->
                             MarketplaceProductCard(
                                 item = item,
-                                isDark = isDark,
                                 isFavorite = favoriteIds.contains(item.id),
                                 onTap = { showItemDetails = item },
                                 onAddToCart = {
@@ -383,6 +466,7 @@ fun MarketplaceScreen(
                             )
                         }
                     }
+                }
                 }
             }
         }
@@ -989,225 +1073,7 @@ fun MarketplaceScreen(
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
-@Composable
-private fun MarketplaceProductCard(
-    item: MarketplaceItem,
-    isDark: Boolean,
-    isFavorite: Boolean,
-    onTap: () -> Unit,
-    onAddToCart: () -> Unit,
-    onToggleFavorite: () -> Unit
-) {
-    val offsetX = remember { Animatable(0f) }
-    val coroutineScope = rememberCoroutineScope()
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-    ) {
-        // Background swipe action indicators
-        Row(
-            modifier = Modifier
-                .matchParentSize()
-                .background(if (isDark) Color(0xFF18181A) else Color(0xFFE8E8E8)),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Left Action: Revealed when dragged RIGHT -> Favorite
-            Row(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .background(if (isFavorite) Color(0xFFDC2626) else Color(0xFFEF4444).copy(alpha = 0.9f))
-                    .padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AnimatedHugeIcon(
-                    icon = Hugeicons.Solid.Heart,
-                    tint = Color.White,
-                    size = 20.dp
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    if (isFavorite) "Saved" else "Favorite",
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            // Right Action: Revealed when dragged LEFT -> Add to Cart
-            Row(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .background(Gold)
-                    .padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Add to Cart",
-                    color = Obsidian,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                AnimatedHugeIcon(
-                    icon = Hugeicons.Solid.Cart,
-                    tint = Obsidian,
-                    size = 20.dp
-                )
-            }
-        }
-
-        // Foreground Card that slides smoothly with gesture
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = if (isDark) Charcoal else GoldenWhite,
-            border = BorderStroke(1.dp, if (isDark) BorderDark else Slate.copy(alpha = 0.5f)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
-                .pointerInput(item.id) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            coroutineScope.launch {
-                                val currentOffset = offsetX.value
-                                if (currentOffset > 70f) {
-                                    onToggleFavorite()
-                                } else if (currentOffset < -70f) {
-                                    if (item.stock > 0) {
-                                        onAddToCart()
-                                    }
-                                }
-                                offsetX.animateTo(0f, animationSpec = spring(stiffness = 400f, dampingRatio = 0.75f))
-                            }
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            coroutineScope.launch {
-                                val target = offsetX.value + dragAmount * 0.75f
-                                offsetX.snapTo(target.coerceIn(-160f, 160f))
-                            }
-                        }
-                    )
-                }
-                .clickable { onTap() }
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val painter = rememberAsyncImagePainter(item.imageUrl)
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isDark) Color(0xFF222222) else Color(0xFFEAEAEA)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painter,
-                        contentDescription = item.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                    if (painter.state is AsyncImagePainter.State.Error || item.imageUrl.isBlank()) {
-                        Icon(Icons.Filled.ShoppingBag, null, tint = Gold, modifier = Modifier.size(28.dp))
-                    }
-                    if (item.stock <= 0) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.55f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("SOLD OUT", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(14.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        item.title,
-                        color = if (isDark) Color.White else Obsidian,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        maxLines = 1
-                    )
-                    Text(
-                        item.vendorStore,
-                        color = Gold,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Star, null, tint = Color(0xFFF59E0B), modifier = Modifier.size(11.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            "${item.rating} (${item.reviewsCount})",
-                            color = TextGray, fontSize = 10.sp
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        "₦${String.format("%,.0f", item.price)}",
-                        color = if (isDark) Gold else Obsidian,
-                        fontSize = 14.sp, fontWeight = FontWeight.Black
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Quick favorite icon button
-                        IconButton(
-                            onClick = onToggleFavorite,
-                            modifier = Modifier
-                                .size(34.dp)
-                                .tactilePress(scaleDown = 0.88f) { onToggleFavorite() }
-                        ) {
-                            AnimatedHugeIcon(
-                                icon = Hugeicons.Solid.Heart,
-                                tint = if (isFavorite) Color(0xFFEF4444) else TextGray.copy(alpha = 0.6f),
-                                size = 18.dp
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        // Add to cart icon button
-                        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-                            IconButton(
-                                onClick = onAddToCart,
-                                enabled = item.stock > 0,
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .background(
-                                        if (item.stock > 0) Gold else Gold.copy(alpha = 0.3f),
-                                        RoundedCornerShape(10.dp)
-                                    )
-                                    .tactilePress(scaleDown = 0.88f) { if (item.stock > 0) onAddToCart() }
-                            ) {
-                                AnimatedHugeIcon(
-                                    icon = Hugeicons.Solid.Cart,
-                                    tint = Obsidian,
-                                    size = 16.dp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun PriceLine(label: String, value: String) {
@@ -1288,7 +1154,8 @@ private fun VendorStoreCard(
             Spacer(modifier = Modifier.height(10.dp))
             Text(
                 store.category,
-                fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Gold,
+                fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                color = if (isDark) Gold else Obsidian.copy(alpha = 0.75f),
                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(4.dp))

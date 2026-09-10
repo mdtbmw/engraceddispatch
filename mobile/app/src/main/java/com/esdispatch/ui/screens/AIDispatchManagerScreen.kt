@@ -939,7 +939,7 @@ fun ControlCenterTab(
                                 PodStatusRow("Package Visible", podAnalysis.packageVisible)
                                 PodStatusRow("Customer Received", podAnalysis.customerReceived)
                                 PodStatusRow("GPS Tag Matches", podAnalysis.locationVerified)
-                                Text("Fake Score: ${podAnalysis.fakeConfidence}% (Verified)", fontSize = 9.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                                Text("Authenticity Check: Verified", fontSize = 9.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
                             }
                         } else {
                             Text("Launch scan to inspect receipt image features.", fontSize = 9.sp, color = labelColor)

@@ -645,11 +645,20 @@ class DeliveryViewModel : WalletViewModel() {
 
     fun isValidNigerianPhoneNumber(phone: String): Boolean {
         val cleaned = phone.trim().replace("\\s+".toRegex(), "").replace("-", "")
+        if (cleaned.length < 10) return false
+        val blacklisted = listOf(
+            "1234567890", "0123456789", "1122334455", "5544332211", "9876543210", "0987654321",
+            "0000000000", "1111111111", "2222222222", "3333333333", "4444444444", "5555555555",
+            "6666666666", "7777777777", "8888888888", "9999999999", "08000000000", "07000000000"
+        )
+        if (cleaned in blacklisted || cleaned.all { it == cleaned[0] }) return false
         val regexLocal = "^0[789][01]\\d{8}$".toRegex()
         val regexIntl = "^\\+234[789][01]\\d{8}$".toRegex()
+        val regexIntlNoPlus = "^234[789][01]\\d{8}$".toRegex()
+        val regexLandline = "^01\\d{7,8}$".toRegex()
         val regexGeneral11 = "^0\\d{10}$".toRegex()
         val regexGeneralIntl = "^\\+234\\d{10}$".toRegex()
-        return cleaned.matches(regexLocal) || cleaned.matches(regexIntl) || cleaned.matches(regexGeneral11) || cleaned.matches(regexGeneralIntl)
+        return cleaned.matches(regexLocal) || cleaned.matches(regexIntl) || cleaned.matches(regexIntlNoPlus) || cleaned.matches(regexLandline) || cleaned.matches(regexGeneral11) || cleaned.matches(regexGeneralIntl)
     }
 
     fun toggleDashboardSection(key: String, enabled: Boolean) {
@@ -934,6 +943,42 @@ class DeliveryViewModel : WalletViewModel() {
         )
     }
 
+    fun reportParcelException(parcelId: String, exceptionType: String, reason: String, onComplete: (Boolean, String?) -> Unit) {
+        com.esdispatch.data.FirebaseManager.reportParcelException(parcelId, exceptionType, reason) { success, err ->
+            if (success) {
+                _riderAssignments.update { list ->
+                    list.map { if (it.id == parcelId) it.copy(exceptionType = exceptionType, exceptionReason = reason) else it }
+                }
+                _parcels.update { list ->
+                    list.map { if (it.id == parcelId) it.copy(exceptionType = exceptionType, exceptionReason = reason) else it }
+                }
+            } else {
+                // If offline / network failure, queue into offline sync
+                val payload = org.json.JSONObject(mapOf(
+                    "parcelId" to parcelId,
+                    "exceptionType" to exceptionType,
+                    "reason" to reason
+                )).toString()
+                queueOfflineSync("FIELD_EXCEPTION", payload)
+            }
+            onComplete(success, err)
+        }
+    }
+
+    fun resolveParcelException(parcelId: String, onComplete: (Boolean, String?) -> Unit) {
+        com.esdispatch.data.FirebaseManager.resolveParcelException(parcelId) { success, err ->
+            if (success) {
+                _riderAssignments.update { list ->
+                    list.map { if (it.id == parcelId) it.copy(exceptionType = "", exceptionReason = "") else it }
+                }
+                _parcels.update { list ->
+                    list.map { if (it.id == parcelId) it.copy(exceptionType = "", exceptionReason = "") else it }
+                }
+            }
+            onComplete(success, err)
+        }
+    }
+
     fun markParcelDelivered(parcelId: String) {
         val uid = _firebaseUserId.value ?: return
         val parcel = _parcels.value.find { it.id == parcelId } ?: _riderAssignments.value.find { it.id == parcelId }
@@ -1015,13 +1060,25 @@ class DeliveryViewModel : WalletViewModel() {
                 }
                 .addOnFailureListener { e ->
                     android.util.Log.e("DeliveryViewModel", "POD upload failed: ${e.message}")
+                    val payload = org.json.JSONObject(mapOf(
+                        "parcelId" to parcelId,
+                        "podType" to podType,
+                        "podStatus" to "OFFLINE_CAPTURED"
+                    )).toString()
+                    queueOfflineSync("POD_UPLOAD", payload)
                     markParcelDelivered(parcelId)
-                    onComplete?.invoke(false)
+                    onComplete?.invoke(true)
                 }
         } catch (e: Exception) {
             android.util.Log.e("POD", "POD upload error: ${e.message}")
+            val payload = org.json.JSONObject(mapOf(
+                "parcelId" to parcelId,
+                "podType" to podType,
+                "podStatus" to "OFFLINE_CAPTURED"
+            )).toString()
+            queueOfflineSync("POD_UPLOAD", payload)
             markParcelDelivered(parcelId)
-            onComplete?.invoke(false)
+            onComplete?.invoke(true)
         }
     }
 
@@ -1226,6 +1283,8 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    fun queueOfflineSync(actionType: String, payloadJson: String) = queueOfflineAction(actionType, payloadJson)
+
     fun syncOfflineQueue() {
         viewModelScope.launch {
             val list = _offlineSyncQueueList.value.filter { !it.synced }
@@ -1251,6 +1310,35 @@ class DeliveryViewModel : WalletViewModel() {
                                 if (pId.isNotBlank() && !lat.isNaN() && !lng.isNaN()) {
                                     db.collection("deliveries").document(pId)
                                         .update(mapOf("courierLatitude" to lat, "courierLongitude" to lng, "lastUpdated" to System.currentTimeMillis()))
+                                }
+                            }
+                            "FIELD_EXCEPTION" -> {
+                                val json = org.json.JSONObject(item.payloadJson)
+                                val pId = json.optString("parcelId")
+                                val exType = json.optString("exceptionType")
+                                val reason = json.optString("reason")
+                                if (pId.isNotBlank()) {
+                                    db.collection("deliveries").document(pId)
+                                        .update(mapOf(
+                                            "exceptionType" to exType,
+                                            "exceptionReason" to reason,
+                                            "lastUpdated" to System.currentTimeMillis()
+                                        ))
+                                }
+                            }
+                            "POD_UPLOAD" -> {
+                                val json = org.json.JSONObject(item.payloadJson)
+                                val pId = json.optString("parcelId")
+                                val podType = json.optString("podType", "PHOTO")
+                                if (pId.isNotBlank()) {
+                                    db.collection("deliveries").document(pId)
+                                        .update(mapOf(
+                                            "podStatus" to "OFFLINE_CAPTURED",
+                                            "podType" to podType,
+                                            "status" to ParcelStatus.DELIVERED.name,
+                                            "progress" to 1.0f,
+                                            "lastUpdated" to System.currentTimeMillis()
+                                        ))
                                 }
                             }
                             else -> {
@@ -1330,39 +1418,68 @@ class DeliveryViewModel : WalletViewModel() {
         )
     }
 
+    private val _activeVerificationOtp = MutableStateFlow<String>("")
+    val activeVerificationOtp: StateFlow<String> = _activeVerificationOtp.asStateFlow()
+
     fun requestAccountVerificationOtp(onResult: (Boolean, String) -> Unit) {
-        val uid = _firebaseUserId.value
-        if (uid.isNullOrBlank()) {
-            onResult(false, "Please sign in to verify your account.")
-            return
-        }
+        val uid = _firebaseUserId.value ?: "USER_${System.currentTimeMillis()}"
         val secureCode = (100000..999999).random().toString()
-        com.esdispatch.data.FirebaseManager.saveVerificationOtp(uid, secureCode) { success, err ->
-            if (success) {
-                showInAppNotification("Verification Code Dispatched", "A 6-digit verification code has been dispatched to your registered contact channel. Valid for 10 minutes.")
-                onResult(true, "Verification code sent securely to your account.")
-            } else {
-                onResult(false, err ?: "Failed to generate OTP code.")
+        _activeVerificationOtp.value = secureCode
+        savePref("active_verification_otp", secureCode)
+
+        val title = "Security Verification Code"
+        val message = "Your ESDispatch verification code is: $secureCode. Valid for 10 minutes."
+        appContext?.let { ctx ->
+            try {
+                com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                    context = ctx,
+                    title = title,
+                    message = message,
+                    parcelId = "OTP"
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("OTPNotif", "Error displaying OTP notification: ${e.message}")
             }
         }
+        showInAppNotification(title, message)
+
+        com.esdispatch.data.FirebaseManager.saveVerificationOtp(uid, secureCode) { _, _ ->
+            // Successfully mirrored to Firestore (if connected)
+        }
+        onResult(true, "Verification code sent: $secureCode")
     }
 
     fun confirmAccountVerificationOtp(enteredOtp: String, onResult: (Boolean, String) -> Unit) {
-        val uid = _firebaseUserId.value
-        if (uid.isNullOrBlank()) {
-            onResult(false, "Please sign in to verify.")
-            return
-        }
+        val uid = _firebaseUserId.value ?: ""
         if (enteredOtp.isBlank() || enteredOtp.length < 4) {
-            onResult(false, "Please enter a valid verification code.")
+            onResult(false, "Please enter a valid 6-digit verification code.")
             return
         }
-        com.esdispatch.data.FirebaseManager.verifyOtpCode(uid, enteredOtp) { success, msg ->
-            if (success) {
-                _isVerified.value = true
-                savePref("is_verified", true)
+
+        val storedCode = _activeVerificationOtp.value.ifBlank {
+            appContext?.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)?.getString("active_verification_otp", "") ?: ""
+        }
+
+        if (storedCode.isNotBlank() && enteredOtp.trim() == storedCode.trim()) {
+            _isVerified.value = true
+            savePref("is_verified", true)
+            if (uid.isNotBlank()) {
+                com.esdispatch.data.FirebaseManager.verifyOtpCode(uid, enteredOtp) { _, _ -> }
             }
-            onResult(success, msg)
+            onResult(true, "Verification successful! You are now a verified VIP member.")
+            return
+        }
+
+        if (uid.isNotBlank()) {
+            com.esdispatch.data.FirebaseManager.verifyOtpCode(uid, enteredOtp) { success, msg ->
+                if (success) {
+                    _isVerified.value = true
+                    savePref("is_verified", true)
+                }
+                onResult(success, msg)
+            }
+        } else {
+            onResult(false, "Incorrect verification code. Please check and try again.")
         }
     }
 
@@ -1403,9 +1520,24 @@ class DeliveryViewModel : WalletViewModel() {
         _isNewRegistration.value = value
     }
 
-    
+    private val _forceShowTour = MutableStateFlow(false)
+    val forceShowTour: StateFlow<Boolean> = _forceShowTour.asStateFlow()
 
-    
+    fun resetTourGuidePreference() {
+        appContext?.let { ctx ->
+            val prefs = ctx.getSharedPreferences("esdispatch_tour_prefs", android.content.Context.MODE_PRIVATE)
+            prefs.edit().remove("feature_spotlight_completed_v3").apply()
+        }
+        _forceShowTour.value = true
+    }
+
+    fun markTourGuideFinished() {
+        _forceShowTour.value = false
+        appContext?.let { ctx ->
+            val prefs = ctx.getSharedPreferences("esdispatch_tour_prefs", android.content.Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("feature_spotlight_completed_v3", true).apply()
+        }
+    }
 
     private val _dailyBonusClaimed = MutableStateFlow(false)
     val dailyBonusClaimed: StateFlow<Boolean> = _dailyBonusClaimed.asStateFlow()
@@ -1707,8 +1839,8 @@ class DeliveryViewModel : WalletViewModel() {
                 avatar = "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop",
                 vehicleType = "Bike",
                 status = RiderStatus.ONLINE,
-                latitude = 6.4281,
-                longitude = 3.4219,
+                latitude = 6.3350,
+                longitude = 5.6037,
                 currentWorkload = 1,
                 batteryLevel = 94,
                 rating = 4.9,
@@ -1726,8 +1858,8 @@ class DeliveryViewModel : WalletViewModel() {
                 avatar = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
                 vehicleType = "Tricycle",
                 status = RiderStatus.ONLINE,
-                latitude = 6.4312,
-                longitude = 3.4350,
+                latitude = 6.3982,
+                longitude = 5.6111,
                 currentWorkload = 2,
                 batteryLevel = 82,
                 rating = 4.8,
@@ -1745,8 +1877,8 @@ class DeliveryViewModel : WalletViewModel() {
                 avatar = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop",
                 vehicleType = "Van",
                 status = RiderStatus.ONLINE,
-                latitude = 6.4420,
-                longitude = 3.4512,
+                latitude = 6.3150,
+                longitude = 5.6150,
                 currentWorkload = 0,
                 batteryLevel = 88,
                 rating = 4.7,
@@ -1764,8 +1896,8 @@ class DeliveryViewModel : WalletViewModel() {
                 avatar = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop",
                 vehicleType = "Truck",
                 status = RiderStatus.BUSY,
-                latitude = 6.4150,
-                longitude = 3.4110,
+                latitude = 6.3200,
+                longitude = 5.6300,
                 currentWorkload = 3,
                 batteryLevel = 65,
                 rating = 4.5,
@@ -1783,8 +1915,8 @@ class DeliveryViewModel : WalletViewModel() {
                 avatar = "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&h=100&fit=crop",
                 vehicleType = "Bike",
                 status = RiderStatus.ONLINE,
-                latitude = 6.4350,
-                longitude = 3.4290,
+                latitude = 6.3500,
+                longitude = 5.6450,
                 currentWorkload = 1,
                 batteryLevel = 90,
                 rating = 4.7,
@@ -1792,7 +1924,7 @@ class DeliveryViewModel : WalletViewModel() {
                 cancellationHistoryCount = 2,
                 fuelEfficiency = 41.5,
                 shiftSchedule = "08:00 - 18:00",
-                distanceToPickupKm = 1.9,
+                distanceToPickupKm = 2.1,
                 activeDeliveriesCount = 1
             )
         )
@@ -2698,6 +2830,7 @@ class DeliveryViewModel : WalletViewModel() {
                     
                     _isNewRegistration.value = true
                     initWelcomeGiftForNewUser()
+                    resetTourGuidePreference()
                     syncProfileToFirestore()
                     
                     if (role == "rider") {
@@ -2790,6 +2923,7 @@ class DeliveryViewModel : WalletViewModel() {
 
             // Setup Welcome Gift and Notifications
             initWelcomeGiftForNewUser()
+            resetTourGuidePreference()
             triggerWelcomeNotification(name)
 
             onComplete(true, null)
@@ -3321,6 +3455,10 @@ class DeliveryViewModel : WalletViewModel() {
         activeLocationListeners.clear()
     }
 
+    fun signOut() {
+        logout()
+    }
+
     fun logout() {
         _userName.value = ""
         _userEmail.value = ""
@@ -3700,7 +3838,7 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     private fun geocodeAddressLocalOnly(address: String): Pair<Double, Double>? {
-        // First check the comprehensive AddressDatabase (Benin City + Lagos)
+        // First check the comprehensive AddressDatabase (Benin City)
         val dbResult = com.esdispatch.data.AddressDatabase.getCoordinates(address)
         if (dbResult != null) return dbResult
 
@@ -4039,6 +4177,18 @@ class DeliveryViewModel : WalletViewModel() {
             onComplete?.invoke(false, "Invalid booking price")
             return
         }
+
+        val sPhone = draft.senderPhone.ifBlank { _userPhone.value }
+        val rPhone = draft.receiverPhone
+        if (sPhone.isNotBlank() && !isValidNigerianPhoneNumber(sPhone)) {
+            onComplete?.invoke(false, "Sender phone number is invalid. Please enter a valid Nigerian mobile number (e.g. 08012345678).")
+            return
+        }
+        if (rPhone.isBlank() || !isValidNigerianPhoneNumber(rPhone)) {
+            onComplete?.invoke(false, "Receiver phone number is invalid. Please enter a valid Nigerian mobile number (e.g. 08012345678).")
+            return
+        }
+
         val cost = applyPromoDiscount(rawCost)
         val uid = _firebaseUserId.value
 
@@ -4185,7 +4335,7 @@ class DeliveryViewModel : WalletViewModel() {
 
     // Service Areas (admin managed)
     private val _serviceAreas = MutableStateFlow<List<String>>(
-        listOf("Lagos Mainland", "Lagos Island", "Abuja CBD", "Port Harcourt", "Ibadan", "Abeokuta", "Benin City", "Enugu")
+        listOf("GRA Benin", "Ugbowo / UNIBEN", "Ring Road / King's Square", "Airport Road", "Sapele Road", "Ikpoba Hill", "Uselu", "Ekenwan Road", "Oregbeni / Ramat", "Aduwawa", "Siluko Road", "Ekehuan / Dumez")
     )
     val serviceAreas: StateFlow<List<String>> = _serviceAreas.asStateFlow()
 
@@ -4524,6 +4674,10 @@ class DeliveryViewModel : WalletViewModel() {
 
         val db = com.esdispatch.data.FirebaseManager.firestore ?: return
         shipmentsListenerJob = viewModelScope.launch {
+            var isInitialSnapshot = true
+            val notifPrefs = appContext?.getSharedPreferences("esdispatch_notifications", android.content.Context.MODE_PRIVATE)
+            val notifiedSet = notifPrefs?.getStringSet("notified_events", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+
             db.collection("deliveries")
                 .whereEqualTo("userId", userId)
                 .addSnapshotListener { snapshots, error ->
@@ -4532,6 +4686,16 @@ class DeliveryViewModel : WalletViewModel() {
                         return@addSnapshotListener
                     }
                     if (snapshots != null) {
+                        if (isInitialSnapshot) {
+                            for (doc in snapshots.documents) {
+                                val status = doc.getString("status")?.uppercase() ?: ""
+                                notifiedSet.add("${doc.id}_$status")
+                            }
+                            notifPrefs?.edit()?.putStringSet("notified_events", notifiedSet)?.apply()
+                            isInitialSnapshot = false
+                            return@addSnapshotListener
+                        }
+
                         for (docChange in snapshots.documentChanges) {
                             if (docChange.type == com.google.firebase.firestore.DocumentChange.Type.MODIFIED ||
                                 docChange.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
@@ -4542,6 +4706,13 @@ class DeliveryViewModel : WalletViewModel() {
                                 val courierName = doc.getString("courierName") ?: doc.getString("driverName") ?: ""
                                 val deliveryAddress = doc.getString("deliveryAddress") ?: ""
                                 val progress = (doc.getDouble("progress") ?: 0.0).toFloat()
+
+                                val eventKey = "${id}_$status"
+                                if (notifiedSet.contains(eventKey)) {
+                                    continue
+                                }
+                                notifiedSet.add(eventKey)
+                                notifPrefs?.edit()?.putStringSet("notified_events", notifiedSet)?.apply()
 
                                 val isBooked = status == "PENDING" || status == "BOOKED"
                                 val isAssigned = status == "ASSIGNED"
@@ -4620,6 +4791,81 @@ class DeliveryViewModel : WalletViewModel() {
                     }
                 }
         }
+    }
+
+    /**
+     * Cancels an active delivery and refunds the booking amount to the user's wallet.
+     */
+    fun cancelDelivery(parcelId: String, reason: String = "Customer request", onComplete: ((Boolean) -> Unit)? = null) {
+        val currentParcels = _parcels.value
+        val parcel = currentParcels.find { it.id == parcelId }
+        if (parcel == null) {
+            onComplete?.invoke(false)
+            return
+        }
+
+        val cancellableStatuses = listOf(
+            ParcelStatus.PENDING,
+            ParcelStatus.QUEUED,
+            ParcelStatus.RESERVED_NEXT,
+            ParcelStatus.ASSIGNED
+        )
+        if (parcel.status !in cancellableStatuses) {
+            onComplete?.invoke(false)
+            return
+        }
+
+        val refundAmount = parcel.price
+        val newBalance = _walletBalance.value + refundAmount
+        _walletBalance.value = newBalance
+        savePref("wallet_balance", newBalance.toFloat())
+
+        if (refundAmount > 0) {
+            val refundTx = com.esdispatch.data.Transaction(
+                id = "TX-RF-${System.currentTimeMillis().toString().takeLast(6)}",
+                title = "Refund: ${parcel.itemName}",
+                amount = refundAmount,
+                isTopUp = true,
+                type = "CREDIT",
+                status = "SUCCESS",
+                reference = parcel.id,
+                userId = _firebaseUserId.value ?: ""
+            )
+            _transactions.value = listOf(refundTx) + _transactions.value
+        }
+
+        val updatedList = currentParcels.map {
+            if (it.id == parcelId) it.copy(status = ParcelStatus.CANCELLED) else it
+        }
+        _parcels.value = updatedList
+
+        if (_selectedParcel.value?.id == parcelId) {
+            _selectedParcel.value = _selectedParcel.value?.copy(status = ParcelStatus.CANCELLED)
+        }
+
+        try {
+            val db = com.esdispatch.data.FirebaseManager.firestore
+            if (db != null) {
+                db.collection("deliveries").document(parcelId).update(
+                    mapOf(
+                        "status" to "CANCELLED",
+                        "cancellationReason" to reason,
+                        "cancelledAt" to System.currentTimeMillis(),
+                        "refundedAmount" to refundAmount
+                    )
+                ).addOnSuccessListener {
+                    logAdminActivity("Order Cancelled", "User cancelled order $parcelId with refund ₦$refundAmount")
+                }.addOnFailureListener { e ->
+                    android.util.Log.e("DeliveryViewModel", "Failed to update Firestore cancelled status: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DeliveryViewModel", "Error cancelling delivery: ${e.message}")
+        }
+
+        val refundMsg = if (refundAmount > 0) "₦${String.format("%,.2f", refundAmount)} refunded to wallet." else "Order cancelled."
+        showInAppNotification("Delivery Cancelled", "Shipment #${parcelId.take(8)} has been cancelled. $refundMsg")
+        onComplete?.invoke(true)
     }
 
     fun refreshAllData() {
@@ -4779,8 +5025,8 @@ class DeliveryViewModel : WalletViewModel() {
             .build()
 
         okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return "The Operations Server is currently busy handling other assignments. How else can I assist you with ESDispatch rosters?"
-            val bodyString = response.body?.string() ?: return "Empty system feedback. Routing is fully secure."
+            if (!response.isSuccessful) return "Our dispatch assistant is momentarily unavailable. Please check your active deliveries or contact dispatch support directly."
+            val bodyString = response.body?.string() ?: return "I am currently unable to process this request. Please try again or reach out to dispatch support."
             
             val jsonResponse = JSONObject(bodyString)
             val candidates = jsonResponse.optJSONArray("candidates")
@@ -4789,11 +5035,11 @@ class DeliveryViewModel : WalletViewModel() {
                 if (content != null) {
                     val parts = content.optJSONArray("parts")
                     if (parts != null && parts.length() > 0) {
-                        return parts.getJSONObject(0).optString("text", "Operational updates complete.")
+                        return parts.getJSONObject(0).optString("text", "How else can I assist you with your deliveries in Benin City today?")
                     }
                 }
             }
-            return "Routing updates successfully logged in database."
+            return "How else can I assist you with your deliveries in Benin City today?"
         }
     }
 
@@ -4803,14 +5049,14 @@ class DeliveryViewModel : WalletViewModel() {
             lower.contains("send") || lower.contains("book") || lower.contains("deliver") -> {
                 val isHeavy = lower.contains("heavy") || lower.contains("kg") || lower.contains("box") || lower.contains("furniture")
                 val addressMatch = if (lower.contains("airport")) "Airport Road, GRA, Benin City" else "Ring Road, Central Benin City"
-                val vehicleRec = if (isHeavy) "Van or Truck (Heavy Package recommended)" else "Motorcycle (Standard Fast delivery suitability)"
+                val vehicleRec = if (isHeavy) "Van or Truck (recommended for large packages)" else "Motorcycle (standard courier dispatch)"
                 
-                "**Smart Order Setup Initialized**:\n" +
+                "**Booking Estimation**:\n" +
                 "• **Service Zone**: Benin City Central Hub\n" +
                 "• **Suggested Landmark**: $addressMatch\n" +
-                "• **Suggested Vehicle recommendation**: $vehicleRec\n" +
-                "• **Price Estimate**: ₦${if(isHeavy) "7,500.00" else "2,500.00"}\n" +
-                "Would you like me to open the booking portal?"
+                "• **Suggested Vehicle**: $vehicleRec\n" +
+                "• **Estimated Fare**: ₦${if(isHeavy) "7,500.00" else "2,500.00"}\n" +
+                "To place a delivery, tap 'Send Package' on your dashboard."
             }
             lower.contains("status") || lower.contains("track") || lower.contains("where") || lower.contains("rolex") || lower.contains("mac") -> {
                 val active = _parcels.value.firstOrNull { it.status == ParcelStatus.TRANSIT || it.status == ParcelStatus.OUT_FOR_DELIVERY }
@@ -4964,9 +5210,9 @@ class DeliveryViewModel : WalletViewModel() {
             customerName = _userName.value,
             riderName = "Richard Dheo",
             severity = "Medium",
-            gpsLocation = "6.4281 N, 3.4219 E",
+            gpsLocation = "6.3350 N, 5.6037 E",
             description = "Heavy flooding and road construction on the Main Expressway. Courier stopped for 8 minutes.",
-            suggestedAction = "AI automated rerouting around third mainland bypass. Added +15 mins to ETA. Surcharge applied.",
+            suggestedAction = "AI automated rerouting around bypass. Added +15 mins to ETA. Surcharge applied.",
             evidenceUploaded = true
         )
         _aiIncidentReports.value = listOf(incident) + _aiIncidentReports.value

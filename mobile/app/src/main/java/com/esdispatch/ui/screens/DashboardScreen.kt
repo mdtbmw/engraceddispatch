@@ -113,6 +113,8 @@ import com.esdispatch.ui.components.ShimmerBox
 import com.esdispatch.ui.components.AppModalBottomSheet
 import com.esdispatch.ui.components.InteractiveTourGuide
 import com.esdispatch.ui.components.tourSpotlightTarget
+import com.esdispatch.ui.components.DeliveryCard
+import com.esdispatch.ui.components.HistoryOrderCard
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 import androidx.compose.ui.graphics.Shape
@@ -596,12 +598,17 @@ fun DashboardScreen(
                     .fillMaxSize()
                     .background(Color.Transparent)
                     .nestedScroll(nestedScrollConnection),
-                contentPadding = PaddingValues(top = headerHeightDp + 16.dp, bottom = 140.dp)
+                contentPadding = PaddingValues(top = 115.dp, bottom = 140.dp)
             ) {
+                // Top spacer keeping content perfectly beneath the collapsing header without feedback loops (MICRO-001)
+                item {
+                    Spacer(modifier = Modifier.height(325.dp * (1f - progress)))
+                }
+
                 // 1. HERO CAROUSEL CARD - SMART 3-STACK FEATURED PRODUCTS
                 if (sections["promo_banner"] != false) {
                     item {
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         Box(modifier = Modifier.tourSpotlightTarget("hero_carousel")) {
                             HeroCarousel(
                                 products = marketplaceProducts,
@@ -1189,12 +1196,12 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            // 5b. FILTERING BAR (All, In Transit, Delivered)
+            // 5b. FILTERING BAR (All Active, In Transit) (MICRO-002)
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                        .padding(horizontal = 24.dp, vertical = 10.dp)
                         .background(
                             color = if (isDark) Charcoal else GoldenWhiteLight,
                             shape = RoundedCornerShape(16.dp)
@@ -1214,12 +1221,13 @@ fun DashboardScreen(
                         val tabTextColor = if (isSelected) {
                             if (isDark) Obsidian else Color.White
                         } else {
-                            if (isDark) TextGray else TextGray
+                            TextGray
                         }
 
                         Box(
                             modifier = Modifier
                                 .weight(1f)
+                                .defaultMinSize(minHeight = 40.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(tabBg)
                                 .clickable { selectedFilter = filterOption }
@@ -1239,48 +1247,75 @@ fun DashboardScreen(
             }
 
             if (isRefreshing) {
-                // High-craft, dynamic skeleton loader
-                items(3) { index ->
+                // High-craft skeleton loader matching DeliveryCard geometry (MICRO-031)
+                items(2) { index ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                            .padding(horizontal = 24.dp, vertical = 6.dp),
                         shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Charcoal)
+                        colors = CardDefaults.cardColors(containerColor = AppSurface),
+                        border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            // Header zone
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    ShimmerBox(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        ShimmerBox(
+                                            modifier = Modifier
+                                                .size(width = 90.dp, height = 16.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        ShimmerBox(
+                                            modifier = Modifier
+                                                .size(width = 120.dp, height = 12.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                        )
+                                    }
+                                }
+                                ShimmerBox(
+                                    modifier = Modifier
+                                        .size(width = 68.dp, height = 24.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            // Route container
                             ShimmerBox(
                                 modifier = Modifier
-                                    .size(52.dp)
+                                    .fillMaxWidth()
+                                    .height(64.dp)
                                     .clip(RoundedCornerShape(16.dp))
                             )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column(modifier = Modifier.weight(1f)) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            // Footer
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
                                 ShimmerBox(
                                     modifier = Modifier
-                                        .fillMaxWidth(0.6f)
-                                        .height(16.dp)
+                                        .size(width = 140.dp, height = 14.dp)
                                         .clip(RoundedCornerShape(4.dp))
                                 )
-                                Spacer(modifier = Modifier.height(8.dp))
                                 ShimmerBox(
                                     modifier = Modifier
-                                        .fillMaxWidth(0.4f)
-                                        .height(12.dp)
+                                        .size(width = 80.dp, height = 14.dp)
                                         .clip(RoundedCornerShape(4.dp))
                                 )
                             }
-                            Spacer(modifier = Modifier.width(16.dp))
-                            ShimmerBox(
-                                modifier = Modifier
-                                    .size(width = 50.dp, height = 24.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                            )
                         }
                     }
                 }
@@ -1351,13 +1386,13 @@ fun DashboardScreen(
                             com.esdispatch.util.CustomToastBridge.show("Parcel ${parcel.id} archived", com.esdispatch.viewmodel.ToastType.INFO)
                         }
                     ) {
-                        ParcelCard(
+                        DeliveryCard(
                             parcel = parcel,
                             onClick = {
                                 viewModel.selectParcelForTracking(parcel.id)
                                 onNavigate("ActiveTracking")
                             },
-                            onQuickView = { quickViewParcel = it },
+                            onQuickMap = { quickViewParcel = it },
                             onCopyTrackingId = { id -> viewModel.showCustomToast("Tracking ID copied: $id") }
                         )
                     }
@@ -1380,101 +1415,22 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                 }
                 items(recentParcels) { parcel ->
-                    val recentImageBgColor = if (isDark) Color(0xFF1D1D1D) else GoldenWhiteLight
-                    val recentPriceTextColor = if (isDark) Gold else Obsidian
-                    val cardBorderColor = if (isDark) Gold.copy(alpha = 0.15f) else Slate
-
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 6.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        color = AppSurface,
-                        shadowElevation = 0.dp,
-                        border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
-                    ) {
-                        Column {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(recentImageBgColor)
-                                ) {
-                                    Image(
-                                        painter = rememberAsyncImagePainter(parcel.imageUrl),
-                                        contentDescription = parcel.itemName,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(parcel.itemName, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = AppTextColor)
-                                    Text("ID: ${parcel.id} • ${parcel.dateString}", fontSize = 11.sp, color = TextGray, fontWeight = FontWeight.Medium)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "${parcel.pickupAddress} -> ${parcel.deliveryAddress}",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = TextGray,
-                                        lineHeight = 15.sp
-                                    )
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("₦${String.format("%,.2f", parcel.price)}", fontSize = 13.sp, fontWeight = FontWeight.Black, color = recentPriceTextColor)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = Color(0x154CAF50)
-                                    ) {
-                                        Text(
-                                            text = "Delivered",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color(0xFF4CAF50),
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            if (userRole != "rider") {
-                                HorizontalDivider(color = if (isDark) BorderDark else Slate.copy(alpha = 0.5f), thickness = 1.dp)
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            viewModel.populateDraftFromParcel(parcel)
-                                            viewModel.saveDraftToPrefs(context)
-                                            onNavigate("BookingForm")
-                                        }
-                                        .padding(vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Refresh,
-                                        contentDescription = "Book Again",
-                                        tint = Gold,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Book This Route Again",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Gold
-                                    )
-                                }
-                            }
+                    HistoryOrderCard(
+                        parcel = parcel,
+                        onClick = {
+                            viewModel.selectParcelForTracking(parcel.id)
+                            onNavigate("ActiveTracking")
+                        },
+                        onRebook = {
+                            viewModel.populateDraftFromParcel(parcel)
+                            viewModel.saveDraftToPrefs(context)
+                            onNavigate("BookingForm")
+                        },
+                        onViewReceipt = {
+                            viewModel.selectParcelForTracking(parcel.id)
+                            onNavigate("ActiveTracking")
                         }
-                    }
+                    )
                 }
             }
             }
@@ -1978,11 +1934,15 @@ fun DashboardScreen(
                 )
             }
 
+            val forceShowTour by viewModel.forceShowTour.collectAsState()
+
             // ── Interactive Spotlight Onboarding Tour ──
             InteractiveTourGuide(
                 isDark = isDark,
+                forceShow = forceShowTour,
                 listState = listState,
                 onTourFinished = {
+                    viewModel.markTourGuideFinished()
                     triggerConfetti = true
                     com.esdispatch.util.CustomToastBridge.show(
                         "Welcome to ESDispatch! You're ready to dispatch.",
@@ -2199,57 +2159,69 @@ fun ParcelCard(
 ) {
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
     val innerBgColor = if (isDark) Color(0xFF1D1D1D) else GoldenWhiteLight
-    val timelineBgLineColor = if (isDark) Color(0xFF2C2C2C) else Slate
-    val endDotBorderColor = if (isDark) Color(0xFF2C2C2C) else Slate
-
-    val cardBorderColor = if (isDark) Gold.copy(alpha = 0.15f) else Slate
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
     Surface(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(32.dp),
+            .padding(horizontal = 24.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(24.dp),
         color = AppSurface,
         shadowElevation = 0.dp,
         border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            // Header: Icon, Details, volume stacking representation
+        Column(modifier = Modifier.padding(18.dp)) {
+            // Zone 1: Header Row (Icon + ID/Item + Status Badge + Actions)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     Box(
                         modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(innerBgColor)
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(innerBgColor),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Image(
-                            painter = rememberAsyncImagePainter(parcel.imageUrl),
-                            contentDescription = parcel.itemName,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        if (parcel.imageUrl.isNotBlank()) {
+                            Image(
+                                painter = rememberAsyncImagePainter(parcel.imageUrl),
+                                contentDescription = parcel.itemName,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.LocalShipping,
+                                contentDescription = null,
+                                tint = if (isDark) Gold else Obsidian,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
 
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("ID: ${parcel.id}", fontWeight = FontWeight.Black, fontSize = 15.sp, color = AppTextColor)
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
-                            val context = androidx.compose.ui.platform.LocalContext.current
+                            Text(
+                                text = "#${parcel.id}",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                color = AppTextColor
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            // Copy button with generous touch target (MICRO-007)
                             Box(
                                 modifier = Modifier
-                                    .size(24.dp)
+                                    .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(if (isDark) Color(0xFF2C2C2C) else BorderLight)
                                     .clickable {
                                         clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(parcel.id))
                                         onCopyTrackingId(parcel.id)
@@ -2260,270 +2232,204 @@ fun ParcelCard(
                                     imageVector = Icons.Filled.ContentCopy,
                                     contentDescription = "Copy tracking number",
                                     tint = if (isDark) Gold else Obsidian,
-                                    modifier = Modifier.size(11.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isDark) Color(0xFF2C2C2C) else BorderLight)
-                                    .clickable { onQuickView(parcel) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Place,
-                                    contentDescription = "Quick view map",
-                                    tint = if (isDark) Gold else Obsidian,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            val statusBgColor = if (isDark) Gold.copy(alpha = 0.15f) else GoldenWhiteLight
-                            val statusTextColor = if (isDark) Gold else Obsidian
-                            Text(
-                                text = parcel.status.name,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = statusTextColor,
-                                modifier = Modifier
-                                    .background(statusBgColor, RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
                         }
-                        Text(parcel.itemName, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextGray)
+                        Text(
+                            text = parcel.itemName.ifBlank { "Standard Parcel" },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextGray,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
                     }
                 }
 
-                // Signature 3D Gold isometric stack representing volumes
-                Box3D(size = 32.dp, count = if (parcel.weight > 2.0) 3 else 2)
+                // Status Badge & Map Action (MICRO-006)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val (statusBg, statusFg) = when (parcel.status) {
+                        ParcelStatus.PENDING, ParcelStatus.QUEUED -> if (isDark) Color(0x28FFB800) to Gold else Color(0xFFFFF3CD) to Color(0xFF856404)
+                        ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT, ParcelStatus.PICKED_UP -> if (isDark) Color(0x283B82F6) to Color(0xFF60A5FA) else Color(0xFFDBEAFE) to Color(0xFF1E40AF)
+                        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> if (isDark) Color(0x2806B6D4) to Color(0xFF22D3EE) else Color(0xFFCFFAFE) to Color(0xFF0E7490)
+                        ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED, ParcelStatus.DELIVERED -> if (isDark) Color(0x2810B981) to Color(0xFF34D399) else Color(0xFFD1FAE5) to Color(0xFF065F46)
+                        ParcelStatus.CANCELLED -> if (isDark) Color(0x28EF4444) to Color(0xFFF87171) else Color(0xFFFEE2E2) to Color(0xFF991B1B)
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = statusBg
+                    ) {
+                        Text(
+                            text = parcel.status.name.replace('_', ' '),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = statusFg,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Map quick view action (MICRO-007)
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .clickable { onQuickView(parcel) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Place,
+                            contentDescription = "Quick view map",
+                            tint = if (isDark) Gold else Obsidian,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Progress timeline matched exactly with the mockup
-            Box(
+            // Zone 2: Structured Route Display (From & To) (MICRO-005, MICRO-047)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (isDark) Color(0xFF141416) else GoldenWhiteLight.copy(alpha = 0.6f))
+                    .padding(12.dp)
             ) {
-                // Background tracking line aligned perfectly with the centers of the 70.dp columns
+                // Pickup Origin
+                Row(verticalAlignment = Alignment.Top) {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(Gold.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Gold)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "PICKUP",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (isDark) Gold else Obsidian,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = parcel.pickupAddress.ifBlank { "Benin City Central Hub" },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AppTextColor,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Vertical connecting line
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 35.dp)
-                        .height(4.dp)
-                        .background(timelineBgLineColor, CircleShape)
-                        .align(Alignment.Center)
+                        .padding(start = 8.dp, top = 2.dp, bottom = 2.dp)
+                        .width(2.dp)
+                        .height(14.dp)
+                        .background(if (isDark) Color(0xFF2C2C35) else Slate)
                 )
 
-                // Filled tracking progress aligned perfectly with the centers of the 70.dp columns
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(parcel.progress.coerceIn(0.08f, 1.0f))
-                        .padding(horizontal = 35.dp)
-                        .height(4.dp)
-                        .background(Gold, CircleShape)
-                        .align(Alignment.CenterStart)
-                )
-
-                // Markers and labels Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Start Point (Dubai)
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(70.dp)
+                // Dropoff Destination
+                Row(verticalAlignment = Alignment.Top) {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF10B981).copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
                     ) {
                         Box(
-                            modifier = Modifier.height(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .background(Obsidian, RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = "Booked",
-                                    color = Color.White,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(
                             modifier = Modifier
-                                .size(20.dp)
-                                .background(Gold, CircleShape)
-                                .border(3.dp, Charcoal, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = null,
-                                tint = Obsidian,
-                                modifier = Modifier.size(10.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = parcel.pickupAddress,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextGray,
-                            lineHeight = 15.sp
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF10B981))
                         )
                     }
-
-                    // Middle Point (Transit / status text)
-                    val middleStatusText = when (parcel.status) {
-                        ParcelStatus.PENDING -> "Pending"
-                        ParcelStatus.QUEUED -> "Queued"
-                        ParcelStatus.RESERVED_NEXT -> "Reserved"
-                        ParcelStatus.ASSIGNED -> "Assigned"
-                        ParcelStatus.TRANSIT -> "Transit"
-                        ParcelStatus.OUT_FOR_DELIVERY -> "Out"
-                        ParcelStatus.PICKED_UP -> "Picked Up"
-                        ParcelStatus.ARRIVED -> "Arrived"
-                        ParcelStatus.HANDOVER_VERIFIED -> "Verified"
-                        ParcelStatus.DELIVERED -> "Transit"
-                        ParcelStatus.CANCELLED -> "Cancelled"
-                    }
-                    val isAtLeastMiddle = parcel.progress >= 0.5f
-                    val middleDotBg = if (isAtLeastMiddle) Gold else Charcoal
-                    val middleDotBorderColor = if (isAtLeastMiddle) {
-                        if (isDark) Charcoal else Slate
-                    } else {
-                        if (isDark) Gold else Obsidian
-                    }
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(70.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier.height(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            val isTransitActive = parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.OUT_FOR_DELIVERY
-                            val middleCapsuleBg = if (isTransitActive) Gold else Obsidian
-                            val middleCapsuleText = if (isTransitActive) Obsidian else Color.White
-                            Box(
-                                modifier = Modifier
-                                    .background(middleCapsuleBg, RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = middleStatusText,
-                                    color = middleCapsuleText,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .background(middleDotBg, CircleShape)
-                                .border(if (isAtLeastMiddle) 3.dp else 5.dp, middleDotBorderColor, CircleShape)
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "To",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = AppTextColor
+                            text = "DESTINATION",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF10B981),
+                            letterSpacing = 0.5.sp
                         )
-                    }
-
-                    // End Point (Destination)
-                    val isDelivered = parcel.status == ParcelStatus.DELIVERED || parcel.progress >= 0.98f
-                    val endDotBg = if (isDelivered) Gold else Charcoal
-                    val endDotBorderColorDynamic = if (isDelivered) {
-                        if (isDark) Charcoal else Slate
-                    } else {
-                        endDotBorderColor
-                    }
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(70.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier.height(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isDelivered) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(Gold, RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        text = "Delivered",
-                                        color = Obsidian,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .background(endDotBg, CircleShape)
-                                .border(if (isDelivered) 3.dp else 4.dp, endDotBorderColorDynamic, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isDelivered) {
-                                Icon(
-                                    imageVector = Icons.Filled.Check,
-                                    contentDescription = null,
-                                    tint = Obsidian,
-                                    modifier = Modifier.size(10.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = parcel.deliveryAddress,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextGray,
-                            lineHeight = 15.sp
+                            text = parcel.deliveryAddress.ifBlank { "Delivery Destination" },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AppTextColor,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            val bottomActionColor = if (isDark) Gold else Obsidian
+            // Zone 3: Progress Rail & Rider / Action Footer (MICRO-004)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Track Delivery Details",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = bottomActionColor
-                )
-                Icon(
-                    imageVector = Icons.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = bottomActionColor,
-                    modifier = Modifier.size(16.dp)
-                )
+                // Courier or Status Note
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.DirectionsBike,
+                        contentDescription = null,
+                        tint = if (isDark) Gold else Obsidian,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (parcel.courierName.isNotBlank()) "Courier: ${parcel.courierName}" else "Matching fleet rider in Benin...",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextGray,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+
+                // Action link
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { onClick() }
+                ) {
+                    Text(
+                        text = "Track Details",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isDark) Gold else Obsidian
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = if (isDark) Gold else Obsidian,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }

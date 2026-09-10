@@ -87,8 +87,8 @@ function wrapInLuxuryTemplate({ title, preheader, contentHtml }: BaseEmailWrappe
           <tr>
             <td style="background-color: #0E0E13; padding: 28px 32px; border-top: 1px solid #1E1E28; text-align: center;">
               <p style="margin: 0 0 10px 0; color: #8C8CA1; font-size: 11px; line-height: 1.6; letter-spacing: 0.2px;">
-                This transmission is generated securely by the ESDispatch Logistics Autonomous Platform.<br>
-                For official assistance, contact <a href="mailto:support@esdispatch.com" style="color: #FFB800; text-decoration: none; font-weight: 600;">support@esdispatch.com</a> or dispatch hotline.
+                Thank you for choosing ESDispatch — Premium Logistics &amp; Dispatch.<br>
+                For questions regarding your delivery or account, contact <a href="mailto:support@esdispatch.com" style="color: #FFB800; text-decoration: none; font-weight: 600;">support@esdispatch.com</a> or our dispatch support desk.
               </p>
               <div style="height: 1px; background-color: #1A1A24; margin: 16px 0;"></div>
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
@@ -533,7 +533,7 @@ export function renderPartnerWelcomeEmail(params: {
             The Gold Standard in Precision Logistics
           </div>
           <p style="margin: 0; color: #9A9AB2; font-size: 13px; line-height: 1.6;">
-            With ESDispatch, you unlock autonomous dispatch routing, secure escrow settlements, real-time telemetry, and 24/7 prioritized concierge support.
+            With ESDispatch, you experience fast fleet dispatch, transparent package tracking, secure settlements, and responsive dispatch support.
           </p>
         </td>
       </tr>

@@ -197,7 +197,7 @@ fun BookingFormScreen(
         }
     }
 
-    // Address search using comprehensive Benin City + Lagos database
+    // Address search using comprehensive Benin City database
     fun findAddressMatchItems(query: String): List<com.esdispatch.utils.SearchResultItem> {
         return if (query.isBlank()) {
             val defaults = mutableListOf<com.esdispatch.utils.SearchResultItem>()
@@ -618,13 +618,13 @@ fun BookingFormScreen(
                                     Spacer(modifier = Modifier.width(2.dp))
 
                                     Text("Frequent:", fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                                    listOf("The Palms Mall", "Ikeja City Mall").forEach { freq ->
+                                    listOf("Kada Plaza", "Airport Road").forEach { freq ->
                                         Surface(
                                             color = Gold.copy(alpha = 0.12f),
                                             shape = RoundedCornerShape(12.dp),
                                             border = BorderStroke(1.dp, Gold.copy(alpha = 0.2f)),
                                             modifier = Modifier.clickable {
-                                                pickup = if (freq == "The Palms Mall") "The Palms Shopping Mall, Bisway Road, Lekki, Lagos" else "Ikeja City Mall, Obafemi Awolowo Way, Ikeja, Lagos"
+                                                pickup = if (freq == "Kada Plaza") "Kada Plaza, Sapele Road, Benin City" else "Airport Road, GRA, Benin City"
                                                 focusedField = null
                                             }
                                         ) {
@@ -1186,13 +1186,20 @@ fun BookingFormScreen(
                                     unfocusedPlaceholderColor = TextGray
                                 )
                             )
+                            val isSPhoneValid = sPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(sPhone)
                             OutlinedTextField(
                                 value = sPhone,
                                 onValueChange = { sPhone = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(20.dp),
-                                placeholder = { Text("Sender Phone", color = TextGray) },
+                                placeholder = { Text("Sender Phone (e.g. 08012345678)", color = TextGray) },
                                 leadingIcon = { Icon(Icons.Filled.Phone, null, tint = Gold, modifier = Modifier.size(18.dp)) },
+                                isError = sPhone.isNotBlank() && !isSPhoneValid,
+                                supportingText = {
+                                    if (sPhone.isNotBlank() && !isSPhoneValid) {
+                                        Text("Enter a valid Nigerian phone number (e.g. 08012345678)", color = Color(0xFFEF4444), fontSize = 11.sp)
+                                    }
+                                },
                                 textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.Bold, fontSize = 14.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = if (isLight) Obsidian else Gold,
@@ -1256,13 +1263,20 @@ fun BookingFormScreen(
                                     unfocusedPlaceholderColor = TextGray
                                 )
                             )
+                            val isRPhoneValid = rPhone.isNotBlank() && viewModel.isValidNigerianPhoneNumber(rPhone)
                             OutlinedTextField(
                                 value = rPhone,
                                 onValueChange = { rPhone = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(20.dp),
-                                placeholder = { Text("Receiver Phone", color = TextGray) },
+                                placeholder = { Text("Receiver Phone (e.g. 08012345678)", color = TextGray) },
                                 leadingIcon = { Icon(Icons.Filled.Phone, null, tint = Gold, modifier = Modifier.size(18.dp)) },
+                                isError = rPhone.isNotBlank() && !isRPhoneValid,
+                                supportingText = {
+                                    if (rPhone.isNotBlank() && !isRPhoneValid) {
+                                        Text("Enter a valid Nigerian phone number (e.g. 08012345678)", color = Color(0xFFEF4444), fontSize = 11.sp)
+                                    }
+                                },
                                 textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.Bold, fontSize = 14.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = if (isLight) Obsidian else Gold,
@@ -1456,6 +1470,14 @@ fun BookingFormScreen(
                                 Toast.makeText(context, "Please fill in receiver information", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
+                            if (sPhone.isNotBlank() && !viewModel.isValidNigerianPhoneNumber(sPhone)) {
+                                Toast.makeText(context, "Please enter a valid Nigerian phone number for sender (e.g. 08012345678)", Toast.LENGTH_LONG).show()
+                                return@Button
+                            }
+                            if (rPhone.isBlank() || !viewModel.isValidNigerianPhoneNumber(rPhone)) {
+                                Toast.makeText(context, "Please enter a valid Nigerian phone number for receiver (e.g. 08012345678)", Toast.LENGTH_LONG).show()
+                                return@Button
+                            }
 
                             viewModel.updateDraftPickup(pickup)
                             viewModel.updateDraftDelivery(delivery)
@@ -1512,12 +1534,12 @@ fun MapPinDropDialog(
 
     val landmarks = remember {
         listOf(
-            Triple("Ikeja City Mall, Obafemi Awolowo Way, Ikeja, Lagos", 120f, -100f),
-            Triple("Murtala Muhammed International Airport (LOS), Airport Road, Ikeja, Lagos", 0f, 0f),
-            Triple("Lekki Conservation Centre, Lekki-Epe Expressway, Lagos", 100f, 150f),
-            Triple("National Theatre, Iganmu, Surulere, Lagos", -150f, 100f),
-            Triple("University of Lagos, Akoka, Yaba, Lagos", -80f, -120f),
-            Triple("Central Business District, Abuja", -200f, -200f)
+            Triple("King's Square, Ring Road, Benin City", 0f, 0f),
+            Triple("Kada Plaza, Sapele Road, Benin City", 80f, -100f),
+            Triple("UNIBEN Main Gate, Ugbowo, Benin City", -120f, 110f),
+            Triple("Airport Road, GRA, Benin City", -60f, -90f),
+            Triple("Ramat Park, Ikpoba Hill, Benin City", 140f, 60f),
+            Triple("Uselu Market, Uselu, Benin City", -100f, 50f)
         )
     }
 
@@ -1572,7 +1594,7 @@ fun MapPinDropDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    "Move your finger over the grid map below to reposition the delivery pin. The nearest Lagos address is automatically detected.",
+                    "Move your finger over the grid map below to reposition the delivery pin. The nearest Benin City address is automatically detected.",
                     fontSize = 11.sp,
                     color = TextGray
                 )

@@ -665,7 +665,7 @@ fun LoginScreen(
                     Icon(Icons.Filled.Security, contentDescription = null, tint = Gold, modifier = Modifier.size(24.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Google Sign-In Notice",
+                        text = "Google Sign-In",
                         fontWeight = FontWeight.Bold,
                         fontFamily = SpaceGrotesk,
                         color = if (isDark) Color.White else Obsidian
@@ -675,31 +675,10 @@ fun LoginScreen(
             text = {
                 Column {
                     Text(
-                        text = "Google OAuth is awaiting SHA-1 fingerprint registration for package com.esdispatch.app in Firebase Console (Error code: $googleErrorCode).",
+                        text = "Google sign-in is temporarily unavailable. You can sign in smoothly using your registered email and PIN.",
                         color = TextGray,
                         fontSize = 13.sp,
                         lineHeight = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Surface(
-                        color = (if (isDark) Gold else Obsidian).copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "Release Keystore SHA-1:\nF0:34:05:B5:0C:D7:26:39:50:B4:AC:4E:AC:D3:B0:8D:AC:35:61:04",
-                            fontSize = 10.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            color = if (isDark) Gold else Obsidian,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "You can seamlessly sign in right now using your Email and 4-digit PIN.",
-                        color = if (isDark) Color.White else Obsidian,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp
                     )
                 }
             },
@@ -1726,7 +1705,7 @@ fun SignUpScreen(
                     Icon(Icons.Filled.Security, contentDescription = null, tint = Gold, modifier = Modifier.size(24.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Google Sign-In Notice",
+                        text = "Google Sign-In",
                         fontWeight = FontWeight.Bold,
                         fontFamily = SpaceGrotesk,
                         color = if (isDark) Color.White else Obsidian
@@ -1736,31 +1715,10 @@ fun SignUpScreen(
             text = {
                 Column {
                     Text(
-                        text = "Google OAuth is awaiting SHA-1 fingerprint registration for package com.esdispatch.app in Firebase Console (Error code: $googleErrorCode).",
+                        text = "Google sign-in is temporarily unavailable. You can complete your registration below using your phone number and PIN.",
                         color = TextGray,
                         fontSize = 13.sp,
                         lineHeight = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Surface(
-                        color = (if (isDark) Gold else Obsidian).copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "Release Keystore SHA-1:\nF0:34:05:B5:0C:D7:26:39:50:B4:AC:4E:AC:D3:B0:8D:AC:35:61:04",
-                            fontSize = 10.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            color = if (isDark) Gold else Obsidian,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "You can seamlessly complete your registration directly below using your phone number and 4-digit PIN.",
-                        color = if (isDark) Color.White else Obsidian,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp
                     )
                 }
             },

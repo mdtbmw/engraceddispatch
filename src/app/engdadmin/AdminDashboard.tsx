@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef, useId } from "react";
+import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from "react";
 import { createPortal } from "react-dom";
 
 async function firestoreRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 2000): Promise<T> {
@@ -30,10 +30,16 @@ function useOnlineStatus() {
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment } from "firebase/firestore";
-import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench } from "lucide-react";
+import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
 import { SoundEngine } from "@/lib/interaction/SoundEngine";
+import { StatusBadge } from "@/components/design-system/StatusBadge";
+import { RouteDisplay } from "@/components/design-system/RouteDisplay";
+import { PriceDisplay } from "@/components/design-system/PriceDisplay";
+import { DispatchDecisionDrawer } from "@/components/design-system/DispatchDecisionDrawer";
+import { NotificationLifecycleManager } from "@/components/design-system/NotificationLifecycle";
+import { ShipmentMicroPage } from "@/components/design-system/ShipmentMicroPage";
 type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking" | "support";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
 interface Delivery {
@@ -149,12 +155,24 @@ interface BannersTabProps { banners: Banner[]; db: any; addLog: (a: string, d: s
 interface ReferralsTabProps { referrals: Referral[]; completedReferrals: Referral[]; searchQuery: string; }
 interface PromotionsTabProps { promotions: Promotion[]; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; }
 interface AppCardsTabProps { appContent: AppContent[]; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; }
-interface SettingsTabProps { db: any; addLog: (a: string, d: string) => Promise<void> | void; }
+interface SettingsTabProps {
+  db: any;
+  addLog: (a: string, d: string) => Promise<void> | void;
+  addToast?: (t: Toast["type"], m: string) => void;
+  seedUsers?: () => Promise<void>;
+  seedDeliveries?: () => Promise<void>;
+  seedBanners?: () => Promise<void>;
+  seedPromos?: () => Promise<void>;
+  seedReferrals?: () => Promise<void>;
+  seedAppContent?: () => Promise<void>;
+  seedMarketplace?: () => Promise<void>;
+  seeding?: string;
+}
 interface LogsTabProps { logs: AuditEntry[]; }
 
 function EdLogoSvg({ size = 36, className = "", dark = false }: { size?: number; className?: string; dark?: boolean }) {
   const s = size;
-  const c1 = dark ? "#1a1a1a" : "#FFC542";
+  const c1 = dark ? "#1a1a1a" : "#FFB800";
   const c2 = dark ? "#1a1a1a" : "#FFFFFF";
   return <svg width={s} height={Math.round(s * 1.625)} viewBox="0 0 15.39 25.2" className={className} aria-label="ED">
     <path fill={c1} d="M2.69 17.18c0.97,-0.14 4.71,-1.44 5.83,-1.66l0 0.83c-0.3,0.15 -0.95,0.28 -1.32,0.39 -0.44,0.13 -0.88,0.26 -1.32,0.39 -0.43,0.13 -0.9,0.25 -1.33,0.38 -0.56,0.17 -1,0.09 -0.81,0.73 0.42,-0.01 1.91,-0.52 2.39,-0.66 0.59,-0.18 1.83,-0.62 2.37,-0.68l-0.02 0.9 -4.7 1.34c0.02,0.16 0.17,0.34 0.24,0.48 0.41,-0.02 1.75,-0.49 2.22,-0.62 0.67,-0.19 1.61,-0.55 2.26,-0.65 -0.02,1.15 0.33,0.83 -1.99,1.48l-1.99 0.56 0.25 0.49c0.47,-0.05 1.9,-0.65 2.22,-0.58l-0 0.57c-0.03,0.01 -0.04,0.01 -0.05,0.02 -0.05,0.15 -1.47,0.32 -1.73,0.59 0.05,0.17 0.09,0.2 0.2,0.29 0.36,-0.05 1.3,-0.41 1.58,-0.36l-0 0.62c-0.32,0.18 -0.86,0.2 -1.17,0.36 0.03,0.18 0.12,0.27 0.2,0.39 0.32,-0.06 0.58,-0.22 0.95,-0.23l0.03 0.69 -0.54 0.15c0.04,0.16 1.12,1.69 1.31,1.82 0.19,-0.11 0.35,-0.45 0.47,-0.64 0.32,-0.48 1.19,-1.65 1.33,-2.08 -0.61,0.03 -1.57,0.48 -2.21,0.6 -0.01,-0.83 -0.15,-0.65 0.76,-0.9l1.68 -0.48c0.4,-0.1 0.44,-0.2 0.57,-0.51 -0.44,-0.02 -2.53,0.81 -2.99,0.75 -0.03,-0.24 -0.01,-1.62 0.06,-1.74 0.09,-0.13 0.03,-0.1 0.26,-0.16 0.11,-0.03 0.2,-0.05 0.32,-0.08l1.87 -0.53c0.28,-0.08 1.66,-0.42 1.8,-0.61 0.07,-0.1 0.23,-0.43 0.27,-0.55l-2.99 0.83 0.01 -0.93c0.61,-0.1 1.41,-0.39 2.01,-0.55 0.33,-0.09 0.64,-0.18 0.98,-0.28 0.44,-0.12 0.64,-0.1 0.69,-0.62 -0.79,0.16 -3.15,0.95 -3.66,0.99l-0.02 -1.79c0.01,-0.08 0.04,-0.45 0.1,-0.51 0.09,-0.1 3.72,-1.11 4.34,-1.28 0.52,-0.14 0.43,0.03 0.83,-1.07 0.31,-0.85 0.64,-2 0.81,-2.95 0.11,-0.57 0.51,-3.06 0.26,-3.48 -0.04,-0.03 -0.68,-0.04 -0.76,0.48 -0.19,1.23 -0.05,1.81 -0.76,3.14 -2.02,3.79 -7.24,4.58 -10.28,1.31 -2.83,-3.04 -2.02,-8.22 2.32,-10.07 2.48,-1.06 4.28,-0.09 4.55,-0.22 0.61,-0.67 -0.05,-0.8 -0.6,-0.95 -3.65,-1.03 -7.78,0.58 -9.23,4.17 -0.89,2.22 -0.57,4.54 -0.01,6.89 0.25,1.06 0.58,2.04 0.94,3.01 0.17,0.47 0.39,0.97 0.58,1.43 0.2,0.46 0.45,0.94 0.63,1.37z" />
@@ -175,9 +193,9 @@ function idShort(id: string): string { return id.length > 8 ? id.slice(-8) : id;
 function rBadge(role: string): string {
   switch (role) {
     case "rider": return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
-    case "vendor": return "bg-[#FFC542]/25 text-[#111] dark:text-[#FFC542]";
+    case "vendor": return "bg-[#FFB800]/25 text-[#111] dark:text-[#FFB800]";
     case "admin": return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300";
-    case "super_admin": return "bg-[#FFC542]/20 text-[#111] dark:text-white";
+    case "super_admin": return "bg-[#FFB800]/20 text-[#111] dark:text-white";
     default: return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
   }
 }
@@ -196,20 +214,30 @@ const statusSteps = ["PENDING", "ASSIGNED", "TRANSIT", "OUT_FOR_DELIVERY", "DELI
 const sIdx: Record<string, number> = { PENDING: 0, ASSIGNED: 1, TRANSIT: 2, OUT_FOR_DELIVERY: 3, DELIVERED: 4, CANCELLED: -1 };
 
 function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
-  return <div className="animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300">
+  return <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all duration-200">
     <div className="flex items-center justify-between"><span className="text-xs font-bold text-black/40 dark:text-white/40">{label}</span>{icon}</div>
     <h2 className="text-3xl font-black text-[#111] dark:text-white mt-2">{value}</h2>
-    <p className="text-[10px] text-[#FFC542] font-bold mt-1">{sub}</p>
+    <p className="text-[11px] text-[#111]/70 dark:text-[#FFB800] font-semibold mt-1">{sub}</p>
   </div>;
 }
-function QuickBtn({ label, desc, onClick, loading = false }: { label: string; desc: string; onClick: () => void; loading?: boolean }) {
-  return <button onClick={onClick} disabled={loading} className={"p-4 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 hover:border-[#FFC542]/50 hover:bg-[#FFC542]/10 rounded-2xl text-left transition-all " + (loading ? "opacity-50 cursor-not-allowed" : "")}>
-    <p className="text-xs font-bold text-[#FFC542]">{loading ? "SEEDING..." : label}</p><p className="text-[10px] text-black/40 dark:text-white/40 mt-1">{desc}</p>
+function QuickBtn({ label, desc, onClick, loading = false, variant = "default" }: { label: string; desc: string; onClick: () => void; loading?: boolean; variant?: "default" | "warning" | "danger" | "setup" }) {
+  const borderClr = variant === "danger"
+    ? "hover:border-red-500/50 hover:bg-red-500/10"
+    : variant === "warning"
+    ? "hover:border-amber-500/50 hover:bg-amber-500/10"
+    : "hover:border-[#FFB800]/50 hover:bg-[#FFB800]/10";
+  const titleClr = variant === "danger"
+    ? "text-red-600 dark:text-red-400"
+    : variant === "warning"
+    ? "text-amber-600 dark:text-amber-400"
+    : "text-[#111] dark:text-[#FFB800]";
+  return <button onClick={onClick} disabled={loading} className={"p-4 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-2xl text-left transition-all " + borderClr + " " + (loading ? "opacity-50 cursor-not-allowed" : "")}>
+    <p className={"text-xs font-bold " + titleClr}>{loading ? "PROCESSING..." : label}</p><p className="text-[10px] text-black/50 dark:text-white/50 mt-1">{desc}</p>
   </button>;
 }
 function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return <div className={"bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm " + (className || "")}>
-    <h3 className="text-xs font-bold text-[#FFC542] tracking-wider uppercase flex items-center gap-2">{title}</h3>
+    <h3 className="text-xs font-bold text-[#111] dark:text-[#FFB800] tracking-wider uppercase flex items-center gap-2">{title}</h3>
     <div className="mt-4">{children}</div>
   </div>;
 }
@@ -217,8 +245,8 @@ function InlineEdit({ value, onSave, type = "text" }: { value: string; onSave: (
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value);
   useEffect(() => setVal(value), [value]);
-  if (!editing) return <span onClick={() => setEditing(true)} className="cursor-pointer hover:bg-[#FFC542]/10 px-1.5 py-0.5 rounded group inline-flex items-center gap-1.5 -ml-1.5 transition-colors text-[#111] dark:text-white">{value || "—"} <Edit3 className="w-3 h-3 text-[#FFC542]/0 group-hover:text-[#FFC542]" /></span>;
-  return <input type={type} value={val} onChange={e => setVal(e.target.value)} onBlur={() => { onSave(val); setEditing(false); }} onKeyDown={e => { if (e.key === "Enter") { onSave(val); setEditing(false); } if (e.key === "Escape") { setVal(value); setEditing(false); }}} className="bg-white dark:bg-[#222] border border-[#FFC542]/50 rounded-xl px-2 py-1 text-sm text-[#111] dark:text-white w-full shadow-sm" autoFocus />;
+  if (!editing) return <span onClick={() => setEditing(true)} className="cursor-pointer hover:bg-[#FFB800]/10 px-1.5 py-0.5 rounded group inline-flex items-center gap-1.5 -ml-1.5 transition-colors text-[#111] dark:text-white">{value || "—"} <Edit3 className="w-3 h-3 text-[#FFB800]/0 group-hover:text-[#FFB800]" /></span>;
+  return <input type={type} value={val} onChange={e => setVal(e.target.value)} onBlur={() => { onSave(val); setEditing(false); }} onKeyDown={e => { if (e.key === "Enter") { onSave(val); setEditing(false); } if (e.key === "Escape") { setVal(value); setEditing(false); }}} className="bg-white dark:bg-[#222] border border-[#FFB800]/50 rounded-xl px-2 py-1 text-sm text-[#111] dark:text-white w-full shadow-sm" autoFocus />;
 }
 function ConfirmModal({ show, title, message, confirmLabel, onConfirm, onCancel }: { show: boolean; title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void }) {
   if (!show) return null;
@@ -235,15 +263,15 @@ function ConfirmModal({ show, title, message, confirmLabel, onConfirm, onCancel 
 }
 function SearchInput({ value, onChange, placeholder = "Search..." }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return <div className="relative group">
-    <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-black/30 dark:text-white/30 group-focus-within:text-[#FFC542] transition-colors" />
+    <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-black/30 dark:text-white/30 group-focus-within:text-[#FFB800] transition-colors" />
     <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      className="pl-9 pr-4 py-2.5 bg-white dark:bg-[#222] border border-black/15 dark:border-white/15 rounded-xl text-xs text-[#111] dark:text-white placeholder:text-black/30 dark:placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#FFC542]/30 focus:border-[#FFC542]/60 w-full transition-all" />
+      className="pl-9 pr-4 py-2.5 bg-white dark:bg-[#222] border border-black/15 dark:border-white/15 rounded-xl text-xs text-[#111] dark:text-white placeholder:text-black/30 dark:placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 focus:border-[#FFB800]/60 w-full transition-all" />
   </div>;
 }
 function SaveBtn({ onClick, label = "Save", loading = false, size = "sm" }: { onClick: () => void; label?: string; loading?: boolean; size?: "sm" | "md" }) {
   const s = size === "md" ? "px-5 py-2.5 text-xs" : "px-4 py-2.5 text-xs";
   return <button onClick={onClick} disabled={loading}
-    className={"inline-flex items-center gap-1.5 " + s + " bg-[#FFC542] hover:bg-[#FFC542]/80 disabled:bg-[#FFC542]/40 text-[#111] rounded-xl font-black shadow-sm hover:shadow-md transition-all min-h-[38px]"}>
+    className={"inline-flex items-center gap-1.5 " + s + " bg-[#FFB800] hover:bg-[#FFB800]/80 disabled:bg-[#FFB800]/40 text-[#111] rounded-xl font-black shadow-sm hover:shadow-md transition-all min-h-[38px]"}>
     {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {label}
   </button>;
 }
@@ -266,7 +294,7 @@ function Select({ value, onChange, options, placeholder = "Select...", className
   const selected = options.find(o => o.value === value);
   return <div ref={containerRef} className={"relative " + className}>
     <button type="button" onClick={() => setOpen(!open)}
-      className={"w-full flex items-center justify-between gap-1.5 bg-white dark:bg-[#1c1c1c] border border-black/10 dark:border-white/10 rounded-xl text-[#111] dark:text-white hover:border-black/20 dark:hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-[#FFC542]/30 focus:border-[#FFC542]/60 transition-all text-left " + (compact ? "px-2 py-1 text-[10px]" : "px-3 py-2.5 text-xs min-h-[38px]")}>
+      className={"w-full flex items-center justify-between gap-1.5 bg-white dark:bg-[#1c1c1c] border border-black/10 dark:border-white/10 rounded-xl text-[#111] dark:text-white hover:border-black/20 dark:hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 focus:border-[#FFB800]/60 transition-all text-left " + (compact ? "px-2 py-1 text-[10px]" : "px-3 py-2.5 text-xs min-h-[38px]")}>
       <span className={"truncate " + (selected ? "" : "text-black/30 dark:text-white/30")}>{selected ? selected.label : placeholder}</span>
       <ChevronDown className={"w-3 h-3 shrink-0 text-black/40 dark:text-white/40 transition-transform " + (open ? "rotate-180" : "")} />
     </button>
@@ -274,9 +302,9 @@ function Select({ value, onChange, options, placeholder = "Select...", className
       <div className="max-h-60 overflow-y-auto space-y-0.5">
         {options.map(o => (
           <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}
-            className={"w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-xl transition-colors " + (compact ? "text-[10px]" : "text-xs ") + (o.value === value ? "bg-[#FFC542]/15 text-[#111] dark:text-white font-bold" : "text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5")}>
+            className={"w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-xl transition-colors " + (compact ? "text-[10px]" : "text-xs ") + (o.value === value ? "bg-[#FFB800]/15 text-[#111] dark:text-white font-bold" : "text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5")}>
             {renderOption ? renderOption(o, o.value === value) : <span>{o.label}</span>}
-            {o.value === value && <Check className="w-3.5 h-3.5 ml-auto text-[#FFC542]" />}
+            {o.value === value && <Check className="w-3.5 h-3.5 ml-auto text-[#FFB800]" />}
           </button>
         ))}
       </div>
@@ -366,7 +394,7 @@ async function seedReferrals(db: any, addLog: any, addToast: any, createNotifica
 
 async function seedAppContent(db: any, addLog: any, addToast: any, createNotification: any, setSettings: any) {
   try {
-    const content = { referral: { benefitText: "Invite your friends and earn \u20A6500 in wallet credit for each successful referral!", referrerCode: "", reward: 500, active: true }, aiAssistant: { title: "Dispatch Assistant", description: "Need help with your delivery? Our AI assistant is here 24/7.", tag: "Powered by HeyTek AI", active: true }, welcomeGift: { title: "Welcome to Engraced!", credit: 2500, coins: 10, active: true }, weatherTraffic: { optimalMessage: "Light traffic conditions — perfect timing.", congestedMessage: "Heavy traffic on major routes — expect 15-20 min delays.", optimalBadge: "Smooth Sailing", congestedBadge: "Heavy Traffic", active: true }, loyalty: { bronzeThreshold: 10, silverThreshold: 25, goldThreshold: 50, platinumThreshold: 100, ordersForBronze: 3, ordersForSilver: 5, ordersForGold: 10, dailyBonus: 25, active: true }, statsConfig: { promoSavingsPerBooking: 3500, statLabels: ["Deliveries", "Saved", "Earned", "Redeemed"], active: true } };
+    const content = { referral: { benefitText: "Invite your friends and earn \u20A6500 in wallet credit for each successful referral!", referrerCode: "", reward: 500, active: true }, aiAssistant: { title: "Dispatch Assistant", description: "Need help with your delivery? Our AI assistant is here 24/7.", tag: "Powered by HeyTek AI", active: true }, welcomeGift: { title: "Welcome to ESDispatch!", credit: 2500, coins: 10, active: true }, weatherTraffic: { optimalMessage: "Light traffic conditions — perfect timing.", congestedMessage: "Heavy traffic on major routes — expect 15-20 min delays.", optimalBadge: "Smooth Sailing", congestedBadge: "Heavy Traffic", active: true }, loyalty: { bronzeThreshold: 10, silverThreshold: 25, goldThreshold: 50, platinumThreshold: 100, ordersForBronze: 3, ordersForSilver: 5, ordersForGold: 10, dailyBonus: 25, active: true }, statsConfig: { promoSavingsPerBooking: 3500, statLabels: ["Deliveries", "Saved", "Earned", "Redeemed"], active: true } };
     await setDoc(doc(db, "system_config", "global_settings"), { appContent: content, updatedAt: Timestamp.now() }, { merge: true });
     setSettings((prev: any) => ({ ...prev, appContent: content })); addLog("Seeded", "Default app card content"); addToast("success", "App content seeded"); createNotification("App Content Seeded", "Default dashboard content configured");
   } catch (e: any) { addToast("error", "App content seed failed: " + e.message); }
@@ -408,16 +436,15 @@ async function seedMarketplace(db: any, addLog: any, addToast: any, createNotifi
     productSeeds.forEach(p => batch.set(doc(collection(db, "marketplace_products")), { ...p, createdAt: Timestamp.now(), updatedAt: Timestamp.now() }));
 
     await batch.commit();
-    addLog("Seeded", "7 marketplace products and 5 linked vendor stores");
-    addToast("success", "Marketplace catalog & vendor stores seeded successfully");
-    createNotification("Marketplace Seeded", "Sample products and vendor storefronts added to marketplace");
+    addLog("Seeded", "5 sample stores and 7 products for marketplace");
+    addToast("success", "Marketplace seeded with stores & catalog");
+    createNotification("Marketplace Seeded", "Sample storefronts and products added");
   } catch (e: any) {
     addToast("error", "Marketplace seed failed: " + e.message);
   }
 }
 
-function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, seedUsers, seedDeliveries, seedBanners, seedPromos, seedReferrals, seedAppContent, seeding, setTab, setShipmentsFilterPrefill, marketplaceEnabled, toggleMarketplace }: any) {
-  const [showSeedUtils, setShowSeedUtils] = useState(false);
+function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, setTab, setShipmentsFilterPrefill, marketplaceEnabled, toggleMarketplace, onOpenShipmentFullView }: any) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = (d: any) => {
     if (!d.dateString) return true;
@@ -425,10 +452,66 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
   };
   const recentDeliveries = deliveries
     .filter((d: any) => d.status !== "DELIVERED" && d.status !== "CANCELLED" && isToday(d))
-    .slice(-10)
-    .reverse();
+    .sort((a: any, b: any) => {
+      const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return tA - tB;
+    });
   const [filterCat, setFilterCat] = useState("all");
   const [inspectingCategory, setInspectingCategory] = useState<any | null>(null);
+  const [modalStatusFilter, setModalStatusFilter] = useState<"PENDING" | "ASSIGNED" | "TRANSIT" | "ARRIVED" | "ALL">("PENDING");
+  const [inlineAssigningId, setInlineAssigningId] = useState<string | null>(null);
+
+  const handleInlineAssignRider = async (deliveryId: string, rider: any) => {
+    try {
+      await updateDoc(doc(db, "deliveries", deliveryId), {
+        riderId: rider.id,
+        driverId: rider.id,
+        driverName: rider.name,
+        courierName: rider.name,
+        courierPhone: rider.phone || "",
+        riderBikeNumber: rider.bikeNumber || "",
+        status: "ASSIGNED",
+        updatedAt: Timestamp.now()
+      });
+      const del = deliveries.find((x: any) => x.id === deliveryId);
+      if (del?.userId) {
+        try {
+          const notifRef = doc(collection(db, "users", del.userId, "notifications"));
+          await setDoc(notifRef, {
+            id: notifRef.id,
+            title: "Rider Assigned!",
+            message: `${rider.name} (${rider.phone || "Courier"}) has been assigned to your shipment #${idShort(deliveryId)}.`,
+            time: "Just now",
+            isRead: false,
+            parcelId: deliveryId,
+            createdAt: Timestamp.now()
+          });
+        } catch (_) {}
+      }
+    } catch (err: any) {
+      console.error("Failed to assign rider:", err);
+      alert("Could not assign rider: " + err.message);
+    }
+  };
+
+  const handleInlineStatusChange = async (deliveryId: string, newStatus: string) => {
+    const del = deliveries.find((x: any) => x.id === deliveryId);
+    const hasRider = !!(del?.riderId || del?.driverId || (del?.courierName && del.courierName !== "Unassigned"));
+    if (!hasRider && (newStatus === "TRANSIT" || newStatus === "OUT_FOR_DELIVERY" || newStatus === "DELIVERED")) {
+      alert("Operational Guard: Assign a rider before updating status to " + newStatus.replace(/_/g, " ") + ".");
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "deliveries", deliveryId), {
+        status: newStatus,
+        updatedAt: Timestamp.now()
+      });
+    } catch (err: any) {
+      console.error("Failed to update status:", err);
+      alert("Could not update status: " + err.message);
+    }
+  };
 
   const serviceIcon = (tag: string, cls: string, size = 18) => {
     switch(tag) {
@@ -442,16 +525,9 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
     }
   };
 
-  const catBtn = (cat: string, label: string) => (
-    <button key={cat} onClick={() => setFilterCat(cat)}
-      className={"px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm " + (filterCat === cat ? "bg-[#111] dark:bg-white text-white dark:text-[#111]" : "bg-white dark:bg-[#222] text-[#111] dark:text-white border border-black/15 dark:border-white/15 hover:bg-black/5 dark:hover:bg-white/10")}>{label}</button>
-  );
-
-  const availableCategories = Array.from(new Set(activeDeliveriesData.map((a: any) => a.tag)));
   const displayDeliveriesData = filterCat === "all" ? activeDeliveriesData : activeDeliveriesData.filter((a: any) => a.tag === filterCat);
 
   return <div className="tab-content space-y-8">
-      {/* Quick Master Marketplace App Killswitch Banner */}
       <div className={`p-4 rounded-3xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
         marketplaceEnabled 
           ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-950 dark:text-emerald-300" 
@@ -487,10 +563,10 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="stagger-1"><StatCard icon={<Users className="w-4 h-4 text-[#FFC542]" />} label="TOTAL USERS" value={activeUsers.length.toString()} sub={customers.length + " customers · " + drivers.length + " drivers"} /></div>
-        <div className="stagger-2"><StatCard icon={<Package className="w-4 h-4 text-[#FFC542]" />} label="SHIPMENTS" value={deliveries.length.toString()} sub={pendingDeliveries.length + " pending · " + delivered.length + " delivered"} /></div>
-        <div className="stagger-3"><StatCard icon={<DollarSign className="w-4 h-4 text-[#FFC542]" />} label="REVENUE" value={fmt(totalRevenue)} sub={fmt(totalTips) + " in tips · " + referrals.length + " referrals"} /></div>
-        <div className="stagger-4"><StatCard icon={<Activity className="w-4 h-4 text-[#FFC542]" />} label="ONLINE" value={(activeUsers.filter((u: any) => u.isOnline).length).toString()} sub={drivers.filter((d: any) => d.isOnline).length + " drivers · " + (activeUsers.filter((u: any) => u.role === "customer" && u.isOnline).length) + " customers"} /></div>
+        <div className="stagger-1"><StatCard icon={<Users className="w-4 h-4 text-[#FFB800]" />} label="TOTAL USERS" value={activeUsers.length.toString()} sub={customers.length + " customers · " + drivers.length + " drivers"} /></div>
+        <div className="stagger-2"><StatCard icon={<Package className="w-4 h-4 text-[#FFB800]" />} label="SHIPMENTS" value={deliveries.length.toString()} sub={pendingDeliveries.length + " pending · " + delivered.length + " delivered"} /></div>
+        <div className="stagger-3"><StatCard icon={<DollarSign className="w-4 h-4 text-[#FFB800]" />} label="REVENUE" value={fmt(totalRevenue)} sub={fmt(totalTips) + " in tips · " + referrals.length + " referrals"} /></div>
+        <div className="stagger-4"><StatCard icon={<Activity className="w-4 h-4 text-[#FFB800]" />} label="ONLINE" value={(activeUsers.filter((u: any) => u.isOnline).length).toString()} sub={drivers.filter((d: any) => d.isOnline).length + " drivers · " + (activeUsers.filter((u: any) => u.role === "customer" && u.isOnline).length) + " customers"} /></div>
       </div>
 
       <section>
@@ -499,12 +575,6 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
             <h1 className="text-xl font-extrabold tracking-tight text-[#111] dark:text-white">Active Deliveries for Today</h1>
             <p className="text-xs text-black/40 dark:text-white/40 mt-0.5">Real-time scheduled drop-offs across active service categories</p>
           </div>
-          {activeDeliveriesData.length > 0 && (
-            <div className="flex gap-2 flex-wrap">
-              {catBtn("all", `All (${activeDeliveriesData.reduce((s: number, a: any) => s + a.total, 0)})`)}
-              {availableCategories.map((c: any) => catBtn(c, c))}
-            </div>
-          )}
         </div>
 
         {activeDeliveriesData.length === 0 ? (
@@ -512,82 +582,143 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
             <div className="w-12 h-12 rounded-2xl bg-black/5 dark:bg-white/5 mx-auto mb-3 flex items-center justify-center text-black/30 dark:text-white/30">
               <Package className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-black text-[#111] dark:text-white">No Active Deliveries Scheduled for Today</h3>
-            <p className="text-xs text-black/50 dark:text-white/50 mt-1 max-w-md mx-auto">
-              No delivery requests are currently active for today. As soon as a customer books a shipment via the mobile app, real-time cards will automatically appear here.
-            </p>
+            <p className="text-sm font-black text-[#111] dark:text-white">No Active Deliveries Today</p>
+            <p className="text-xs text-black/40 dark:text-white/40 mt-1 max-w-sm mx-auto">Active dispatches booked by customers on mobile or Web will appear here in real-time categorized by service tier.</p>
             <div className="mt-4 flex items-center justify-center gap-2.5">
-              <button onClick={() => setTab("shipments")} className="px-4 py-2 bg-[#FFC542] text-[#111] font-black text-xs rounded-xl shadow-sm hover:bg-[#FFC542]/80 transition-all">
+              <button onClick={() => setTab("shipments")} className="px-4 py-2 bg-[#FFB800] text-[#111] font-black text-xs rounded-xl shadow-sm hover:bg-[#FFB800]/80 transition-all cursor-pointer">
                 View All Shipments
-              </button>
-              <button onClick={seedDeliveries} className="px-4 py-2 bg-black/5 dark:bg-white/10 text-[#111] dark:text-white font-bold text-xs rounded-xl hover:bg-black/10 transition-all">
-                Seed Sample Today's Deliveries
               </button>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-5">
             {displayDeliveriesData.map((a: any, i: number) => {
-              const g = a.theme === "gold" ? "bg-[#FFC542]" : a.theme === "black" ? "bg-[#111]" : "bg-white border-[2px] border-[#111] dark:border-white";
-              const t = a.theme === "gold" ? "bg-[#111] text-white" : a.theme === "black" ? "bg-white text-[#111]" : "bg-[#FFC542] text-[#111]";
-              const p = a.theme === "gold" ? "bg-black/20" : a.theme === "black" ? "bg-white/20" : "bg-black/10 dark:bg-white/10";
-              const pf = a.theme === "black" ? "bg-[#FFC542]" : "bg-[#111]";
-              const tc = a.theme === "black" ? "text-white" : "text-[#111] dark:text-white";
-              const bt = a.theme === "black" ? "bg-[#FFC542] text-[#111]" : "bg-[#111] text-white";
-              const ac = a.theme === "gold" ? "ring-[#FFC542]" : a.theme === "black" ? "ring-[#111]" : "ring-white";
-              const ec = a.theme === "gold" ? "bg-[#111] text-white" : a.theme === "black" ? "bg-white text-[#111]" : "bg-[#FFC542] text-[#111]";
-              const bk = a.theme === "black" ? "fill-none text-white" : a.theme === "gold" ? "fill-[#111] text-[#111]" : "fill-none text-[#111] dark:text-white";
+              const isGold = a.theme === "gold";
+              const isBlack = a.theme === "black";
+              
+              const cardBg = isGold 
+                ? "bg-[#FFB800] border border-[#FFB800]/40 shadow-sm hover:shadow-xl" 
+                : isBlack 
+                ? "bg-[#111] border border-white/10 text-white shadow-sm hover:shadow-xl" 
+                : "bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 text-[#111] dark:text-white shadow-sm hover:shadow-xl";
+                
+              const tagPill = isGold 
+                ? "bg-[#111] text-white" 
+                : isBlack 
+                ? "bg-white text-[#111]" 
+                : "bg-black/5 dark:bg-white/10 text-[#111] dark:text-white";
+                
+              const titleColor = isGold 
+                ? "text-[#111]" 
+                : isBlack 
+                ? "text-white" 
+                : "text-[#111] dark:text-white";
+                
+              const subColor = isGold 
+                ? "text-[#111]/75" 
+                : isBlack 
+                ? "text-white/70" 
+                : "text-black/60 dark:text-white/60";
+                
+              const trackBg = isGold ? "bg-black/15" : isBlack ? "bg-white/20" : "bg-black/10 dark:bg-white/10";
+              const fillBg = isGold ? "bg-[#111]" : isBlack ? "bg-[#FFB800]" : "bg-[#111] dark:bg-[#FFB800]";
+              
+              const btnStyle = isGold 
+                ? "bg-[#111] text-white hover:bg-black/85" 
+                : isBlack 
+                ? "bg-[#FFB800] text-[#111] hover:bg-[#FFB800]/90" 
+                : "bg-[#111] text-white dark:bg-white dark:text-[#111] hover:opacity-90";
+                
+              const ringColor = isGold ? "ring-[#FFB800]" : isBlack ? "ring-[#111]" : "ring-white dark:ring-[#1a1a1a]";
               const pct = a.total > 0 ? Math.round((a.progress / a.total) * 100) : 0;
               const cardCouriers = (a.deliveries || []).filter((d: any) => d.courierName && d.courierName !== "Unassigned").slice(0, 3);
               const extraCount = Math.max(0, (a.deliveries || []).filter((d: any) => d.courierName && d.courierName !== "Unassigned").length - 3);
 
               return <div key={i} className={"animate-fade-in transition-all duration-200 " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6"][i % 6])}>
                 <div 
-                  onClick={() => setInspectingCategory(a)}
-                  className={g + " rounded-2xl p-4 flex flex-col min-h-[175px] shadow-sm relative overflow-hidden group cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-md"}
+                  onClick={() => {
+                    setInspectingCategory(a);
+                    setModalStatusFilter(a.pending > 0 ? "PENDING" : "ALL");
+                  }}
+                  className={cardBg + " rounded-3xl p-5 sm:p-6 flex flex-col justify-between relative group cursor-pointer transition-all duration-200 hover:-translate-y-1 min-h-[305px] h-full"}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className={t + " text-[10px] font-black px-2.5 py-0.5 rounded-full z-10"}>{a.tag}</span>
-                    {serviceIcon(a.tag, bk, 16)}
+                  <div>
+                    <div className="flex justify-between items-start mb-3">
+                      <span className={tagPill + " text-[10px] font-black px-3 py-1 rounded-full z-10 shadow-xs uppercase tracking-wider"}>
+                        {a.tag}
+                      </span>
+                      <div className={(isGold ? "bg-black/10 text-[#111]" : isBlack ? "bg-white/10 text-white" : "bg-black/5 dark:bg-white/10 text-[#111] dark:text-white") + " p-2.5 rounded-2xl z-10"}>
+                        {serviceIcon(a.tag, isGold ? "text-[#111]" : isBlack ? "text-white" : "text-[#111] dark:text-white", 18)}
+                      </div>
+                    </div>
+                    <h3 className={"text-lg font-black leading-tight mb-1 z-10 " + titleColor}>
+                      {a.title}
+                    </h3>
+                    <p className={"text-xs font-semibold z-10 line-clamp-1 " + subColor}>
+                      {a.total} total scheduled • {a.inTransit || 0} active on road
+                    </p>
                   </div>
-                  <h3 className={"text-xs font-black leading-snug line-clamp-1 mb-2 z-10 " + tc}>{a.title}</h3>
-                  <div className="mt-auto z-10">
-                    <div className={"flex justify-between items-end font-extrabold text-[10px] mb-1.5 " + tc}>
-                      <span>Active</span>
-                      <div className="flex items-center gap-1.5">
-                        <span>{a.progress}/{a.total} in transit</span>
+
+                  <div className="z-10 py-3 my-auto">
+                    <div className={"flex justify-between items-end font-black text-xs mb-2 " + titleColor}>
+                      <span>In Transit</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold">{a.progress}/{a.total}</span>
                         {a.pending > 0 && (
-                          <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-black text-[9px] font-black animate-pulse">
-                            {a.pending} unassigned
+                          <span className={"px-2 py-0.5 rounded-full text-[10px] font-black shadow-xs " + (isGold ? "bg-black text-white" : "bg-amber-500 text-black")}>
+                            {a.pending} pending
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className={"w-full h-1.5 rounded-full mb-3 " + p}>
-                      <div className={"h-full rounded-full " + pf} style={{ width: pct + "%" }}></div>
+                    <div className={"w-full h-2.5 rounded-full overflow-hidden " + trackBg}>
+                      <div className={"h-full rounded-full transition-all duration-500 " + fillBg} style={{ width: `${pct}%` }} />
                     </div>
-                    <div className="flex justify-between items-center">
-                      <div className="flex -space-x-2 relative group/avatar" onClick={(e) => { e.stopPropagation(); setInspectingCategory(a); }}>
-                        {cardCouriers.length > 0 ? (
-                          cardCouriers.map((c: any, j: number) => (
-                            <div key={j} title={c.courierName} className="relative">
-                              <img src={"https://api.dicebear.com/7.x/avataaars/svg?seed=" + c.courierName} alt={c.courierName} className={"w-6 h-6 rounded-full ring-2 " + ac + " bg-white object-cover"} />
+                  </div>
+
+                  <div className={"z-10 pt-3 border-t " + (isGold ? "border-black/10" : isBlack ? "border-white/10" : "border-black/5 dark:border-white/10")}>
+                    <div className="flex justify-between items-center mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className={"text-[10px] font-extrabold uppercase tracking-wider " + subColor}>Couriers:</span>
+                        <div className="flex -space-x-1.5 relative">
+                          {cardCouriers.length > 0 ? (
+                            cardCouriers.map((c: any, j: number) => (
+                              <div 
+                                key={j} 
+                                title={c.courierName} 
+                                className={"w-7 h-7 rounded-full ring-2 " + ringColor + " " + (isGold ? "bg-[#111] text-white" : isBlack ? "bg-[#FFB800] text-[#111]" : "bg-[#FFB800] text-[#111]") + " text-[10px] font-black flex items-center justify-center shadow-xs"}
+                              >
+                                {(c.courierName || "R").charAt(0).toUpperCase()}
+                              </div>
+                            ))
+                          ) : (
+                            <div className={"w-7 h-7 rounded-full ring-2 " + ringColor + " " + (isGold ? "bg-black/15 text-[#111]" : "bg-black/5 dark:bg-white/10 text-black/40 dark:text-white/40") + " text-[10px] font-bold flex items-center justify-center"}>
+                              —
                             </div>
-                          ))
-                        ) : (
-                          <div className={"w-6 h-6 rounded-full ring-2 " + ac + " " + ec + " text-[9px] font-bold flex items-center justify-center"}>R</div>
-                        )}
-                        <div title={`Click to view all ${a.total} deliveries`} className={"w-6 h-6 rounded-full ring-2 " + ac + " " + ec + " text-[9px] font-black flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"}>
-                          +{extraCount > 0 ? extraCount : a.total}
+                          )}
+                          {extraCount > 0 && (
+                            <div 
+                              title={`+${extraCount} more couriers`} 
+                              className={"w-7 h-7 rounded-full ring-2 " + ringColor + " " + (isGold ? "bg-[#111] text-white" : isBlack ? "bg-[#FFB800] text-[#111]" : "bg-[#FFB800] text-[#111]") + " text-[10px] font-black flex items-center justify-center shadow-xs"}
+                            >
+                              +{extraCount}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setInspectingCategory(a); }} 
-                        className={bt + " px-2.5 py-1 rounded-full text-[10px] font-black shadow-sm hover:opacity-80 transition-all flex items-center gap-1"}
-                      >
-                        <Eye size={11} /> View ({a.total})
-                      </button>
+                      <span className={"text-xs font-black " + titleColor}>{pct}%</span>
                     </div>
+
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setInspectingCategory(a); 
+                        setModalStatusFilter(a.pending > 0 ? "PENDING" : "ALL");
+                      }} 
+                      className={btnStyle + " w-full py-2.5 px-4 rounded-xl text-xs font-black shadow-sm active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer"}
+                    >
+                      <Eye size={14} /> View Queue ({a.total})
+                    </button>
                   </div>
                 </div>
               </div>;
@@ -595,226 +726,455 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
           </div>
         )}
 
-      {/* Inspect Category Deliveries Modal */}
-      {inspectingCategory && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setInspectingCategory(null)}>
-          <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-3xl shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between pb-3 border-b border-black/10 dark:border-white/10 shrink-0">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-[#FFC542] text-[#111]">{inspectingCategory.tag}</span>
-                  <h3 className="text-base font-black text-[#111] dark:text-white">Active Dispatch Queue ({deliveries.filter((d: any) => (d.category || "General") === inspectingCategory.tag && d.status !== "DELIVERED" && d.status !== "CANCELLED").length})</h3>
+      {inspectingCategory && (() => {
+        const categoryDeliveries = deliveries
+          .filter((d: any) => (d.category || "General") === inspectingCategory.tag && d.status !== "DELIVERED" && d.status !== "CANCELLED")
+          .sort((a: any, b: any) => {
+            const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+            const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+            return tA - tB;
+          });
+
+        const pendingList = categoryDeliveries.filter((d: any) => 
+          d.status === "PENDING" || !d.status || (!d.riderId && !d.driverId)
+        );
+        const assignedList = categoryDeliveries.filter((d: any) => 
+          (d.status === "ASSIGNED" || d.status === "PICKED_UP" || d.status === "RESERVED_NEXT" || d.status === "QUEUED") && (d.riderId || d.driverId)
+        );
+        const transitList = categoryDeliveries.filter((d: any) => 
+          d.status === "TRANSIT"
+        );
+        const arrivedList = categoryDeliveries.filter((d: any) => 
+          d.status === "ARRIVED" || d.status === "OUT_FOR_DELIVERY" || d.status === "HANDOVER_VERIFIED"
+        );
+
+        const displayedQueue = modalStatusFilter === "PENDING" 
+          ? pendingList 
+          : modalStatusFilter === "ASSIGNED" 
+          ? assignedList 
+          : modalStatusFilter === "TRANSIT" 
+          ? transitList 
+          : modalStatusFilter === "ARRIVED" 
+          ? arrivedList 
+          : categoryDeliveries;
+
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setInspectingCategory(null)}>
+            <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-3xl shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between pb-3 border-b border-black/10 dark:border-white/10 shrink-0">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-[#FFB800] text-[#111]">{inspectingCategory.tag}</span>
+                    <h3 className="text-base font-black text-[#111] dark:text-white">Active Dispatch Queue ({categoryDeliveries.length})</h3>
+                  </div>
+                  <p className="text-[11px] text-black/50 dark:text-white/50 mt-0.5">Real-time live queue for today in Benin City • Ordered FIFO (Oldest requests first)</p>
                 </div>
-                <p className="text-[11px] text-black/50 dark:text-white/50 mt-0.5">Real-time live queue for today in Benin City • Ordered FIFO (Oldest requests first)</p>
+                <button onClick={() => setInspectingCategory(null)} className="p-2 text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
+                  <X size={18} />
+                </button>
               </div>
-              <button onClick={() => setInspectingCategory(null)} className="p-2 text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-              {deliveries
-                .filter((d: any) => (d.category || "General") === inspectingCategory.tag && d.status !== "DELIVERED" && d.status !== "CANCELLED")
-                .sort((a: any, b: any) => {
-                  const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
-                  const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
-                  return tA - tB;
-                })
-                .map((d: any, qIdx: number) => {
-                  const createdAgo = d.createdAt?.toMillis
-                    ? Math.max(1, Math.round((Date.now() - d.createdAt.toMillis()) / 60000)) + "m ago"
-                    : (d.dateString || "Today");
-                  return (
-                    <div key={d.id} className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 flex flex-col gap-3 hover:border-[#FFC542]/50 transition-all">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-xl bg-[#FFC542]/20 flex items-center justify-center text-[#FFC542] shrink-0 font-bold text-xs">
-                            <Package size={18} />
+
+              <div className="flex items-center gap-1.5 p-1.5 bg-black/5 dark:bg-white/5 rounded-2xl overflow-x-auto shrink-0">
+                <button 
+                  onClick={() => setModalStatusFilter("PENDING")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    modalStatusFilter === "PENDING" 
+                      ? "bg-[#FFB800] text-[#111] shadow-xs" 
+                      : "text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
+                  }`}
+                >
+                  <span>Pending Assignment</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                    modalStatusFilter === "PENDING" ? "bg-black/20 text-[#111]" : "bg-black/10 dark:bg-white/10"
+                  }`}>
+                    {pendingList.length}
+                  </span>
+                </button>
+
+                <button 
+                  onClick={() => setModalStatusFilter("ASSIGNED")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    modalStatusFilter === "ASSIGNED" 
+                      ? "bg-[#FFB800] text-[#111] shadow-xs" 
+                      : "text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
+                  }`}
+                >
+                  <span>Assigned</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                    modalStatusFilter === "ASSIGNED" ? "bg-black/20 text-[#111]" : "bg-black/10 dark:bg-white/10"
+                  }`}>
+                    {assignedList.length}
+                  </span>
+                </button>
+
+                <button 
+                  onClick={() => setModalStatusFilter("TRANSIT")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    modalStatusFilter === "TRANSIT" 
+                      ? "bg-[#FFB800] text-[#111] shadow-xs" 
+                      : "text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
+                  }`}
+                >
+                  <span>In Transit</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                    modalStatusFilter === "TRANSIT" ? "bg-black/20 text-[#111]" : "bg-black/10 dark:bg-white/10"
+                  }`}>
+                    {transitList.length}
+                  </span>
+                </button>
+
+                <button 
+                  onClick={() => setModalStatusFilter("ARRIVED")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    modalStatusFilter === "ARRIVED" 
+                      ? "bg-[#FFB800] text-[#111] shadow-xs" 
+                      : "text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
+                  }`}
+                >
+                  <span>Out / Arrived</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                    modalStatusFilter === "ARRIVED" ? "bg-black/20 text-[#111]" : "bg-black/10 dark:bg-white/10"
+                  }`}>
+                    {arrivedList.length}
+                  </span>
+                </button>
+
+                <button 
+                  onClick={() => setModalStatusFilter("ALL")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    modalStatusFilter === "ALL" 
+                      ? "bg-[#FFB800] text-[#111] shadow-xs" 
+                      : "text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
+                  }`}
+                >
+                  <span>All Active</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                    modalStatusFilter === "ALL" ? "bg-black/20 text-[#111]" : "bg-black/10 dark:bg-white/10"
+                  }`}>
+                    {categoryDeliveries.length}
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                {displayedQueue.length === 0 ? (
+                  <div className="p-8 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 text-center">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                    <p className="text-xs font-black text-[#111] dark:text-white">
+                      {modalStatusFilter === "PENDING" ? "All Pending Deliveries Assigned!" : `No consignments currently in ${modalStatusFilter.replace(/_/g, " ").toLowerCase()} stage`}
+                    </p>
+                    <p className="text-[11px] text-black/50 dark:text-white/50 mt-1 max-w-sm mx-auto">
+                      {modalStatusFilter === "PENDING" 
+                        ? "Great job! All customer orders in this category have assigned couriers. Switch to Assigned or In Transit tab to track live movements." 
+                        : "Check the other progression tabs above to monitor orders across each dispatch phase."}
+                    </p>
+                    {modalStatusFilter === "PENDING" && assignedList.length > 0 && (
+                      <button 
+                        onClick={() => setModalStatusFilter("ASSIGNED")}
+                        className="mt-3 px-4 py-1.5 rounded-xl bg-[#FFB800] text-[#111] text-xs font-black hover:bg-[#FFB800]/90 transition-all cursor-pointer shadow-xs"
+                      >
+                        View Assigned Fleet ({assignedList.length}) →
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  displayedQueue.map((d: any, qIdx: number) => {
+                    const createdAgo = d.createdAt?.toMillis
+                      ? Math.max(1, Math.round((Date.now() - d.createdAt.toMillis()) / 60000)) + "m ago"
+                      : (d.dateString || "Today");
+                    return (
+                      <div key={d.id} className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 flex flex-col gap-3 hover:border-[#FFB800]/50 transition-all">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-xl bg-[#FFB800]/20 flex items-center justify-center text-[#FFB800] shrink-0 font-bold text-xs">
+                              <Package size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-xs text-[#111] dark:text-white">{d.itemName || "Consignment"}</span>
+                                <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">#{idShort(d.id)}</span>
+                                <span className={"text-[9px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status}</span>
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                                  FIFO #{qIdx + 1} • {createdAgo}
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-semibold text-black/70 dark:text-white/70 mt-1">
+                                ₦{(d.price || 0).toLocaleString()} • {d.paymentStatus || "PAID"}
+                              </p>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-extrabold text-xs text-[#111] dark:text-white">{d.itemName || "Consignment"}</span>
-                              <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">#{idShort(d.id)}</span>
-                              <span className={"text-[9px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status}</span>
-                              <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
-                                FIFO #{qIdx + 1} • {createdAgo}
+                          <div className="text-right shrink-0">
+                            <button 
+                              onClick={() => { 
+                                setInspectingCategory(null); 
+                                if (onOpenShipmentFullView) {
+                                  onOpenShipmentFullView(d.id);
+                                } else {
+                                  if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id, selectedId: d.id });
+                                  setTab("shipments"); 
+                                }
+                              }} 
+                              className="px-3.5 py-1.5 bg-[#FFB800] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFB800]/80 transition-all cursor-pointer shadow-xs flex items-center gap-1"
+                              title="Open full shipment workspace"
+                            >
+                              Open Full View →
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] bg-white dark:bg-[#1a1a1a] p-2.5 rounded-xl border border-black/5 dark:border-white/5">
+                          <div>
+                            <p className="text-[9px] font-black uppercase text-black/40 dark:text-white/40">Pickup (Sender)</p>
+                            <p className="font-bold text-[#111] dark:text-white truncate">{d.senderName || "Sender"}</p>
+                            <p className="text-black/60 dark:text-white/60 text-[10px] truncate">{d.pickupAddress || "Benin City"}</p>
+                            {d.senderPhone && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <a href={`tel:${d.senderPhone}`} className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5">
+                                  <Phone size={10} /> Call {d.senderPhone}
+                                </a>
+                                <a href={`https://wa.me/${d.senderPhone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-[#FFB800] hover:underline">
+                                  WhatsApp
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black uppercase text-black/40 dark:text-white/40">Dropoff (Receiver)</p>
+                            <p className="font-bold text-[#111] dark:text-white truncate">{d.receiverName || "Receiver"}</p>
+                            <p className="text-black/60 dark:text-white/60 text-[10px] truncate">{d.deliveryAddress || "Benin City"}</p>
+                            {d.receiverPhone && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <a href={`tel:${d.receiverPhone}`} className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5">
+                                  <Phone size={10} /> Call {d.receiverPhone}
+                                </a>
+                                <a href={`https://wa.me/${d.receiverPhone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-[#FFB800] hover:underline">
+                                  WhatsApp
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] pt-1 border-t border-black/5 dark:border-white/5 flex-wrap gap-2">
+                          <div className="text-black/60 dark:text-white/60 flex items-center gap-1.5 flex-wrap">
+                            <Users size={12} className="text-[#FFB800]" />
+                            <span>Rider: <b>{d.courierName || d.driverName || "Unassigned"}</b> {d.courierPhone ? `(${d.courierPhone})` : ""}</span>
+                            {d.reservedCourierName && (
+                              <span className="text-[9px] bg-purple-500/10 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full font-bold">
+                                Reserved Next: {d.reservedCourierName}
                               </span>
-                            </div>
-                            <p className="text-[11px] font-semibold text-black/70 dark:text-white/70 mt-1">
-                              ₦{(d.price || 0).toLocaleString()} • {d.paymentStatus || "PAID"}
-                            </p>
+                            )}
                           </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <button 
-                            onClick={() => { 
-                              setInspectingCategory(null); 
-                              if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id });
-                              setTab("shipments"); 
-                            }} 
-                            className="px-3.5 py-1.5 bg-[#111] dark:bg-white text-white dark:text-[#111] text-[10px] font-black rounded-lg hover:opacity-80 transition-all cursor-pointer shadow-xs"
-                          >
-                            Manage in Shipments →
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Route & Contact info */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] bg-white dark:bg-[#1a1a1a] p-2.5 rounded-xl border border-black/5 dark:border-white/5">
-                        <div>
-                          <p className="text-[9px] font-black uppercase text-black/40 dark:text-white/40">Pickup (Sender)</p>
-                          <p className="font-bold text-[#111] dark:text-white truncate">{d.senderName || "Sender"}</p>
-                          <p className="text-black/60 dark:text-white/60 text-[10px] truncate">{d.pickupAddress || "Benin City"}</p>
-                          {d.senderPhone && (
-                            <div className="flex items-center gap-2 mt-1">
-                              <a href={`tel:${d.senderPhone}`} className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5">
-                                <Phone size={10} /> Call {d.senderPhone}
-                              </a>
-                              <a href={`https://wa.me/${d.senderPhone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-[#FFC542] hover:underline">
-                                WhatsApp
-                              </a>
+                          {inlineAssigningId === d.id ? (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <div className="relative inline-block text-left">
+                                <select
+                                  onChange={async (e) => {
+                                    const rider = drivers.find((x: any) => x.id === e.target.value);
+                                    if (rider) {
+                                      await handleInlineAssignRider(d.id, rider);
+                                    }
+                                    setInlineAssigningId(null);
+                                  }}
+                                  defaultValue=""
+                                  className="appearance-none text-xs font-bold bg-white dark:bg-[#1a1a1a] border-2 border-[#FFB800] rounded-xl pl-3 pr-8 py-1.5 text-[#111] dark:text-white cursor-pointer shadow-xs hover:border-[#FFB800]/80 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 transition-all"
+                                >
+                                  <option value="" disabled>Select rider to assign...</option>
+                                  {drivers.map((drv: any) => (
+                                    <option key={drv.id} value={drv.id}>
+                                      {drv.name} ({drv.phone || "Active"}) • {drv.isOnline ? "🟢 Online" : "⚪ Offline"}
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#FFB800]">
+                                  <ChevronDown size={14} strokeWidth={2.5} />
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => setInlineAssigningId(null)}
+                                className="text-[10px] text-black/50 dark:text-white/50 hover:underline cursor-pointer px-1"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              {(!d.riderId && !d.driverId) ? (
+                                <button
+                                  onClick={() => setInlineAssigningId(d.id)}
+                                  className="text-xs font-black px-3 py-1.5 bg-[#FFB800] text-[#111] rounded-xl hover:bg-[#FFB800]/80 transition-all cursor-pointer shadow-xs flex items-center gap-1"
+                                >
+                                  <UserPlus size={13} /> Quick Assign Rider
+                                </button>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <div className="relative inline-block text-left">
+                                    <select
+                                      value={d.status}
+                                      onChange={(e) => handleInlineStatusChange(d.id, e.target.value)}
+                                      className="appearance-none text-xs font-black bg-white dark:bg-[#1a1a1a] border border-black/15 dark:border-white/15 rounded-xl pl-3 pr-8 py-1.5 text-[#111] dark:text-white cursor-pointer shadow-xs hover:border-[#FFB800] focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 transition-all"
+                                    >
+                                      {statusSteps.map((st) => (
+                                        <option key={st} value={st}>{st.replace(/_/g, " ")}</option>
+                                      ))}
+                                      <option value="CANCELLED">CANCELLED</option>
+                                    </select>
+                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-black/50 dark:text-white/50">
+                                      <ChevronDown size={14} strokeWidth={2.5} />
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => setInlineAssigningId(d.id)}
+                                    className="text-xs font-semibold px-2.5 py-1.5 bg-black/5 dark:bg-white/5 text-[#111] dark:text-white rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-all cursor-pointer"
+                                    title="Reassign to another rider"
+                                  >
+                                    Reassign
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
-                        <div>
-                          <p className="text-[9px] font-black uppercase text-black/40 dark:text-white/40">Dropoff (Receiver)</p>
-                          <p className="font-bold text-[#111] dark:text-white truncate">{d.receiverName || "Receiver"}</p>
-                          <p className="text-black/60 dark:text-white/60 text-[10px] truncate">{d.deliveryAddress || "Benin City"}</p>
-                          {d.receiverPhone && (
-                            <div className="flex items-center gap-2 mt-1">
-                              <a href={`tel:${d.receiverPhone}`} className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5">
-                                <Phone size={10} /> Call {d.receiverPhone}
-                              </a>
-                              <a href={`https://wa.me/${d.receiverPhone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-[#FFC542] hover:underline">
-                                WhatsApp
-                              </a>
-                            </div>
-                          )}
-                        </div>
                       </div>
+                    );
+                  })
+                )}
+              </div>
 
-                      {/* Courier & Assignment Status */}
-                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-black/5 dark:border-white/5">
-                        <div className="text-black/60 dark:text-white/60 flex items-center gap-1.5 flex-wrap">
-                          <Users size={12} className="text-[#FFC542]" />
-                          <span>Rider: <b>{d.courierName || d.driverName || "Unassigned"}</b> {d.courierPhone ? `(${d.courierPhone})` : ""}</span>
-                          {d.reservedCourierName && (
-                            <span className="text-[9px] bg-purple-500/10 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full font-bold">
-                              Reserved Next: {d.reservedCourierName}
-                            </span>
-                          )}
-                        </div>
-                        {(!d.riderId && !d.driverId) && (
-                          <button
-                            onClick={() => {
-                              setInspectingCategory(null);
-                              if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id });
-                              setTab("shipments");
-                            }}
-                            className="text-[10px] font-bold px-2.5 py-1 bg-[#FFC542] text-[#111] rounded-lg hover:bg-[#FFC542]/80 transition-all cursor-pointer"
-                          >
-                            Assign Rider
-                          </button>
-                        )}
+              <div className="pt-2 border-t border-black/10 dark:border-white/10 flex justify-between items-center text-xs shrink-0 flex-wrap gap-2">
+                <span className="text-black/50 dark:text-white/50 text-[11px] font-medium">Click 'Open Full View' on any consignment above for comprehensive dispatch controls and waybill management.</span>
+                <button 
+                  onClick={() => { 
+                    setInspectingCategory(null); 
+                    if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ category: inspectingCategory.tag });
+                    setTab("shipments"); 
+                  }} 
+                  className="px-4 py-2 bg-[#FFB800] text-[#111] font-black text-xs rounded-xl hover:bg-[#FFB800]/90 transition-all cursor-pointer shadow-xs"
+                >
+                  Open All in Shipments Tab →
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      </section>
+
+      <section className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
+        <div className="lg:col-span-3 border border-black/10 dark:border-white/10 rounded-3xl p-6 sm:p-7 flex flex-col bg-white dark:bg-[#1a1a1a] shadow-xs">
+          <div className="flex justify-between items-center mb-5 flex-wrap gap-2">
+            <div>
+              <h2 className="text-[20px] sm:text-[22px] font-extrabold tracking-tight text-[#111] dark:text-white">Active Bookings Today</h2>
+              <p className="text-xs text-black/50 dark:text-white/50 mt-0.5">Real-time scheduled drop-offs awaiting fulfillment</p>
+            </div>
+            <button 
+              onClick={() => setTab("shipments")} 
+              className="px-3.5 py-1.5 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15 text-xs font-black text-[#111] dark:text-white transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              View all ({deliveries.length}) <ChevronRight size={14} />
+            </button>
+          </div>
+          {recentDeliveries.length === 0 && (
+            <div className="text-center py-12 text-black/50 dark:text-white/50 text-xs font-semibold bg-gray-50/50 dark:bg-[#222]/50 rounded-2xl border border-dashed border-black/10 dark:border-white/10">
+              No active bookings for today. All scheduled drops completed or waiting for new requests.
+            </div>
+          )}
+          {recentDeliveries.length > 0 && (
+            <div className="space-y-3 flex-1">
+              {recentDeliveries.slice(0, 5).map((d: any) => (
+                <div key={d.id} className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 flex items-center justify-between gap-4 hover:border-black/15 dark:hover:border-white/15 transition-all">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-11 h-11 rounded-2xl bg-black/5 dark:bg-white/10 text-[#111] dark:text-white flex items-center justify-center shrink-0">
+                      <Package size={20} strokeWidth={2.2} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-extrabold text-sm text-[#111] dark:text-white truncate">{d.itemName || "Consignment"}</p>
+                        <span className="text-[10px] font-mono text-black/40 dark:text-white/40">#{idShort(d.id)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-black/70 dark:text-white/70 truncate mt-0.5">
+                        <span className="font-medium text-[#111] dark:text-white truncate max-w-[140px] sm:max-w-[180px]">{d.pickupAddress || "Pickup"}</span>
+                        <span className="text-black/40 dark:text-white/40 shrink-0">→</span>
+                        <span className="truncate max-w-[160px] sm:max-w-[240px]">{d.deliveryAddress || "Destination"}</span>
                       </div>
                     </div>
-                  );
-                })}
-            </div>
-            <div className="pt-2 border-t border-black/10 dark:border-white/10 flex justify-between items-center text-xs shrink-0">
-              <span className="text-black/50 dark:text-white/50 text-[11px] font-medium">Click Manage to access live GPS, OTP, and waybill printing</span>
-              <button 
-                onClick={() => { 
-                  setInspectingCategory(null); 
-                  if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ category: inspectingCategory.tag });
-                  setTab("shipments"); 
-                }} 
-                className="px-4 py-2 bg-[#FFC542] text-[#111] font-black text-xs rounded-xl hover:bg-[#FFC542]/90 transition-all cursor-pointer"
-              >
-                Open All in Shipments Tab →
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      </section>
-      <section className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
-        <div className="lg:col-span-3 border border-black/10 dark:border-white/10 rounded-3xl p-7 flex flex-col bg-white dark:bg-[#1a1a1a]">
-          <div className="flex justify-between items-center mb-5">
-            <h2 className="text-[22px] font-extrabold tracking-tight text-[#111] dark:text-white">Active Bookings Today</h2>
-            <button onClick={() => setTab("shipments")} className="text-[#FFC542] font-bold text-sm hover:underline">View all deliveries</button>
-          </div>
-          {recentDeliveries.length === 0 && <div className="text-center py-10 text-black/40 dark:text-white/40 text-sm font-semibold">No active bookings for today. All scheduled drops completed or waiting for new requests.</div>}
-          {recentDeliveries.length > 0 && <>
-            <div className="grid grid-cols-12 gap-4 pb-3 border-b-2 border-black/5 dark:border-white/10 text-[13px] text-black/50 dark:text-white/50 font-bold px-3">
-              <div className="col-span-6">Delivery Task</div>
-              <div className="col-span-4">Assigned Rider</div>
-              <div className="col-span-2 text-right">Est. Time</div>
-            </div>
-            <div className="flex-1 overflow-y-auto pr-2 mt-2 space-y-1">
-              {recentDeliveries.filter((d: any) => d.status !== "DELIVERED" && d.status !== "CANCELLED" && (filterCat === "all" || d.category === filterCat)).slice(0, 8).map((d: any, idx: number) => (
-                <div key={d.id} className={"grid grid-cols-12 gap-4 py-3.5 border-b border-black/5 dark:border-white/5 items-center px-3 hover:bg-black/5 dark:hover:bg-white/5 transition-colors rounded-xl last:border-b-0 cursor-pointer animate-fade-in " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][idx] || "stagger-1")}>
-                  <div className="col-span-6 flex flex-col justify-center">
-                    <div className="font-extrabold text-[14px] text-[#111] dark:text-white leading-snug">{(idx + 1).toString().padStart(2,"0")}. {d.itemName || "Parcel"} — {d.receiverName}</div>
-                    <div className="text-[13px] font-medium text-black/50 dark:text-white/50 mt-0.5">{d.status.replace(/_/g, " ")} · {d.pickupAddress}</div>
                   </div>
-                  <div className="col-span-4 flex items-center gap-3.5">
-                    <div className="w-9 h-9 rounded-full bg-[#FFC542]/10 border border-black/5 dark:border-white/10 flex items-center justify-center text-xs font-black text-[#111] dark:text-white">{d.courierName?.charAt(0) || "?"}</div>
-                    <span className="font-bold text-[14px] text-[#111] dark:text-white">{d.courierName || "Unassigned"}</span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className={"text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider " + sStyle(d.status)}>{d.status}</span>
+                    <button 
+                      onClick={() => {
+                        if (onOpenShipmentFullView) onOpenShipmentFullView(d.id);
+                        else {
+                          if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id, selectedId: d.id });
+                          setTab("shipments");
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-[#FFB800] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFB800]/90 transition-all shadow-xs cursor-pointer whitespace-nowrap flex items-center gap-1"
+                    >
+                      Manage <ChevronRight size={13} />
+                    </button>
                   </div>
-                  <div className="col-span-2 text-right font-extrabold text-[14px] text-[#111] dark:text-white">{d.dateString ? d.dateString.slice(0, 10) : "—"}</div>
                 </div>
               ))}
             </div>
-          </>}
+          )}
         </div>
-        <div className="bg-[#111] dark:bg-black text-white rounded-3xl p-8 flex flex-col justify-between shadow-lg">
+        <div className="border border-black/10 dark:border-white/10 rounded-3xl p-6 sm:p-7 flex flex-col justify-between bg-white dark:bg-[#1a1a1a] shadow-xs">
           <div>
-            <p className="text-white/60 text-sm font-semibold mb-6 tracking-wide">Fleet summary</p>
-            <span className="bg-[#FFC542] text-[#111] text-xs font-bold px-3.5 py-1.5 rounded-lg inline-block mb-4 shadow-sm">{drivers.length} Active</span>
-            <h3 className="text-[26px] font-extrabold leading-snug mb-6 pr-4">Total Fleet: {drivers.length + customers.length}</h3>
-            <p className="text-white/60 text-sm font-semibold mb-4 tracking-wide">Active drivers in region</p>
-            <div className="flex -space-x-3.5 mb-6">
-              {drivers.slice(0, 3).map((d: any) => (
-                <div key={d.id} className="w-[42px] h-[42px] rounded-full ring-[2.5px] ring-[#111] bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#FFC542]">{d.name?.charAt(0) || "?"}</div>
-              ))}
-              {[...Array(Math.min(3, Math.max(0, 3 - (drivers?.length || 0))))].map((_: any, i: number) => (
-                <div key={i} className="w-[42px] h-[42px] rounded-full ring-[2.5px] ring-[#111] bg-gray-800 flex items-center justify-center text-xs text-white/40">?</div>
-              ))}
-              <div className="w-[42px] h-[42px] rounded-full ring-[2.5px] ring-[#111] bg-[#FFC542] text-[#111] text-xs font-extrabold flex items-center justify-center shadow-inner">+{Math.max(0, (drivers?.length || 0) - 3)}</div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-extrabold text-base text-[#111] dark:text-white">Fleet Readiness</h3>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider border border-emerald-500/30">
+                {drivers.filter((d: any) => d.isOnline !== false).length} Online
+              </span>
+            </div>
+            <p className="text-xs text-black/50 dark:text-white/50 mb-5">Active courier capacity & fleet status</p>
+            <div className="flex items-center gap-3 mb-6 p-3.5 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5">
+              <div className="flex -space-x-2 shrink-0">
+                {drivers.slice(0, 4).map((d: any) => (
+                  <div 
+                    key={d.id} 
+                    title={`${d.name || "Courier"} (${d.isOnline !== false ? "Online" : "Offline"})`} 
+                    className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-[#222] bg-[#111] dark:bg-white text-white dark:text-[#111] flex items-center justify-center text-xs font-black shadow-xs"
+                  >
+                    {d.name?.charAt(0)?.toUpperCase() || "R"}
+                  </div>
+                ))}
+                {drivers.length === 0 && (
+                  <div className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-[#222] bg-gray-200 dark:bg-gray-700 text-black/40 dark:text-white/40 flex items-center justify-center text-xs font-bold">
+                    0
+                  </div>
+                )}
+              </div>
+              <div className="text-xs min-w-0">
+                <p className="font-extrabold text-[#111] dark:text-white truncate">{drivers.length} Registered Riders</p>
+                <p className="text-black/50 dark:text-white/50 text-[11px] truncate">{drivers.filter((d: any) => d.isOnline !== false).length} active for dispatch</p>
+              </div>
             </div>
           </div>
-          <div className="space-y-3">
-            <div className="flex justify-between text-sm"><span className="text-white/60">Deliveries today</span><span className="font-bold">{deliveries.length}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-white/60">Revenue</span><span className="font-bold">{fmt(totalRevenue)}</span></div>
+          <div className="space-y-3 py-3 border-t border-b border-black/10 dark:border-white/10 mb-4">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-black/60 dark:text-white/60 font-semibold">Deliveries today</span>
+              <span className="font-extrabold text-[#111] dark:text-white text-sm">{deliveries.length}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-black/60 dark:text-white/60 font-semibold">Today's Revenue</span>
+              <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm">{fmt(totalRevenue)}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-black/60 dark:text-white/60 font-semibold">Awaiting Dispatch</span>
+              <span className="font-bold text-amber-700 dark:text-amber-300 text-xs px-2 py-0.5 rounded-md bg-amber-500/15">{pendingDeliveries.length} unassigned</span>
+            </div>
           </div>
-          <button onClick={() => setTab("shipments")} className="w-full bg-[#FFC542] text-[#111] py-4 rounded-[18px] text-[15px] font-extrabold shadow-md hover:bg-[#FFC542]/90 transition-all mt-4">Assign riders</button>
+          <button 
+            onClick={() => setTab("shipments")} 
+            className="w-full bg-[#FFB800] text-[#111] py-3.5 rounded-2xl text-xs font-black shadow-md hover:bg-[#FFB800]/90 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Truck size={16} /> Assign Riders ({pendingDeliveries.length})
+          </button>
         </div>
       </section>
-      {/* Developer & Demo Seed Utilities (Collapsible Accordion) */}
-      <div className="border border-black/10 dark:border-white/10 rounded-2xl bg-white dark:bg-[#1a1a1a] p-4 transition-all shadow-xs">
-        <button 
-          onClick={() => setShowSeedUtils(!showSeedUtils)} 
-          className="w-full flex items-center justify-between text-xs font-black text-black/50 dark:text-white/50 hover:text-[#FFC542] transition-colors"
-        >
-          <span className="flex items-center gap-2">
-            <Wrench className="w-4 h-4 text-[#FFC542]" /> Developer & Demo Seed Utilities
-          </span>
-          <span className="text-[10px] uppercase tracking-wider">{showSeedUtils ? "Collapse ▲" : "Expand ▼"}</span>
-        </button>
-        {showSeedUtils && (
-          <div className="flex flex-wrap gap-3 mt-4 pt-3 border-t border-black/5 dark:border-white/5 animate-fade-in">
-            <QuickBtn label="Seed Users" desc="Create sample users" onClick={seedUsers} loading={seeding === "users"} />
-            <QuickBtn label="Seed Deliveries" desc="Create sample shipments" onClick={seedDeliveries} loading={seeding === "deliveries"} />
-            <QuickBtn label="Seed Banners" desc="Create 3 sample hero slides" onClick={seedBanners} loading={seeding === "banners"} />
-            <QuickBtn label="Seed Promos" desc="Create 3 sample promotions" onClick={seedPromos} loading={seeding === "promos"} />
-            <QuickBtn label="Seed Referrals" desc="Create sample referral records" onClick={seedReferrals} loading={seeding === "referrals"} />
-            <QuickBtn label="Seed App Content" desc="Set default dashboard card content" onClick={seedAppContent} loading={seeding === "appcontent"} />
-          </div>
-        )}
-      </div>
     </div>;
-  }
-
+}
 
 
 interface SidebarProps {
@@ -835,19 +1195,19 @@ function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSid
         <EdLogoSvg size={28} />
         {sidebar && (
           <div className="flex flex-col ml-3">
-            <span className="text-[#FFC542] text-sm font-black leading-tight">ENGRACE</span>
-            <span className="text-[#FFC542] text-sm font-black leading-tight">DISPATCH</span>
+            <span className="text-[#FFB800] text-sm font-black leading-tight">ES</span>
+            <span className="text-[#FFB800] text-sm font-black leading-tight">DISPATCH</span>
           </div>
         )}
       </div>
       <nav className="flex flex-col gap-1 w-full px-3 flex-1 overflow-y-auto pb-4">
         {navItems.map(n => (
           <button key={n.id} onClick={() => { setTab(n.id); setMobileSidebar(false); }}
-            className={"flex items-center gap-3 p-3 rounded-3xl transition-all relative " + (tab === n.id ? "bg-[#FFC542] text-[#111] shadow-lg" : "text-white/50 hover:text-white hover:bg-white/5")}>
+            className={"flex items-center gap-3 p-3 rounded-3xl transition-all relative " + (tab === n.id ? "bg-[#FFB800] text-[#111] shadow-lg" : "text-white/50 hover:text-white hover:bg-white/5")}>
             <span className="shrink-0 relative">
               {n.icon}
               {!sidebar && n.badge !== undefined && n.badge > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#FFC542] text-[#111] text-[9px] font-black flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#FFB800] text-[#111] text-[9px] font-black flex items-center justify-center">
                   {n.badge > 99 ? "99+" : n.badge}
                 </span>
               )}
@@ -856,7 +1216,7 @@ function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSid
               <div className="flex items-center justify-between flex-1 min-w-0">
                 <span className="text-xs font-bold whitespace-nowrap">{n.label}</span>
                 {n.badge !== undefined && n.badge > 0 && (
-                  <span className={"px-2 py-0.5 rounded-full text-[10px] font-black " + (tab === n.id ? "bg-[#111] text-[#FFC542]" : "bg-[#FFC542] text-[#111]")}>
+                  <span className={"px-2 py-0.5 rounded-full text-[10px] font-black " + (tab === n.id ? "bg-[#111] text-[#FFB800]" : "bg-[#FFB800] text-[#111]")}>
                     {n.badge > 99 ? "99+" : n.badge}
                   </span>
                 )}
@@ -894,36 +1254,36 @@ function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showN
           <Menu size={22} />
         </button>
         <div className="text-sm sm:text-base text-black/60 dark:text-white/60">
-          Welcome to<br /><span className="font-extrabold text-[#111] dark:text-white text-lg sm:text-xl tracking-tight">Engraced <span className="text-[#FFC542]">Dispatch</span></span>
+          Welcome to<br /><span className="font-extrabold text-[#111] dark:text-white text-lg sm:text-xl tracking-tight">ES<span className="text-[#FFB800]">DISPATCH</span></span>
         </div>
       </div>
       <div className="flex items-center gap-2 sm:gap-5">
         <div className="hidden sm:flex items-center border border-black/20 dark:border-white/20 rounded-full pl-5 pr-1.5 py-1.5 w-[200px] lg:w-[280px] shadow-sm">
           <input type="text" placeholder="Search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="outline-none flex-1 text-sm bg-transparent font-medium text-[#111] dark:text-white" />
-          <button className="bg-[#FFC542] text-[#111] p-2 rounded-xl hover:bg-[#FFC542]/90 transition-colors"><Search size={18} strokeWidth={2.5} /></button>
+          <button className="bg-[#FFB800] text-[#111] p-2 rounded-xl hover:bg-[#FFB800]/90 transition-colors"><Search size={18} strokeWidth={2.5} /></button>
         </div>
         <div className="relative" id="notif-area">
           <button onClick={(e) => { e.stopPropagation(); setShowNotifs(!showNotifs); setShowUserMenu(false); }} className="relative p-2.5 border border-black/10 dark:border-white/10 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
             <Bell size={20} className="text-[#111] dark:text-white" />
-            {unreadCount > 0 && <div className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-[#FFC542] rounded-full border-2 border-white dark:border-[#1a1a1a] animate-pulse-ring"></div>}
+            {unreadCount > 0 && <div className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-[#FFB800] rounded-full border-2 border-white dark:border-[#1a1a1a] animate-pulse-ring"></div>}
           </button>
           {showNotifs && <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-2xl overflow-hidden z-50">
-            <div className="p-4 border-b border-black/10 dark:border-white/10"><p className="text-xs font-bold text-[#FFC542]">NOTIFICATIONS</p></div>
+            <div className="p-4 border-b border-black/10 dark:border-white/10"><p className="text-xs font-bold text-[#FFB800]">NOTIFICATIONS</p></div>
             <div className="max-h-72 overflow-y-auto">
               {notifications.length === 0 && <div className="p-6 text-center text-[10px] text-black/40 dark:text-white/40 font-bold">No notifications yet.</div>}
-              {notifications.map((n: any) => <div key={n.id} onClick={() => markNotifRead(n.id)} className={"p-4 border-b border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer " + (n.read ? "" : "bg-[#FFC542]/5")}>
+              {notifications.map((n: any) => <div key={n.id} onClick={() => markNotifRead(n.id)} className={"p-4 border-b border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer " + (n.read ? "" : "bg-[#FFB800]/5")}>
                 <div className="flex items-start gap-3">
-                  <div className={"w-2 h-2 mt-1.5 rounded-full shrink-0 " + (n.read ? "bg-transparent" : "bg-[#FFC542]")}></div>
+                  <div className={"w-2 h-2 mt-1.5 rounded-full shrink-0 " + (n.read ? "bg-transparent" : "bg-[#FFB800]")}></div>
                   <div><p className="text-xs font-bold text-[#111] dark:text-white">{n.title}</p><p className="text-[10px] text-black/50 dark:text-white/50 mt-0.5">{n.description}</p><p className="text-[9px] text-black/30 dark:text-white/30 mt-1">{n.time || "Just now"}</p></div>
                 </div>
               </div>)}
             </div>
-            <div className="p-3 text-center border-t border-black/10 dark:border-white/10"><button className="text-[10px] text-[#FFC542] font-bold hover:underline">View all notifications</button></div>
+            <div className="p-3 text-center border-t border-black/10 dark:border-white/10"><button className="text-[10px] text-[#FFB800] font-bold hover:underline">View all notifications</button></div>
           </div>}
         </div>
         <div className="relative" id="user-menu-area">
           <div className="flex items-center gap-3 ml-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); setShowNotifs(false); }}>
-            <div className="w-11 h-11 rounded-full bg-[#FFC542]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-[#111] dark:text-white font-black text-sm"><EdLogoSvg size={20} /></div>
+            <div className="w-11 h-11 rounded-full bg-[#FFB800]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-[#111] dark:text-white font-black text-sm"><EdLogoSvg size={20} /></div>
             <div className="text-sm hidden sm:block">
               <div className="font-extrabold text-[#111] dark:text-white">{currentUser?.email?.split("@")[0] || "Admin"}</div>
               <div className="text-black/50 dark:text-white/50 font-medium text-xs mt-0.5">{(userRole || "admin").replace("_", " ").toUpperCase()}</div>
@@ -936,7 +1296,7 @@ function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showN
             </div>
             <div className="p-2">
               <button onClick={toggleDark} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-xs font-bold text-[#111] dark:text-white">
-                {dark ? <Sun className="w-4 h-4 text-[#FFC542]" /> : <Moon className="w-4 h-4 text-[#FFC542]" />}
+                {dark ? <Sun className="w-4 h-4 text-[#FFB800]" /> : <Moon className="w-4 h-4 text-[#FFB800]" />}
                 {dark ? "Light Mode" : "Dark Mode"}
               </button>
               <button onClick={() => { document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs font-bold text-red-500 mt-1">
@@ -980,9 +1340,12 @@ function AdminDashboardPage() {
     category: string;
     price: number;
   } | null>(null);
-  const [shipmentsFilterPrefill, setShipmentsFilterPrefill] = useState<{ status?: string; category?: string; search?: string } | null>(null);
+  const [shipmentsFilterPrefill, setShipmentsFilterPrefill] = useState<{ status?: string; category?: string; search?: string; selectedId?: string } | null>(null);
 
-  const addToast = useCallback((type: Toast["type"], message: string) => {
+  const addToast = useCallback((type: Toast["type"], message: string, dedupeKey?: string) => {
+    if (dedupeKey && NotificationLifecycleManager.isDismissed(dedupeKey)) {
+      return;
+    }
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, type, message }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
@@ -1032,7 +1395,7 @@ function AdminDashboardPage() {
     referralEnabled: true, referralReward: 500, minDeliveryForPayout: 1,
     baseFare: 4500, perKgRate: 250, expressSurcharge: 1500, surgeMultiplier: 1.25,
     dashboardSections: {} as Record<string, boolean>, appContent: {} as Record<string, any>,
-    appName: "ENGRACED DISPATCH", appSlogan: "PREMIUM LOGISTICS & DISPATCH", fcmServerKey: "",
+    appName: "ESDISPATCH", appSlogan: "PREMIUM LOGISTICS & DISPATCH", fcmServerKey: "",
   });
   const [appContent, setAppContent] = useState<AppContent[]>([]);
   const [logs, setLogs] = useState<AuditEntry[]>([]);
@@ -1315,7 +1678,15 @@ function AdminDashboardPage() {
     try {
       if (signingUp) {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
-        await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split("@")[0], role: signupRole, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+        await setDoc(doc(db, "users", cred.user.uid), {
+          uid: cred.user.uid,
+          id: cred.user.uid,
+          email,
+          name: email.split("@")[0],
+          role: signupRole,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        });
         const token = await cred.user.getIdToken();
         document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`;
         setAuthOk((signupRole === "dispatcher" ? "Dispatcher" : "Admin") + " account created.");
@@ -1323,9 +1694,16 @@ function AdminDashboardPage() {
         const cred = await signInWithEmailAndPassword(auth, email, password);
         const snap = await getDoc(doc(db, "users", cred.user.uid));
         if (!snap.exists()) {
-          await signOut(auth);
-          setAuthErr("Account not found. This email is not registered as an admin. Contact your system administrator.");
-          return;
+          // Self-heal: If authenticated user was missing a Firestore doc, create it
+          await setDoc(doc(db, "users", cred.user.uid), {
+            uid: cred.user.uid,
+            id: cred.user.uid,
+            email,
+            name: email.split("@")[0],
+            role: "super_admin",
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now()
+          });
         }
         const token = await cred.user.getIdToken();
         document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`;
@@ -1373,7 +1751,7 @@ function AdminDashboardPage() {
     <div className="min-h-screen bg-[#111] flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
         <EdLogoSvg size={48} />
-        <div className="text-[#FFC542] font-black flex items-center gap-3"><RefreshCw className="w-5 h-5 animate-spin" /> LOADING...</div>
+        <div className="text-[#FFB800] font-black flex items-center gap-3"><RefreshCw className="w-5 h-5 animate-spin" /> LOADING...</div>
       </div>
     </div>
   );
@@ -1383,26 +1761,26 @@ function AdminDashboardPage() {
       <div className="min-h-screen bg-[#111] flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-md bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-8 shadow-xl">
           <div className="flex flex-col items-center mb-6">
-            <div className="w-16 h-16 bg-[#FFC542] rounded-3xl flex items-center justify-center shadow-lg mb-4"><EdLogoSvg size={36} dark /></div>
-            <h1 className="text-xl font-black text-[#111] dark:text-white tracking-wide text-center">{settings.appName || "ENGRACED DISPATCH"}</h1>
-            <p className="text-xs text-[#FFC542] font-semibold tracking-widest mt-1">ADMIN CONTROL CENTER</p>
+            <div className="w-16 h-16 bg-[#FFB800] rounded-3xl flex items-center justify-center shadow-lg mb-4"><EdLogoSvg size={36} dark /></div>
+            <h1 className="text-xl font-black text-[#111] dark:text-white tracking-wide text-center">{settings.appName || "ESDISPATCH"}</h1>
+            <p className="text-xs text-[#FFB800] font-semibold tracking-widest mt-1">ADMIN CONTROL CENTER</p>
           </div>
           {authErr && <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-xs flex items-center gap-2"><AlertTriangle className="w-4 h-4 shrink-0" /> {authErr}</div>}
           {authOk && <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl text-green-700 dark:text-green-400 text-xs flex items-center gap-2"><ShieldCheck className="w-4 h-4 shrink-0" /> {authOk}</div>}
           <form onSubmit={handleAuth} className="space-y-4">
             <div><label className="block text-xs font-semibold text-black/40 dark:text-white/40 mb-1">Admin Email</label>
               <div className="relative"><Mail className="absolute left-3 top-3 w-4 h-4 text-black/40 dark:text-white/40" />
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-10 py-2.5 text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" required /></div></div>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-10 py-2.5 text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" required /></div></div>
             <div><label className="block text-xs font-semibold text-black/40 dark:text-white/40 mb-1">Password</label>
               <div className="relative"><Key className="absolute left-3 top-3 w-4 h-4 text-black/40 dark:text-white/40" />
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-10 py-2.5 text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" required /></div></div>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-10 py-2.5 text-sm text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" required /></div></div>
             {signingUp && <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ROLE</label>
                   <Select value={signupRole} onChange={setSignupRole} options={[{value:"super_admin",label:"Super Admin (full access)"},{value:"admin",label:"Admin (restricted)"},{value:"dispatcher",label:"Dispatcher (orders only)"}]} className="w-full" /></div>}
-            <button type="submit" className="w-full bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] font-black py-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-sm tracking-wider">
+            <button type="submit" className="w-full bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] font-black py-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-sm tracking-wider">
               <Lock className="w-4 h-4" /> {signingUp ? "CREATE ADMIN" : "SIGN IN"}</button>
           </form>
           <div className="mt-6 text-center">
-            <button type="button" onClick={() => setSigningUp(!signingUp)} className="text-xs text-[#FFC542] hover:underline font-semibold">
+            <button type="button" onClick={() => setSigningUp(!signingUp)} className="text-xs text-[#FFB800] hover:underline font-semibold">
               {signingUp ? "Already have an account? Sign In" : "Create an admin account"}</button>
           </div>
         </div>
@@ -1538,29 +1916,105 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         const newBal = Math.max(0, currentBal + requestedDelta);
         const actualDelta = newBal - currentBal;
         
-        await updateDoc(doc(db, "users", fundUser.id), {
+        const primaryDocId = fundUser.id || fundUser.uid;
+        await setDoc(doc(db, "users", primaryDocId), {
           walletBalance: newBal,
+          balance: newBal,
+          wallet_balance: newBal,
           updatedAt: Timestamp.now()
-        });
+        }, { merge: true });
+
+        // Also update by uid if distinct, ensuring older/migrated accounts are synchronized
+        if (fundUser.uid && fundUser.uid !== primaryDocId) {
+          try {
+            await setDoc(doc(db, "users", fundUser.uid), {
+              walletBalance: newBal,
+              balance: newBal,
+              wallet_balance: newBal,
+              updatedAt: Timestamp.now()
+            }, { merge: true });
+          } catch (_) {}
+        }
 
         const txId = "TXN-" + Date.now();
         const txDoc = {
           id: txId,
-          userId: fundUser.id,
+          userId: primaryDocId,
           userName: fundUser.name,
-          title: fundReason || (fundAction === "credit" ? "Admin Wallet Credit" : "Admin Wallet Debit"),
-          amount: actualDelta,
+          title: fundReason || (fundAction === "credit" ? "Wallet Top-up" : "Wallet Debit"),
+          amount: Math.abs(actualDelta),
           type: fundAction === "credit" ? "CREDIT" : "DEBIT",
-          date: new Date().toISOString(),
+          isTopUp: fundAction === "credit",
+          date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
           status: "SUCCESS",
-          createdAt: Timestamp.now()
+          timestamp: Timestamp.now(),
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
         };
-        await setDoc(doc(db, "users", fundUser.id, "transactions", txId), txDoc);
-        await setDoc(doc(db, "transactions", txId), txDoc);
+
+        // Write to user's personal ledger subcollection (mobile app listens to this)
+        try {
+          await setDoc(doc(db, "users", primaryDocId, "transactions", txId), txDoc);
+        } catch (subTxErr) {
+          console.warn("Personal transactions subcollection write note:", subTxErr);
+        }
+
+        if (fundUser.uid && fundUser.uid !== primaryDocId) {
+          try {
+            await setDoc(doc(db, "users", fundUser.uid, "transactions", txId), txDoc);
+          } catch (_) {}
+        }
+
+        // Sync legacy email-keyed records if any exist
+        if (fundUser.email) {
+          try {
+            const emailSnap = await getDocs(query(collection(db, "users"), where("email", "==", fundUser.email)));
+            emailSnap.forEach(async (dSnap) => {
+              if (dSnap.id !== primaryDocId && dSnap.id !== fundUser.uid) {
+                try {
+                  await setDoc(doc(db, "users", dSnap.id), {
+                    walletBalance: newBal,
+                    balance: newBal,
+                    wallet_balance: newBal,
+                    updatedAt: Timestamp.now()
+                  }, { merge: true });
+                  await setDoc(doc(db, "users", dSnap.id, "transactions", txId), txDoc);
+                } catch (_) {}
+              }
+            });
+          } catch (_) {}
+        }
+
+        // Also sync by phone if present
+        if (fundUser.phone) {
+          try {
+            const phoneSnap = await getDocs(query(collection(db, "users"), where("phone", "==", fundUser.phone)));
+            phoneSnap.forEach(async (dSnap) => {
+              if (dSnap.id !== primaryDocId && dSnap.id !== fundUser.uid) {
+                try {
+                  await setDoc(doc(db, "users", dSnap.id), {
+                    walletBalance: newBal,
+                    balance: newBal,
+                    wallet_balance: newBal,
+                    updatedAt: Timestamp.now()
+                  }, { merge: true });
+                  await setDoc(doc(db, "users", dSnap.id, "transactions", txId), txDoc);
+                } catch (_) {}
+              }
+            });
+          } catch (_) {}
+        }
+
+        // Top-level ledger mirror in try/catch so subcollection funding never fails if root has constraint
+        try {
+          await setDoc(doc(db, "transactions", txId), txDoc);
+        } catch (rootTxErr) {
+          console.warn("Top-level transaction mirror note:", rootTxErr);
+        }
 
         // Send in-app notification directly to user's notifications subcollection
         try {
-          await addDoc(collection(db, "users", fundUser.id, "notifications"), {
+          await addDoc(collection(db, "users", primaryDocId, "notifications"), {
             title: fundAction === "credit" ? "Wallet Credited!" : "Wallet Debited",
             message: fundReason 
               ? `${fundReason} (₦${amt.toLocaleString()})`
@@ -1599,6 +2053,8 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         const cred = await createUserWithEmailAndPassword(secondaryAuth, newUserForm.email, derivedPwd);
         
         const isRider = newUserForm.role === "rider";
+        const isAdmin = newUserForm.role === "admin";
+        const isVendor = newUserForm.role === "vendor";
         const bikeNum = newUserForm.bikeNumber || (isRider ? `ES-BIKE-${Math.floor(100 + Math.random() * 900)}` : "");
 
         await setDoc(doc(db, "users", cred.user.uid), {
@@ -1608,7 +2064,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
           email: newUserForm.email,
           phone: newUserForm.phone,
           role: newUserForm.role,
-          userRole: isRider ? "Rider" : (newUserForm.role === "vendor" ? "Vendor" : "Customer"),
+          userRole: isRider ? "Rider" : (isVendor ? "Vendor" : (isAdmin ? "Admin" : "Customer")),
           bikeNumber: bikeNum,
           pin: newUserForm.pin,
           status: isRider ? "active" : "offline",
@@ -1624,7 +2080,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
           updatedAt: Timestamp.now()
         });
 
-        if (newUserForm.role === "vendor") {
+        if (isVendor) {
           const today = new Date().toISOString().slice(0, 10);
           await setDoc(doc(db, "marketplace_stores", cred.user.uid), {
             id: cred.user.uid, ownerId: cred.user.uid, storeName: newUserForm.name + "'s Store", category: "General",
@@ -1642,61 +2098,74 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
         setNewUserStep(1);
       } catch (err: any) {
-        addLog("Error", "Create user failed: " + (err.message || "unknown"));
-        if (addToast) addToast("error", "Create user failed: " + (err.message || "unknown"));
+        let msg = err.message || "Failed to create user";
+        if (err.code === "auth/email-already-in-use") {
+          msg = "This email is already in use. Please use a different email.";
+        } else if (err.code === "auth/invalid-email") {
+          msg = "The provided email address is invalid.";
+        } else if (err.code === "auth/weak-password") {
+          msg = "The generated password from this PIN is too weak.";
+        }
+        addLog("Error", "Create user failed: " + msg);
+        if (addToast) addToast("error", "Create user failed: " + msg);
+      } finally {
+        try {
+          const secondaryAuth = getSecondaryAuth();
+          await signOut(secondaryAuth);
+        } catch (_) {}
+        setCreatingUser(false);
       }
-      setCreatingUser(false);
     };
 
     return <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#FFC542]" /> Users</h1>
+        <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#FFB800]" /> Users</h1>
           <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} active registered users</p></div>
         <div className="flex items-center gap-3">
-          <button onClick={() => setShowNewUser(true)} className="px-4 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:shadow-md transition-all"><UserPlus className="w-4 h-4" /> Add User</button>
+          <button onClick={() => setShowNewUser(true)} className="px-4 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:shadow-md transition-all"><UserPlus className="w-4 h-4" /> Add User</button>
           <div className="flex-1 sm:flex-none"><SearchInput value={search} onChange={setSearch} placeholder="Search users..." /></div>
         </div>
       </div>
       {showNewUser && <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm space-y-4 animate-scale-in">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> New User — Step {newUserStep}/2</h3>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFB800]" /> New User — Step {newUserStep}/2</h3>
           <button onClick={() => { setShowNewUser(false); setNewUserStep(1); }} className="text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70"><X className="w-4 h-4" /></button>
         </div>
         <div className="flex gap-2">
-          <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 1 ? "bg-[#FFC542]" : "bg-gray-200 dark:bg-gray-700")} />
-          <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 2 ? "bg-[#FFC542]" : "bg-gray-200 dark:bg-gray-700")} />
+          <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 1 ? "bg-[#FFB800]" : "bg-gray-200 dark:bg-gray-700")} />
+          <div className={"h-1 flex-1 rounded-full " + (newUserStep >= 2 ? "bg-[#FFB800]" : "bg-gray-200 dark:bg-gray-700")} />
         </div>
         {newUserStep === 1 ? (
           <div className="space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">
               <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Full Name *</label>
-                <input value={newUserForm.name} onChange={e => setNewUserForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Osas Ighodaro" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+                <input value={newUserForm.name} onChange={e => setNewUserForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Osas Ighodaro" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
               <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Email Address *</label>
-                <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(f => ({ ...f, email: e.target.value }))} placeholder="e.g. user@esdispatch.com" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+                <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(f => ({ ...f, email: e.target.value }))} placeholder="e.g. user@esdispatch.com" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone Number</label>
-                <input value={newUserForm.phone} onChange={e => setNewUserForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 08012345678" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+                <input value={newUserForm.phone} onChange={e => setNewUserForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 08012345678" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
               <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Account Role</label>
                 <Select value={newUserForm.role} onChange={v => setNewUserForm(f => ({ ...f, role: v }))} options={[{ value: "customer", label: "Customer" }, { value: "rider", label: "Rider / Courier" }, { value: "vendor", label: "Vendor" }, { value: "admin", label: "Admin" }]} /></div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else { addLog("Error", "Fill in name and email first"); if (addToast) addToast("error", "Fill in name and email first"); } }} className="px-6 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-all">Next →</button>
+              <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else { addLog("Error", "Fill in name and email first"); if (addToast) addToast("error", "Fill in name and email first"); } }} className="px-6 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-all">Next →</button>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
             {newUserForm.role === "rider" && <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike / Plate Number</label>
-              <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>}
+              <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>}
             <div className="grid sm:grid-cols-2 gap-3">
               <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Set 4-Digit PIN *</label>
-                <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+                <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
               <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Confirm PIN *</label>
-                <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(f => ({ ...f, confirmPin: e.target.value }))} placeholder="••••" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+                <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(f => ({ ...f, confirmPin: e.target.value }))} placeholder="••••" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
             </div>
             <div className="flex items-center justify-between gap-2 pt-2">
               <button onClick={() => setNewUserStep(1)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">← Back</button>
-              <button onClick={createUser} disabled={creatingUser || !newUserForm.pin || !newUserForm.confirmPin} className="px-6 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/80 disabled:opacity-50 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-1.5">
+              <button onClick={createUser} disabled={creatingUser || !newUserForm.pin || !newUserForm.confirmPin} className="px-6 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/80 disabled:opacity-50 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-1.5">
                 {creatingUser ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Create User
               </button>
             </div>
@@ -1705,63 +2174,87 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       </div>}
       <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
-            <tr><th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">User</th>
-              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Contact</th>
-              <th className="text-left font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Role / Status</th>
-              <th className="text-right font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10 hidden sm:table-cell">Balance</th>
-              <th className="text-right font-bold text-black/40 dark:text-white/40 p-3 border-b border-black/10 dark:border-white/10">Actions</th></tr>
-          </thead><tbody className="divide-y divide-black/5 dark:divide-white/10">
-            {pagedUsers.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-black/40 dark:text-white/40">No users found.</td></tr>}
-            {pagedUsers.map((u, i) => <tr key={u.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors animate-fade-in " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][i] || "")}>
-              <td className="p-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="relative">
-                    <div className="w-9 h-9 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-xs font-black text-[#111] dark:text-white border border-[#FFC542]/30">
-                      {u.name.charAt(0).toUpperCase()}
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 dark:bg-[#222]">
+              <tr>
+                <th className="text-left font-bold text-black/40 dark:text-white/40 p-3.5 border-b border-black/10 dark:border-white/10">User & Email</th>
+                <th className="text-left font-bold text-black/40 dark:text-white/40 p-3.5 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Role & Presence</th>
+                <th className="text-right font-bold text-black/40 dark:text-white/40 p-3.5 border-b border-black/10 dark:border-white/10">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/5 dark:divide-white/10">
+              {pagedUsers.length === 0 && <tr><td colSpan={3} className="p-8 text-center text-black/40 dark:text-white/40">No users found.</td></tr>}
+              {pagedUsers.map((u, i) => (
+                <tr key={u.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors animate-fade-in " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][i] || "")}>
+                  <td className="p-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="relative shrink-0">
+                        <div className="w-9 h-9 rounded-xl bg-[#FFB800]/15 flex items-center justify-center text-xs font-black text-[#111] dark:text-white border border-[#FFB800]/30 shadow-xs">
+                          {u.name.charAt(0).toUpperCase()}
+                        </div>
+                        {u.isOnline === true && (
+                          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#1a1a1a]" title="Online" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-xs text-[#111] dark:text-white flex items-center gap-1.5 leading-tight truncate">
+                          <span>{u.name}</span>
+                          {u.role === "rider" && u.bikeNumber && (
+                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-black/5 dark:bg-white/10 rounded-md text-black/70 dark:text-white/70">
+                              {u.bikeNumber}
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-black/50 dark:text-white/50 leading-tight truncate mt-0.5">
+                          {u.email}
+                        </p>
+                        {u.phone && (
+                          <p className="text-[10px] text-black/40 dark:text-white/40 font-mono leading-tight mt-0.5">
+                            {u.phone}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    {u.isOnline && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#1a1a1a]" />}
-                  </div>
-                  <div>
-                    <p className="font-black text-[#111] dark:text-white flex items-center gap-1.5">{u.name}
-                      {u.role === "rider" && u.bikeNumber && <span className="text-[9px] font-mono px-1.5 py-0.2 bg-black/5 dark:bg-white/10 rounded text-black/60 dark:text-white/60">{u.bikeNumber}</span>}
-                    </p>
-                    <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">UID: {u.id ? u.id.slice(0, 8) : "N/A"}...</span>
-                  </div>
-                </div>
-              </td>
-              <td className="p-3 hidden md:table-cell">
-                <div className="space-y-0.5">
-                  <p className="text-black/70 dark:text-white/70">{u.email}</p>
-                  <p className="text-[10px] text-black/40 dark:text-white/40">{u.phone || "No phone"}</p>
-                </div>
-              </td>
-              <td className="p-3 hidden lg:table-cell">
-                <div className="flex items-center gap-1.5">
-                  <span className={"text-[10px] font-bold px-2.5 py-0.5 rounded-full " + rBadge(u.role)}>{(u.role || "customer").toUpperCase()}</span>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${u.status === "active" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60"}`}>
-                    {(u.status || "active").toUpperCase()}
-                  </span>
-                </div>
-              </td>
-              <td className="p-3 text-right hidden sm:table-cell">
-                <p className="font-mono font-black text-xs text-emerald-600 dark:text-emerald-400">₦{(u.walletBalance || 0).toLocaleString()}</p>
-                <p className="text-[10px] text-black/40 dark:text-white/40">{u.loyaltyPoints || 0} pts</p>
-              </td>
-              <td className="p-3 text-right whitespace-nowrap">
-                <button title="View Full Details" onClick={() => setPreviewUser(u)} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors"><Eye className="w-3.5 h-3.5" /></button>
-                {(u.role !== "vendor" && u.role !== "admin" && u.role !== "super_admin") && <button title="Upgrade to Vendor" onClick={() => promoteToVendor(u)} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Store className="w-3.5 h-3.5" /></button>}
-                <button title="Fund / Adjust Wallet" onClick={() => setFundUser(u)} className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-3.5 h-3.5" /></button>
-                <button title="Edit User" onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role || "customer", phone: u.phone || "", bikeNumber: u.bikeNumber || "", status: u.status || "active" }); }} className="p-2 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
-                <button title="Deactivate User" onClick={() => setConfirmDelete(u.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-              </td>
-            </tr>)}
-          </tbody></table>
+                  </td>
+                  <td className="p-3.5 hidden md:table-cell">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={"text-[10px] font-extrabold px-2.5 py-1 rounded-full shadow-2xs " + rBadge(u.role)}>
+                        {(u.role || "customer").toUpperCase()}
+                      </span>
+                      {u.isOnline === true ? (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-500/20 shadow-2xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Online
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1 rounded-full bg-black/5 dark:bg-white/5 text-black/40 dark:text-white/40">
+                          <span className="w-1.5 h-1.5 rounded-full bg-black/20 dark:bg-white/20" />
+                          Offline
+                        </span>
+                      )}
+                      {u.status && u.status !== "active" && u.status !== "online" && u.status !== "offline" && (
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400">
+                          {u.status.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="p-3.5 text-right whitespace-nowrap">
+                    <button title="View Full Details" onClick={() => setPreviewUser(u)} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors"><Eye className="w-3.5 h-3.5" /></button>
+                    {(u.role !== "vendor" && u.role !== "admin" && u.role !== "super_admin") && <button title="Upgrade to Vendor" onClick={() => promoteToVendor(u)} className="p-2 text-[#FFB800] hover:bg-[#FFB800]/10 rounded-lg transition-colors"><Store className="w-3.5 h-3.5" /></button>}
+                    <button title="Fund / Adjust Wallet" onClick={() => setFundUser(u)} className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-3.5 h-3.5" /></button>
+                    <button title="Edit User" onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role || "customer", phone: u.phone || "", bikeNumber: u.bikeNumber || "", status: u.status || "active" }); }} className="p-2 text-[#FFB800] hover:bg-[#FFB800]/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
+                    <button title="Deactivate User" onClick={() => setConfirmDelete(u.id)} className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
       {uTotalPages > 1 && <div className="flex items-center justify-center gap-2 pt-2">
         <button onClick={() => setUPage(p => Math.max(0, p - 1))} disabled={uPage === 0} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronLeft size={14} /></button>
-        {Array.from({ length: uTotalPages }, (_, i) => <button key={i} onClick={() => setUPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === uPage ? "bg-[#FFC542] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
+        {Array.from({ length: uTotalPages }, (_, i) => <button key={i} onClick={() => setUPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === uPage ? "bg-[#FFB800] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
         <button onClick={() => setUPage(p => Math.min(uTotalPages - 1, p + 1))} disabled={uPage >= uTotalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
       </div>}
       <ConfirmModal show={confirmDelete !== null} title="Delete User" message="Soft-delete this user? They will no longer be able to log in or transact." confirmLabel="Deactivate" onConfirm={() => deleteUser(confirmDelete!)} onCancel={() => setConfirmDelete(null)} />
@@ -1771,13 +2264,18 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/10">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-[#FFC542] text-[#111] flex items-center justify-center text-lg font-black shadow-md">
+              <div className="w-12 h-12 rounded-2xl bg-[#FFB800] text-[#111] flex items-center justify-center text-lg font-black shadow-md">
                 {previewUser.name.charAt(0).toUpperCase()}
               </div>
               <div>
                 <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
                   {previewUser.name}
-                  {previewUser.isOnline && <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" title="Online" />}
+                  {previewUser.isOnline === true && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-500/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Online
+                    </span>
+                  )}
                 </h3>
                 <p className="text-xs text-black/50 dark:text-white/50">{previewUser.email}</p>
               </div>
@@ -1790,8 +2288,8 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
               <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">Wallet</p>
               <p className="text-sm font-black text-emerald-600 dark:text-emerald-300 font-mono mt-0.5">₦{(previewUser.walletBalance || 0).toLocaleString()}</p>
             </div>
-            <div className="bg-[#FFC542]/10 border border-[#FFC542]/20 rounded-2xl p-3 text-center">
-              <p className="text-[10px] font-bold uppercase text-[#FFC542]">Points</p>
+            <div className="bg-[#FFB800]/10 border border-[#FFB800]/20 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-bold uppercase text-[#FFB800]">Points</p>
               <p className="text-sm font-black text-[#111] dark:text-white font-mono mt-0.5">{previewUser.loyaltyPoints || 0}</p>
             </div>
             <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-500/20 rounded-2xl p-3 text-center">
@@ -1806,10 +2304,6 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
 
           <div className="bg-gray-50 dark:bg-[#222] rounded-2xl p-4 space-y-2 text-xs">
             <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
-              <span className="text-black/40 dark:text-white/40">User ID</span>
-              <span className="font-mono text-black/70 dark:text-white/70">{previewUser.uid || previewUser.id}</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
               <span className="text-black/40 dark:text-white/40">Phone Number</span>
               <span className="font-bold text-[#111] dark:text-white">{previewUser.phone || "None registered"}</span>
             </div>
@@ -1818,10 +2312,16 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
               <span className={"font-bold px-2 py-0.5 rounded-full text-[10px] " + rBadge(previewUser.role)}>{(previewUser.role || "customer").toUpperCase()}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
-              <span className="text-black/40 dark:text-white/40">Account Status</span>
-              <span className={`font-bold text-[10px] px-2 py-0.5 rounded-full ${previewUser.status === "active" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300"}`}>
-                {(previewUser.status || "active").toUpperCase()}
-              </span>
+              <span className="text-black/40 dark:text-white/40">Presence</span>
+              {previewUser.isOnline === true ? (
+                <span className="font-bold text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  ONLINE
+                </span>
+              ) : (
+                <span className="font-medium text-[10px] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-black/40 dark:text-white/40">
+                  OFFLINE
+                </span>
+              )}
             </div>
             {previewUser.bikeNumber && <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
               <span className="text-black/40 dark:text-white/40">Assigned Bike / Vehicle</span>
@@ -1834,7 +2334,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
               <button onClick={() => { setFundUser(previewUser); setPreviewUser(null); }} className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all">
                 <DollarSign size={14} /> Fund Wallet
               </button>
-              <button onClick={() => { setEditUser(previewUser); setForm({ name: previewUser.name, role: previewUser.role || "customer", phone: previewUser.phone || "", bikeNumber: previewUser.bikeNumber || "", status: previewUser.status || "active" }); setPreviewUser(null); }} className="px-3.5 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 transition-all">
+              <button onClick={() => { setEditUser(previewUser); setForm({ name: previewUser.name, role: previewUser.role || "customer", phone: previewUser.phone || "", bikeNumber: previewUser.bikeNumber || "", status: previewUser.status || "active" }); setPreviewUser(null); }} className="px-3.5 py-2 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 transition-all">
                 <Edit3 size={14} /> Edit
               </button>
             </div>
@@ -1847,7 +2347,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       {fundUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setFundUser(null)}>
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
           <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><DollarSign className="w-5 h-5 text-emerald-500" /> Fund & Manage Wallet</h3>
-          <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20">
+          <div className="bg-[#FFB800]/10 rounded-2xl p-3 border border-[#FFB800]/20">
             <p className="text-xs font-bold text-[#111] dark:text-white">{fundUser.name}</p>
             <p className="text-[10px] text-black/40 dark:text-white/40">{fundUser.email} · Current Balance: ₦{(fundUser.walletBalance || 0).toLocaleString()}</p>
           </div>
@@ -1881,19 +2381,19 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       {editUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
         <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-[#FFC542]" /> Edit User</h3>
+            <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-[#FFB800]" /> Edit User</h3>
             <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">{editUser.email}</span>
           </div>
           <div className="space-y-3">
             <div>
               <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Full Name</label>
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Phone Number</label>
               <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1921,7 +2421,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
             <div>
               <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">Bike / Vehicle Number</label>
               <input value={form.bikeNumber} onChange={e => setForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204"
-                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+                className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-2">
@@ -1933,10 +2433,11 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
     </div>;
   }
 
-function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, filterPrefill, setFilterPrefill }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string; db: any; addLog: any; addToast?: (type: Toast["type"], message: string) => void; filterPrefill?: { status?: string; category?: string; search?: string } | null; setFilterPrefill?: (v: any) => void }) {
+function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, filterPrefill, setFilterPrefill }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string; db: any; addLog: any; addToast?: (type: Toast["type"], message: string) => void; filterPrefill?: { status?: string; category?: string; search?: string; selectedId?: string } | null; setFilterPrefill?: (v: any) => void }) {
     const [search, setSearch] = useState("");
-    const [statusFilter, setStatusFilter] = useState("ALL");
+    const [statusFilter, setStatusFilter] = useState("ACTION_NEEDED");
     const [categoryFilter, setCategoryFilter] = useState("ALL");
+    const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [bulkStatus, setBulkStatus] = useState("");
     const [page, setPage] = useState(0);
@@ -1952,6 +2453,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
     const [riderOnlineOnly, setRiderOnlineOnly] = useState(false);
     const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
     const [creating, setCreating] = useState(false);
+    const [decisionDelivery, setDecisionDelivery] = useState<Delivery | null>(null);
     const perPage = 15;
 
     useEffect(() => {
@@ -1959,12 +2461,127 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
         if (filterPrefill.status) setStatusFilter(filterPrefill.status);
         if (filterPrefill.category) setCategoryFilter(filterPrefill.category);
         if (filterPrefill.search) setSearch(filterPrefill.search);
+        if (filterPrefill.selectedId) setSelectedShipmentId(filterPrefill.selectedId);
         if (setFilterPrefill) setFilterPrefill(null);
       }
     }, [filterPrefill, setFilterPrefill]);
 
     const getRiderActiveLoad = (riderId: string) => {
       return deliveries.filter(d => (d.riderId === riderId || d.driverId === riderId) && ["ASSIGNED", "TRANSIT", "OUT_FOR_DELIVERY"].includes(d.status)).length;
+    };
+
+    const decisionRiders = useMemo(() => {
+      return drivers.map(d => ({
+        uid: d.id || d.uid,
+        name: d.name,
+        phone: d.phone,
+        isOnline: d.isOnline,
+        status: d.status,
+        rating: d.rating,
+        deliveryCount: d.deliveryCount,
+        currentLoad: getRiderActiveLoad(d.id),
+        lat: d.lat,
+        lng: d.lng,
+        bikeNumber: d.bikeNumber,
+      }));
+    }, [drivers, deliveries]);
+
+    const scoreRiderForDelivery = (rider: UserProfile, targetDelivery: Delivery | null, load: number) => {
+      if (rider.isOnline === false) {
+        return { score: 15, badge: "OFFLINE" as const, explanation: "Offline • Unavailable for dispatch" };
+      }
+      if (rider.status === "SUSPENDED" || rider.status === "DEACTIVATED") {
+        return { score: 0, badge: "OFFLINE" as const, explanation: "Blocked • Account under review" };
+      }
+
+      let proximityScore = 24;
+      let etaText = "5–10 min to pickup";
+
+      if (rider.lat && rider.lng && targetDelivery?.pickupLat && targetDelivery?.pickupLng) {
+        const lat1 = rider.lat;
+        const lon1 = rider.lng;
+        const lat2 = targetDelivery.pickupLat;
+        const lon2 = targetDelivery.pickupLng;
+        const R = 6371;
+        const dLat = (lat2 - lat1) * (Math.PI / 180);
+        const dLon = (lon2 - lon1) * (Math.PI / 180);
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distKm = R * c;
+
+        if (distKm <= 2.5) {
+          proximityScore = 35;
+          etaText = `~${Math.max(3, Math.round(distKm * 2.5 + 2))}m away (${distKm.toFixed(1)}km)`;
+        } else if (distKm <= 6) {
+          proximityScore = 28;
+          etaText = `~${Math.round(distKm * 2.2 + 3)}m away (${distKm.toFixed(1)}km)`;
+        } else if (distKm <= 12) {
+          proximityScore = 20;
+          etaText = `~${Math.round(distKm * 2.0 + 5)}m away (${distKm.toFixed(1)}km)`;
+        } else {
+          proximityScore = 10;
+          etaText = `${distKm.toFixed(1)}km from pickup`;
+        }
+      } else if (targetDelivery?.pickupAddress) {
+        const beninZones = ["GRA", "Ring Road", "Ugbowo", "Airport Road", "Sapele Road", "Upper Sakponba", "Ikpoba Hill", "New Benin", "Uselu", "Ekenwan", "Siluko", "Aduwawa"];
+        const pAddr = targetDelivery.pickupAddress.toLowerCase();
+        const matched = beninZones.find(z => pAddr.includes(z.toLowerCase()));
+        if (matched) {
+          proximityScore = 30;
+          etaText = `In/near ${matched}`;
+        }
+      }
+
+      let workloadScore = 25;
+      if (load === 1) workloadScore = 18;
+      else if (load === 2) workloadScore = 10;
+      else if (load >= 3) workloadScore = 2;
+
+      let capacityScore = 15;
+      if ((targetDelivery?.weight || 0) > 12) capacityScore = 8;
+
+      let gpsScore = 12;
+      let gpsAge = "GPS fresh";
+      if (rider.updatedAt) {
+        const ms = rider.updatedAt.toMillis ? rider.updatedAt.toMillis() : new Date(rider.updatedAt).getTime();
+        const ageMin = Math.round((Date.now() - ms) / 60000);
+        if (ageMin <= 3) {
+          gpsScore = 15;
+          gpsAge = "GPS fresh (<3m)";
+        } else if (ageMin <= 10) {
+          gpsScore = 11;
+          gpsAge = `GPS seen ${ageMin}m ago`;
+        } else {
+          gpsScore = 5;
+          gpsAge = `GPS stale (${ageMin}m)`;
+        }
+      }
+
+      const rating = rider.rating || 5.0;
+      const reliabilityScore = Math.min(10, Math.round(rating * 2));
+
+      const totalScore = Math.min(100, Math.max(0, proximityScore + workloadScore + capacityScore + gpsScore + reliabilityScore));
+
+      let badge: "BEST_FIT" | "RESERVE_NEXT" | "ELIGIBLE" | "BUSY" | "OFFLINE" = "ELIGIBLE";
+      let explanation = "";
+
+      if (load === 0 && totalScore >= 70) {
+        badge = "BEST_FIT";
+        explanation = `Best Fit: Free now • ${etaText} • ${gpsAge}`;
+      } else if (load === 1 && totalScore >= 55) {
+        badge = "RESERVE_NEXT";
+        explanation = `Reserve Next: Finishing drop • ${etaText} • ${gpsAge}`;
+      } else if (load >= 2) {
+        badge = "BUSY";
+        explanation = `Busy (${load} active drops) • ${etaText}`;
+      } else {
+        badge = "ELIGIBLE";
+        explanation = `Eligible • ${etaText} • ${gpsAge}`;
+      }
+
+      return { score: totalScore, badge, explanation };
     };
 
     const filteredDrivers = drivers.filter(r => {
@@ -1982,10 +2599,43 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
 
     const filtered = deliveries.filter(d => {
       const q = (searchQuery || search).toLowerCase();
-      const matchSearch = d.receiverName.toLowerCase().includes(q) || d.senderName.toLowerCase().includes(q) || d.id.toLowerCase().includes(q) || (d.itemName && d.itemName.toLowerCase().includes(q)) || (d.deliveryAddress && d.deliveryAddress.toLowerCase().includes(q));
-      const matchStatus = statusFilter === "ALL" || d.status === statusFilter;
+      const matchSearch = 
+        d.receiverName.toLowerCase().includes(q) || 
+        d.senderName.toLowerCase().includes(q) || 
+        d.id.toLowerCase().includes(q) || 
+        (d.itemName && d.itemName.toLowerCase().includes(q)) || 
+        (d.deliveryAddress && d.deliveryAddress.toLowerCase().includes(q)) ||
+        (d.courierName && d.courierName.toLowerCase().includes(q));
+
+      let matchStatus = true;
+      if (statusFilter === "ACTION_NEEDED") {
+        matchStatus = ["PENDING", "QUEUED", "RESERVED_NEXT"].includes(d.status) || (!d.riderId && !d.driverId && d.status !== "DELIVERED" && d.status !== "CANCELLED");
+      } else if (statusFilter === "IN_MOTION") {
+        matchStatus = ["ASSIGNED", "PICKED_UP", "TRANSIT", "ARRIVED", "OUT_FOR_DELIVERY"].includes(d.status);
+      } else if (statusFilter === "DELIVERED") {
+        matchStatus = d.status === "DELIVERED";
+      } else if (statusFilter === "ALL") {
+        matchStatus = true;
+      } else {
+        matchStatus = d.status === statusFilter;
+      }
+
       const matchCat = categoryFilter === "ALL" || d.category === categoryFilter;
       return matchSearch && matchStatus && matchCat;
+    }).sort((a, b) => {
+      const urgencyRank = (status: string, riderId?: string) => {
+        if (["PENDING", "QUEUED", "RESERVED_NEXT"].includes(status) || !riderId) return 0;
+        if (["ASSIGNED", "PICKED_UP", "TRANSIT", "ARRIVED", "OUT_FOR_DELIVERY"].includes(status)) return 1;
+        if (status === "DELIVERED") return 2;
+        return 3;
+      };
+      const rankA = urgencyRank(a.status, a.riderId || a.driverId);
+      const rankB = urgencyRank(b.status, b.riderId || b.driverId);
+      if (rankA !== rankB) return rankA - rankB;
+
+      const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return timeB - timeA;
     });
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
@@ -2292,18 +2942,38 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
       setCreating(false);
     };
 
-    // HeyTek Stat Metrics
+    // Operational Stat Metrics
     const totalDeliveries = deliveries.length;
-    const pendingCount = deliveries.filter(d => d.status === "PENDING").length;
-    const transitCount = deliveries.filter(d => d.status === "TRANSIT" || d.status === "OUT_FOR_DELIVERY").length;
+    const actionNeededCount = deliveries.filter(d => ["PENDING", "QUEUED", "RESERVED_NEXT"].includes(d.status) || (!d.riderId && !d.driverId && d.status !== "DELIVERED" && d.status !== "CANCELLED")).length;
+    const inMotionCount = deliveries.filter(d => ["ASSIGNED", "PICKED_UP", "TRANSIT", "ARRIVED", "OUT_FOR_DELIVERY"].includes(d.status)).length;
     const deliveredCount = deliveries.filter(d => d.status === "DELIVERED").length;
     const totalRevenue = deliveries.reduce((acc, d) => acc + (d.price || 0) + (d.tipAmount || 0), 0);
 
-    const statuses = ["ALL", "PENDING", "ASSIGNED", "TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"];
+    // If an individual shipment is selected, render the dedicated in-place Micro-Page (no cramped modals)
+    const activeDeliveryForMicroPage = deliveries.find(d => d.id === selectedShipmentId);
+    if (selectedShipmentId && activeDeliveryForMicroPage) {
+      return (
+        <ShipmentMicroPage
+          delivery={activeDeliveryForMicroPage}
+          drivers={drivers}
+          deliveries={deliveries}
+          onBack={() => setSelectedShipmentId(null)}
+          onAssignRider={assignRider}
+          onReserveRider={reserveRider}
+          onUpdateStatus={async (delId: string, newStatus: string) => {
+            await updateDoc(doc(db, "deliveries", delId), { status: newStatus, updatedAt: Timestamp.now() });
+            addLog("Status Update", `${idShort(delId)} → ${newStatus}`);
+            if (addToast) addToast("success", `Status updated to ${newStatus.replace(/_/g, " ")}`);
+          }}
+          onPrintWaybill={(del: any) => setWaybillModal({ delivery: del, show: true })}
+          addToast={addToast}
+        />
+      );
+    }
 
     return (
       <div className="tab-content space-y-6 animate-fade-in">
-        {/* HeyTek Analytics Metric Header Cards */}
+        {/* Analytics Metric Header Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
           <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
@@ -2313,23 +2983,23 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
             <p className="text-xl font-black text-[#111] dark:text-white mt-2">{totalDeliveries}</p>
           </div>
 
-          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between cursor-pointer hover:border-amber-500/40 transition-colors" onClick={() => setStatusFilter("ACTION_NEEDED")}>
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Pending Assign</span>
+              <span className="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Action Needed</span>
               <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center"><Clock size={16} /></div>
             </div>
-            <p className="text-xl font-black text-[#111] dark:text-white mt-2">{pendingCount}</p>
+            <p className="text-xl font-black text-[#111] dark:text-white mt-2">{actionNeededCount}</p>
           </div>
 
-          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between cursor-pointer hover:border-purple-500/40 transition-colors" onClick={() => setStatusFilter("IN_MOTION")}>
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-purple-500 uppercase tracking-wider">In Transit</span>
               <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center"><Truck size={16} /></div>
             </div>
-            <p className="text-xl font-black text-[#111] dark:text-white mt-2">{transitCount}</p>
+            <p className="text-xl font-black text-[#111] dark:text-white mt-2">{inMotionCount}</p>
           </div>
 
-          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between cursor-pointer hover:border-emerald-500/40 transition-colors" onClick={() => setStatusFilter("DELIVERED")}>
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-emerald-500 uppercase tracking-wider">Delivered</span>
               <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center"><CheckCircle size={16} /></div>
@@ -2339,47 +3009,77 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
 
           <div className="col-span-2 sm:col-span-1 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-[#FFC542] uppercase tracking-wider">Gross Revenue</span>
-              <div className="w-8 h-8 rounded-xl bg-[#FFC542]/20 text-[#111] dark:text-white flex items-center justify-center"><DollarSign size={16} /></div>
+              <span className="text-[11px] font-bold text-[#FFB800] uppercase tracking-wider">Gross Revenue</span>
+              <div className="w-8 h-8 rounded-xl bg-[#FFB800]/20 text-[#111] dark:text-white flex items-center justify-center"><DollarSign size={16} /></div>
             </div>
             <p className="text-xl font-black text-[#111] dark:text-white mt-2">{fmt(totalRevenue)}</p>
           </div>
         </div>
 
-        {/* HeyTek Controls & Search Header */}
+        {/* Controls & Search Header */}
         <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
-                <Package className="w-5 h-5 text-[#FFC542]" /> Dispatch Management Hub
+                <Package className="w-5 h-5 text-[#FFB800]" /> Dispatch Management Hub
               </h1>
               <p className="text-xs text-black/40 dark:text-white/40 mt-0.5">Showing {filtered.length} shipments (page {page + 1}/{totalPages})</p>
             </div>
 
             <div className="flex items-center gap-2.5 flex-wrap">
               <div className="w-full sm:w-64">
-                <SearchInput value={search} onChange={setSearch} placeholder="Search receiver, item, tracking #..." />
+                <SearchInput value={search} onChange={setSearch} placeholder="Search sender, receiver, item, tracking #..." />
               </div>
               <button
                 onClick={() => setShowNew(true)}
-                className="px-4 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0"
+                className="px-4 py-2.5 min-h-[38px] bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" /> New Delivery
               </button>
             </div>
           </div>
 
-          {/* Status Pills Bar */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-black/5 dark:border-white/5 mb-3">
-            {statuses.map(s => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={"px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer " + (statusFilter === s ? "bg-[#111] text-white dark:bg-white dark:text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-[#333]")}
-              >
-                {s === "ALL" ? "All Shipments" : s.replace(/_/g, " ")}
-              </button>
-            ))}
+          {/* Operational Urgency Filter Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-black/5 dark:border-white/5 mb-3">
+            <button
+              onClick={() => setStatusFilter("ACTION_NEEDED")}
+              className={"px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer " + (statusFilter === "ACTION_NEEDED" ? "bg-amber-500 text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-black/70 dark:text-white/70 hover:bg-gray-200 dark:hover:bg-[#333]")}
+            >
+              <AlertTriangle size={13} />
+              Action Needed
+              <span className={"px-1.5 py-0.2 rounded-full text-[10px] font-black " + (statusFilter === "ACTION_NEEDED" ? "bg-black/20 text-[#111]" : "bg-amber-500/20 text-amber-600 dark:text-amber-400")}>
+                {actionNeededCount}
+              </span>
+            </button>
+            <button
+              onClick={() => setStatusFilter("IN_MOTION")}
+              className={"px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer " + (statusFilter === "IN_MOTION" ? "bg-[#111] text-white dark:bg-white dark:text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-black/70 dark:text-white/70 hover:bg-gray-200 dark:hover:bg-[#333]")}
+            >
+              <Truck size={13} />
+              In Motion
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-black/10 dark:bg-white/10">
+                {inMotionCount}
+              </span>
+            </button>
+            <button
+              onClick={() => setStatusFilter("DELIVERED")}
+              className={"px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer " + (statusFilter === "DELIVERED" ? "bg-emerald-600 text-white shadow-xs" : "bg-gray-100 dark:bg-[#222] text-black/70 dark:text-white/70 hover:bg-gray-200 dark:hover:bg-[#333]")}
+            >
+              <CheckCircle size={13} />
+              Delivered
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-black/10 dark:bg-white/10">
+                {deliveredCount}
+              </span>
+            </button>
+            <button
+              onClick={() => setStatusFilter("ALL")}
+              className={"px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer " + (statusFilter === "ALL" ? "bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900 shadow-xs" : "bg-gray-100 dark:bg-[#222] text-black/70 dark:text-white/70 hover:bg-gray-200 dark:hover:bg-[#333]")}
+            >
+              All Shipments
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-black/10 dark:bg-white/10">
+                {totalDeliveries}
+              </span>
+            </button>
           </div>
 
           {/* Category Filter Bar */}
@@ -2388,7 +3088,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
               <button
                 key={c}
                 onClick={() => setCategoryFilter(c)}
-                className={"px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer " + (categoryFilter === c ? "bg-[#FFC542] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-[#333]")}
+                className={"px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer " + (categoryFilter === c ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-[#333]")}
               >
                 {c === "ALL" ? "All Categories" : c}
               </button>
@@ -2397,9 +3097,9 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
 
           {/* Sticky Bulk Action Bar */}
           {selected.size > 0 && (
-            <div className="bg-[#FFC542]/15 border border-[#FFC542]/40 rounded-2xl p-3 flex items-center justify-between gap-3 animate-fade-in">
+            <div className="bg-[#FFB800]/15 border border-[#FFB800]/40 rounded-2xl p-3 flex items-center justify-between gap-3 animate-fade-in">
               <span className="text-xs font-bold text-[#111] dark:text-white flex items-center gap-1.5">
-                <CheckCircle className="w-4 h-4 text-[#FFC542]" /> {selected.size} shipments selected
+                <CheckCircle className="w-4 h-4 text-[#FFB800]" /> {selected.size} shipments selected
               </span>
               <div className="flex items-center gap-2">
                 <Select
@@ -2429,7 +3129,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
           )}
         </div>
 
-        {/* HeyTek High-Fidelity Shipments Table */}
+        {/* High-Fidelity Shipments Table */}
         <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -2440,15 +3140,15 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       type="checkbox"
                       checked={selected.size > 0 && selected.size === paged.length}
                       onChange={e => setSelected(e.target.checked ? new Set(paged.map(d => d.id)) : new Set())}
-                      className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]"
+                      className="rounded border-gray-300 text-[#FFB800] focus:ring-[#FFB800]"
                     />
                   </th>
-                  <th className="p-3.5 text-left font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider">Item & Tracking</th>
-                  <th className="p-3.5 text-left font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider hidden md:table-cell">Recipient & Route</th>
+                  <th className="p-3.5 text-left font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider">Item & Order ID</th>
+                  <th className="p-3.5 text-left font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider hidden md:table-cell">Sender & Recipient</th>
                   <th className="p-3.5 text-left font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider hidden lg:table-cell">Assigned Rider</th>
                   <th className="p-3.5 text-left font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider">Status</th>
                   <th className="p-3.5 text-right font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider">Price</th>
-                  <th className="p-3.5 text-center font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider w-16">Actions</th>
+                  <th className="p-3.5 text-right font-extrabold text-black/50 dark:text-white/50 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-black/5 dark:divide-white/10">
@@ -2461,7 +3161,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                   </tr>
                 ) : (
                   paged.map((d, i) => (
-                    <tr key={d.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors " + (selected.has(d.id) ? "bg-[#FFC542]/10" : "")}>
+                    <tr key={d.id} className={"hover:bg-black/5 dark:hover:bg-white/5 transition-colors " + (selected.has(d.id) ? "bg-[#FFB800]/10" : "")}>
                       <td className="p-3.5">
                         <input
                           type="checkbox"
@@ -2471,10 +3171,10 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                             s.has(d.id) ? s.delete(d.id) : s.add(d.id);
                             setSelected(s);
                           }}
-                          className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]"
+                          className="rounded border-gray-300 text-[#FFB800] focus:ring-[#FFB800]"
                         />
                       </td>
-                      <td className="p-3.5">
+                      <td className="p-3.5 cursor-pointer" onClick={() => setSelectedShipmentId(d.id)}>
                         <p className="font-bold text-[#111] dark:text-white flex items-center gap-1.5">
                           {d.itemName || "Parcel"}
                           {d.category && <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-gray-100 dark:bg-[#333] text-black/60 dark:text-white/60">{d.category}</span>}
@@ -2483,85 +3183,87 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                           #{idShort(d.id)}
                         </p>
                       </td>
-                      <td className="p-3.5 hidden md:table-cell">
-                        <p className="font-bold text-[#111] dark:text-white">{d.receiverName || "—"}</p>
-                        <p className="text-[10px] text-black/40 dark:text-white/40 truncate max-w-[200px]" title={`${d.pickupAddress} → ${d.deliveryAddress}`}>
-                          {d.deliveryAddress || "Standard Delivery"}
-                        </p>
+                      <td className="p-3.5 hidden md:table-cell cursor-pointer" onClick={() => setSelectedShipmentId(d.id)}>
+                        <div className="space-y-0.5">
+                          <p className="font-bold text-xs text-[#111] dark:text-white flex items-center gap-1 truncate">
+                            <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400">From:</span>
+                            {d.senderName || "Sender"}
+                          </p>
+                          <p className="font-bold text-xs text-[#111] dark:text-white flex items-center gap-1 truncate">
+                            <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">To:</span>
+                            {d.receiverName || "Receiver"}
+                          </p>
+                          <p className="text-[10px] text-black/50 dark:text-white/50 truncate max-w-xs">{d.deliveryAddress || "Benin City"}</p>
+                        </div>
                       </td>
                       <td className="p-3.5 hidden lg:table-cell">
-                        {d.status === "PENDING" ? (
+                        {(!d.riderId && !d.driverId) ? (
                           <button
-                            onClick={() => setAssignModal({ delivery: d, show: true })}
-                            className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-lg text-[10px] font-black transition-all flex items-center gap-1"
+                            onClick={() => setSelectedShipmentId(d.id)}
+                            className="px-3 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-lg text-[10px] font-black transition-all flex items-center gap-1 shadow-xs cursor-pointer"
                           >
                             <UserPlus size={12} /> Assign Rider
                           </button>
-                        ) : (d.status !== "DELIVERED" && d.status !== "CANCELLED") ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-[10px] font-black text-[#111] dark:text-white shrink-0">
-                              {(d.courierName || d.driverName || "?").charAt(0)}
-                            </div>
-                            <div>
-                              <p className="text-[11px] font-bold text-[#111] dark:text-white truncate max-w-[100px]">{d.courierName || d.driverName || "Assigned"}</p>
-                              {d.courierPhone && <p className="text-[9px] text-black/40 dark:text-white/40">{d.courierPhone}</p>}
-                              <button
-                                onClick={() => setReassignModal({ delivery: d, show: true })}
-                                className="text-[9px] font-bold text-[#FFC542] hover:underline mt-0.5"
-                              >
-                                Reassign
-                              </button>
-                            </div>
-                          </div>
                         ) : (
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-[#FFC542]/20 flex items-center justify-center text-[10px] font-black text-[#111] dark:text-white shrink-0">
+                            <div className="w-7 h-7 rounded-full bg-[#FFB800]/20 flex items-center justify-center text-[10px] font-black text-[#111] dark:text-white shrink-0">
                               {(d.courierName || d.driverName || "?").charAt(0)}
                             </div>
                             <div>
-                              <p className="text-[11px] font-bold text-[#111] dark:text-white truncate max-w-[100px]">{d.courierName || d.driverName || "—"}</p>
+                              <p className="text-[11px] font-bold text-[#111] dark:text-white truncate max-w-[110px]">{d.courierName || d.driverName || "Assigned"}</p>
                               {d.courierPhone && <p className="text-[9px] text-black/40 dark:text-white/40">{d.courierPhone}</p>}
+                              {d.status !== "DELIVERED" && d.status !== "CANCELLED" && (
+                                <button
+                                  onClick={() => setSelectedShipmentId(d.id)}
+                                  className="text-[9px] font-bold text-[#FFB800] hover:underline cursor-pointer"
+                                >
+                                  Manage / Reassign
+                                </button>
+                              )}
                             </div>
                           </div>
                         )}
                       </td>
                       <td className="p-3.5">
-                        <Select
-                          value={d.status}
-                          onChange={v => updateStatus(d.id, v)}
-                          compact
-                          options={[
-                            { value: d.status, label: d.status.replace(/_/g, " ") },
-                            ...(d.status === "PENDING" ? [{ value: "QUEUED", label: "QUEUED" }, { value: "ASSIGNED", label: "ASSIGNED" }] : []),
-                            ...(d.status === "QUEUED" ? [{ value: "RESERVED_NEXT", label: "RESERVE NEXT" }, { value: "ASSIGNED", label: "ASSIGNED" }] : []),
-                            ...(d.status === "RESERVED_NEXT" ? [{ value: "ASSIGNED", label: "ASSIGNED" }] : []),
-                            ...(d.status === "ASSIGNED" ? [{ value: "PICKED_UP", label: "PICKED UP" }, { value: "TRANSIT", label: "TRANSIT" }] : []),
-                            ...(d.status === "PICKED_UP" ? [{ value: "TRANSIT", label: "TRANSIT" }, { value: "ARRIVED", label: "ARRIVED" }] : []),
-                            ...(d.status === "TRANSIT" ? [{ value: "ARRIVED", label: "ARRIVED" }, { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" }] : []),
-                            ...(d.status === "ARRIVED" ? [{ value: "HANDOVER_VERIFIED", label: "HANDOVER VERIFIED" }, { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" }] : []),
-                            ...(d.status === "OUT_FOR_DELIVERY" ? [{ value: "HANDOVER_VERIFIED", label: "HANDOVER VERIFIED" }, { value: "DELIVERED", label: "DELIVERED" }] : []),
-                            ...(d.status === "HANDOVER_VERIFIED" ? [{ value: "DELIVERED", label: "DELIVERED" }] : []),
-                            ...((d.status !== "DELIVERED" && d.status !== "CANCELLED") ? [{ value: "CANCELLED", label: "CANCELLED" }] : [])
-                          ]}
-                          renderOption={(o) => <span className={"px-2.5 py-1 rounded-xl text-[10px] font-extrabold shadow-2xs " + sStyle(o.value)}>{o.label}</span>}
-                        />
+                        <div className="flex flex-col gap-1.5 items-start">
+                          <StatusBadge status={d.status} size="default" useAdminLabel={true} />
+                          <Select
+                            value={d.status}
+                            onChange={v => updateStatus(d.id, v)}
+                            compact
+                            options={[
+                              { value: d.status, label: d.status.replace(/_/g, " ") },
+                              ...(d.status === "PENDING" ? [{ value: "QUEUED", label: "QUEUED" }, { value: "ASSIGNED", label: "ASSIGNED" }] : []),
+                              ...(d.status === "QUEUED" ? [{ value: "RESERVED_NEXT", label: "RESERVE NEXT" }, { value: "ASSIGNED", label: "ASSIGNED" }] : []),
+                              ...(d.status === "RESERVED_NEXT" ? [{ value: "ASSIGNED", label: "ASSIGNED" }] : []),
+                              ...(d.status === "ASSIGNED" ? [{ value: "PICKED_UP", label: "PICKED UP" }, { value: "TRANSIT", label: "TRANSIT" }] : []),
+                              ...(d.status === "PICKED_UP" ? [{ value: "TRANSIT", label: "TRANSIT" }, { value: "ARRIVED", label: "ARRIVED" }] : []),
+                              ...(d.status === "TRANSIT" ? [{ value: "ARRIVED", label: "ARRIVED" }, { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" }] : []),
+                              ...(d.status === "ARRIVED" ? [{ value: "HANDOVER_VERIFIED", label: "HANDOVER VERIFIED" }, { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" }] : []),
+                              ...(d.status === "OUT_FOR_DELIVERY" ? [{ value: "HANDOVER_VERIFIED", label: "HANDOVER VERIFIED" }, { value: "DELIVERED", label: "DELIVERED" }] : []),
+                              ...(d.status === "HANDOVER_VERIFIED" ? [{ value: "DELIVERED", label: "DELIVERED" }] : []),
+                              ...((d.status !== "DELIVERED" && d.status !== "CANCELLED") ? [{ value: "CANCELLED", label: "CANCELLED" }] : [])
+                            ]}
+                            renderOption={(o) => <span className={"px-2.5 py-1 rounded-xl text-[10px] font-extrabold shadow-2xs " + sStyle(o.value)}>{o.label}</span>}
+                          />
+                        </div>
                       </td>
                       <td className="p-3.5 text-right">
-                        <p className="font-extrabold text-[#111] dark:text-white">{fmt(d.price || 0)}</p>
-                        {d.tipAmount > 0 && <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">+{fmt(d.tipAmount)} tip</p>}
+                        <PriceDisplay amount={d.price || 0} variant="admin" />
+                        {d.tipAmount > 0 && <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">+{fmt(d.tipAmount)} tip</p>}
                       </td>
-                      <td className="p-3.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="p-3.5 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => setDetailsModal({ delivery: d, show: true })}
-                            className="p-1.5 rounded-lg text-black/40 dark:text-white/40 hover:text-[#FFC542] hover:bg-black/5 dark:hover:bg-white/5 transition-all"
-                            title="View Details"
+                            onClick={() => setSelectedShipmentId(d.id)}
+                            className="px-3 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] font-black text-xs rounded-xl shadow-xs flex items-center gap-1 cursor-pointer transition-all"
+                            title="Open Dedicated Shipment Workspace"
                           >
-                            <Eye size={15} />
+                            Manage →
                           </button>
                           <button
                             onClick={() => setWaybillModal({ delivery: d, show: true })}
-                            className="p-1.5 rounded-lg text-black/40 dark:text-white/40 hover:text-[#FFC542] hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                            className="p-1.5 rounded-lg text-black/40 dark:text-white/40 hover:text-[#FFB800] hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer"
                             title="Print Waybill / Thermal Receipt"
                           >
                             <Printer size={15} />
@@ -2593,7 +3295,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
             <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
                 <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
-                  <Package className="w-5 h-5 text-[#FFC542]" /> Shipment Details
+                  <Package className="w-5 h-5 text-[#FFB800]" /> Shipment Details
                 </h3>
                 <div className="flex items-center gap-2">
                   <button
@@ -2602,7 +3304,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       setDetailsModal({ delivery: null as any, show: false });
                       setWaybillModal({ delivery: d, show: true });
                     }}
-                    className="px-3 py-1 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] font-bold text-xs rounded-xl flex items-center gap-1 transition-all"
+                    className="px-3 py-1 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] font-bold text-xs rounded-xl flex items-center gap-1 transition-all"
                   >
                     <Printer size={12} /> Waybill
                   </button>
@@ -2662,14 +3364,14 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                   {detailsModal.delivery.status === "PENDING" ? (
                     <button
                       onClick={() => { setDetailsModal({ delivery: null as any, show: false }); setAssignModal({ delivery: detailsModal.delivery, show: true }); }}
-                      className="px-3 py-1.5 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black"
+                      className="px-3 py-1.5 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black"
                     >
                       Assign
                     </button>
                   ) : (detailsModal.delivery.status !== "DELIVERED" && detailsModal.delivery.status !== "CANCELLED") ? (
                     <button
                       onClick={() => { setDetailsModal({ delivery: null as any, show: false }); setReassignModal({ delivery: detailsModal.delivery, show: true }); }}
-                      className="px-3 py-1.5 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black"
+                      className="px-3 py-1.5 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black"
                     >
                       Reassign
                     </button>
@@ -2686,13 +3388,13 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
             <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 my-8" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
                 <div className="flex items-center gap-2">
-                  <Printer className="w-5 h-5 text-[#FFC542]" />
+                  <Printer className="w-5 h-5 text-[#FFB800]" />
                   <h3 className="text-base font-black text-[#111] dark:text-white">Waybill & Thermal Receipt</h3>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => window.print()}
-                    className="px-3.5 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] font-black text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                    className="px-3.5 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] font-black text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                   >
                     <Printer size={13} /> Print
                   </button>
@@ -2785,7 +3487,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
             <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-xl shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
                 <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-[#FFC542]" /> Create New Shipment
+                  <Plus className="w-5 h-5 text-[#FFB800]" /> Create New Shipment
                 </h3>
                 <button onClick={() => setShowNew(false)} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500">
                   <X size={18} />
@@ -2802,7 +3504,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       placeholder="e.g. Legal Documents, Cake, Spare Part"
                       value={newForm.itemName}
                       onChange={e => setNewForm({ ...newForm, itemName: e.target.value })}
-                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40 outline-none"
+                      className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40 outline-none"
                       required
                     />
                   </div>
@@ -2827,7 +3529,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                 {/* Shipper / Sender Details */}
                 <div className="bg-gray-50 dark:bg-[#222] p-3.5 rounded-2xl border border-black/5 dark:border-white/5 space-y-2.5">
                   <p className="text-[11px] font-black text-[#111] dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-                    <MapPin size={13} className="text-[#FFC542]" /> Sender Information (Pickup)
+                    <MapPin size={13} className="text-[#FFB800]" /> Sender Information (Pickup)
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
@@ -2969,7 +3671,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                 <button
                   onClick={createDelivery}
                   disabled={creating}
-                  className="px-5 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  className="px-5 py-2.5 min-h-[38px] bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
                   {creating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Create & Dispatch Booking
@@ -2984,11 +3686,11 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
           <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => { setAssignModal({ delivery: null as any, show: false }); setRiderSearch(""); }}>
             <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
-                <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-5 h-5 text-[#FFC542]" /> Assign Rider</h3>
+                <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-5 h-5 text-[#FFB800]" /> Assign Rider</h3>
                 <button onClick={() => { setAssignModal({ delivery: null as any, show: false }); setRiderSearch(""); }} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500"><X size={18} /></button>
               </div>
 
-              <div className="bg-[#FFC542]/10 rounded-2xl p-3.5 border border-[#FFC542]/30 space-y-1">
+              <div className="bg-[#FFB800]/10 rounded-2xl p-3.5 border border-[#FFB800]/30 space-y-1">
                 <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">#{idShort(assignModal.delivery.id)}</span></p>
                 <p className="text-[11px] text-black/60 dark:text-white/60">{assignModal.delivery.pickupAddress} → {assignModal.delivery.deliveryAddress}</p>
                 <p className="text-[10px] text-black/50 dark:text-white/50">Recipient: <b className="text-[#111] dark:text-white">{assignModal.delivery.receiverName}</b> ({assignModal.delivery.receiverPhone || "No phone"})</p>
@@ -3003,7 +3705,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                     placeholder="Search rider name, phone, bike #..."
                     value={riderSearch}
                     onChange={e => setRiderSearch(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                   />
                 </div>
                 <button
@@ -3019,49 +3721,66 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                 {filteredDrivers.length === 0 ? (
                   <p className="text-xs text-black/40 dark:text-white/40 text-center py-6">No matching riders found.</p>
                 ) : (
-                  filteredDrivers.map(r => {
-                    const load = getRiderActiveLoad(r.id);
-                    const loadClass = load === 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : load <= 2 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30";
-                    const loadText = load === 0 ? "0 active (Free)" : load <= 2 ? `${load} active` : `${load} active (Busy)`;
-                    return (
-                      <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFC542]/50 transition-all gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-9 h-9 rounded-full bg-[#FFC542] text-[#111] font-black flex items-center justify-center text-xs shrink-0">
-                            {(r.name || "?").charAt(0)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
-                              <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline !== false ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline !== false ? "Online" : "Offline"} />
+                  [...filteredDrivers]
+                    .map(r => {
+                      const load = getRiderActiveLoad(r.id);
+                      const rec = scoreRiderForDelivery(r, assignModal.delivery, load);
+                      return { r, load, rec };
+                    })
+                    .sort((a, b) => b.rec.score - a.rec.score)
+                    .map(({ r, load, rec }) => {
+                      const loadClass = load === 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : load <= 2 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30";
+                      const loadText = load === 0 ? "0 active (Free)" : load <= 2 ? `${load} active` : `${load} active (Busy)`;
+                      return (
+                        <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFB800]/50 transition-all gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-9 h-9 rounded-full bg-[#FFB800] text-[#111] font-black flex items-center justify-center text-xs shrink-0">
+                              {(r.name || "?").charAt(0)}
                             </div>
-                            <p className="text-[10px] text-black/40 dark:text-white/40 truncate">
-                              {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
-                            </p>
-                            <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border mt-1 " + loadClass}>
-                              {loadText}
-                            </span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
+                                <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline !== false ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline !== false ? "Online" : "Offline"} />
+                                {rec.badge === "BEST_FIT" && (
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">★ BEST FIT ({rec.score})</span>
+                                )}
+                                {rec.badge === "RESERVE_NEXT" && (
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-600 text-white">⚡ RESERVE NEXT ({rec.score})</span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-black/40 dark:text-white/40 truncate">
+                                {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border " + loadClass}>
+                                  {loadText}
+                                </span>
+                                <span className="text-[9px] font-medium text-black/60 dark:text-white/60 bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded">
+                                  {rec.explanation}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {load > 0 && (
+                              <button
+                                onClick={() => { reserveRider(assignModal.delivery.id, r); setRiderSearch(""); }}
+                                className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[11px] font-bold transition-colors shadow-xs cursor-pointer"
+                                title="Reserve this rider to automatically dispatch once their current drop is completed"
+                              >
+                                Reserve Next
+                              </button>
+                            )}
+                            <button
+                              onClick={() => { assignRider(assignModal.delivery.id, r); setRiderSearch(""); }}
+                              className="px-3 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer"
+                            >
+                              {load === 0 ? "Assign Now" : "Assign"}
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {load > 0 && (
-                            <button
-                              onClick={() => { reserveRider(assignModal.delivery.id, r); setRiderSearch(""); }}
-                              className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[11px] font-bold transition-colors shadow-xs cursor-pointer"
-                              title="Reserve this rider to automatically dispatch once their current drop is completed"
-                            >
-                              Reserve Next
-                            </button>
-                          )}
-                          <button
-                            onClick={() => { assignRider(assignModal.delivery.id, r); setRiderSearch(""); }}
-                            className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer"
-                          >
-                            {load === 0 ? "Assign Now" : "Assign"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })
                 )}
               </div>
             </div>
@@ -3073,11 +3792,11 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
           <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => { setReassignModal({ delivery: null as any, show: false }); setRiderSearch(""); }}>
             <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
-                <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFC542]" /> Reassign Rider</h3>
+                <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#FFB800]" /> Reassign Rider</h3>
                 <button onClick={() => { setReassignModal({ delivery: null as any, show: false }); setRiderSearch(""); }} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500"><X size={18} /></button>
               </div>
 
-              <div className="bg-[#FFC542]/10 rounded-2xl p-3.5 border border-[#FFC542]/30 space-y-1">
+              <div className="bg-[#FFB800]/10 rounded-2xl p-3.5 border border-[#FFB800]/30 space-y-1">
                 <p className="text-xs font-bold text-[#111] dark:text-white">{reassignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-black/40 dark:text-white/40 font-mono">#{idShort(reassignModal.delivery.id)}</span></p>
                 <p className="text-[10px] text-black/40 dark:text-white/40">Currently: <b className="text-[#111] dark:text-white">{reassignModal.delivery.courierName || "Unassigned"}</b></p>
                 <p className="text-[11px] text-black/60 dark:text-white/60">{reassignModal.delivery.pickupAddress} → {reassignModal.delivery.deliveryAddress}</p>
@@ -3092,7 +3811,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                     placeholder="Search rider name, phone, bike #..."
                     value={riderSearch}
                     onChange={e => setRiderSearch(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                   />
                 </div>
                 <button
@@ -3108,49 +3827,66 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                 {filteredDrivers.length === 0 ? (
                   <p className="text-xs text-black/40 dark:text-white/40 text-center py-6">No matching riders found.</p>
                 ) : (
-                  filteredDrivers.map(r => {
-                    const load = getRiderActiveLoad(r.id);
-                    const loadClass = load === 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : load <= 2 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30";
-                    const loadText = load === 0 ? "0 active (Free)" : load <= 2 ? `${load} active` : `${load} active (Busy)`;
-                    return (
-                      <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFC542]/50 transition-all gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-9 h-9 rounded-full bg-[#FFC542] text-[#111] font-black flex items-center justify-center text-xs shrink-0">
-                            {(r.name || "?").charAt(0)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
-                              <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline !== false ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline !== false ? "Online" : "Offline"} />
+                  [...filteredDrivers]
+                    .map(r => {
+                      const load = getRiderActiveLoad(r.id);
+                      const rec = scoreRiderForDelivery(r, reassignModal.delivery, load);
+                      return { r, load, rec };
+                    })
+                    .sort((a, b) => b.rec.score - a.rec.score)
+                    .map(({ r, load, rec }) => {
+                      const loadClass = load === 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : load <= 2 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30";
+                      const loadText = load === 0 ? "0 active (Free)" : load <= 2 ? `${load} active` : `${load} active (Busy)`;
+                      return (
+                        <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFB800]/50 transition-all gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-9 h-9 rounded-full bg-[#FFB800] text-[#111] font-black flex items-center justify-center text-xs shrink-0">
+                              {(r.name || "?").charAt(0)}
                             </div>
-                            <p className="text-[10px] text-black/40 dark:text-white/40 truncate">
-                              {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
-                            </p>
-                            <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border mt-1 " + loadClass}>
-                              {loadText}
-                            </span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
+                                <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline !== false ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline !== false ? "Online" : "Offline"} />
+                                {rec.badge === "BEST_FIT" && (
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">★ BEST FIT ({rec.score})</span>
+                                )}
+                                {rec.badge === "RESERVE_NEXT" && (
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-600 text-white">⚡ RESERVE NEXT ({rec.score})</span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-black/40 dark:text-white/40 truncate">
+                                {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border " + loadClass}>
+                                  {loadText}
+                                </span>
+                                <span className="text-[9px] font-medium text-black/60 dark:text-white/60 bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded">
+                                  {rec.explanation}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {load > 0 && (
+                              <button
+                                onClick={() => { reserveRider(reassignModal.delivery.id, r); setRiderSearch(""); }}
+                                className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[11px] font-bold transition-colors shadow-xs cursor-pointer"
+                                title="Reserve this rider as next in sequence"
+                              >
+                                Reserve Next
+                              </button>
+                            )}
+                            <button
+                              onClick={() => { reassignRider(reassignModal.delivery.id, r); setRiderSearch(""); }}
+                              className="px-3 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
+                            >
+                              Reassign
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {load > 0 && (
-                            <button
-                              onClick={() => { reserveRider(reassignModal.delivery.id, r); setRiderSearch(""); }}
-                              className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[11px] font-bold transition-colors shadow-xs cursor-pointer"
-                              title="Reserve this rider as next in sequence"
-                            >
-                              Reserve Next
-                            </button>
-                          )}
-                          <button
-                            onClick={() => { reassignRider(reassignModal.delivery.id, r); setRiderSearch(""); }}
-                            className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
-                          >
-                            Reassign
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })
                 )}
               </div>
             </div>
@@ -3163,7 +3899,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
             <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
                 <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-[#FFC542]" /> Bulk Assign {selected.size} Shipments
+                  <UserPlus className="w-5 h-5 text-[#FFB800]" /> Bulk Assign {selected.size} Shipments
                 </h3>
                 <button onClick={() => { setBulkAssignModal(false); setRiderSearch(""); }} className="text-xs font-bold text-black/40 dark:text-white/40 hover:text-red-500"><X size={18} /></button>
               </div>
@@ -3181,7 +3917,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                     placeholder="Search rider name, phone, bike #..."
                     value={riderSearch}
                     onChange={e => setRiderSearch(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFC542]/40"
+                    className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                   />
                 </div>
                 <button
@@ -3202,9 +3938,9 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                     const loadClass = load === 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : load <= 2 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30";
                     const loadText = load === 0 ? "0 active (Free)" : load <= 2 ? `${load} active` : `${load} active (Busy)`;
                     return (
-                      <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFC542]/50 transition-all gap-2">
+                      <div key={r.id} className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl flex items-center justify-between border border-black/5 dark:border-white/5 hover:border-[#FFB800]/50 transition-all gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-9 h-9 rounded-full bg-[#FFC542] text-[#111] font-black flex items-center justify-center text-xs shrink-0">
+                          <div className="w-9 h-9 rounded-full bg-[#FFB800] text-[#111] font-black flex items-center justify-center text-xs shrink-0">
                             {(r.name || "?").charAt(0)}
                           </div>
                           <div className="min-w-0">
@@ -3222,7 +3958,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                         </div>
                         <button
                           onClick={() => { bulkAssignRider(r); setRiderSearch(""); }}
-                          className="px-3 py-1.5 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
+                          className="px-3 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
                         >
                           Assign All
                         </button>
@@ -3239,7 +3975,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
         {confirmStatusModal.show && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setConfirmStatusModal({ delivery: null as any, newStatus: "", show: false })}>
             <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
-              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-[#FFC542]" /> Confirm Status Change</h3>
+              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-[#FFB800]" /> Confirm Status Change</h3>
               <div className="space-y-2 text-xs">
                 <p className="text-black/60 dark:text-white/60">Are you sure you want to change the status of shipment <span className="font-bold text-[#111] dark:text-white">#{idShort(confirmStatusModal.delivery.id)}</span>?</p>
                 <div className="flex items-center gap-2">
@@ -3250,7 +3986,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
               </div>
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button onClick={() => setConfirmStatusModal({ delivery: null as any, newStatus: "", show: false })} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-colors">Cancel</button>
-                <button onClick={confirmUpdateStatus} className="px-4 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors">Confirm Change</button>
+                <button onClick={confirmUpdateStatus} className="px-4 py-2.5 min-h-[38px] bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-colors">Confirm Change</button>
               </div>
             </div>
           </div>
@@ -3260,15 +3996,39 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
         {confirmBulkModal.show && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setConfirmBulkModal({ show: false })}>
             <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
-              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-[#FFC542]" /> Confirm Bulk Update</h3>
+              <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-[#FFB800]" /> Confirm Bulk Update</h3>
               <p className="text-xs text-black/60 dark:text-white/60">Are you sure you want to change <span className="font-bold text-[#111] dark:text-white">{selected.size} shipment(s)</span> to <span className={"px-2 py-1 rounded-lg text-[10px] font-bold " + sStyle(bulkStatus)}>{bulkStatus}</span>?</p>
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button onClick={() => setConfirmBulkModal({ show: false })} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-colors">Cancel</button>
-                <button onClick={confirmBulkUpdate} className="px-4 py-2.5 min-h-[38px] bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black transition-colors">Apply to All</button>
+                <button onClick={confirmBulkUpdate} className="px-4 py-2.5 min-h-[38px] bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-colors">Apply to All</button>
               </div>
             </div>
           </div>
         )}
+
+        {/* Dispatch Decision Drawer (Design System) */}
+        <DispatchDecisionDrawer
+          isOpen={!!decisionDelivery}
+          onClose={() => setDecisionDelivery(null)}
+          delivery={decisionDelivery}
+          riders={decisionRiders}
+          onAssignRider={async (deliveryId, riderRecord) => {
+            const matchedDriver = drivers.find(drv => drv.id === riderRecord.uid || drv.uid === riderRecord.uid);
+            if (matchedDriver) {
+              await assignRider(deliveryId, matchedDriver);
+            }
+          }}
+          onReserveRider={async (deliveryId, riderRecord) => {
+            const matchedDriver = drivers.find(drv => drv.id === riderRecord.uid || drv.uid === riderRecord.uid);
+            if (matchedDriver) {
+              await reserveRider(deliveryId, matchedDriver);
+            }
+          }}
+          onUpdateStatus={async (deliveryId, newStatus) => {
+            await updateStatus(deliveryId, newStatus);
+          }}
+          onAddLog={addLog}
+        />
       </div>
     );
 }
@@ -3278,7 +4038,7 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery }: ReferralsT
   const filtered = referrals.filter(r => { const q = (searchQuery || search).toLowerCase(); return r.referrerName.toLowerCase().includes(q) || r.refereeName.toLowerCase().includes(q); });
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Gift className="w-5 h-5 text-[#FFC542]" /> Referrals</h1>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Gift className="w-5 h-5 text-[#FFB800]" /> Referrals</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">{referrals.length} total | {completedReferrals.length} completed | {fmt(referrals.reduce((s, r) => s + r.rewardAmount, 0))} total rewards</p></div>
       <SearchInput value={search} onChange={setSearch} placeholder="Search..." />
     </div>
@@ -3318,24 +4078,24 @@ function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps)
   const deletePromo = async (id: string) => { try { await deleteDoc(doc(db, "promotions", id)); addLog("Delete Promo", id); addToast("success", "Promotion deleted"); } catch (e: any) { addToast("error", e.message); } };
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-5 h-5 text-[#FFC542]" /> Promotions</h1>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-5 h-5 text-[#FFB800]" /> Promotions</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">{promotions.length} active</p></div>
       <button onClick={() => { setEditPromo({ id: "", title: "", description: "", discountType: "percentage", discountValue: 0, discountDisplay: "", code: "", usageLimit: 0, usedCount: 0, minOrderAmount: 0, maxDiscount: 0, active: true }); setPForm({ title: "", description: "", discountType: "percentage", discountValue: 0, discountDisplay: "", code: "", usageLimit: 0, minOrderAmount: 0, maxDiscount: 0, active: true }); }}
-        className="px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Promo</button>
+        className="px-4 py-2 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Promo</button>
     </div>
     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {promotions.length === 0 && <div className="sm:col-span-3 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-8 text-center"><p className="text-sm text-black/40 dark:text-white/40">No promotions yet.</p></div>}
       {promotions.map((p, i) => {
         const dd = p.discountDisplay || (p.discountType === "percentage" ? p.discountValue + "% OFF" : "\u20A6" + p.discountValue.toLocaleString() + " OFF");
         return <div key={p.id} className={"animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300 group " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6"][i] || "")}>
-          <div className="relative h-32 bg-gradient-to-br from-[#FFC542]/20 to-white dark:to-[#222] p-4 flex items-end">
-            <div className="absolute top-3 right-3"><div className="relative"><div className="w-12 h-10 bg-[#FFC542]/80 rounded-md transform rotate-12" />
-              <div className="w-10 h-8 bg-[#FFC542] rounded-md absolute -top-1 -left-1 transform -rotate-6 border border-[#FFC542]/50" />
+          <div className="relative h-32 bg-gradient-to-br from-[#FFB800]/20 to-white dark:to-[#222] p-4 flex items-end">
+            <div className="absolute top-3 right-3"><div className="relative"><div className="w-12 h-10 bg-[#FFB800]/80 rounded-md transform rotate-12" />
+              <div className="w-10 h-8 bg-[#FFB800] rounded-md absolute -top-1 -left-1 transform -rotate-6 border border-[#FFB800]/50" />
               <div className="absolute -top-0.5 -left-0.5 text-[6px] font-black text-white px-1 bg-[#111] rounded-sm shadow-sm">ED</div></div></div>
             <div className="relative z-10">
               <div className="inline-block bg-[#111] dark:bg-white text-white dark:text-[#111] text-[10px] font-black px-2 py-0.5 rounded-sm mb-1.5 shadow-sm">{dd}</div>
               <h3 className="text-xs font-black text-[#111] dark:text-white">{p.title}</h3>
-              <span className="inline-block mt-1 bg-[#FFC542]/20 text-[#111] dark:text-white text-[8px] font-bold px-1.5 py-0.5 rounded-sm border border-[#FFC542]/30">CODE: {p.code}</span>
+              <span className="inline-block mt-1 bg-[#FFB800]/20 text-[#111] dark:text-white text-[8px] font-bold px-1.5 py-0.5 rounded-sm border border-[#FFB800]/30">CODE: {p.code}</span>
             </div>
           </div>
           <div className="p-3 space-y-1.5">
@@ -3345,7 +4105,7 @@ function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps)
               <span className="text-[10px] text-black/40 dark:text-white/40">{p.usedCount}/{p.usageLimit} used</span>
             </div>
             <div className="flex items-center justify-end gap-1 pt-1 border-t border-black/10 dark:border-white/10">
-              <button onClick={() => { setEditPromo(p); setPForm({ title: p.title, description: p.description, discountType: p.discountType, discountValue: p.discountValue, discountDisplay: p.discountDisplay, code: p.code, usageLimit: p.usageLimit, minOrderAmount: p.minOrderAmount, maxDiscount: p.maxDiscount, active: p.active }); }} className="p-1.5 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg"><Edit3 className="w-3 h-3" /></button>
+              <button onClick={() => { setEditPromo(p); setPForm({ title: p.title, description: p.description, discountType: p.discountType, discountValue: p.discountValue, discountDisplay: p.discountDisplay, code: p.code, usageLimit: p.usageLimit, minOrderAmount: p.minOrderAmount, maxDiscount: p.maxDiscount, active: p.active }); }} className="p-1.5 text-[#FFB800] hover:bg-[#FFB800]/10 rounded-lg"><Edit3 className="w-3 h-3" /></button>
               <button onClick={() => deletePromo(p.id)} className="p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 className="w-3 h-3" /></button>
             </div>
           </div>
@@ -3354,18 +4114,18 @@ function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps)
     </div>
     {editPromo && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditPromo(null)}>
       <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-4 h-4 text-[#FFC542]" /> {editPromo.id ? "Edit" : "New"} Promo</h3>
-        <div className="relative h-24 bg-gradient-to-br from-[#FFC542]/20 to-white dark:to-[#222] rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 p-3 flex items-end">
-          <div className="absolute top-2 right-2"><div className="relative"><div className="w-10 h-8 bg-[#FFC542]/80 rounded-md transform rotate-12" />
-            <div className="w-8 h-6 bg-[#FFC542] rounded-md absolute -top-1 -left-1 transform -rotate-6 border border-[#FFC542]/50" /></div></div>
+        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><Percent className="w-4 h-4 text-[#FFB800]" /> {editPromo.id ? "Edit" : "New"} Promo</h3>
+        <div className="relative h-24 bg-gradient-to-br from-[#FFB800]/20 to-white dark:to-[#222] rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 p-3 flex items-end">
+          <div className="absolute top-2 right-2"><div className="relative"><div className="w-10 h-8 bg-[#FFB800]/80 rounded-md transform rotate-12" />
+            <div className="w-8 h-6 bg-[#FFB800] rounded-md absolute -top-1 -left-1 transform -rotate-6 border border-[#FFB800]/50" /></div></div>
           <div><div className="inline-block bg-[#111] dark:bg-white text-white dark:text-[#111] text-[8px] font-black px-1.5 py-0.5 rounded-sm mb-1">{pForm.discountDisplay || (pForm.discountType === "percentage" ? pForm.discountValue + "% OFF" : "\u20A6" + pForm.discountValue.toLocaleString() + " OFF")}</div>
             <p className="text-[10px] font-black text-[#111] dark:text-white">{pForm.title || "Promo Title"}</p>
-            {pForm.code && <span className="inline-block mt-0.5 bg-[#FFC542]/20 text-[#111] dark:text-white text-[7px] font-bold px-1 py-0.5 rounded-sm">CODE: {pForm.code}</span>}
+            {pForm.code && <span className="inline-block mt-0.5 bg-[#FFB800]/20 text-[#111] dark:text-white text-[7px] font-bold px-1 py-0.5 rounded-sm">CODE: {pForm.code}</span>}
           </div>
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 25)</label>
-            <input value={pForm.title} maxLength={25} onChange={e => setPForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <input value={pForm.title} maxLength={25} onChange={e => setPForm(f => ({ ...f, title: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DESCRIPTION (max 60)</label>
             <input value={pForm.description} maxLength={60} onChange={e => setPForm(f => ({ ...f, description: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">DISCOUNT DISPLAY</label>
@@ -3382,7 +4142,7 @@ function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps)
             <input type="number" value={pForm.minOrderAmount || ""} onChange={e => setPForm(f => ({ ...f, minOrderAmount: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">MAX DISCOUNT (\u20A6)</label>
             <input type="number" value={pForm.maxDiscount || ""} onChange={e => setPForm(f => ({ ...f, maxDiscount: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-          <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={pForm.active} onChange={e => setPForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
+          <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={pForm.active} onChange={e => setPForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFB800] focus:ring-[#FFB800]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
         </div>
         <div className="flex items-center justify-end gap-3 pt-2">
           <button onClick={() => setEditPromo(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
@@ -3409,17 +4169,17 @@ function AppCardsTab({ appContent, db, addLog, addToast }: AppCardsTabProps) {
   const deleteCard = async (id: string) => { try { await deleteDoc(doc(db, "appContent", id)); addLog("Delete Card", id); addToast("success", "Card deleted"); } catch (e: any) { addToast("error", e.message); } };
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-[#FFC542]" /> App Cards</h1>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-5 h-5 text-[#FFB800]" /> App Cards</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">{appContent.length} cards</p></div>
       <button onClick={() => { setEditCard({ id: "", key: "", title: "", description: "", imageUrl: "", ctaText: "", ctaLink: "", order: appContent.length, active: true }); setCForm({ key: "", title: "", description: "", imageUrl: "", ctaText: "", ctaLink: "", order: appContent.length, active: true }); }}
-        className="px-4 py-2 bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Card</button>
+        className="px-4 py-2 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2"><Plus className="w-3.5 h-3.5" /> New Card</button>
     </div>
     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {appContent.length === 0 && <div className="sm:col-span-3 bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-8 text-center"><p className="text-sm text-black/40 dark:text-white/40">No cards yet.</p></div>}
-      {appContent.map((c, i) => <div key={c.id} className={"animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300 group " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6"][i] || "")}>
+      {appContent.map((c: AppContent, i: number) => <div key={c.id} className={"animate-fade-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300 group " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6"][i] || "")}>
         <div className="relative h-36 overflow-hidden"><div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url(" + c.imageUrl + ")" }} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-          <div className="absolute bottom-2 left-3 right-3"><span className="inline-block bg-[#FFC542] text-[#111] text-[8px] font-black px-1.5 py-0.5 rounded-sm mb-1">{c.key}</span>
+          <div className="absolute bottom-2 left-3 right-3"><span className="inline-block bg-[#FFB800] text-[#111] text-[8px] font-black px-1.5 py-0.5 rounded-sm mb-1">{c.key}</span>
             <h3 className="text-white font-black text-xs drop-shadow-lg">{c.title}</h3></div>
         </div>
         <div className="p-3 space-y-1.5">
@@ -3429,7 +4189,7 @@ function AppCardsTab({ appContent, db, addLog, addToast }: AppCardsTabProps) {
             <span className="text-[10px] text-black/40 dark:text-white/40">Order {c.order}</span>
           </div>
           <div className="flex items-center justify-end gap-1">
-            <button onClick={() => { setEditCard(c); setCForm({ key: c.key, title: c.title, description: c.description, imageUrl: c.imageUrl, ctaText: c.ctaText, ctaLink: c.ctaLink, order: c.order, active: c.active }); }} className="p-1.5 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg"><Edit3 className="w-3 h-3" /></button>
+            <button onClick={() => { setEditCard(c); setCForm({ key: c.key, title: c.title, description: c.description, imageUrl: c.imageUrl, ctaText: c.ctaText, ctaLink: c.ctaLink, order: c.order, active: c.active }); }} className="p-1.5 text-[#FFB800] hover:bg-[#FFB800]/10 rounded-lg"><Edit3 className="w-3 h-3" /></button>
             <button onClick={() => deleteCard(c.id)} className="p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 className="w-3 h-3" /></button>
           </div>
         </div>
@@ -3437,16 +4197,16 @@ function AppCardsTab({ appContent, db, addLog, addToast }: AppCardsTabProps) {
     </div>
     {editCard && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditCard(null)}>
       <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-4 h-4 text-[#FFC542]" /> {editCard.id ? "Edit" : "New"} Card</h3>
+        <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><LayoutGrid className="w-4 h-4 text-[#FFB800]" /> {editCard.id ? "Edit" : "New"} Card</h3>
         <div className="relative h-24 rounded-2xl overflow-hidden bg-gray-200 dark:bg-gray-800 border border-black/10 dark:border-white/10">
           {cForm.imageUrl && <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url(" + cForm.imageUrl + ")" }} />}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-          <div className="absolute bottom-2 left-3"><span className="inline-block bg-[#FFC542] text-[#111] text-[7px] font-black px-1 py-0.5 rounded-sm">{cForm.key || "key"}</span>
+          <div className="absolute bottom-2 left-3"><span className="inline-block bg-[#FFB800] text-[#111] text-[7px] font-black px-1 py-0.5 rounded-sm">{cForm.key || "key"}</span>
             <p className="text-white font-black text-[10px] drop-shadow-lg">{cForm.title || "Card Title"}</p></div>
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">KEY (max 20)</label>
-            <input value={cForm.key} maxLength={20} onChange={e => setCForm(f => ({ ...f, key: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" /></div>
+            <input value={cForm.key} maxLength={20} onChange={e => setCForm(f => ({ ...f, key: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">ORDER</label>
             <input type="number" value={cForm.order} onChange={e => setCForm(f => ({ ...f, order: +e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div className="sm:col-span-2"><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">TITLE (max 30)</label>
@@ -3459,7 +4219,7 @@ function AppCardsTab({ appContent, db, addLog, addToast }: AppCardsTabProps) {
             <input value={cForm.ctaText} onChange={e => setCForm(f => ({ ...f, ctaText: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
           <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">CTA LINK</label>
             <input value={cForm.ctaLink} onChange={e => setCForm(f => ({ ...f, ctaLink: e.target.value }))} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
-          <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={cForm.active} onChange={e => setCForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFC542] focus:ring-[#FFC542]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
+          <div><label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={cForm.active} onChange={e => setCForm(f => ({ ...f, active: e.target.checked }))} className="rounded border-gray-300 text-[#FFB800] focus:ring-[#FFB800]" /><span className="text-xs text-gray-700 dark:text-gray-300 font-semibold">Active</span></label></div>
         </div>
         <div className="flex items-center justify-end gap-3 pt-2">
           <button onClick={() => setEditCard(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
@@ -3474,7 +4234,7 @@ function Toggle({ label, desc, checked, onChange }: { label: string; desc?: stri
   return <div className="flex items-center justify-between p-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl">
     <div><p className="text-xs font-bold text-[#111] dark:text-white">{label}</p>{desc && <p className="text-[10px] text-black/40 dark:text-white/40">{desc}</p>}</div>
     <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="sr-only peer" />
-      <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFC542]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#FFC542]"></div></label></div>;
+      <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFB800]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#FFB800]"></div></label></div>;
 }
 
 function SettingsTab({ db, addLog }: SettingsTabProps) {
@@ -3507,12 +4267,12 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
     setSaving(false);
   };
   return <div className="tab-content space-y-6">
-    <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Settings2 className="w-5 h-5 text-[#FFC542]" /> Settings</h1>
+    <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Settings2 className="w-5 h-5 text-[#FFB800]" /> Settings</h1>
       <p className="text-xs text-black/40 dark:text-white/40 mt-1">System preferences</p></div>
 
     {/* Section 1 — System Controls */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Shield className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">System Controls</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Shield className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">System Controls</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
         <Toggle label="Allow Signups" desc="Enable new user registration" checked={!!sForm.allowSignups} onChange={v => upd("allowSignups", v)} />
         <Toggle label="Require Approval" desc="Admin must approve new accounts" checked={!!sForm.requireApproval} onChange={v => upd("requireApproval", v)} />
@@ -3525,7 +4285,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
 
     {/* Section 2 — Feature Toggles */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Zap className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Feature Toggles</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Zap className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Feature Toggles</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
         <Toggle label="Marketplace & Vendor Stores" desc="Master switch: enable or hide all storefronts, shop carousels and vendor features on mobile app" checked={sForm.marketplaceEnabled !== false} onChange={v => upd("marketplaceEnabled", v)} />
         <Toggle label="Points & Loyalty" desc="Bronze/Silver/Gold/Platinum tier system" checked={!!sForm.pointsAndLoyalty} onChange={v => { upd("pointsSystemEnabled", v); upd("pointsAndLoyalty", v); }} />
@@ -3540,7 +4300,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
 
     {/* Section 3 — Delivery Types */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Truck className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Delivery Types</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Truck className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Delivery Types</span></div>
       <p className="text-[10px] text-black/40 dark:text-white/40">Manage delivery categories — rename, enable/disable, set per-type pricing</p>
       <div className="overflow-x-auto rounded-xl border border-black/10 dark:border-white/10">
         <table className="w-full text-xs">
@@ -3577,7 +4337,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
                   </td>
                   <td className="p-2">
                     <input value={t.name} onChange={e => { const dts = [...activeTypes]; dts[i] = { ...dts[i], name: e.target.value }; upd("deliveryTypes", dts); }}
-                      className="w-full bg-transparent text-xs font-bold text-[#111] dark:text-white border-b border-dashed border-transparent focus:border-[#FFC542] focus:outline-none" />
+                      className="w-full bg-transparent text-xs font-bold text-[#111] dark:text-white border-b border-dashed border-transparent focus:border-[#FFB800] focus:outline-none" />
                   </td>
                   <td className="p-2 hidden md:table-cell">
                     <input value={t.description || ""} onChange={e => { const dts = [...activeTypes]; dts[i] = { ...dts[i], description: e.target.value }; upd("deliveryTypes", dts); }}
@@ -3610,13 +4370,13 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
         const newId = "custom" + (dts.length + 1);
         dts.push({ id: newId, name: "New Type", enabled: true, baseFare: 1000, perKm: 100, perKg: 50, description: "" });
         upd("deliveryTypes", dts);
-      }} className="text-[10px] font-bold text-[#FFC542] hover:text-[#e6b13b] flex items-center gap-1"><Plus className="w-3 h-3" /> Add Type</button>
+      }} className="text-[10px] font-bold text-[#FFB800] hover:text-[#e6b13b] flex items-center gap-1"><Plus className="w-3 h-3" /> Add Type</button>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Delivery Types")} loading={saving} /></div>
     </div>
 
     {/* Section 4 — Points & Rewards */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><DollarSign className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Pricing</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><DollarSign className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Pricing</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">BASE FARE (₦)</label>
           <input type="number" value={sForm.baseFare ?? ""} onChange={e => upd("baseFare", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
@@ -3632,7 +4392,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
 
     {/* Section 4 — Points & Rewards Configuration */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Award className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Points & Rewards</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Award className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Points & Rewards</span></div>
       <p className="text-[10px] text-black/40 dark:text-white/40">Configure loyalty tiers, welcome gift, and referral rewards</p>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -3688,10 +4448,10 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
 
     {/* Section 5 — Branding & Communication */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Globe className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Branding & Communication</span></div>
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><Globe className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Branding & Communication</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP NAME</label>
-          <input value={sForm.appName ?? "Engraced Dispatch"} onChange={e => upd("appName", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
+          <input value={sForm.appName ?? "ESDispatch"} onChange={e => upd("appName", e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP SLOGAN</label>
           <input value={sForm.appSlogan ?? ""} onChange={e => upd("appSlogan", e.target.value)} placeholder="Premium Logistics & Dispatch" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
         <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1">APP VERSION</label>
@@ -3714,8 +4474,8 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
     </div>
 
     {/* Section 6 — Master System Overrides */}
-    <div className="bg-white dark:bg-[#1a1a1a] border-2 border-[#FFC542]/30 rounded-3xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><AlertTriangle className="w-4 h-4 text-[#FFC542]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Master System Overrides</span></div>
+    <div className="bg-white dark:bg-[#1a1a1a] border-2 border-[#FFB800]/30 rounded-3xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-black/5 dark:border-white/10"><AlertTriangle className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Master System Overrides</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
         <Toggle label="Broadcast Surge Pricing" desc="Push surge multiplier to all active pricing" checked={!!sForm.broadcastSurge} onChange={v => upd("broadcastSurge", v)} />
         <Toggle label="Fleet Sync" desc="Force synchronization across all drivers" checked={!!sForm.fleetSync} onChange={v => upd("fleetSync", v)} />
@@ -4008,17 +4768,17 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
         <h1 className="text-[28px] font-extrabold tracking-tight text-[#111] dark:text-white flex items-center gap-3">
-          <ShoppingBag className="w-7 h-7 text-[#FFC542]" /> Marketplace & Store Operations
+          <ShoppingBag className="w-7 h-7 text-[#FFB800]" /> Marketplace & Store Operations
         </h1>
         <p className="text-xs font-semibold text-black/50 dark:text-white/50 mt-1">Manage vendor product catalogs, store enlistments, prices, inventory, and sales commissions.</p>
       </div>
       <div className="flex items-center gap-3">
         {products.length === 0 && (
-          <button onClick={seedMarketplace} className="px-4 py-2.5 bg-[#FFC542]/20 border border-[#FFC542]/40 text-[#111] dark:text-white text-xs font-bold rounded-2xl hover:bg-[#FFC542]/30 transition-all flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 text-[#FFC542]" /> Seed Marketplace Data
+          <button onClick={seedMarketplace} className="px-4 py-2.5 bg-[#FFB800]/20 border border-[#FFB800]/40 text-[#111] dark:text-white text-xs font-bold rounded-2xl hover:bg-[#FFB800]/30 transition-all flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 text-[#FFB800]" /> Seed Marketplace Data
           </button>
         )}
-        <button onClick={() => setShowAddModal(true)} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black text-xs rounded-2xl shadow-md transition-all flex items-center gap-2">
+        <button onClick={() => setShowAddModal(true)} className="px-5 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black text-xs rounded-2xl shadow-md transition-all flex items-center gap-2">
           <Plus className="w-4 h-4" /> Add Product
         </button>
         <button onClick={() => setShowAddStoreModal(true)} className="px-5 py-2.5 bg-[#111] dark:bg-white text-white dark:text-[#111] font-black text-xs rounded-2xl shadow-md transition-all flex items-center gap-2">
@@ -4068,26 +4828,26 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
 
     {/* Metric Stat Cards */}
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatCard icon={<Package className="w-4 h-4 text-[#FFC542]" />} label="CATALOG PRODUCTS" value={totalProducts.toString()} sub={`${products.filter(p => p.status === "In Stock").length} in stock · ${products.filter(p => p.status === "Low Stock").length} low stock`} />
-      <StatCard icon={<Store className="w-4 h-4 text-[#FFC542]" />} label="ACTIVE VENDOR STORES" value={approvedStores.length.toString()} sub={`${pendingStores.length} pending enlistment requests`} />
-      <StatCard icon={<DollarSign className="w-4 h-4 text-[#FFC542]" />} label="MARKETPLACE SALES" value={`₦${totalMarketplaceSales.toLocaleString()}`} sub={`${orders.length} completed transactions`} />
-      <StatCard icon={<Percent className="w-4 h-4 text-[#FFC542]" />} label="AVG COMMISSION" value="8.5%" sub="Revenue split per store transaction" />
+      <StatCard icon={<Package className="w-4 h-4 text-[#FFB800]" />} label="CATALOG PRODUCTS" value={totalProducts.toString()} sub={`${products.filter(p => p.status === "In Stock").length} in stock · ${products.filter(p => p.status === "Low Stock").length} low stock`} />
+      <StatCard icon={<Store className="w-4 h-4 text-[#FFB800]" />} label="ACTIVE VENDOR STORES" value={approvedStores.length.toString()} sub={`${pendingStores.length} pending enlistment requests`} />
+      <StatCard icon={<DollarSign className="w-4 h-4 text-[#FFB800]" />} label="MARKETPLACE SALES" value={`₦${totalMarketplaceSales.toLocaleString()}`} sub={`${orders.length} completed transactions`} />
+      <StatCard icon={<Percent className="w-4 h-4 text-[#FFB800]" />} label="AVG COMMISSION" value="8.5%" sub="Revenue split per store transaction" />
     </div>
 
     {/* Sub-tab Navigation & Search Bar */}
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/10 dark:border-white/10 pb-4">
       <div className="flex gap-2">
-        <button onClick={() => setActiveSubTab("products")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "products" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
+        <button onClick={() => setActiveSubTab("products")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "products" ? "bg-[#FFB800] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
           📦 Products Catalog ({totalProducts})
         </button>
-        <button onClick={() => setActiveSubTab("stores")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all relative " + (activeSubTab === "stores" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
+        <button onClick={() => setActiveSubTab("stores")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all relative " + (activeSubTab === "stores" ? "bg-[#FFB800] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
           🏪 Vendor Stores ({stores.length})
           {pendingStores.length > 0 && <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">{pendingStores.length}</span>}
         </button>
-        <button onClick={() => setActiveSubTab("orders")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "orders" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
+        <button onClick={() => setActiveSubTab("orders")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "orders" ? "bg-[#FFB800] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
           🛒 Sales & Cart Orders ({orders.length})
         </button>
-        <button onClick={() => setActiveSubTab("payouts")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all relative " + (activeSubTab === "payouts" ? "bg-[#FFC542] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
+        <button onClick={() => setActiveSubTab("payouts")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all relative " + (activeSubTab === "payouts" ? "bg-[#FFB800] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5")}>
           💳 Payout Requests ({payoutRequests.length})
           {payoutRequests.filter(p => p.status === "PENDING").length > 0 && (
             <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">
@@ -4106,7 +4866,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
       <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm">
         {filteredProducts.length === 0 ? (
           <div className="text-center py-12 text-black/40 dark:text-white/40">
-            <Package className="w-12 h-12 mx-auto mb-3 text-[#FFC542]/50" />
+            <Package className="w-12 h-12 mx-auto mb-3 text-[#FFB800]/50" />
             <p className="font-extrabold text-base">No marketplace products found</p>
             <p className="text-xs mt-1">Click "Add Product" or "Seed Marketplace Data" to populate your inventory.</p>
           </div>
@@ -4166,7 +4926,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
       <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm">
         {filteredStores.length === 0 ? (
           <div className="text-center py-12 text-black/40 dark:text-white/40">
-            <Store className="w-12 h-12 mx-auto mb-3 text-[#FFC542]/50" />
+            <Store className="w-12 h-12 mx-auto mb-3 text-[#FFB800]/50" />
             <p className="font-extrabold text-base">No vendor stores enlisted yet</p>
             <p className="text-xs mt-1">Click "Enlist Store" to register vendor store partners.</p>
           </div>
@@ -4191,7 +4951,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                       <div className="font-black text-sm text-[#111] dark:text-white flex items-center gap-2">
                         {s.storeName}
                         {s.isFeatured && (s.featuredRank ?? 0) > 0 && (
-                          <span className="px-2 py-0.5 bg-[#FFC542] text-[#111] rounded-lg font-black text-[9px] flex items-center gap-1">
+                          <span className="px-2 py-0.5 bg-[#FFB800] text-[#111] rounded-lg font-black text-[9px] flex items-center gap-1">
                             <Star className="w-3 h-3" /> FEATURED #{s.featuredRank}
                           </span>
                         )}
@@ -4220,7 +4980,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                             <CheckCircle className="w-3.5 h-3.5" /> Approve
                           </button>
                         )}
-                        <button onClick={() => handleToggleFeatured(s)} title="Feature / unfeature on mobile carousel" className={"px-3 py-1.5 rounded-xl font-bold text-[10px] transition-all flex items-center gap-1 " + (s.isFeatured && (s.featuredRank ?? 0) > 0 ? "bg-[#FFC542] hover:bg-[#FFC542]/80 text-[#111]" : "bg-gray-100 dark:bg-[#222] hover:bg-black/5 dark:hover:bg-white/10 text-black/60 dark:text-white/60")}>
+                        <button onClick={() => handleToggleFeatured(s)} title="Feature / unfeature on mobile carousel" className={"px-3 py-1.5 rounded-xl font-bold text-[10px] transition-all flex items-center gap-1 " + (s.isFeatured && (s.featuredRank ?? 0) > 0 ? "bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111]" : "bg-gray-100 dark:bg-[#222] hover:bg-black/5 dark:hover:bg-white/10 text-black/60 dark:text-white/60")}>
                           <Star className="w-3.5 h-3.5" /> {s.isFeatured && (s.featuredRank ?? 0) > 0 ? "Unfeature" : "Feature"}
                         </button>
                         <button onClick={() => setEditStoreTarget(s)} className="px-3 py-1.5 bg-white dark:bg-[#222] border border-black/15 dark:border-white/15 hover:bg-black/5 dark:hover:bg-white/10 text-black/70 dark:text-white/70 rounded-xl font-bold text-[10px] transition-all flex items-center gap-1">
@@ -4256,7 +5016,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
       <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm">
         {orders.length === 0 ? (
           <div className="text-center py-12 text-black/40 dark:text-white/40">
-            <ShoppingBag className="w-12 h-12 mx-auto mb-3 text-[#FFC542]/50" />
+            <ShoppingBag className="w-12 h-12 mx-auto mb-3 text-[#FFB800]/50" />
             <p className="font-extrabold text-base">No marketplace transactions yet</p>
             <p className="text-xs mt-1">Customer purchases from vendor stores will stream live here.</p>
           </div>
@@ -4276,7 +5036,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
               <tbody className="divide-y divide-black/5 dark:divide-white/10">
                 {orders.map(o => (
                   <tr key={o.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                    <td className="p-4 font-black text-sm text-[#FFC542]">{o.orderNumber}</td>
+                    <td className="p-4 font-black text-sm text-[#FFB800]">{o.orderNumber}</td>
                     <td className="p-4 font-bold text-[#111] dark:text-white">{o.customerName}</td>
                     <td className="p-4 font-semibold text-black/70 dark:text-white/70">{o.storeName}</td>
                     <td className="p-4 font-black text-sm text-[#111] dark:text-white">₦{o.totalPrice.toLocaleString()}</td>
@@ -4298,7 +5058,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
       <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm">
         {payoutRequests.length === 0 ? (
           <div className="text-center py-12 text-black/40 dark:text-white/40">
-            <DollarSign className="w-12 h-12 mx-auto mb-3 text-[#FFC542]/50" />
+            <DollarSign className="w-12 h-12 mx-auto mb-3 text-[#FFB800]/50" />
             <p className="font-extrabold text-base">No vendor payout requests</p>
             <p className="text-xs mt-1">Vendor balance withdrawal applications will stream here for review.</p>
           </div>
@@ -4318,7 +5078,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                 {payoutRequests.map(p => (
                   <tr key={p.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                     <td className="p-4 font-extrabold text-[#111] dark:text-white">{p.storeName}</td>
-                    <td className="p-4 font-black text-sm text-[#FFC542]">₦{p.amount.toLocaleString()}</td>
+                    <td className="p-4 font-black text-sm text-[#FFB800]">₦{p.amount.toLocaleString()}</td>
                     <td className="p-4">
                       <div className="font-bold text-[#111] dark:text-white">{p.bankName}</div>
                       <div className="text-[10px] text-black/40 dark:text-white/40">{p.accountNumber}</div>
@@ -4381,7 +5141,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
         <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in">
           <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
             <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
-              <Plus className="w-5 h-5 text-[#FFC542]" /> Add New Marketplace Product
+              <Plus className="w-5 h-5 text-[#FFB800]" /> Add New Marketplace Product
             </h3>
             <button onClick={() => setShowAddModal(false)} className="text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white">
               <X className="w-5 h-5" />
@@ -4390,7 +5150,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
           <form onSubmit={handleAddProduct} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Product Title</label>
-              <input type="text" value={pName} onChange={e => setPName(e.target.value)} placeholder="e.g. Heavy Duty Bike Delivery Box" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+              <input type="text" value={pName} onChange={e => setPName(e.target.value)} placeholder="e.g. Heavy Duty Bike Delivery Box" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" required />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -4405,30 +5165,30 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
               </div>
               <div>
                 <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Price (₦)</label>
-                <input type="number" value={pPrice} onChange={e => setPPrice(e.target.value)} placeholder="35000" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+                <input type="number" value={pPrice} onChange={e => setPPrice(e.target.value)} placeholder="35000" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" required />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Stock Quantity</label>
-                <input type="number" value={pStock} onChange={e => setPStock(e.target.value)} placeholder="50" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+                <input type="number" value={pStock} onChange={e => setPStock(e.target.value)} placeholder="50" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Vendor Store</label>
-                <input type="text" value={pVendor} onChange={e => setPVendor(e.target.value)} placeholder="ESDispatch Fleet Supplies" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+                <input type="text" value={pVendor} onChange={e => setPVendor(e.target.value)} placeholder="ESDispatch Fleet Supplies" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
               </div>
             </div>
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Image URL</label>
-              <input type="url" value={pImg} onChange={e => setPImg(e.target.value)} placeholder="https://..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              <input type="url" value={pImg} onChange={e => setPImg(e.target.value)} placeholder="https://..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Description</label>
-              <textarea value={pDesc} onChange={e => setPDesc(e.target.value)} placeholder="Product specification..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40 h-20" />
+              <textarea value={pDesc} onChange={e => setPDesc(e.target.value)} placeholder="Product specification..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40 h-20" />
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold">Cancel</button>
-              <button type="submit" disabled={savingProduct} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
+              <button type="submit" disabled={savingProduct} className="px-5 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
                 {savingProduct ? "Saving..." : "Create Product"}
               </button>
             </div>
@@ -4443,7 +5203,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
         <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in">
           <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
             <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
-              <Store className="w-5 h-5 text-[#FFC542]" /> Enlist Vendor Store Partner
+              <Store className="w-5 h-5 text-[#FFB800]" /> Enlist Vendor Store Partner
             </h3>
             <button onClick={() => setShowAddStoreModal(false)} className="text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white">
               <X className="w-5 h-5" />
@@ -4452,51 +5212,51 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
           <form onSubmit={handleAddStore} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Name</label>
-              <input type="text" value={sName} onChange={e => setSName(e.target.value)} placeholder="e.g. Benin Auto Care" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+              <input type="text" value={sName} onChange={e => setSName(e.target.value)} placeholder="e.g. Benin Auto Care" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" required />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Owner Name</label>
-                <input type="text" value={sOwner} onChange={e => setSOwner(e.target.value)} placeholder="Bisi Adebayo" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+                <input type="text" value={sOwner} onChange={e => setSOwner(e.target.value)} placeholder="Bisi Adebayo" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Email</label>
-                <input type="email" value={sEmail} onChange={e => setSEmail(e.target.value)} placeholder="bisi@autocare.ng" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+                <input type="email" value={sEmail} onChange={e => setSEmail(e.target.value)} placeholder="bisi@autocare.ng" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" required />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Phone Number</label>
-                <input type="text" value={sPhone} onChange={e => setSPhone(e.target.value)} placeholder="08055544433" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+                <input type="text" value={sPhone} onChange={e => setSPhone(e.target.value)} placeholder="08055544433" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Commission Rate (%)</label>
-                <input type="number" value={sComm} onChange={e => setSComm(e.target.value)} placeholder="10" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+                <input type="number" value={sComm} onChange={e => setSComm(e.target.value)} placeholder="10" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
               </div>
             </div>
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Description (shown on storefront)</label>
-              <textarea value={sDesc} onChange={e => setSDesc(e.target.value)} rows={2} placeholder="Premium spare parts and delivery accessories in Benin City…" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              <textarea value={sDesc} onChange={e => setSDesc(e.target.value)} rows={2} placeholder="Premium spare parts and delivery accessories in Benin City…" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Address (full detail, shown on storefront)</label>
-              <input type="text" value={sAddr} onChange={e => setSAddr(e.target.value)} placeholder="17 Upper Adesuwa Road, GRA, Benin City" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              <input type="text" value={sAddr} onChange={e => setSAddr(e.target.value)} placeholder="17 Upper Adesuwa Road, GRA, Benin City" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
 <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Logo URL (optional)</label>
-              <input type="text" value={sLogo} onChange={e => setSLogo(e.target.value)} placeholder="https://�/logo.png" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              <input type="text" value={sLogo} onChange={e => setSLogo(e.target.value)} placeholder="https://�/logo.png" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Cover Photo URL (optional)</label>
-              <input type="text" value={sCover} onChange={e => setSCover(e.target.value)} placeholder="https://�/cover.jpg" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+              <input type="text" value={sCover} onChange={e => setSCover(e.target.value)} placeholder="https://�/cover.jpg" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
-            <div className="bg-[#FFC542]/10 rounded-2xl p-3 border border-[#FFC542]/20">
-              <p className="text-[10px] font-bold text-[#FFC542] uppercase">Owner Account</p>
+            <div className="bg-[#FFB800]/10 rounded-2xl p-3 border border-[#FFB800]/20">
+              <p className="text-[10px] font-bold text-[#FFB800] uppercase">Owner Account</p>
               <p className="text-xs text-[#111] dark:text-white mt-1">If the email matches an existing user, they are upgraded to Vendor instantly. Otherwise a vendor user record is created automatically.</p>
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setShowAddStoreModal(false)} className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold">Cancel</button>
-              <button type="submit" disabled={savingStore} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
+              <button type="submit" disabled={savingStore} className="px-5 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
                 {savingStore ? "Enlisting..." : "Enlist & Approve Store"}
               </button>
             </div>
@@ -4511,7 +5271,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
         <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in">
           <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
             <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
-              <Pencil className="w-5 h-5 text-[#FFC542]" /> Edit Store � {editStoreTarget.storeName}
+              <Pencil className="w-5 h-5 text-[#FFB800]" /> Edit Store � {editStoreTarget.storeName}
             </h3>
             <button onClick={() => setEditStoreTarget(null)} className="text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white">
               <X className="w-5 h-5" />
@@ -4523,7 +5283,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
           >
             <div>
               <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">Store Name</label>
-              <input type="text" value={editStoreTarget.storeName} onChange={e => setEditStoreTarget({ ...editStoreTarget, storeName: e.target.value })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" required />
+              <input type="text" value={editStoreTarget.storeName} onChange={e => setEditStoreTarget({ ...editStoreTarget, storeName: e.target.value })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" required />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -4575,7 +5335,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setEditStoreTarget(null)} className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold">Cancel</button>
-              <button type="submit" disabled={savingStoreOp} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
+              <button type="submit" disabled={savingStoreOp} className="px-5 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
                 {savingStoreOp ? "Saving..." : "Save Changes"}
               </button>
             </div>
@@ -4590,7 +5350,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
         <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-md shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in">
           <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
             <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
-              <Repeat className="w-5 h-5 text-[#FFC542]" /> Transfer Ownership
+              <Repeat className="w-5 h-5 text-[#FFB800]" /> Transfer Ownership
             </h3>
             <button onClick={() => setTransferStoreTarget(null)} className="text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white">
               <X className="w-5 h-5" />
@@ -4601,11 +5361,11 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
           </p>
           <div>
             <label className="block text-xs font-bold text-black/60 dark:text-white/60 mb-1">New Owner's Registered Email</label>
-            <input type="email" value={transferEmail} onChange={e => setTransferEmail(e.target.value)} placeholder="owner@company.com" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFC542]/40" />
+            <input type="email" value={transferEmail} onChange={e => setTransferEmail(e.target.value)} placeholder="owner@company.com" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => setTransferStoreTarget(null)} className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold">Cancel</button>
-            <button onClick={() => handleTransferStore(transferStoreTarget, transferEmail)} disabled={savingStoreOp} className="px-5 py-2.5 bg-[#FFC542] hover:bg-[#FFC542]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
+            <button onClick={() => handleTransferStore(transferStoreTarget, transferEmail)} disabled={savingStoreOp} className="px-5 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black rounded-xl text-xs shadow-md">
               {savingStoreOp ? "Transferring..." : "Transfer Store"}
             </button>
           </div>
@@ -4726,7 +5486,7 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-[#111] dark:text-white flex items-center gap-3">
-            <Headphones className="text-[#FFC542]" size={28} />
+            <Headphones className="text-[#FFB800]" size={28} />
             Live Customer Support & Dispatch Chat
           </h2>
           <p className="text-xs text-black/50 dark:text-white/50">
@@ -4750,8 +5510,8 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                   onClick={() => setSelectedTicket(t)}
                   className={`w-full text-left p-3.5 rounded-2xl transition-all border ${
                     selectedTicket?.id === t.id
-                      ? "bg-[#FFC542] text-[#111] border-[#FFC542] shadow-md"
-                      : "bg-white dark:bg-[#1c1c1c] text-[#111] dark:text-white border-black/5 dark:border-white/5 hover:border-[#FFC542]/50"
+                      ? "bg-[#FFB800] text-[#111] border-[#FFB800] shadow-md"
+                      : "bg-white dark:bg-[#1c1c1c] text-[#111] dark:text-white border-black/5 dark:border-white/5 hover:border-[#FFB800]/50"
                   }`}
                 >
                   <div className="flex justify-between items-center mb-1">
@@ -4797,7 +5557,7 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                       <div key={m.id} className={`flex ${isStaff ? "justify-end" : "justify-start"}`}>
                         <div className={`max-w-[75%] rounded-2xl p-3.5 text-xs ${
                           isStaff
-                            ? "bg-[#FFC542] text-[#111] font-medium"
+                            ? "bg-[#FFB800] text-[#111] font-medium"
                             : "bg-white dark:bg-[#242424] text-[#111] dark:text-white border border-black/5 dark:border-white/5"
                         }`}>
                           <div className="flex items-center gap-2 mb-1">
@@ -4822,12 +5582,12 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
                   placeholder={`Reply to ${selectedTicket.userName}...`}
-                  className="flex-1 bg-white dark:bg-[#202020] text-[#111] dark:text-white px-4 py-3 rounded-2xl text-xs outline-none border border-black/10 dark:border-white/10 focus:border-[#FFC542]"
+                  className="flex-1 bg-white dark:bg-[#202020] text-[#111] dark:text-white px-4 py-3 rounded-2xl text-xs outline-none border border-black/10 dark:border-white/10 focus:border-[#FFB800]"
                 />
                 <button
                   type="submit"
                   disabled={!replyText.trim()}
-                  className="bg-[#FFC542] text-[#111] px-5 py-3 rounded-2xl font-bold text-xs flex items-center gap-2 hover:bg-[#FFC542]/90 disabled:opacity-50 transition-all shadow-md"
+                  className="bg-[#FFB800] text-[#111] px-5 py-3 rounded-2xl font-bold text-xs flex items-center gap-2 hover:bg-[#FFB800]/90 disabled:opacity-50 transition-all shadow-md"
                 >
                   <Send size={14} />
                   Send
@@ -4857,7 +5617,7 @@ function LogsTab({ logs }: LogsTabProps) {
   useEffect(() => { setLPage(0); }, [typeFilter]);
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#FFC542]" /> Audit Log</h1>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#FFB800]" /> Audit Log</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">{filtered.length} entries (page {lPage + 1}/{lTotalPages})</p></div>
       <Select value={typeFilter} onChange={setTypeFilter} options={[{value:"all",label:"All Actions"},{value:"Create",label:"Create"},{value:"Update",label:"Update"},{value:"Delete",label:"Delete"},{value:"Toggle",label:"Toggle"},{value:"Login",label:"Login"}]} className="w-36" />
     </div>
@@ -4881,7 +5641,7 @@ function LogsTab({ logs }: LogsTabProps) {
     </div>
     {lTotalPages > 1 && <div className="flex items-center justify-center gap-2 pt-2">
       <button onClick={() => setLPage(p => Math.max(0, p - 1))} disabled={lPage === 0} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronLeft size={14} /></button>
-      {Array.from({ length: lTotalPages }, (_, i) => <button key={i} onClick={() => setLPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === lPage ? "bg-[#FFC542] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
+      {Array.from({ length: lTotalPages }, (_, i) => <button key={i} onClick={() => setLPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === lPage ? "bg-[#FFB800] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
       <button onClick={() => setLPage(p => Math.min(lTotalPages - 1, p + 1))} disabled={lPage >= lTotalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
     </div>}
   </div>;
@@ -4922,10 +5682,10 @@ function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: 
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
       <div>
-        <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-5 h-5 text-[#FFC542]" /> Hero Banners & Slides</h1>
+        <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-5 h-5 text-[#FFB800]" /> Hero Banners & Slides</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">Manage promotional banners displayed on mobile app hero carousel</p>
       </div>
-      <button onClick={() => setShowAdd(true)} className="px-4 py-2.5 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:bg-[#FFC542]/80"><Plus size={16} /> Add Slide</button>
+      <button onClick={() => setShowAdd(true)} className="px-4 py-2.5 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:bg-[#FFB800]/80"><Plus size={16} /> Add Slide</button>
     </div>
 
     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -4942,7 +5702,7 @@ function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: 
               <p className="font-bold text-xs text-[#111] dark:text-white">{b.title}</p>
               <p className="text-[10px] text-black/40 dark:text-white/40 leading-relaxed">{b.subtitle || "No subtitle"}</p>
               <div className="flex items-center justify-between pt-2 border-t border-black/5 dark:border-white/5">
-                <button onClick={() => toggleActive(b.id, b.active)} className="text-[10px] font-bold text-[#FFC542] hover:underline">{b.active ? "Disable" : "Enable"}</button>
+                <button onClick={() => toggleActive(b.id, b.active)} className="text-[10px] font-bold text-[#FFB800] hover:underline">{b.active ? "Disable" : "Enable"}</button>
                 <button onClick={() => deleteBanner(b.id)} className="text-[10px] font-bold text-red-500 hover:underline">Delete</button>
               </div>
             </div>
@@ -4954,7 +5714,7 @@ function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: 
     {showAdd && (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setShowAdd(false)}>
         <form onSubmit={handleAdd} className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
-          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#FFC542]" /> New Hero Slide</h3>
+          <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#FFB800]" /> New Hero Slide</h3>
           <div className="space-y-3 text-xs">
             <div><label className="block text-[10px] font-bold text-black/40 dark:text-white/40 uppercase mb-1">Title</label>
               <input value={title} onChange={e => setTitle(e.target.value)} required className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
@@ -4965,7 +5725,7 @@ function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: 
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={() => setShowAdd(false)} className="px-4 py-2 bg-gray-100 dark:bg-[#222] text-xs font-bold rounded-xl">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-[#FFC542] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFC542]/80">{saving ? "Saving..." : "Add Slide"}</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-[#FFB800] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFB800]/80">{saving ? "Saving..." : "Add Slide"}</button>
           </div>
         </form>
       </div>
@@ -4985,7 +5745,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
   useEffect(() => { setTPage(0); }, [trackSearch]);
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><MapPin className="w-5 h-5 text-[#FFC542]" /> Live Tracking</h1><p className="text-xs text-black/40 dark:text-white/40 mt-1">{activeD.length} active deliveries, {drivers.filter(d => d.lat && d.lng).length} riders on map</p></div>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><MapPin className="w-5 h-5 text-[#FFB800]" /> Live Tracking</h1><p className="text-xs text-black/40 dark:text-white/40 mt-1">{activeD.length} active deliveries, {drivers.filter(d => d.lat && d.lng).length} riders on map</p></div>
       <SearchInput value={trackSearch} onChange={setTrackSearch} placeholder="Search by ID, name, item..." />
     </div>
     <div className="h-[400px] rounded-3xl overflow-hidden border border-black/10 dark:border-white/10 shadow-sm">
@@ -4995,24 +5755,24 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
       {pagedT.length === 0 && <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-8 text-center"><p className="text-sm text-black/40 dark:text-white/40">No active deliveries.</p></div>}
       {pagedT.map(d => {
         const step = sIdx[d.status] || 0;
-        return <div key={d.id} onClick={() => setTSelectedId(tSelectedId === d.id ? null : d.id)} className={"bg-white dark:bg-[#1a1a1a] border rounded-3xl p-5 shadow-sm animate-fade-in cursor-pointer transition-all " + (tSelectedId === d.id ? "border-[#FFC542] ring-2 ring-[#FFC542]/30" : "border-black/10 dark:border-white/10 hover:border-[#FFC542]/50")}>
+        return <div key={d.id} onClick={() => setTSelectedId(tSelectedId === d.id ? null : d.id)} className={"bg-white dark:bg-[#1a1a1a] border rounded-3xl p-5 shadow-sm animate-fade-in cursor-pointer transition-all " + (tSelectedId === d.id ? "border-[#FFB800] ring-2 ring-[#FFB800]/30" : "border-black/10 dark:border-white/10 hover:border-[#FFB800]/50")}>
           <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
             <div><p className="font-bold text-[#111] dark:text-white">{d.itemName || "Parcel"}</p>
               <p className="text-[10px] text-black/40 dark:text-white/40">#{idShort(d.id)} • {d.receiverName} → {d.deliveryAddress}</p>
-              {d.courierName && <p className="text-[10px] text-[#FFC542] mt-0.5 font-medium">{d.courierName}</p>}</div>
+              {d.courierName && <p className="text-[10px] text-[#FFB800] mt-0.5 font-medium">{d.courierName}</p>}</div>
             <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status.replace(/_/g, " ")}</span>
           </div>
           <div className="relative mt-4 mb-2">
             <div className="flex items-center justify-between mb-2">
               {statusSteps.map((label, i) => <div key={label} className="flex flex-col items-center gap-1 relative z-10">
-                <div className={"w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold " + (i <= step ? "bg-[#FFC542] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-black/30 dark:text-white/30")}>
+                <div className={"w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold " + (i <= step ? "bg-[#FFB800] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-black/30 dark:text-white/30")}>
                   {i < step ? <Check size={12} /> : i + 1}
                 </div>
                 <span className={"text-[8px] font-semibold whitespace-nowrap " + (i <= step ? "text-[#111] dark:text-white" : "text-black/30 dark:text-white/30")}>{label}</span>
               </div>)}
             </div>
             <div className="absolute top-3 left-3 right-3 h-0.5 bg-gray-100 dark:bg-[#222] rounded-full">
-              <div className="h-full bg-[#FFC542] rounded-full transition-all duration-500" style={{ width: `${(step / Math.max(1, statusSteps.length - 1)) * 100}%` }} />
+              <div className="h-full bg-[#FFB800] rounded-full transition-all duration-500" style={{ width: `${(step / Math.max(1, statusSteps.length - 1)) * 100}%` }} />
             </div>
           </div>
         </div>;
@@ -5020,7 +5780,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
     </div>
     {tTotalPages > 1 && <div className="flex items-center justify-center gap-2 pt-2">
       <button onClick={() => setTPage(p => Math.max(0, p - 1))} disabled={tPage === 0} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronLeft size={14} /></button>
-      {Array.from({ length: tTotalPages }, (_, i) => <button key={i} onClick={() => setTPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === tPage ? "bg-[#FFC542] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
+      {Array.from({ length: tTotalPages }, (_, i) => <button key={i} onClick={() => setTPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === tPage ? "bg-[#FFB800] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
       <button onClick={() => setTPage(p => Math.min(tTotalPages - 1, p + 1))} disabled={tPage >= tTotalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
     </div>}
   </div>;
@@ -5043,29 +5803,29 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
       />
       <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 pb-10 pt-6">
         {newOrderAlert && (
-          <div className="mb-6 bg-gradient-to-r from-amber-500/15 via-[#FFC542]/20 to-amber-500/10 border border-[#FFC542]/50 rounded-3xl p-4 flex items-center justify-between gap-4 animate-fade-in shadow-lg">
+          <div className="mb-6 bg-gradient-to-r from-amber-500/15 via-[#FFB800]/20 to-amber-500/10 border border-[#FFB800]/50 rounded-3xl p-4 flex items-center justify-between gap-4 animate-fade-in shadow-lg">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-[#FFC542] text-[#111] flex items-center justify-center font-black animate-pulse shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-[#FFB800] text-[#111] flex items-center justify-center font-black animate-pulse shrink-0">
                 <Bell size={20} />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-[#FFC542] bg-black/40 dark:bg-black/60 px-2.5 py-0.5 rounded-full">New Booking Received</span>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#FFB800] bg-black/40 dark:bg-black/60 px-2.5 py-0.5 rounded-full">New Booking Received</span>
                   <span className="text-xs text-black/50 dark:text-white/50 font-mono">#{idShort(newOrderAlert.id)}</span>
                 </div>
                 <p className="text-xs sm:text-sm font-bold text-[#111] dark:text-white mt-1 truncate">
-                  {newOrderAlert.itemName} • Deliver to <span className="text-[#FFC542]">{newOrderAlert.receiverName}</span> ({newOrderAlert.deliveryAddress})
+                  {newOrderAlert.itemName} • Deliver to <span className="text-[#FFB800]">{newOrderAlert.receiverName}</span> ({newOrderAlert.deliveryAddress})
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => {
-                  setShipmentsFilterPrefill({ search: newOrderAlert.id });
+                  setShipmentsFilterPrefill({ search: newOrderAlert.id, selectedId: newOrderAlert.id });
                   setTab("shipments");
                   setNewOrderAlert(null);
                 }}
-                className="px-4 py-2 bg-[#FFC542] text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:bg-[#FFC542]/80 transition-all cursor-pointer whitespace-nowrap"
+                className="px-4 py-2 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:bg-[#FFB800]/80 transition-all cursor-pointer whitespace-nowrap"
               >
                 <Truck size={15} /> Review & Assign Rider
               </button>
@@ -5103,6 +5863,10 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
             marketplaceEnabled={marketplaceEnabled}
             toggleMarketplace={toggleMarketplace}
             setShipmentsFilterPrefill={setShipmentsFilterPrefill}
+            onOpenShipmentFullView={(shipmentId: string) => {
+              setShipmentsFilterPrefill({ search: shipmentId, selectedId: shipmentId });
+              setTab("shipments");
+            }}
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}

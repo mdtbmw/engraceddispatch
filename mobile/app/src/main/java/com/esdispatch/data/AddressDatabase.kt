@@ -200,6 +200,30 @@ object AddressDatabase {
                a.contains("ajah") || a.contains("sangotedo") || a.contains("mushin")
     }
 
+    val BENIN_ZONES = listOf(
+        "GRA", "Ring Road", "Ugbowo", "Airport Road", "Sapele Road",
+        "Upper Sakponba", "Ikpoba Hill", "New Benin", "Uselu", "Ekenwan", "Siluko", "Aduwawa"
+    )
+
+    fun resolveBeninZone(address: String): String {
+        val a = address.lowercase()
+        return when {
+            a.contains("gra") || a.contains("ihama") || a.contains("boundary") || a.contains("ugbor") || a.contains("adesuwa") || a.contains("osadebay") -> "GRA"
+            a.contains("ring road") || a.contains("kings square") || a.contains("oba market") || a.contains("palace") || a.contains("mission road") -> "Ring Road"
+            a.contains("ugbowo") || a.contains("uniben") || a.contains("ubth") || a.contains("ekosodin") || a.contains("oluku") -> "Ugbowo"
+            a.contains("airport") || a.contains("oko") || a.contains("air force") || a.contains("bni") || a.contains("ogba") -> "Airport Road"
+            a.contains("sapele") || a.contains("evbuoriaria") || a.contains("country home") || a.contains("limit") -> "Sapele Road"
+            a.contains("sakponba") || a.contains("sakpoba") || a.contains("upper sakponba") || a.contains("st saviour") -> "Upper Sakponba"
+            a.contains("ikpoba") || a.contains("ikpoba hill") || a.contains("ramat") || a.contains("oregbeni") -> "Ikpoba Hill"
+            a.contains("new benin") || a.contains("new benin market") || a.contains("iyaro") -> "New Benin"
+            a.contains("uselu") || a.contains("textile mill") || a.contains("five junction") -> "Uselu"
+            a.contains("ekenwan") || a.contains("ekehuan") || a.contains("evbareke") -> "Ekenwan"
+            a.contains("siluko") || a.contains("oliha") || a.contains("ogida") -> "Siluko"
+            a.contains("aduwawa") || a.contains("secretariat") -> "Aduwawa"
+            else -> "Benin Central"
+        }
+    }
+
     fun getCoordinates(address: String): Pair<Double, Double>? {
         val a = address.lowercase()
         return entries.firstOrNull { entry ->

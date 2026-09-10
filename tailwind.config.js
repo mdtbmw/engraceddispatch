@@ -10,8 +10,8 @@ module.exports = {
     extend: {
       colors: {
         obsidian: "#0A0A0A",
-        gold: "#D4AF37",
-        goldLight: "#F3E5AB",
+        gold: "#FFB800",
+        goldLight: "#FFE57F",
         charcoal: "#1A1A1A",
         slateDark: "#121212",
         luxuryBlack: "#050505",

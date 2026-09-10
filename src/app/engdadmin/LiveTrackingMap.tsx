@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -100,7 +100,7 @@ export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSel
 
     const goldIcon = L.divIcon({
       className: "",
-      html: `<div style="width:20px;height:20px;background:#FFC542;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>`,
+      html: `<div style="width:20px;height:20px;background:#FFB800;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>`,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     });
@@ -112,13 +112,13 @@ export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSel
     });
     const riderIcon = L.divIcon({
       className: "",
-      html: `<div style="width:22px;height:22px;background:#FFC542;border-radius:50%;border:3px solid #fff;box-shadow:0 0 12px rgba(255,197,66,0.6);display:flex;align-items:center;justify-content:center;font-size:10px;">🏍</div>`,
+      html: `<div style="width:22px;height:22px;background:#FFB800;border-radius:50%;border:3px solid #fff;box-shadow:0 0 12px rgba(255,197,66,0.6);display:flex;align-items:center;justify-content:center;font-size:10px;">🏍</div>`,
       iconSize: [22, 22],
       iconAnchor: [11, 11],
     });
     const selIcon = L.divIcon({
       className: "",
-      html: `<div style="width:28px;height:28px;background:#FFC542;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 4px rgba(255,197,66,0.4);display:flex;align-items:center;justify-content:center;color:#111;font-weight:bold;font-size:12px;">📍</div>`,
+      html: `<div style="width:28px;height:28px;background:#FFB800;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 4px rgba(255,197,66,0.4);display:flex;align-items:center;justify-content:center;color:#111;font-weight:bold;font-size:12px;">📍</div>`,
       iconSize: [28, 28],
       iconAnchor: [14, 14],
     });
@@ -144,7 +144,7 @@ export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSel
       }
       if (pickup.lat && pickup.lng && delivery.lat && delivery.lng) {
         L.polyline([pLatLng, dLatLng], {
-          color: isSelected ? "#FFC542" : "#FFC54260",
+          color: isSelected ? "#FFB800" : "#FFB80060",
           weight: isSelected ? 3 : 2,
           dashArray: isSelected ? "" : "8 6",
           opacity: isSelected ? 0.9 : 0.4,

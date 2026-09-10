@@ -51,8 +51,12 @@ const HeroSection = () => {
             style={{ position: "relative", zIndex: 3 }}
           >
             <motion.h1 variants={itemVariants} style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", lineHeight: 1.15 }}>
-              <span style={{ display: "block", fontWeight: 300, letterSpacing: "-0.02em", color: "#6B7280" }}>Your Remote Career</span>
-              <span style={{ display: "block", fontWeight: 900, background: "linear-gradient(135deg, #FFC542, #F59E0B)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontSize: "clamp(2.4rem, 6vw, 4.2rem)" }}>Starts Here</span>
+              <span style={{ display: "block", fontWeight: 800, letterSpacing: "0.12em", color: "#FFB800", textTransform: "uppercase", fontSize: "clamp(0.9rem, 1.8vw, 1.25rem)", marginBottom: 8 }}>
+                {content.heroSubtitle || "PREMIUM LOGISTICS & DISPATCH"}
+              </span>
+              <span style={{ display: "block", fontWeight: 900, background: "linear-gradient(135deg, #111111, #333333)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontSize: "clamp(2.4rem, 6vw, 4.2rem)" }}>
+                {content.heroTitle || "Fast. Reliable. Benin City."}
+              </span>
             </motion.h1>
             <motion.p variants={itemVariants} style={{ maxWidth: 600, margin: "16px auto 0", color: "#6B7280", fontSize: "clamp(0.9rem, 1.4vw, 1.1rem)" }}>{content.heroDescription}</motion.p>
             <motion.div className="zubuz-hero-btn-wrap center" variants={itemVariants}>
@@ -74,29 +78,26 @@ const HeroSection = () => {
               <PlayStoreBadge href={content.playStoreUrl || "#"} />
               <AppStoreBadge href={content.appStoreUrl || "#"} />
             </motion.div>
-          </motion.div>
-        </div>
 
-        <div style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          pointerEvents: "none",
-        }}>
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, delay: 0.4, ease: "easeOut" }}
-            style={{
-              width: "clamp(220px, 28vw, 320px)",
-              margin: "0 auto",
-              filter: "drop-shadow(0 20px 50px rgba(0,0,0,0.18))",
-            }}
-          >
-            <img src="/images/v1/hero-mocup1.png" alt="ESDispatch App" style={{ width: "100%", height: "auto", display: "block" }} />
+            <motion.div
+              variants={itemVariants}
+              style={{
+                marginTop: 40,
+                display: "flex",
+                justifyContent: "center",
+                position: "relative",
+              }}
+            >
+              <div
+                style={{
+                  width: "clamp(240px, 32vw, 340px)",
+                  margin: "0 auto",
+                  filter: "drop-shadow(0 20px 50px rgba(0,0,0,0.18))",
+                }}
+              >
+                <img src="/images/v1/hero-mocup1.png" alt="ESDispatch App" style={{ width: "100%", height: "auto", display: "block" }} />
+              </div>
+            </motion.div>
           </motion.div>
         </div>
 

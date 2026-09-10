@@ -715,13 +715,20 @@ fun SendParcelScreen(
                                     unfocusedPlaceholderColor = TextGray
                                 )
                             )
+                            val isSPhoneValid = sPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(sPhone)
                             OutlinedTextField(
                                 value = sPhone,
                                 onValueChange = { sPhone = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(20.dp),
-                                placeholder = { Text("Phone", color = TextGray) },
+                                placeholder = { Text("Phone (e.g. 08012345678)", color = TextGray) },
                                 leadingIcon = { Icon(Icons.Filled.Phone, null, tint = accentIconColor, modifier = Modifier.size(18.dp)) },
+                                isError = sPhone.isNotBlank() && !isSPhoneValid,
+                                supportingText = {
+                                    if (sPhone.isNotBlank() && !isSPhoneValid) {
+                                        Text("Enter a valid Nigerian phone number (e.g. 08012345678)", color = Color(0xFFEF4444), fontSize = 11.sp)
+                                    }
+                                },
                                 textStyle = TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = accentColor,
@@ -787,13 +794,20 @@ fun SendParcelScreen(
                                     unfocusedPlaceholderColor = TextGray
                                 )
                             )
+                            val isRPhoneValid = rPhone.isNotBlank() && viewModel.isValidNigerianPhoneNumber(rPhone)
                             OutlinedTextField(
                                 value = rPhone,
                                 onValueChange = { rPhone = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(20.dp),
-                                placeholder = { Text("Phone", color = TextGray) },
+                                placeholder = { Text("Phone (e.g. 08012345678)", color = TextGray) },
                                 leadingIcon = { Icon(Icons.Filled.Phone, null, tint = accentIconColor, modifier = Modifier.size(18.dp)) },
+                                isError = rPhone.isNotBlank() && !isRPhoneValid,
+                                supportingText = {
+                                    if (rPhone.isNotBlank() && !isRPhoneValid) {
+                                        Text("Enter a valid Nigerian phone number (e.g. 08012345678)", color = Color(0xFFEF4444), fontSize = 11.sp)
+                                    }
+                                },
                                 textStyle = TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = accentColor,
@@ -829,7 +843,9 @@ fun SendParcelScreen(
                     .padding(24.dp)
             ) {
                 val isAddressesValid = pickup.trim().length >= 6 && delivery.trim().length >= 6
-                val isFormValid = isAddressesValid && sName.isNotBlank() && sPhone.isNotBlank() && rName.isNotBlank() && rPhone.isNotBlank()
+                val isSPhoneValid = sPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(sPhone)
+                val isRPhoneValid = rPhone.isNotBlank() && viewModel.isValidNigerianPhoneNumber(rPhone)
+                val isFormValid = isAddressesValid && sName.isNotBlank() && isSPhoneValid && rName.isNotBlank() && isRPhoneValid
 
                 Button(
                     onClick = {
@@ -935,8 +951,8 @@ fun BookingSelectionScreen(
 
     // Dynamic price quotes calculated from validated coordinates
     val quoteExpressSameDay = remember(pickupCoords, deliveryCoords, wt) {
-        val p = pickupCoords ?: Pair(6.5244, 3.3792)
-        val d = deliveryCoords ?: Pair(6.4281, 3.4219)
+        val p = pickupCoords ?: Pair(6.3350, 5.6037)
+        val d = deliveryCoords ?: Pair(6.3150, 5.6150)
         viewModel.calculateDynamicQuote(
             originLat = p.first, originLng = p.second,
             destLat = d.first, destLng = d.second,
@@ -946,8 +962,8 @@ fun BookingSelectionScreen(
     val priceExpressSameDay = (quoteExpressSameDay as? PendingQuote.Success)?.price ?: 4500.0
 
     val quoteExpressNextDay = remember(pickupCoords, deliveryCoords, wt) {
-        val p = pickupCoords ?: Pair(6.5244, 3.3792)
-        val d = deliveryCoords ?: Pair(6.4281, 3.4219)
+        val p = pickupCoords ?: Pair(6.3350, 5.6037)
+        val d = deliveryCoords ?: Pair(6.3150, 5.6150)
         viewModel.calculateDynamicQuote(
             originLat = p.first, originLng = p.second,
             destLat = d.first, destLng = d.second,
@@ -957,8 +973,8 @@ fun BookingSelectionScreen(
     val priceExpressNextDay = ((quoteExpressNextDay as? PendingQuote.Success)?.price ?: 3500.0) * 0.8
 
     val quoteEconomy = remember(pickupCoords, deliveryCoords, wt) {
-        val p = pickupCoords ?: Pair(6.5244, 3.3792)
-        val d = deliveryCoords ?: Pair(6.4281, 3.4219)
+        val p = pickupCoords ?: Pair(6.3350, 5.6037)
+        val d = deliveryCoords ?: Pair(6.3150, 5.6150)
         viewModel.calculateDynamicQuote(
             originLat = p.first, originLng = p.second,
             destLat = d.first, destLng = d.second,
@@ -968,8 +984,8 @@ fun BookingSelectionScreen(
     val priceEconomy = (quoteEconomy as? PendingQuote.Success)?.price ?: 3000.0
 
     val quoteBatch = remember(pickupCoords, deliveryCoords, wt) {
-        val p = pickupCoords ?: Pair(6.5244, 3.3792)
-        val d = deliveryCoords ?: Pair(6.4281, 3.4219)
+        val p = pickupCoords ?: Pair(6.3350, 5.6037)
+        val d = deliveryCoords ?: Pair(6.3150, 5.6150)
         viewModel.calculateDynamicQuote(
             originLat = p.first, originLng = p.second,
             destLat = d.first, destLng = d.second,
@@ -979,8 +995,8 @@ fun BookingSelectionScreen(
     val priceBatch = (quoteBatch as? PendingQuote.Success)?.price ?: 5000.0
 
     val quoteMulti = remember(pickupCoords, deliveryCoords, wt) {
-        val p = pickupCoords ?: Pair(6.5244, 3.3792)
-        val d = deliveryCoords ?: Pair(6.4281, 3.4219)
+        val p = pickupCoords ?: Pair(6.3350, 5.6037)
+        val d = deliveryCoords ?: Pair(6.3150, 5.6150)
         viewModel.calculateDynamicQuote(
             originLat = p.first, originLng = p.second,
             destLat = d.first, destLng = d.second,
@@ -1390,7 +1406,7 @@ fun BookingSelectionScreen(
                                     color = if (isDark) Color.White else Obsidian
                                 )
                                 Text(
-                                    text = "Heavy traffic along Lagos-Ikorodu expressway. Average speed is 18 km/h. Live route ETA: 52 mins.",
+                                    text = "Heavy traffic along Uselu-Ugbowo corridor near UNIBEN. Average speed is 18 km/h. Live route ETA: 28–35 mins.",
                                     fontSize = 11.sp,
                                     color = TextGray
                                 )

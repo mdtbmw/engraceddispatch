@@ -93,18 +93,6 @@ class MainActivity : FragmentActivity() {
             super.attachBaseContext(newBase)
             return
         }
-        try {
-            val res = newBase.resources
-            if (res != null && res.configuration != null) {
-                val config = android.content.res.Configuration(res.configuration)
-                config.fontScale = 1.0f
-                val context = newBase.createConfigurationContext(config)
-                super.attachBaseContext(context)
-                return
-            }
-        } catch (e: Throwable) {
-            android.util.Log.w("MainActivity", "Font scale attachBaseContext fallback: ${e.message}")
-        }
         super.attachBaseContext(newBase)
     }
 
@@ -116,7 +104,7 @@ class MainActivity : FragmentActivity() {
             prefs.edit().remove(com.esdispatch.DispatchApplication.KEY_LAST_CRASH).apply()
             android.app.AlertDialog.Builder(this)
                 .setTitle("ESDispatch Crash Report")
-                .setMessage("The app crashed last time it ran. Copy this and send it to the developer:\n\n" + crash.take(3000))
+                .setMessage("The app encountered an unexpected error. Details:\n\n" + crash.take(3000))
                 .setPositiveButton("OK") { d, _ -> d.dismiss() }
                 .setNeutralButton("Copy") { d, _ ->
                     try {
@@ -132,6 +120,25 @@ class MainActivity : FragmentActivity() {
                 .show()
         } catch (e: Throwable) {
             android.util.Log.w("MainActivity", "Crash report dialog failed: ${e.message}")
+        }
+    }
+
+    private var lastBackgroundTime = 0L
+
+    override fun onPause() {
+        super.onPause()
+        lastBackgroundTime = System.currentTimeMillis()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (lastBackgroundTime > 0L && System.currentTimeMillis() - lastBackgroundTime > 30_000L) {
+            val prefs = getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
+            val hasLocalUser = !prefs.getString("local_uid", "").isNullOrEmpty()
+            val hasFirebaseUser = com.esdispatch.data.FirebaseManager.auth?.currentUser != null
+            if (hasLocalUser || hasFirebaseUser) {
+                viewModel.lockApp()
+            }
         }
     }
 
@@ -280,6 +287,7 @@ class MainActivity : FragmentActivity() {
 
                 val isFirebaseConfigured by viewModel.isFirebaseConfigured.collectAsState()
                 val maintenanceMode by viewModel.maintenanceMode.collectAsState()
+                val isAppLocked by viewModel.isAppLocked.collectAsState()
 
                 Box(
                     modifier = Modifier
@@ -321,6 +329,22 @@ class MainActivity : FragmentActivity() {
                                 popUpTo("Splash") { inclusive = true }
                             }
                         })
+                    }
+                    composable("AppLock") {
+                        AppLockScreen(
+                            viewModel = viewModel,
+                            onUnlocked = {
+                                navController.navigate("Preloader/Dashboard") {
+                                    popUpTo("AppLock") { inclusive = true }
+                                }
+                            },
+                            onSignOut = {
+                                viewModel.logout()
+                                navController.navigate("Login") {
+                                    popUpTo("AppLock") { inclusive = true }
+                                }
+                            }
+                        )
                     }
                     composable("Onboarding") {
                         OnboardingScreen(viewModel = viewModel, onNavigate = {
@@ -623,6 +647,23 @@ class MainActivity : FragmentActivity() {
 
                 if (maintenanceMode) {
                     ConfigurationErrorScreen(isDark = darkModeEnabled)
+                    return@Box
+                }
+
+                if (isAppLocked) {
+                    AppLockScreen(
+                        viewModel = viewModel,
+                        onUnlocked = {
+                            viewModel.unlockApp()
+                        },
+                        onSignOut = {
+                            viewModel.unlockApp()
+                            viewModel.logout()
+                            navController.navigate("Login") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    )
                     return@Box
                 }
         }

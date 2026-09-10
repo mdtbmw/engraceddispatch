@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect } from "react";
 import { doc, onSnapshot, setDoc, Timestamp, collection, query, orderBy, onSnapshot as onSnap2, addDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { FileText, Plus, Trash2, Edit3, Save, X, RefreshCw } from "lucide-react";
@@ -28,10 +28,10 @@ const field = (label: string, value: string, onChange: (v: string) => void, opts
     <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{label}</label>
     {opts?.multiline ? (
       <textarea value={value} onChange={e => onChange(e.target.value)}
-        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40 min-h-[80px] resize-y" />
+        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 min-h-[80px] resize-y" />
     ) : (
       <input type={opts?.type || "text"} value={value} onChange={e => onChange(e.target.value)}
-        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
     )}
   </div>
 );
@@ -45,7 +45,7 @@ function CmsEditor({ content, setContent, sections, activeSection, setActiveSect
     <div className="flex gap-2 flex-wrap border-b border-black/10 dark:border-white/10 pb-3">
       {sections.map(s => (
         <button key={s.id} onClick={() => setActiveSection(s.id)}
-          className={"px-3 py-1.5 text-xs font-bold rounded-xl transition-colors " + (activeSection === s.id ? "bg-[#FFC542] text-[#111]" : "bg-gray-100 dark:bg-gray-800 text-black/60 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-gray-700")}>
+          className={"px-3 py-1.5 text-xs font-bold rounded-xl transition-colors " + (activeSection === s.id ? "bg-[#FFB800] text-[#111]" : "bg-gray-100 dark:bg-gray-800 text-black/60 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-gray-700")}>
           {s.label}
         </button>
       ))}
@@ -135,7 +135,7 @@ function CrudTable({ collectionName, label, icon, fields, items, onAdd, onUpdate
   return <div className="space-y-4">
     <div className="flex items-center justify-between">
       <p className="text-xs font-bold text-black/60 dark:text-white/60">{items.length} {label.toLowerCase()}</p>
-      <button onClick={startAdd} className="flex items-center gap-1.5 px-4 py-2.5 min-h-[38px] bg-[#FFC542] text-[#111] text-xs font-bold rounded-xl hover:bg-[#e6b13b] transition-colors">
+      <button onClick={startAdd} className="flex items-center gap-1.5 px-4 py-2.5 min-h-[38px] bg-[#FFB800] text-[#111] text-xs font-bold rounded-xl hover:bg-[#e6b13b] transition-colors">
         <Plus size={14} /> Add {label.slice(0, -1)}
       </button>
     </div>
@@ -155,7 +155,7 @@ function CrudTable({ collectionName, label, icon, fields, items, onAdd, onUpdate
             </div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={() => handleEdit(item)} className="p-1.5 text-[#FFC542] hover:bg-[#FFC542]/10 rounded-lg transition-colors"><Edit3 size={14} /></button>
+            <button onClick={() => handleEdit(item)} className="p-1.5 text-[#FFB800] hover:bg-[#FFB800]/10 rounded-lg transition-colors"><Edit3 size={14} /></button>
             <button onClick={() => { if (confirm("Delete this item?")) onDelete(item.id); }} className="p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={14} /></button>
           </div>
         </div>
@@ -170,17 +170,17 @@ function CrudTable({ collectionName, label, icon, fields, items, onAdd, onUpdate
               <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{f.label}</label>
               {f.key === "description" ? (
                 <textarea value={form[f.key] || ""} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40 min-h-[60px] resize-y" />
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 min-h-[60px] resize-y" />
               ) : (
                 <input type={f.type || "text"} value={form[f.key] || ""} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFC542]/40" />
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
               )}
             </div>
           ))}
         </div>
         <div className="flex items-center justify-end gap-3 pt-2">
           <button onClick={() => { setAdding(false); setEditing(null); }} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
-          <button onClick={handleSave} disabled={loading} className="px-4 py-2.5 min-h-[38px] bg-[#FFC542] text-[#111] rounded-xl text-xs font-bold hover:bg-[#e6b13b] disabled:opacity-50 transition-colors">
+          <button onClick={handleSave} disabled={loading} className="px-4 py-2.5 min-h-[38px] bg-[#FFB800] text-[#111] rounded-xl text-xs font-bold hover:bg-[#e6b13b] disabled:opacity-50 transition-colors">
             {loading ? "Saving..." : "Save"}
           </button>
         </div>
@@ -307,13 +307,13 @@ export default function CMSTab({ db, addLog }: { db: any; addLog: any }) {
 
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#FFC542]" /> Site Content</h1>
+      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#FFB800]" /> Site Content</h1>
         <p className="text-xs text-black/40 dark:text-white/40 mt-1">Edit all landing page content</p></div>
       <div className="flex items-center gap-2">
         <button onClick={handleSeed} disabled={seeding} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-black/60 dark:text-white/60 rounded-xl text-[10px] font-bold hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors">
           <RefreshCw size={12} className={seeding ? "animate-spin" : ""} /> {seeding ? "Seeding..." : "Seed from JSON"}
         </button>
-        <button onClick={saveContent} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 min-h-[38px] bg-[#FFC542] text-[#111] rounded-xl text-xs font-bold hover:bg-[#e6b13b] disabled:opacity-50 transition-colors">
+        <button onClick={saveContent} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 min-h-[38px] bg-[#FFB800] text-[#111] rounded-xl text-xs font-bold hover:bg-[#e6b13b] disabled:opacity-50 transition-colors">
           <Save size={14} /> {saving ? "Saving..." : "Save All Changes"}
         </button>
       </div>
@@ -322,7 +322,7 @@ export default function CMSTab({ db, addLog }: { db: any; addLog: any }) {
     <div className="flex gap-2 flex-wrap border-b border-black/10 dark:border-white/10 pb-3">
       {tabs.map(t => (
         <button key={t.id} onClick={() => setMainTab(t.id)}
-          className={"flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-colors " + (mainTab === t.id ? "bg-[#FFC542] text-[#111]" : "bg-gray-100 dark:bg-gray-800 text-black/60 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-gray-700")}>
+          className={"flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-colors " + (mainTab === t.id ? "bg-[#FFB800] text-[#111]" : "bg-gray-100 dark:bg-gray-800 text-black/60 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-gray-700")}>
           {t.icon && t.id !== "text" && <span className="w-4 h-4 flex items-center justify-center bg-black/10 dark:bg-white/10 rounded text-[9px]">{t.icon}</span>}
           {t.label}
         </button>
@@ -338,19 +338,19 @@ export default function CMSTab({ db, addLog }: { db: any; addLog: any }) {
       <CmsEditor content={content} setContent={setContent} sections={sections} activeSection={activeSection} setActiveSection={setActiveSection} />
     </>}
 
-    {mainTab === "services" && <CrudTable collectionName="cms_services" label="Service Cards" icon={<span className="text-[#FFC542]">S</span>}
+    {mainTab === "services" && <CrudTable collectionName="cms_services" label="Service Cards" icon={<span className="text-[#FFB800]">S</span>}
       fields={serviceFields} items={services} onAdd={d => addTo("cms_services", d)} onUpdate={(id, d) => updateIn("cms_services", id, d)} onDelete={id => deleteFrom("cms_services", id)} />
     }
-    {mainTab === "team" && <CrudTable collectionName="cms_team" label="Team Members" icon={<span className="text-[#FFC542]">T</span>}
+    {mainTab === "team" && <CrudTable collectionName="cms_team" label="Team Members" icon={<span className="text-[#FFB800]">T</span>}
       fields={teamFields} items={teamMembers} onAdd={d => addTo("cms_team", d)} onUpdate={(id, d) => updateIn("cms_team", id, d)} onDelete={id => deleteFrom("cms_team", id)} />
     }
-    {mainTab === "blog" && <CrudTable collectionName="cms_blog" label="Blog Posts" icon={<span className="text-[#FFC542]">B</span>}
+    {mainTab === "blog" && <CrudTable collectionName="cms_blog" label="Blog Posts" icon={<span className="text-[#FFB800]">B</span>}
       fields={blogFields} items={blogPosts} onAdd={d => addTo("cms_blog", d)} onUpdate={(id, d) => updateIn("cms_blog", id, d)} onDelete={id => deleteFrom("cms_blog", id)} />
     }
-    {mainTab === "portfolio" && <CrudTable collectionName="cms_portfolio" label="Portfolio Items" icon={<span className="text-[#FFC542]">P</span>}
+    {mainTab === "portfolio" && <CrudTable collectionName="cms_portfolio" label="Portfolio Items" icon={<span className="text-[#FFB800]">P</span>}
       fields={portfolioFields} items={portfolioItems} onAdd={d => addTo("cms_portfolio", d)} onUpdate={(id, d) => updateIn("cms_portfolio", id, d)} onDelete={id => deleteFrom("cms_portfolio", id)} />
     }
-    {mainTab === "testimonials" && <CrudTable collectionName="cms_testimonials" label="Testimonials" icon={<span className="text-[#FFC542]">R</span>}
+    {mainTab === "testimonials" && <CrudTable collectionName="cms_testimonials" label="Testimonials" icon={<span className="text-[#FFB800]">R</span>}
       fields={testimonialFields} items={testimonials} onAdd={d => addTo("cms_testimonials", d)} onUpdate={(id, d) => updateIn("cms_testimonials", id, d)} onDelete={id => deleteFrom("cms_testimonials", id)} />
     }
   </div>;

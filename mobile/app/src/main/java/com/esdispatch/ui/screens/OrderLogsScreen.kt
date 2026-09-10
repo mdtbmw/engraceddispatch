@@ -38,6 +38,7 @@ import com.esdispatch.ui.components.BottomNav
 import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.components.RoundedSheet
 import com.esdispatch.ui.components.StaggeredItem
+import com.esdispatch.ui.components.HistoryOrderCard
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 
@@ -82,6 +83,9 @@ fun OrderLogsScreen(
         }
     }
 
+    var parcelToCancel by remember { mutableStateOf<Parcel?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -104,7 +108,7 @@ fun OrderLogsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 24.dp, vertical = 24.dp)
+                        .padding(horizontal = 14.dp, vertical = 16.dp)
                 ) {
                 // Horizontal scrollable tags filters
                 LazyRow(
@@ -169,11 +173,22 @@ fun OrderLogsScreen(
                     itemsIndexed(paginatedParcels) { index, parcel ->
                         // StaggeredItem animated entry
                         StaggeredItem(index = index) {
-                            OrderHistoryItem(
+                            HistoryOrderCard(
                                 parcel = parcel,
                                 onClick = {
                                     viewModel.selectParcelForTracking(parcel.id)
                                     onNavigate("ActiveTracking")
+                                },
+                                onRebook = {
+                                    viewModel.populateDraftFromParcel(parcel)
+                                    onNavigate("BookingForm")
+                                },
+                                onViewReceipt = {
+                                    viewModel.selectParcelForTracking(parcel.id)
+                                    onNavigate("ActiveTracking")
+                                },
+                                onCancel = {
+                                    parcelToCancel = parcel
                                 }
                             )
                         }
@@ -190,6 +205,58 @@ fun OrderLogsScreen(
                 }
             }
         }
+    }
+
+    if (parcelToCancel != null) {
+        val targetParcel = parcelToCancel!!
+        AlertDialog(
+            onDismissRequest = { parcelToCancel = null },
+            title = {
+                Text(
+                    text = "Cancel Delivery #${targetParcel.id}?",
+                    fontFamily = SpaceGrotesk,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color.White else Obsidian
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to cancel this order? The delivery fee of ₦${String.format("%,.0f", targetParcel.price)} will be immediately refunded to your wallet balance.",
+                    fontFamily = Poppins,
+                    fontSize = 13.sp,
+                    color = TextGray
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val parcelId = targetParcel.id
+                        parcelToCancel = null
+                        viewModel.cancelDelivery(parcelId, reason = "Cancelled by user") { success ->
+                            if (success) {
+                                android.widget.Toast.makeText(context, "Delivery cancelled. Wallet refunded.", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                android.widget.Toast.makeText(context, "Unable to cancel delivery.", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE53935),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Cancel Delivery & Refund", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { parcelToCancel = null }) {
+                    Text("Keep Order", color = TextGray, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                }
+            },
+            containerColor = if (isDark) Charcoal else Color.White,
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 }
 }

@@ -33,6 +33,17 @@ open class AuthViewModel : BaseViewModel() {
     protected val _userEmail = MutableStateFlow("")
     val userEmail: StateFlow<String> = _userEmail.asStateFlow()
 
+    protected val _isAppLocked = MutableStateFlow(false)
+    val isAppLocked: StateFlow<Boolean> = _isAppLocked.asStateFlow()
+
+    fun lockApp() {
+        _isAppLocked.value = true
+    }
+
+    fun unlockApp() {
+        _isAppLocked.value = false
+    }
+
     fun setLoginMode(mode: String) {
         _loginMode.value = mode
     }

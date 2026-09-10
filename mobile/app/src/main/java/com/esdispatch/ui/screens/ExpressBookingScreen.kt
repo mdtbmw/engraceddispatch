@@ -152,7 +152,7 @@ fun ExpressBookingScreen(
         }
     }
 
-    // Address search using comprehensive Benin City + Lagos database
+    // Address search using comprehensive Benin City database
     fun findAddressMatchItems(query: String): List<com.esdispatch.utils.SearchResultItem> {
         return if (query.isBlank()) {
             val defaults = mutableListOf<com.esdispatch.utils.SearchResultItem>()
@@ -761,17 +761,25 @@ fun ExpressBookingScreen(
                                     unfocusedPlaceholderColor = TextGray
                                 )
                             )
+                            val isSPhoneValid = sPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(sPhone)
                             OutlinedTextField(
                                 value = sPhone,
                                 onValueChange = { sPhone = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(20.dp),
-                                placeholder = { Text("Phone", color = TextGray) },
-                                leadingIcon = { Icon(Icons.Filled.Phone, null, tint = accentIconColor, modifier = Modifier.size(18.dp)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                isError = sPhone.isNotBlank() && !isSPhoneValid,
+                                supportingText = {
+                                    if (sPhone.isNotBlank() && !isSPhoneValid) {
+                                        Text("Invalid phone number (e.g. 08012345678)", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                                    }
+                                },
+                                placeholder = { Text("Phone (e.g. 08012345678)", color = TextGray) },
+                                leadingIcon = { Icon(Icons.Filled.Phone, null, tint = if (sPhone.isNotBlank() && !isSPhoneValid) MaterialTheme.colorScheme.error else accentIconColor, modifier = Modifier.size(18.dp)) },
                                 textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = accentColor,
-                                    unfocusedBorderColor = fieldBorderColor,
+                                    focusedBorderColor = if (sPhone.isNotBlank() && !isSPhoneValid) MaterialTheme.colorScheme.error else accentColor,
+                                    unfocusedBorderColor = if (sPhone.isNotBlank() && !isSPhoneValid) MaterialTheme.colorScheme.error else fieldBorderColor,
                                     focusedContainerColor = fieldBgColor,
                                     unfocusedContainerColor = fieldBgColor,
                                     focusedTextColor = fieldTextColor,
@@ -833,17 +841,25 @@ fun ExpressBookingScreen(
                                     unfocusedPlaceholderColor = TextGray
                                 )
                             )
+                            val isRPhoneValid = rPhone.isNotBlank() && viewModel.isValidNigerianPhoneNumber(rPhone)
                             OutlinedTextField(
                                 value = rPhone,
                                 onValueChange = { rPhone = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(20.dp),
-                                placeholder = { Text("Phone", color = TextGray) },
-                                leadingIcon = { Icon(Icons.Filled.Phone, null, tint = accentIconColor, modifier = Modifier.size(18.dp)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                isError = rPhone.isNotBlank() && !isRPhoneValid,
+                                supportingText = {
+                                    if (rPhone.isNotBlank() && !isRPhoneValid) {
+                                        Text("Enter a valid Nigerian recipient phone (e.g. 08012345678)", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                                    }
+                                },
+                                placeholder = { Text("Phone (e.g. 08012345678)", color = TextGray) },
+                                leadingIcon = { Icon(Icons.Filled.Phone, null, tint = if (rPhone.isNotBlank() && !isRPhoneValid) MaterialTheme.colorScheme.error else accentIconColor, modifier = Modifier.size(18.dp)) },
                                 textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = accentColor,
-                                    unfocusedBorderColor = fieldBorderColor,
+                                    focusedBorderColor = if (rPhone.isNotBlank() && !isRPhoneValid) MaterialTheme.colorScheme.error else accentColor,
+                                    unfocusedBorderColor = if (rPhone.isNotBlank() && !isRPhoneValid) MaterialTheme.colorScheme.error else fieldBorderColor,
                                     focusedContainerColor = fieldBgColor,
                                     unfocusedContainerColor = fieldBgColor,
                                     focusedTextColor = fieldTextColor,
@@ -1154,12 +1170,19 @@ fun ExpressBookingScreen(
                     }
                 }
 
+                val isSPhoneValid = sPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(sPhone)
+                val isRPhoneValid = rPhone.isNotBlank() && viewModel.isValidNigerianPhoneNumber(rPhone)
+                val isPhoneValid = isSPhoneValid && isRPhoneValid
                 val isAddressesValid = pickup.trim().length >= 6 && delivery.trim().length >= 6
-                val isBookingEnabled = isAddressesValid && pendingQuote is PendingQuote.Success && cargoFeasibility.isFeasible
+                val isBookingEnabled = isAddressesValid && isPhoneValid && pendingQuote is PendingQuote.Success && cargoFeasibility.isFeasible
 
                 Button(
                     onClick = {
-                        showCheckoutSheet = true
+                        if (!isPhoneValid) {
+                            Toast.makeText(context, "Please provide valid Nigerian phone numbers", Toast.LENGTH_SHORT).show()
+                        } else {
+                            showCheckoutSheet = true
+                        }
                     },
                     enabled = isBookingEnabled,
                     modifier = Modifier

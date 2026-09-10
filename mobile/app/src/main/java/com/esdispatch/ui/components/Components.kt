@@ -1,6 +1,7 @@
 package com.esdispatch.ui.components
 
 import com.esdispatch.BuildConfig
+import com.esdispatch.data.ParcelStatus
 import com.esdispatch.ui.theme.Hugeicons
 import com.esdispatch.ui.theme.AnimatedHugeIcon
 import androidx.compose.animation.*
@@ -256,12 +257,12 @@ fun BottomNav(
     activeViewMode: String = "customer",
     userRole: String = "customer"
 ) {
-    val selectedColor = Gold
-    val unselectedColor = GoldenWhiteLight.copy(alpha = 0.75f)
-    val GoldGradient = Brush.linearGradient(listOf(Gold, GoldDark))
-    val DarkSurface = Obsidian
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
-    val navBorderColor = BorderColor
+    val selectedColor = Gold
+    val unselectedColor = if (isDark) Color.White.copy(alpha = 0.6f) else Obsidian.copy(alpha = 0.6f)
+    val GoldGradient = Brush.linearGradient(listOf(Gold, GoldDark))
+    val navSurface = if (isDark) Obsidian else GoldenWhiteSurface
+    val navBorderColor = if (isDark) Color(0x26FFFFFF) else Slate
 
     Box(
         modifier = Modifier
@@ -274,9 +275,9 @@ fun BottomNav(
                 .fillMaxWidth()
                 .wrapContentHeight(),
             shape = NotchedNavShape(38.dp),
-            color = DarkSurface,
-            shadowElevation = 0.dp,
-            border = null
+            color = navSurface,
+            shadowElevation = 4.dp,
+            border = BorderStroke(1.dp, navBorderColor)
         ) {
             Column(
                 modifier = Modifier
@@ -305,7 +306,7 @@ fun BottomNav(
                         },
                         label = "Manifest",
                         isSelected = currentScreen == "Dashboard",
-                        modifier = Modifier.width(52.dp),
+                        modifier = Modifier.width(54.dp),
                         onClick = { onNavigate("Dashboard") }
                     )
 
@@ -321,7 +322,7 @@ fun BottomNav(
                         },
                         label = "Payroll",
                         isSelected = currentScreen == "Wallet",
-                        modifier = Modifier.width(52.dp),
+                        modifier = Modifier.width(54.dp),
                         onClick = { onNavigate("Wallet") }
                     )
 
@@ -339,7 +340,7 @@ fun BottomNav(
                         },
                         label = "Tracking",
                         isSelected = currentScreen == "ActiveTracking",
-                        modifier = Modifier.width(52.dp),
+                        modifier = Modifier.width(54.dp),
                         onClick = { onNavigate("ActiveTracking") }
                     )
 
@@ -355,7 +356,7 @@ fun BottomNav(
                         },
                         label = "Profile",
                         isSelected = currentScreen == "Profile",
-                        modifier = Modifier.width(52.dp),
+                        modifier = Modifier.width(54.dp),
                         onClick = { onNavigate("Profile") }
                     )
                 } else {
@@ -372,7 +373,7 @@ fun BottomNav(
                         },
                         label = "Home",
                         isSelected = currentScreen == "Dashboard",
-                        modifier = Modifier.width(52.dp),
+                        modifier = Modifier.width(54.dp),
                         onClick = { onNavigate("Dashboard") }
                     )
 
@@ -386,9 +387,9 @@ fun BottomNav(
                                 size = 22.dp
                             )
                         },
-                        label = "Order",
+                        label = "Orders",
                         isSelected = currentScreen == "OrderLogs",
-                        modifier = Modifier.width(52.dp),
+                        modifier = Modifier.width(54.dp),
                         onClick = { onNavigate("OrderLogs") }
                     )
 
@@ -406,7 +407,7 @@ fun BottomNav(
                         },
                         label = "Tracking",
                         isSelected = currentScreen == "ActiveTracking",
-                        modifier = Modifier.width(52.dp),
+                        modifier = Modifier.width(54.dp),
                         onClick = { onNavigate("ActiveTracking") }
                     )
 
@@ -422,7 +423,7 @@ fun BottomNav(
                         },
                         label = "Profile",
                         isSelected = currentScreen == "Profile",
-                        modifier = Modifier.width(52.dp),
+                        modifier = Modifier.width(54.dp),
                         onClick = { onNavigate("Profile") }
                     )
                 }
@@ -437,7 +438,7 @@ fun BottomNav(
                 .size(60.dp)
                 .clip(CircleShape)
                 .background(GoldGradient)
-                .breathingPulse(active = true, minScale = 0.97f, maxScale = 1.05f, durationMs = 2400)
+                .breathingPulse(active = true, minScale = 0.98f, maxScale = 1.02f, durationMs = 3200)
                 .tactilePress(scaleDown = 0.90f) { 
                     if (activeViewMode == "rider") {
                         onNavigate("Scanner")
@@ -465,8 +466,9 @@ fun BottomNavItem(
     modifier: Modifier = Modifier.width(56.dp),
     onClick: () -> Unit
 ) {
+    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
     val selectedColor = Gold
-    val unselectedColor = GoldenWhiteLight.copy(alpha = 0.75f)
+    val unselectedColor = if (isDark) Color.White.copy(alpha = 0.65f) else Obsidian.copy(alpha = 0.65f)
 
     val scale by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (isSelected) 1.05f else 1.0f,
@@ -476,6 +478,7 @@ fun BottomNavItem(
 
     Column(
         modifier = modifier
+            .defaultMinSize(minHeight = 48.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -488,10 +491,10 @@ fun BottomNavItem(
         verticalArrangement = Arrangement.Center
     ) {
         icon()
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = label,
-            fontSize = 9.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             color = if (isSelected) selectedColor else unselectedColor,
             maxLines = 1

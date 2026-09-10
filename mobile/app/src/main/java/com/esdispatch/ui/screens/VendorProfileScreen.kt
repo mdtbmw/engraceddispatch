@@ -60,7 +60,7 @@ fun VendorProfileScreen(
             category = "VIP Executive Store",
             description = "Official verified partner storefront on ESDispatch Marketplace. Premium quality guaranteed.",
             ownerName = "Executive Vendor",
-            address = "No. 12 Victoria Island Admiralty Way, Ikeja, Lagos",
+            address = "No. 14 Airport Road, GRA, Benin City",
             rating = 4.9,
             totalSales = 48,
             itemCount = products.count { it.vendorId == vendorId },
@@ -243,7 +243,7 @@ fun VendorProfileScreen(
                                 Icon(Icons.Filled.LocationOn, null, tint = Gold, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = store.address.ifBlank { "No. 12 Admiralty Way, Lekki Phase 1, Lagos" },
+                                    text = store.address.ifBlank { "No. 14 Airport Road, GRA, Benin City" },
                                     fontSize = 12.sp,
                                     color = AppTextColor.copy(alpha = 0.8f),
                                     maxLines = 2,

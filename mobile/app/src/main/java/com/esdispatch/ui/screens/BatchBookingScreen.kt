@@ -155,7 +155,7 @@ fun BatchBookingScreen(
     var focusedDestinationIndex by remember { mutableStateOf(-1) }
     var suggestionItems by remember { mutableStateOf<List<com.esdispatch.utils.SearchResultItem>>(emptyList()) }
 
-    // Address search using AddressDatabase (Benin City + Lagos) + Mapbox
+    // Address search using AddressDatabase (Benin City) + Mapbox
     fun performSearch(query: String) {
         if (query.isNotBlank()) {
             val localResults = com.esdispatch.data.AddressDatabase.searchItems(query)
@@ -479,17 +479,25 @@ fun BatchBookingScreen(
                                     unfocusedPlaceholderColor = TextGray
                                 )
                             )
+                            val isSPhoneValid = sPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(sPhone)
                             OutlinedTextField(
                                 value = sPhone,
                                 onValueChange = { sPhone = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp),
-                                placeholder = { Text("Sender Phone", color = TextGray) },
-                                leadingIcon = { Icon(Icons.Filled.Phone, null, tint = accentIconColor, modifier = Modifier.size(18.dp)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                isError = sPhone.isNotBlank() && !isSPhoneValid,
+                                supportingText = {
+                                    if (sPhone.isNotBlank() && !isSPhoneValid) {
+                                        Text("Invalid Nigerian phone number", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                                    }
+                                },
+                                placeholder = { Text("Sender Phone (e.g. 08012345678)", color = TextGray) },
+                                leadingIcon = { Icon(Icons.Filled.Phone, null, tint = if (sPhone.isNotBlank() && !isSPhoneValid) MaterialTheme.colorScheme.error else accentIconColor, modifier = Modifier.size(18.dp)) },
                                 textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.Bold, fontSize = 13.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = accentColor,
-                                    unfocusedBorderColor = fieldBorderColor,
+                                    focusedBorderColor = if (sPhone.isNotBlank() && !isSPhoneValid) MaterialTheme.colorScheme.error else accentColor,
+                                    unfocusedBorderColor = if (sPhone.isNotBlank() && !isSPhoneValid) MaterialTheme.colorScheme.error else fieldBorderColor,
                                     focusedContainerColor = fieldBgColor,
                                     unfocusedContainerColor = fieldBgColor,
                                     focusedTextColor = fieldTextColor,
@@ -785,6 +793,7 @@ fun BatchBookingScreen(
                                     )
                                 )
 
+                                val isStopPhoneValid = stop.recipientPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(stop.recipientPhone)
                                 OutlinedTextField(
                                     value = stop.recipientPhone,
                                     onValueChange = { newPhone ->
@@ -794,12 +803,19 @@ fun BatchBookingScreen(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(14.dp),
-                                    placeholder = { Text("Recipient Phone", color = TextGray, fontSize = 12.sp) },
-                                    leadingIcon = { Icon(Icons.Filled.Phone, null, tint = accentIconColor, modifier = Modifier.size(16.dp)) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                    isError = stop.recipientPhone.isNotBlank() && !isStopPhoneValid,
+                                    supportingText = {
+                                        if (stop.recipientPhone.isNotBlank() && !isStopPhoneValid) {
+                                            Text("Invalid Nigerian phone number", color = MaterialTheme.colorScheme.error, fontSize = 10.sp)
+                                        }
+                                    },
+                                    placeholder = { Text("Recipient Phone (e.g. 08012345678)", color = TextGray, fontSize = 12.sp) },
+                                    leadingIcon = { Icon(Icons.Filled.Phone, null, tint = if (stop.recipientPhone.isNotBlank() && !isStopPhoneValid) MaterialTheme.colorScheme.error else accentIconColor, modifier = Modifier.size(16.dp)) },
                                     textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.Bold, fontSize = 12.sp),
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = accentColor,
-                                        unfocusedBorderColor = fieldBorderColor,
+                                        focusedBorderColor = if (stop.recipientPhone.isNotBlank() && !isStopPhoneValid) MaterialTheme.colorScheme.error else accentColor,
+                                        unfocusedBorderColor = if (stop.recipientPhone.isNotBlank() && !isStopPhoneValid) MaterialTheme.colorScheme.error else fieldBorderColor,
                                         focusedContainerColor = fieldBgColor,
                                         unfocusedContainerColor = fieldBgColor,
                                         focusedTextColor = fieldTextColor,
@@ -941,13 +957,19 @@ fun BatchBookingScreen(
 
                 val firstDest = batchStops.firstOrNull()?.destinationAddress ?: ""
                 val isAddressesValid = pickup.trim().length >= 6 && batchStops.isNotEmpty() && batchStops.all { it.destinationAddress.trim().length >= 6 }
-                val isContactValid = sName.trim().isNotBlank() && sPhone.trim().isNotBlank() && batchStops.all { it.recipientName.trim().isNotBlank() && it.recipientPhone.trim().isNotBlank() }
+                val isSPhoneValid = sPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(sPhone)
+                val isAllRecipientsPhoneValid = batchStops.all { it.recipientPhone.isNotBlank() && viewModel.isValidNigerianPhoneNumber(it.recipientPhone) }
+                val isContactValid = sName.trim().isNotBlank() && isSPhoneValid && batchStops.all { it.recipientName.trim().isNotBlank() } && isAllRecipientsPhoneValid
                 val isCargoValid = !isOverweight && batchStops.all { !com.esdispatch.util.CargoFeasibilityValidator.isStrictlyInfeasible(it.itemName, it.weight.toDoubleOrNull() ?: 1.0) }
                 val isBookingEnabled = isAddressesValid && isContactValid && isCargoValid && pendingQuote is PendingQuote.Success
 
                 Button(
                     onClick = {
-                        showCheckoutSheet = true
+                        if (!isContactValid) {
+                            Toast.makeText(context, "Please provide valid Nigerian contact phone numbers", Toast.LENGTH_SHORT).show()
+                        } else {
+                            showCheckoutSheet = true
+                        }
                     },
                     enabled = isBookingEnabled,
                     modifier = Modifier

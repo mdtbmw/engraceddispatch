@@ -881,9 +881,85 @@ fun RiderParcelCard(
             .padding(horizontal = 24.dp, vertical = 8.dp),
         shape = RoundedCornerShape(32.dp),
         color = AppSurface,
-        border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
+        border = BorderStroke(
+            1.dp,
+            when {
+                parcel.exceptionType.isNotEmpty() -> Color(0xFFEF5350).copy(alpha = 0.6f)
+                parcel.status == ParcelStatus.RESERVED_NEXT -> Color(0xFF7C4DFF).copy(alpha = 0.5f)
+                isDark -> BorderDark
+                else -> Slate
+            }
+        )
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
+            // Mission Hierarchy Badge
+            if (parcel.status == ParcelStatus.RESERVED_NEXT) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF7C4DFF).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.35f)),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Schedule, contentDescription = null, tint = Color(0xFFB388FF), modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("NEXT RESERVED MISSION • In Queue for Pickup", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color(0xFFB388FF))
+                    }
+                }
+            } else if (parcel.status != ParcelStatus.PENDING && parcel.status != ParcelStatus.DELIVERED && parcel.status != ParcelStatus.CANCELLED) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Gold.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f)),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Gold))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text("CURRENT ACTIVE MISSION", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Gold)
+                    }
+                }
+            }
+
+            // Field Exception Indicator
+            if (parcel.exceptionType.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFD32F2F).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEF5350), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "FIELD EXCEPTION: ${parcel.exceptionType.replace('_', ' ')}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFFFF8A80)
+                            )
+                            if (parcel.exceptionReason.isNotEmpty()) {
+                                Text(
+                                    text = parcel.exceptionReason,
+                                    fontSize = 10.sp,
+                                    color = Color.White.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Header Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -972,6 +1048,8 @@ fun RiderParcelCard(
                             .background(
                                 when (parcel.status) {
                                     ParcelStatus.PENDING -> Gold.copy(alpha = 0.15f)
+                                    ParcelStatus.QUEUED -> Color(0xFF0288D1).copy(alpha = 0.15f)
+                                    ParcelStatus.RESERVED_NEXT -> Color(0xFF7C4DFF).copy(alpha = 0.15f)
                                     ParcelStatus.ASSIGNED -> Gold.copy(alpha = 0.15f)
                                     ParcelStatus.TRANSIT -> {
                                         if (parcel.progress <= 0.35f) Gold.copy(alpha = 0.15f) else SuccessGreen.copy(alpha = 0.15f)
@@ -988,6 +1066,8 @@ fun RiderParcelCard(
                         Text(
                             text = when (parcel.status) {
                                 ParcelStatus.PENDING -> "AVAILABLE"
+                                ParcelStatus.QUEUED -> "QUEUED"
+                                ParcelStatus.RESERVED_NEXT -> "RESERVED NEXT"
                                 ParcelStatus.ASSIGNED -> "ASSIGNED"
                                 ParcelStatus.TRANSIT -> {
                                     if (parcel.progress <= 0.35f) "PICKUP" else "PICKED UP"
@@ -1000,6 +1080,8 @@ fun RiderParcelCard(
                             },
                             color = when (parcel.status) {
                                 ParcelStatus.PENDING -> Gold
+                                ParcelStatus.QUEUED -> Color(0xFF29B6F6)
+                                ParcelStatus.RESERVED_NEXT -> Color(0xFFB388FF)
                                 ParcelStatus.ASSIGNED -> Gold
                                 ParcelStatus.TRANSIT -> {
                                     if (parcel.progress <= 0.35f) Gold else SuccessGreen
@@ -1204,17 +1286,246 @@ fun RiderUpdateBottomSheetContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         if ((parcel.status == ParcelStatus.TRANSIT && parcel.progress > 0.35f) || parcel.status == ParcelStatus.OUT_FOR_DELIVERY) {
-            GpsMovementSimulator(
-                parcelId = parcel.id,
-                pickupAddress = parcel.pickupAddress,
-                deliveryAddress = parcel.deliveryAddress,
-                viewModel = viewModel,
-                isDark = isDark
-            )
-            Spacer(modifier = Modifier.height(20.dp))
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = if (isDark) Charcoal else GoldenWhiteLight,
+                border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(SuccessGreen)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "REAL HARDWARE GPS TELEMETRY",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Gold
+                            )
+                            Text(
+                                text = "Live Fleet Coordinate Sync • Benin City Sector",
+                                fontSize = 11.sp,
+                                color = TextGray
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Default.MyLocation,
+                        contentDescription = "GPS Active",
+                        tint = SuccessGreen,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        // Operational Field Exception Kit
+        if (parcel.status != ParcelStatus.PENDING && parcel.status != ParcelStatus.DELIVERED && parcel.status != ParcelStatus.CANCELLED) {
+            var showExceptionMenu by remember { mutableStateOf(false) }
+
+            if (parcel.exceptionType.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFD32F2F).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEF5350), modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "ACTIVE EXCEPTION: ${parcel.exceptionType.replace('_', ' ')}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFFFF8A80)
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    viewModel.resolveParcelException(parcel.id) { success, _ ->
+                                        if (success) {
+                                            Toast.makeText(context, "Exception cleared! Delivery resumed.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("CLEAR EXCEPTION", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Gold)
+                            }
+                        }
+                        if (parcel.exceptionReason.isNotEmpty()) {
+                            Text(
+                                text = parcel.exceptionReason,
+                                fontSize = 11.sp,
+                                color = AppTextColor,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            } else {
+                OutlinedButton(
+                    onClick = { showExceptionMenu = !showExceptionMenu },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .height(44.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (showExceptionMenu) Color(0xFFEF5350).copy(alpha = 0.1f) else Color.Transparent,
+                        contentColor = Color(0xFFEF5350)
+                    )
+                ) {
+                    Icon(Icons.Default.ReportProblem, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFEF5350))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (showExceptionMenu) "HIDE EXCEPTION KIT" else "FIELD EXCEPTION KIT (ISSUE REPORT)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFEF5350)
+                    )
+                }
+
+                AnimatedVisibility(visible = showExceptionMenu) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Trigger 1: Recipient Unreachable
+                        Button(
+                            onClick = {
+                                viewModel.reportParcelException(
+                                    parcel.id,
+                                    "RECIPIENT_UNREACHABLE",
+                                    "Customer unreachable by call/doorbell. 10m countdown protocol initiated."
+                                ) { success, _ ->
+                                    if (success) {
+                                        Toast.makeText(context, "10-minute unreachable protocol logged to dispatch.", Toast.LENGTH_LONG).show()
+                                        showExceptionMenu = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(42.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Charcoal, contentColor = Color(0xFFFFB74D)),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFFFFB74D).copy(alpha = 0.4f))
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.PhoneDisabled, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Recipient Unreachable [10m Timer]", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Trigger 2: Sender Delay / Not Ready
+                        Button(
+                            onClick = {
+                                viewModel.reportParcelException(
+                                    parcel.id,
+                                    "SENDER_DELAY",
+                                    "Pickup parcel not packaged or sender unavailable at location."
+                                ) { success, _ ->
+                                    if (success) {
+                                        Toast.makeText(context, "Sender delay logged to dispatch.", Toast.LENGTH_SHORT).show()
+                                        showExceptionMenu = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(42.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Charcoal, contentColor = Color(0xFFFFB74D)),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFFFFB74D).copy(alpha = 0.4f))
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Sender Delay / Package Not Ready", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Trigger 3: Wrong Address / Inaccessible
+                        Button(
+                            onClick = {
+                                viewModel.reportParcelException(
+                                    parcel.id,
+                                    "WRONG_ADDRESS",
+                                    "Road flooded/impassable or delivery address does not exist in Benin sector."
+                                ) { success, _ ->
+                                    if (success) {
+                                        Toast.makeText(context, "Inaccessible address logged to dispatch.", Toast.LENGTH_SHORT).show()
+                                        showExceptionMenu = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(42.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Charcoal, contentColor = Color(0xFFEF5350)),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.4f))
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.LocationOff, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Wrong Address / Inaccessible Road", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Trigger 4: Rider Breakdown
+                        Button(
+                            onClick = {
+                                viewModel.reportParcelException(
+                                    parcel.id,
+                                    "RIDER_BREAKDOWN",
+                                    "Courier motorcycle breakdown or flat tire in transit. Urgent fleet reassignment required."
+                                ) { success, _ ->
+                                    if (success) {
+                                        Toast.makeText(context, "Rider breakdown alert broadcast to fleet dispatcher!", Toast.LENGTH_LONG).show()
+                                        showExceptionMenu = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(42.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Charcoal, contentColor = Color(0xFFEF5350)),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.5f))
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Courier Motorcycle Breakdown", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
         }
 
         if (parcel.status == ParcelStatus.PENDING) {
@@ -2638,7 +2949,7 @@ fun VehicleMaintenanceDialog(
     bikeNumber: String,
     onDismiss: () -> Unit
 ) {
-    val maintenance = viewModel.checkVehicleMaintenance(if (bikeNumber.isNotBlank()) bikeNumber else "BIKE-LAGOS-88", 14500)
+    val maintenance = viewModel.checkVehicleMaintenance(if (bikeNumber.isNotBlank()) bikeNumber else "BIKE-BENIN-08", 14500)
 
     AlertDialog(
         onDismissRequest = onDismiss,
