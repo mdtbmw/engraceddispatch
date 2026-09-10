@@ -218,14 +218,15 @@ export const StatusDefinitions: Record<string, StatusMeta> = {
   },
 };
 
-export function getStatusMeta(status: string): StatusMeta {
+export function getStatusMeta(status?: string | null): StatusMeta {
   const norm = (status || "").trim().toUpperCase();
-  if (StatusDefinitions[norm]) {
+  if (norm && StatusDefinitions[norm]) {
     return StatusDefinitions[norm];
   }
-  const cleanLabel = status.replace(/_/g, " ");
+  const safeStr = status ? String(status) : "PENDING";
+  const cleanLabel = safeStr.replace(/_/g, " ");
   return {
-    key: status.toLowerCase(),
+    key: safeStr.toLowerCase(),
     customerLabel: cleanLabel,
     adminLabel: cleanLabel,
     tone: "neutral",

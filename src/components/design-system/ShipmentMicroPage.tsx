@@ -57,6 +57,17 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
   const [riderSearch, setRiderSearch] = useState("");
   const [statusSuccessFlash, setStatusSuccessFlash] = useState(false);
 
+  if (!delivery) {
+    return (
+      <div className="tab-content p-8 bg-white dark:bg-[#1a1a1a] rounded-3xl border border-black/10 dark:border-white/10 text-center space-y-3">
+        <p className="text-sm font-bold text-[#111] dark:text-white">Shipment data unavailable</p>
+        <button onClick={onBack} className="px-4 py-2 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black cursor-pointer">
+          Back to Shipments
+        </button>
+      </div>
+    );
+  }
+
   const copyToClipboard = (text: string, fieldName: string) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
@@ -217,9 +228,9 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-mono font-bold text-black/50 dark:text-white/50">
-                #{delivery.id?.slice(0, 8)}
+                #{delivery?.id ? delivery.id.slice(0, 8) : "--------"}
               </span>
-              <StatusBadge status={delivery.status} size="default" useAdminLabel={true} />
+              <StatusBadge status={delivery?.status || "PENDING"} size="default" useAdminLabel={true} />
               {delivery.category && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-gray-100 dark:bg-[#333] text-black/60 dark:text-white/60">
                   {delivery.category}

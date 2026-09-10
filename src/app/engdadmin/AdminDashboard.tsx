@@ -213,6 +213,30 @@ function sStyle(s: string): string {
 const statusSteps = ["PENDING", "ASSIGNED", "TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"];
 const sIdx: Record<string, number> = { PENDING: 0, ASSIGNED: 1, TRANSIT: 2, OUT_FOR_DELIVERY: 3, DELIVERED: 4, CANCELLED: -1 };
 
+function getLifecycleStageIndex(status: string): number {
+  const norm = (status || "").toUpperCase().trim();
+  switch (norm) {
+    case "PENDING":
+    case "RECEIVED":
+    case "QUEUED":
+      return 0;
+    case "RESERVED_NEXT":
+    case "ASSIGNED":
+      return 1;
+    case "PICKED_UP":
+    case "TRANSIT":
+      return 2;
+    case "ARRIVED":
+    case "OUT_FOR_DELIVERY":
+    case "HANDOVER_VERIFIED":
+      return 3;
+    case "DELIVERED":
+      return 4;
+    default:
+      return 0;
+  }
+}
+
 function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
   return <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all duration-200">
     <div className="flex items-center justify-between"><span className="text-xs font-bold text-black/40 dark:text-white/40">{label}</span>{icon}</div>
@@ -277,9 +301,9 @@ function SaveBtn({ onClick, label = "Save", loading = false, size = "sm" }: { on
 }
 
 function Select({ value, onChange, options, placeholder = "Select...", className = "", compact = false, renderOption }: {
-  value: string; onChange: (v: string) => void; options: { value: string; label: string; color?: string }[];
+  value: string; onChange: (v: string) => void; options: { value: string; label: string; color?: string; disabled?: boolean }[];
   placeholder?: string; className?: string; compact?: boolean;
-  renderOption?: (opt: { value: string; label: string; color?: string }, selected: boolean) => React.ReactNode;
+  renderOption?: (opt: { value: string; label: string; color?: string; disabled?: boolean }, selected: boolean) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -301,8 +325,8 @@ function Select({ value, onChange, options, placeholder = "Select...", className
     {open && <div className="absolute top-full left-0 mt-1.5 w-full min-w-[160px] z-[100] bg-white dark:bg-[#1a1a1a] rounded-2xl p-1.5 shadow-2xl border border-black/10 dark:border-white/10 overflow-hidden animate-scale-in">
       <div className="max-h-60 overflow-y-auto space-y-0.5">
         {options.map(o => (
-          <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}
-            className={"w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-xl transition-colors " + (compact ? "text-[10px]" : "text-xs ") + (o.value === value ? "bg-[#FFB800]/15 text-[#111] dark:text-white font-bold" : "text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5")}>
+          <button key={o.value} type="button" disabled={o.disabled} onClick={() => { if (!o.disabled) { onChange(o.value); setOpen(false); } }}
+            className={"w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-xl transition-colors " + (compact ? "text-[10px]" : "text-xs ") + (o.disabled ? "opacity-40 cursor-not-allowed text-gray-400 dark:text-white/30" : o.value === value ? "bg-[#FFB800]/15 text-[#111] dark:text-white font-bold" : "text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5")}>
             {renderOption ? renderOption(o, o.value === value) : <span>{o.label}</span>}
             {o.value === value && <Check className="w-3.5 h-3.5 ml-auto text-[#FFB800]" />}
           </button>
@@ -498,7 +522,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
   const handleInlineStatusChange = async (deliveryId: string, newStatus: string) => {
     const del = deliveries.find((x: any) => x.id === deliveryId);
     const hasRider = !!(del?.riderId || del?.driverId || (del?.courierName && del.courierName !== "Unassigned"));
-    if (!hasRider && (newStatus === "TRANSIT" || newStatus === "OUT_FOR_DELIVERY" || newStatus === "DELIVERED")) {
+    if (!hasRider && (newStatus === "TRANSIT" || newStatus === "OUT_FOR_DELIVERY" || newStatus === "DELIVERED" || newStatus === "ARRIVED")) {
       alert("Operational Guard: Assign a rider before updating status to " + newStatus.replace(/_/g, " ") + ".");
       return;
     }
@@ -507,6 +531,32 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
         status: newStatus,
         updatedAt: Timestamp.now()
       });
+      if (del?.userId) {
+        try {
+          const statusMessages: Record<string, string> = {
+            ASSIGNED: "A courier has been assigned and will be picking up your package shortly.",
+            PICKED_UP: "Your package has been picked up by our courier.",
+            TRANSIT: "Your package is on the way to the delivery address.",
+            ARRIVED: "The courier has arrived at the delivery address.",
+            OUT_FOR_DELIVERY: "The courier is approaching the final delivery location.",
+            HANDOVER_VERIFIED: "Delivery handover has been verified with security code.",
+            DELIVERED: "Your package has been safely delivered. Thank you for choosing ESDispatch!",
+            CANCELLED: "This delivery booking has been cancelled.",
+          };
+          if (statusMessages[newStatus]) {
+            const notifRef = doc(collection(db, "users", del.userId, "notifications"));
+            await setDoc(notifRef, {
+              id: notifRef.id,
+              title: newStatus === "DELIVERED" ? "Package Delivered" : `Shipment ${newStatus.replace(/_/g, " ")}`,
+              message: statusMessages[newStatus],
+              time: "Just now",
+              isRead: false,
+              parcelId: deliveryId,
+              createdAt: Timestamp.now()
+            });
+          }
+        } catch (_) {}
+      }
     } catch (err: any) {
       console.error("Failed to update status:", err);
       alert("Could not update status: " + err.message);
@@ -910,7 +960,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                 if (onOpenShipmentFullView) {
                                   onOpenShipmentFullView(d.id);
                                 } else {
-                                  if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id, selectedId: d.id });
+                                  if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id, selectedId: d.id, status: "ALL", category: "ALL" });
                                   setTab("shipments"); 
                                 }
                               }} 
@@ -1010,15 +1060,87 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                 <div className="flex items-center gap-2">
                                   <div className="relative inline-block text-left">
                                     <select
-                                      value={d.status}
-                                      onChange={(e) => handleInlineStatusChange(d.id, e.target.value)}
-                                      className="appearance-none text-xs font-black bg-white dark:bg-[#1a1a1a] border border-black/15 dark:border-white/15 rounded-xl pl-3 pr-8 py-1.5 text-[#111] dark:text-white cursor-pointer shadow-xs hover:border-[#FFB800] focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 transition-all"
-                                    >
-                                      {statusSteps.map((st) => (
-                                        <option key={st} value={st}>{st.replace(/_/g, " ")}</option>
-                                      ))}
-                                      <option value="CANCELLED">CANCELLED</option>
-                                    </select>
+                                       value={d.status}
+                                       onChange={(e) => handleInlineStatusChange(d.id, e.target.value)}
+                                       className="appearance-none text-xs font-black bg-white dark:bg-[#1a1a1a] border border-black/15 dark:border-white/15 rounded-xl pl-3 pr-8 py-1.5 text-[#111] dark:text-white cursor-pointer shadow-xs hover:border-[#FFB800] focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 transition-all"
+                                     >
+                                       {(() => {
+                                         const normCurrent = (d.status || "PENDING").toUpperCase();
+                                         const currentIdx = getLifecycleStageIndex(normCurrent);
+                                         const isDelivered = normCurrent === "DELIVERED";
+                                         const isCancelled = normCurrent === "CANCELLED";
+
+                                         const baseStages = [
+                                           { value: "PENDING", label: "PENDING", stage: 0 },
+                                           { value: "ASSIGNED", label: "ASSIGNED", stage: 1 },
+                                           { value: "TRANSIT", label: "TRANSIT", stage: 2 },
+                                           { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY", stage: 3 },
+                                           { value: "DELIVERED", label: "DELIVERED", stage: 4 },
+                                         ];
+
+                                         const list = [...baseStages];
+                                         if (!list.some(s => s.value === normCurrent) && !isCancelled) {
+                                           list.push({
+                                             value: normCurrent,
+                                             label: normCurrent.replace(/_/g, " "),
+                                             stage: currentIdx,
+                                           });
+                                           list.sort((a, b) => a.stage - b.stage);
+                                         }
+
+                                         return (
+                                           <>
+                                             {list.map((step) => {
+                                               const isPassed = !isCancelled && step.stage < currentIdx;
+                                               const isThisCurrent = !isCancelled && (step.value === normCurrent || (step.stage === currentIdx && isDelivered));
+
+                                               if (isPassed) {
+                                                 return (
+                                                   <option
+                                                     key={step.value}
+                                                     value={step.value}
+                                                     disabled
+                                                     className="text-gray-400 dark:text-white/30 bg-gray-100 dark:bg-[#222]"
+                                                   >
+                                                     ✓ {step.label} (Passed)
+                                                   </option>
+                                                 );
+                                               }
+
+                                               if (isThisCurrent) {
+                                                 return (
+                                                   <option
+                                                     key={step.value}
+                                                     value={step.value}
+                                                     className="font-bold text-[#FFB800] bg-white dark:bg-[#1a1a1a]"
+                                                   >
+                                                     {isDelivered ? `✓ ${step.label} (Completed)` : `● ${step.label} (Current)`}
+                                                   </option>
+                                                 );
+                                               }
+
+                                               return (
+                                                 <option
+                                                   key={step.value}
+                                                   value={step.value}
+                                                   disabled={isDelivered}
+                                                   className="text-[#111] dark:text-white bg-white dark:bg-[#1a1a1a]"
+                                                 >
+                                                   {step.label}
+                                                 </option>
+                                               );
+                                             })}
+                                             <option
+                                               value="CANCELLED"
+                                               disabled={isDelivered}
+                                               className={isCancelled ? "font-bold text-red-500" : "text-red-500"}
+                                             >
+                                               {isCancelled ? "● CANCELLED (Current)" : "CANCELLED"}
+                                             </option>
+                                           </>
+                                         );
+                                       })()}
+                                     </select>
                                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-black/50 dark:text-white/50">
                                       <ChevronDown size={14} strokeWidth={2.5} />
                                     </div>
@@ -1105,7 +1227,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                       onClick={() => {
                         if (onOpenShipmentFullView) onOpenShipmentFullView(d.id);
                         else {
-                          if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id, selectedId: d.id });
+                          if (setShipmentsFilterPrefill) setShipmentsFilterPrefill({ search: d.id, selectedId: d.id, status: "ALL", category: "ALL" });
                           setTab("shipments");
                         }
                       }}
@@ -2434,10 +2556,10 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
   }
 
 function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, filterPrefill, setFilterPrefill }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string; db: any; addLog: any; addToast?: (type: Toast["type"], message: string) => void; filterPrefill?: { status?: string; category?: string; search?: string; selectedId?: string } | null; setFilterPrefill?: (v: any) => void }) {
-    const [search, setSearch] = useState("");
-    const [statusFilter, setStatusFilter] = useState("ACTION_NEEDED");
-    const [categoryFilter, setCategoryFilter] = useState("ALL");
-    const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
+    const [search, setSearch] = useState(() => filterPrefill?.search || "");
+    const [statusFilter, setStatusFilter] = useState(() => filterPrefill?.status || (filterPrefill?.selectedId ? "ALL" : "ACTION_NEEDED"));
+    const [categoryFilter, setCategoryFilter] = useState(() => filterPrefill?.category || "ALL");
+    const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(() => filterPrefill?.selectedId || null);
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [bulkStatus, setBulkStatus] = useState("");
     const [page, setPage] = useState(0);
@@ -2458,10 +2580,16 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
 
     useEffect(() => {
       if (filterPrefill) {
-        if (filterPrefill.status) setStatusFilter(filterPrefill.status);
-        if (filterPrefill.category) setCategoryFilter(filterPrefill.category);
-        if (filterPrefill.search) setSearch(filterPrefill.search);
-        if (filterPrefill.selectedId) setSelectedShipmentId(filterPrefill.selectedId);
+        if (filterPrefill.selectedId) {
+          setSelectedShipmentId(filterPrefill.selectedId);
+          setStatusFilter(filterPrefill.status || "ALL");
+          setCategoryFilter(filterPrefill.category || "ALL");
+          if (filterPrefill.search) setSearch(filterPrefill.search);
+        } else {
+          if (filterPrefill.status) setStatusFilter(filterPrefill.status);
+          if (filterPrefill.category) setCategoryFilter(filterPrefill.category);
+          if (filterPrefill.search) setSearch(filterPrefill.search);
+        }
         if (setFilterPrefill) setFilterPrefill(null);
       }
     }, [filterPrefill, setFilterPrefill]);
@@ -2950,24 +3078,61 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
     const totalRevenue = deliveries.reduce((acc, d) => acc + (d.price || 0) + (d.tipAmount || 0), 0);
 
     // If an individual shipment is selected, render the dedicated in-place Micro-Page (no cramped modals)
-    const activeDeliveryForMicroPage = deliveries.find(d => d.id === selectedShipmentId);
-    if (selectedShipmentId && activeDeliveryForMicroPage) {
+    const activeDeliveryForMicroPage = deliveries.find(d => 
+      d.id === selectedShipmentId || 
+      (d.id && selectedShipmentId && d.id.trim().toLowerCase() === selectedShipmentId.trim().toLowerCase())
+    );
+
+    if (selectedShipmentId) {
+      if (activeDeliveryForMicroPage) {
+        return (
+          <ShipmentMicroPage
+            delivery={activeDeliveryForMicroPage}
+            drivers={drivers}
+            deliveries={deliveries}
+            onBack={() => {
+              setSelectedShipmentId(null);
+              setSearch("");
+              setStatusFilter("ALL");
+            }}
+            onAssignRider={assignRider}
+            onReserveRider={reserveRider}
+            onUpdateStatus={async (delId: string, newStatus: string) => {
+              await updateDoc(doc(db, "deliveries", delId), { status: newStatus, updatedAt: Timestamp.now() });
+              addLog("Status Update", `${idShort(delId)} → ${newStatus}`);
+              if (addToast) addToast("success", `Status updated to ${newStatus.replace(/_/g, " ")}`);
+            }}
+            onPrintWaybill={(del: any) => setWaybillModal({ delivery: del, show: true })}
+            addToast={addToast}
+          />
+        );
+      }
+
+      // If active delivery is not found or still loading from Firestore:
       return (
-        <ShipmentMicroPage
-          delivery={activeDeliveryForMicroPage}
-          drivers={drivers}
-          deliveries={deliveries}
-          onBack={() => setSelectedShipmentId(null)}
-          onAssignRider={assignRider}
-          onReserveRider={reserveRider}
-          onUpdateStatus={async (delId: string, newStatus: string) => {
-            await updateDoc(doc(db, "deliveries", delId), { status: newStatus, updatedAt: Timestamp.now() });
-            addLog("Status Update", `${idShort(delId)} → ${newStatus}`);
-            if (addToast) addToast("success", `Status updated to ${newStatus.replace(/_/g, " ")}`);
-          }}
-          onPrintWaybill={(del: any) => setWaybillModal({ delivery: del, show: true })}
-          addToast={addToast}
-        />
+        <div className="tab-content p-8 sm:p-12 bg-white dark:bg-[#1a1a1a] rounded-3xl border border-black/10 dark:border-white/10 space-y-4 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-[#FFB800]/10 text-[#FFB800] flex items-center justify-center mx-auto animate-pulse">
+            <Package size={24} />
+          </div>
+          <h3 className="text-base font-black text-[#111] dark:text-white">
+            {deliveries.length === 0 ? "Loading Consignment Details..." : "Shipment Not Found"}
+          </h3>
+          <p className="text-xs text-black/50 dark:text-white/50 max-w-sm mx-auto">
+            {deliveries.length === 0
+              ? "Syncing live delivery records from Firestore. Please hold on..."
+              : `Shipment #${idShort(selectedShipmentId)} could not be located in active records.`}
+          </p>
+          <button
+            onClick={() => {
+              setSelectedShipmentId(null);
+              setStatusFilter("ALL");
+              setSearch("");
+            }}
+            className="px-4 py-2 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black hover:bg-[#FFB800]/80 transition-all cursor-pointer shadow-xs"
+          >
+            View All Shipments
+          </button>
+        </div>
       );
     }
 
@@ -3227,25 +3392,57 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       <td className="p-3.5">
                         <div className="flex flex-col gap-1.5 items-start">
                           <StatusBadge status={d.status} size="default" useAdminLabel={true} />
-                          <Select
-                            value={d.status}
-                            onChange={v => updateStatus(d.id, v)}
-                            compact
-                            options={[
-                              { value: d.status, label: d.status.replace(/_/g, " ") },
-                              ...(d.status === "PENDING" ? [{ value: "QUEUED", label: "QUEUED" }, { value: "ASSIGNED", label: "ASSIGNED" }] : []),
-                              ...(d.status === "QUEUED" ? [{ value: "RESERVED_NEXT", label: "RESERVE NEXT" }, { value: "ASSIGNED", label: "ASSIGNED" }] : []),
-                              ...(d.status === "RESERVED_NEXT" ? [{ value: "ASSIGNED", label: "ASSIGNED" }] : []),
-                              ...(d.status === "ASSIGNED" ? [{ value: "PICKED_UP", label: "PICKED UP" }, { value: "TRANSIT", label: "TRANSIT" }] : []),
-                              ...(d.status === "PICKED_UP" ? [{ value: "TRANSIT", label: "TRANSIT" }, { value: "ARRIVED", label: "ARRIVED" }] : []),
-                              ...(d.status === "TRANSIT" ? [{ value: "ARRIVED", label: "ARRIVED" }, { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" }] : []),
-                              ...(d.status === "ARRIVED" ? [{ value: "HANDOVER_VERIFIED", label: "HANDOVER VERIFIED" }, { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY" }] : []),
-                              ...(d.status === "OUT_FOR_DELIVERY" ? [{ value: "HANDOVER_VERIFIED", label: "HANDOVER VERIFIED" }, { value: "DELIVERED", label: "DELIVERED" }] : []),
-                              ...(d.status === "HANDOVER_VERIFIED" ? [{ value: "DELIVERED", label: "DELIVERED" }] : []),
-                              ...((d.status !== "DELIVERED" && d.status !== "CANCELLED") ? [{ value: "CANCELLED", label: "CANCELLED" }] : [])
-                            ]}
-                            renderOption={(o) => <span className={"px-2.5 py-1 rounded-xl text-[10px] font-extrabold shadow-2xs " + sStyle(o.value)}>{o.label}</span>}
-                          />
+                          {(() => {
+                            const normCurrent = (d.status || "PENDING").toUpperCase();
+                            const currentIdx = getLifecycleStageIndex(normCurrent);
+                            const isDelivered = normCurrent === "DELIVERED";
+                            const isCancelled = normCurrent === "CANCELLED";
+
+                            const baseStages = [
+                              { value: "PENDING", label: "PENDING", stage: 0 },
+                              { value: "ASSIGNED", label: "ASSIGNED", stage: 1 },
+                              { value: "TRANSIT", label: "TRANSIT", stage: 2 },
+                              { value: "OUT_FOR_DELIVERY", label: "OUT FOR DELIVERY", stage: 3 },
+                              { value: "DELIVERED", label: "DELIVERED", stage: 4 },
+                            ];
+
+                            const list = [...baseStages];
+                            if (!list.some(s => s.value === normCurrent) && !isCancelled) {
+                              list.push({ value: normCurrent, label: normCurrent.replace(/_/g, " "), stage: currentIdx });
+                              list.sort((a, b) => a.stage - b.stage);
+                            }
+
+                            const tableOptions = [
+                              ...list.map(step => {
+                                const isPassed = !isCancelled && step.stage < currentIdx;
+                                const isThisCurrent = !isCancelled && (step.value === normCurrent || (step.stage === currentIdx && isDelivered));
+                                return {
+                                  value: step.value,
+                                  label: isPassed ? `✓ ${step.label} (Passed)` : isThisCurrent ? (isDelivered ? `✓ ${step.label} (Completed)` : `● ${step.label} (Current)`) : step.label,
+                                  disabled: isPassed || (isDelivered && step.value !== "DELIVERED"),
+                                };
+                              }),
+                              {
+                                value: "CANCELLED",
+                                label: isCancelled ? "● CANCELLED (Current)" : "CANCELLED",
+                                disabled: isDelivered,
+                              }
+                            ];
+
+                            return (
+                              <Select
+                                value={d.status}
+                                onChange={v => updateStatus(d.id, v)}
+                                compact
+                                options={tableOptions}
+                                renderOption={(o) => (
+                                  <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold shadow-2xs ${o.disabled ? "opacity-50 text-gray-400 dark:text-white/30" : sStyle(o.value)}`}>
+                                    {o.label}
+                                  </span>
+                                )}
+                              />
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="p-3.5 text-right">
@@ -5821,7 +6018,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
             <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => {
-                  setShipmentsFilterPrefill({ search: newOrderAlert.id, selectedId: newOrderAlert.id });
+                  setShipmentsFilterPrefill({ search: newOrderAlert.id, selectedId: newOrderAlert.id, status: "ALL", category: "ALL" });
                   setTab("shipments");
                   setNewOrderAlert(null);
                 }}
@@ -5864,7 +6061,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
             toggleMarketplace={toggleMarketplace}
             setShipmentsFilterPrefill={setShipmentsFilterPrefill}
             onOpenShipmentFullView={(shipmentId: string) => {
-              setShipmentsFilterPrefill({ search: shipmentId, selectedId: shipmentId });
+              setShipmentsFilterPrefill({ search: shipmentId, selectedId: shipmentId, status: "ALL", category: "ALL" });
               setTab("shipments");
             }}
           />}
