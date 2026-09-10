@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect } from "react";
 import { doc, onSnapshot, setDoc, Timestamp, collection, query, orderBy, onSnapshot as onSnap2, addDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { FileText, Plus, Trash2, Edit3, Save, X, RefreshCw } from "lucide-react";
@@ -25,13 +25,13 @@ const defaultContent: SiteContent = {
 
 const field = (label: string, value: string, onChange: (v: string) => void, opts?: { multiline?: boolean; large?: boolean; type?: string }) => (
   <div className={opts?.large ? "sm:col-span-2" : ""}>
-    <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{label}</label>
+    <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">{label}</label>
     {opts?.multiline ? (
       <textarea value={value} onChange={e => onChange(e.target.value)}
-        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 min-h-[80px] resize-y" />
+        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 min-h-[80px] resize-y" />
     ) : (
       <input type={opts?.type || "text"} value={value} onChange={e => onChange(e.target.value)}
-        className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+        className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
     )}
   </div>
 );
@@ -167,20 +167,20 @@ function CrudTable({ collectionName, label, icon, fields, items, onAdd, onUpdate
         <div className="grid sm:grid-cols-2 gap-3">
           {fields.map(f => (
             <div key={f.key} className={f.key === "description" || f.key === "image" || f.key === "icon" ? "sm:col-span-2" : ""}>
-              <label className="block text-[10px] font-bold text-black/40 dark:text-white/40 mb-1 uppercase">{f.label}</label>
+              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">{f.label}</label>
               {f.key === "description" ? (
                 <textarea value={form[f.key] || ""} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 min-h-[60px] resize-y" />
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 min-h-[60px] resize-y" />
               ) : (
                 <input type={f.type || "text"} value={form[f.key] || ""} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                  className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
               )}
             </div>
           ))}
         </div>
         <div className="flex items-center justify-end gap-3 pt-2">
-          <button onClick={() => { setAdding(false); setEditing(null); }} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600">Cancel</button>
-          <button onClick={handleSave} disabled={loading} className="px-4 py-2.5 min-h-[38px] bg-[#FFB800] text-[#111] rounded-xl text-xs font-bold hover:bg-[#e6b13b] disabled:opacity-50 transition-colors">
+          <button onClick={() => { setAdding(false); setEditing(null); }} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Cancel</button>
+          <button onClick={handleSave} disabled={loading} className="h-10 px-5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black disabled:opacity-50 transition-all shadow-xs cursor-pointer">
             {loading ? "Saving..." : "Save"}
           </button>
         </div>
@@ -308,12 +308,12 @@ export default function CMSTab({ db, addLog }: { db: any; addLog: any }) {
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
       <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#FFB800]" /> Site Content</h1>
-        <p className="text-xs text-black/40 dark:text-white/40 mt-1">Edit all landing page content</p></div>
-      <div className="flex items-center gap-2">
-        <button onClick={handleSeed} disabled={seeding} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-black/60 dark:text-white/60 rounded-xl text-[10px] font-bold hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors">
-          <RefreshCw size={12} className={seeding ? "animate-spin" : ""} /> {seeding ? "Seeding..." : "Seed from JSON"}
+        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">Edit all landing page content</p></div>
+      <div className="flex items-center gap-2.5">
+        <button onClick={handleSeed} disabled={seeding} className="h-10 px-3.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors flex items-center gap-1.5 cursor-pointer">
+          <RefreshCw size={14} className={seeding ? "animate-spin" : ""} /> {seeding ? "Seeding..." : "Seed from JSON"}
         </button>
-        <button onClick={saveContent} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 min-h-[38px] bg-[#FFB800] text-[#111] rounded-xl text-xs font-bold hover:bg-[#e6b13b] disabled:opacity-50 transition-colors">
+        <button onClick={saveContent} disabled={saving} className="h-10 px-5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-xs flex items-center gap-2 disabled:opacity-50 transition-all cursor-pointer">
           <Save size={14} /> {saving ? "Saving..." : "Save All Changes"}
         </button>
       </div>

@@ -30,7 +30,7 @@ function useOnlineStatus() {
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment } from "firebase/firestore";
-import { Shield, Truck, Package, ShoppingBag, Store, Users, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag } from "lucide-react";
+import { Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
 import { SoundEngine } from "@/lib/interaction/SoundEngine";
@@ -238,10 +238,10 @@ function getLifecycleStageIndex(status: string): number {
 }
 
 function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
-  return <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all duration-200">
-    <div className="flex items-center justify-between"><span className="text-xs font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider">{label}</span>{icon}</div>
-    <h2 className="text-3xl font-black text-gray-900 dark:text-white mt-2">{value}</h2>
-    <p className="text-[11px] text-gray-600 dark:text-gray-400 font-semibold mt-1">{sub}</p>
+  return <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-4 sm:p-5 shadow-2xs hover:shadow-md transition-all duration-200">
+    <div className="flex items-center justify-between"><span className="text-[11px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider">{label}</span>{icon}</div>
+    <h2 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mt-1.5 tracking-tight">{value}</h2>
+    <p className="text-[11px] text-gray-600 dark:text-gray-400 font-semibold mt-0.5 truncate">{sub}</p>
   </div>;
 }
 function QuickBtn({ label, desc, onClick, loading = false, variant = "default" }: { label: string; desc: string; onClick: () => void; loading?: boolean; variant?: "default" | "warning" | "danger" | "setup" }) {
@@ -255,14 +255,14 @@ function QuickBtn({ label, desc, onClick, loading = false, variant = "default" }
     : variant === "warning"
     ? "text-amber-600 dark:text-amber-400"
     : "text-gray-900 dark:text-[#FFB800]";
-  return <button onClick={onClick} disabled={loading} className={"p-4 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-2xl text-left transition-all " + borderClr + " " + (loading ? "opacity-50 cursor-not-allowed" : "")}>
-    <p className={"text-xs font-bold " + titleClr}>{loading ? "PROCESSING..." : label}</p><p className="text-[10px] text-gray-600 dark:text-gray-400 mt-1 font-medium">{desc}</p>
+  return <button onClick={onClick} disabled={loading} className={"p-3.5 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-2xl text-left transition-all " + borderClr + " " + (loading ? "opacity-50 cursor-not-allowed" : "")}>
+    <p className={"text-xs font-bold " + titleClr}>{loading ? "PROCESSING..." : label}</p><p className="text-[10px] text-gray-600 dark:text-gray-400 mt-0.5 font-medium">{desc}</p>
   </button>;
 }
 function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
-  return <div className={"bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-sm " + (className || "")}>
+  return <div className={"bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-2xs " + (className || "")}>
     <h3 className="text-xs font-black text-gray-900 dark:text-[#FFB800] tracking-wider uppercase flex items-center gap-2">{title}</h3>
-    <div className="mt-4">{children}</div>
+    <div className="mt-3.5">{children}</div>
   </div>;
 }
 function InlineEdit({ value, onSave, type = "text" }: { value: string; onSave: (v: string) => void; type?: string }) {
@@ -270,33 +270,48 @@ function InlineEdit({ value, onSave, type = "text" }: { value: string; onSave: (
   const [val, setVal] = useState(value);
   useEffect(() => setVal(value), [value]);
   if (!editing) return <span onClick={() => setEditing(true)} className="cursor-pointer hover:bg-[#FFB800]/10 px-1.5 py-0.5 rounded group inline-flex items-center gap-1.5 -ml-1.5 transition-colors text-gray-900 dark:text-white font-medium">{value || "—"} <Edit3 className="w-3 h-3 text-[#FFB800]/0 group-hover:text-amber-700 dark:group-hover:text-[#FFB800]" /></span>;
-  return <input type={type} value={val} onChange={e => setVal(e.target.value)} onBlur={() => { onSave(val); setEditing(false); }} onKeyDown={e => { if (e.key === "Enter") { onSave(val); setEditing(false); } if (e.key === "Escape") { setVal(value); setEditing(false); }}} className="bg-white dark:bg-[#222] border border-[#FFB800]/50 rounded-xl px-2 py-1 text-sm text-gray-900 dark:text-white w-full shadow-sm" autoFocus />;
+  return <input type={type} value={val} onChange={e => setVal(e.target.value)} onBlur={() => { onSave(val); setEditing(false); }} onKeyDown={e => { if (e.key === "Enter") { onSave(val); setEditing(false); } if (e.key === "Escape") { setVal(value); setEditing(false); }}} className="h-8 bg-white dark:bg-[#222] border border-[#FFB800]/50 rounded-lg px-2 text-xs text-gray-900 dark:text-white w-full shadow-xs focus:outline-none focus:ring-1 focus:ring-[#FFB800]" autoFocus />;
 }
 function ConfirmModal({ show, title, message, confirmLabel, onConfirm, onCancel }: { show: boolean; title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void }) {
   if (!show) return null;
   return <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
     <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
       <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-red-500" /> {title}</h3>
-      <p className="text-sm text-gray-700 dark:text-gray-300">{message}</p>
+      <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 font-medium leading-relaxed">{message}</p>
       <div className="flex items-center justify-end gap-3 pt-2">
-        <button onClick={onCancel} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-colors">Cancel</button>
-        <button onClick={onConfirm} className="px-4 py-2.5 min-h-[38px] bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition-colors">{confirmLabel || "Confirm"}</button>
+        <button onClick={onCancel} className="h-10 px-4 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-colors cursor-pointer">Cancel</button>
+        <button onClick={onConfirm} className="h-10 px-5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition-colors cursor-pointer shadow-xs">{confirmLabel || "Confirm"}</button>
       </div>
     </div>
   </div>;
 }
-function SearchInput({ value, onChange, placeholder = "Search..." }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
-  return <div className="relative group">
-    <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-gray-500 dark:text-gray-400 group-focus-within:text-amber-700 dark:group-focus-within:text-[#FFB800] transition-colors" />
-    <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      className="pl-9 pr-4 py-2.5 bg-white dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 focus:border-[#FFB800]/60 w-full transition-all" />
+function SearchInput({ value, onChange, placeholder = "Search...", className = "" }: { value: string; onChange: (v: string) => void; placeholder?: string; className?: string }) {
+  return <div className={"relative group flex items-center " + className}>
+    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 group-focus-within:text-[#FFB800] pointer-events-none transition-colors" />
+    <input
+      type="text"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="h-10 pl-10 pr-9 bg-white dark:bg-[#1c1c1c] border border-gray-300 dark:border-white/15 rounded-xl text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 focus:border-[#FFB800] w-full transition-all shadow-2xs"
+    />
+    {value && (
+      <button
+        type="button"
+        onClick={() => onChange("")}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-md transition-colors cursor-pointer"
+        title="Clear search"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    )}
   </div>;
 }
 function SaveBtn({ onClick, label = "Save", loading = false, size = "sm" }: { onClick: () => void; label?: string; loading?: boolean; size?: "sm" | "md" }) {
-  const s = size === "md" ? "px-5 py-2.5 text-xs" : "px-4 py-2.5 text-xs";
+  const s = size === "md" ? "h-10 px-5 text-xs" : "h-10 px-4 text-xs";
   return <button onClick={onClick} disabled={loading}
-    className={"inline-flex items-center gap-1.5 " + s + " bg-[#FFB800] hover:bg-[#FFB800]/80 disabled:bg-[#FFB800]/40 text-[#111] rounded-xl font-black shadow-sm hover:shadow-md transition-all min-h-[38px]"}>
-    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {label}
+    className={"inline-flex items-center justify-center gap-2 " + s + " bg-[#FFB800] hover:bg-[#FFB800]/90 disabled:bg-[#FFB800]/40 text-[#111] rounded-xl font-black shadow-xs hover:shadow-md transition-all shrink-0 cursor-pointer"}>
+    {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} {label}
   </button>;
 }
 
@@ -318,17 +333,17 @@ function Select({ value, onChange, options, placeholder = "Select...", className
   const selected = options.find(o => o.value === value);
   return <div ref={containerRef} className={"relative " + className}>
     <button type="button" onClick={() => setOpen(!open)}
-      className={"w-full flex items-center justify-between gap-1.5 bg-white dark:bg-[#1c1c1c] border border-gray-300 dark:border-white/15 rounded-xl text-gray-900 dark:text-white hover:border-gray-400 dark:hover:border-white/30 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 focus:border-[#FFB800]/60 transition-all text-left " + (compact ? "px-2 py-1 text-[10px]" : "px-3 py-2.5 text-xs min-h-[38px]")}>
-      <span className={"truncate " + (selected ? "font-medium" : "text-gray-400 dark:text-gray-500")}>{selected ? selected.label : placeholder}</span>
-      <ChevronDown className={"w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-400 transition-transform " + (open ? "rotate-180" : "")} />
+      className={"w-full flex items-center justify-between gap-2 bg-white dark:bg-[#1c1c1c] border border-gray-300 dark:border-white/15 rounded-xl text-gray-900 dark:text-white hover:border-gray-400 dark:hover:border-white/30 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 focus:border-[#FFB800] transition-all text-left cursor-pointer shadow-2xs " + (compact ? "h-8 px-2.5 text-[10px]" : "h-10 px-3.5 text-xs")}>
+      <span className={"truncate " + (selected ? "font-bold" : "text-gray-400 dark:text-gray-500 font-medium")}>{selected ? selected.label : placeholder}</span>
+      <ChevronDown className={"w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-400 transition-transform duration-200 " + (open ? "rotate-180" : "")} />
     </button>
-    {open && <div className="absolute top-full left-0 mt-1.5 w-full min-w-[160px] z-[100] bg-white dark:bg-[#1a1a1a] rounded-2xl p-1.5 shadow-2xl border border-gray-200 dark:border-white/15 overflow-hidden animate-scale-in">
+    {open && <div className="absolute top-full left-0 mt-1.5 w-full min-w-[170px] z-[100] bg-white dark:bg-[#1a1a1a] rounded-2xl p-1.5 shadow-2xl border border-gray-200 dark:border-white/15 overflow-hidden animate-scale-in">
       <div className="max-h-60 overflow-y-auto space-y-0.5">
         {options.map(o => (
           <button key={o.value} type="button" disabled={o.disabled} onClick={() => { if (!o.disabled) { onChange(o.value); setOpen(false); } }}
-            className={"w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-xl transition-colors " + (compact ? "text-[10px]" : "text-xs ") + (o.disabled ? "opacity-40 cursor-not-allowed text-gray-400 dark:text-gray-500" : o.value === value ? "bg-[#FFB800]/20 text-gray-900 dark:text-white font-bold" : "text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10")}>
-            {renderOption ? renderOption(o, o.value === value) : <span>{o.label}</span>}
-            {o.value === value && <Check className="w-3.5 h-3.5 ml-auto text-amber-800 dark:text-[#FFB800]" />}
+            className={"w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-xl transition-colors cursor-pointer " + (compact ? "text-[10px]" : "text-xs ") + (o.disabled ? "opacity-40 cursor-not-allowed text-gray-400 dark:text-gray-500" : o.value === value ? "bg-[#FFB800]/20 text-gray-900 dark:text-white font-bold" : "text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10")}>
+            {renderOption ? renderOption(o, o.value === value) : <span className="truncate">{o.label}</span>}
+            {o.value === value && <Check className="w-3.5 h-3.5 ml-auto text-amber-800 dark:text-[#FFB800] shrink-0" />}
           </button>
         ))}
       </div>
@@ -577,8 +592,8 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
 
   const displayDeliveriesData = filterCat === "all" ? activeDeliveriesData : activeDeliveriesData.filter((a: any) => a.tag === filterCat);
 
-  return <div className="tab-content space-y-8">
-      <div className={`p-4 rounded-3xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
+  return <div className="tab-content space-y-5">
+      <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
         marketplaceEnabled 
           ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200" 
           : "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800/60 text-red-900 dark:text-red-200"
@@ -603,7 +618,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
         </div>
         <button
           onClick={toggleMarketplace}
-          className={`px-4 py-2 rounded-2xl text-xs font-black shrink-0 transition-all shadow-sm flex items-center gap-2 ${
+          className={`h-10 px-4 rounded-xl text-xs font-black shrink-0 transition-all shadow-xs flex items-center gap-2 cursor-pointer ${
             marketplaceEnabled ? "bg-red-500 hover:bg-red-600 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"
           }`}
         >
@@ -1182,16 +1197,16 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
       })()}
       </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
-        <div className="lg:col-span-3 border border-gray-200 dark:border-white/10 rounded-3xl p-6 sm:p-7 flex flex-col bg-white dark:bg-[#1a1a1a] shadow-xs">
-          <div className="flex justify-between items-center mb-5 flex-wrap gap-2">
+      <section className="grid grid-cols-1 lg:grid-cols-4 gap-5 min-h-0">
+        <div className="lg:col-span-3 border border-gray-200 dark:border-white/10 rounded-2xl p-5 sm:p-6 flex flex-col bg-white dark:bg-[#1a1a1a] shadow-xs">
+          <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
             <div>
-              <h2 className="text-[20px] sm:text-[22px] font-extrabold tracking-tight text-[#111] dark:text-white">Active Bookings Today</h2>
+              <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-[#111] dark:text-white">Active Bookings Today</h2>
               <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-0.5">Real-time scheduled drop-offs awaiting fulfillment</p>
             </div>
             <button 
               onClick={() => setTab("shipments")} 
-              className="px-3.5 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#222] dark:hover:bg-[#333] text-xs font-black text-[#111] dark:text-white transition-all cursor-pointer flex items-center gap-1.5"
+              className="h-9 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#222] dark:hover:bg-[#333] text-xs font-black text-[#111] dark:text-white transition-all cursor-pointer flex items-center gap-1.5"
             >
               View all ({deliveries.length}) <ChevronRight size={14} />
             </button>
@@ -1231,7 +1246,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                           setTab("shipments");
                         }
                       }}
-                      className="px-3 py-1.5 bg-[#FFB800] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFB800]/90 transition-all shadow-xs cursor-pointer whitespace-nowrap flex items-center gap-1"
+                      className="h-8 px-3 bg-[#FFB800] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFB800]/90 transition-all shadow-xs cursor-pointer whitespace-nowrap flex items-center gap-1"
                     >
                       Manage <ChevronRight size={13} />
                     </button>
@@ -1241,7 +1256,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
             </div>
           )}
         </div>
-        <div className="border border-gray-200 dark:border-white/10 rounded-3xl p-6 sm:p-7 flex flex-col justify-between bg-white dark:bg-[#1a1a1a] shadow-xs">
+        <div className="border border-gray-200 dark:border-white/10 rounded-2xl p-5 sm:p-6 flex flex-col justify-between bg-white dark:bg-[#1a1a1a] shadow-xs">
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-extrabold text-base text-[#111] dark:text-white">Fleet Readiness</h3>
@@ -1289,7 +1304,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
           </div>
           <button 
             onClick={() => setTab("shipments")} 
-            className="w-full bg-[#FFB800] text-[#111] py-3.5 rounded-2xl text-xs font-black shadow-md hover:bg-[#FFB800]/90 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full h-10 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black shadow-xs hover:bg-[#FFB800]/90 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Truck size={16} /> Assign Riders ({pendingDeliveries.length})
           </button>
@@ -1370,31 +1385,39 @@ interface HeaderProps {
 
 function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showNotifs, setShowUserMenu, showUserMenu, currentUser, userRole, toggleDark, dark, setMobileSidebar, notifications, markNotifRead }: HeaderProps) {
   return (
-    <header className="flex justify-between items-center px-4 sm:px-8 lg:px-12 pt-6 lg:pt-10 pb-0 shrink-0 gap-4">
+    <header className="flex justify-between items-center px-4 sm:px-6 lg:px-8 pt-4 sm:pt-5 pb-2 shrink-0 gap-4">
       <div className="flex items-center gap-3">
         <button className="lg:hidden p-2 text-gray-900 dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition-colors" onClick={() => setMobileSidebar(true)}>
           <Menu size={22} />
         </button>
-        <div className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-          Welcome to<br /><span className="font-extrabold text-gray-900 dark:text-white text-lg sm:text-xl tracking-tight">ES<span className="text-amber-600 dark:text-[#FFB800]">DISPATCH</span></span>
+        <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+          Welcome to<br /><span className="font-extrabold text-gray-900 dark:text-white text-base sm:text-lg tracking-tight">ES<span className="text-amber-600 dark:text-[#FFB800]">DISPATCH</span></span>
         </div>
       </div>
-      <div className="flex items-center gap-2 sm:gap-4">
-        <div className="hidden sm:flex items-center border border-gray-300 dark:border-white/20 rounded-full pl-5 pr-1.5 py-1.5 w-[200px] lg:w-[280px] shadow-sm bg-gray-50/50 dark:bg-[#1a1a1a]/50">
-          <input type="text" placeholder="Search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="outline-none flex-1 text-sm bg-transparent font-medium text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500" />
-          <button className="bg-[#FFB800] text-[#111] p-2 rounded-xl hover:bg-[#FFB800]/90 transition-colors cursor-pointer"><Search size={18} strokeWidth={2.5} /></button>
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div className="hidden sm:flex items-center h-10 border border-gray-300 dark:border-white/15 rounded-full pl-4 pr-1.5 w-[220px] lg:w-[300px] shadow-2xs bg-white dark:bg-[#1a1a1a] transition-all focus-within:border-[#FFB800] focus-within:ring-2 focus-within:ring-[#FFB800]/25">
+          <input
+            type="text"
+            placeholder="Search console..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="outline-none flex-1 text-xs bg-transparent font-medium text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
+          />
+          <button className="bg-[#FFB800] text-[#111] w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#FFB800]/90 transition-colors cursor-pointer shrink-0">
+            <Search size={14} strokeWidth={2.5} />
+          </button>
         </div>
         <button 
           onClick={toggleDark} 
-          className="p-2.5 border border-gray-300 dark:border-white/20 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+          className="w-10 h-10 border border-gray-300 dark:border-white/15 rounded-full flex items-center justify-center cursor-pointer shadow-2xs hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
           title={dark ? "Switch to Light Mode" : "Switch to Dark Mode"}
           aria-label="Toggle Theme"
         >
-          {dark ? <Sun size={20} className="text-[#FFB800]" /> : <Moon size={20} className="text-gray-900" />}
+          {dark ? <Sun size={18} className="text-[#FFB800]" /> : <Moon size={18} className="text-gray-900" />}
         </button>
         <div className="relative" id="notif-area">
-          <button onClick={(e) => { e.stopPropagation(); setShowNotifs(!showNotifs); setShowUserMenu(false); }} className="relative p-2.5 border border-gray-300 dark:border-white/20 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors" title="Notifications">
-            <Bell size={20} className="text-gray-900 dark:text-white" />
+          <button onClick={(e) => { e.stopPropagation(); setShowNotifs(!showNotifs); setShowUserMenu(false); }} className="relative w-10 h-10 border border-gray-300 dark:border-white/15 rounded-full flex items-center justify-center cursor-pointer shadow-2xs hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0" title="Notifications">
+            <Bell size={18} className="text-gray-900 dark:text-white" />
             {unreadCount > 0 && <div className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-[#FFB800] rounded-full border-2 border-white dark:border-[#1a1a1a] animate-pulse-ring"></div>}
           </button>
           {showNotifs && <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl shadow-2xl overflow-hidden z-50 animate-scale-in">
@@ -1412,11 +1435,11 @@ function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showN
           </div>}
         </div>
         <div className="relative" id="user-menu-area">
-          <div className="flex items-center gap-3 ml-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); setShowNotifs(false); }}>
-            <div className="w-11 h-11 rounded-full bg-[#FFB800]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-amber-900 dark:text-white font-black text-sm"><EdLogoSvg size={20} dark={!dark} /></div>
+          <div className="flex items-center gap-2.5 ml-1 cursor-pointer h-10 select-none" onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); setShowNotifs(false); }}>
+            <div className="w-10 h-10 rounded-full bg-[#FFB800]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-amber-900 dark:text-white font-black text-sm shrink-0"><EdLogoSvg size={18} dark={!dark} /></div>
             <div className="text-sm hidden sm:block">
-              <div className="font-extrabold text-gray-900 dark:text-white">{currentUser?.email?.split("@")[0] || "Admin"}</div>
-              <div className="text-gray-600 dark:text-gray-400 font-bold text-xs mt-0.5">{(userRole || "admin").replace("_", " ").toUpperCase()}</div>
+              <div className="font-extrabold text-gray-900 dark:text-white leading-tight">{currentUser?.email?.split("@")[0] || "Admin"}</div>
+              <div className="text-gray-600 dark:text-gray-400 font-bold text-[10px] uppercase tracking-wider leading-tight mt-0.5">{(userRole || "admin").replace("_", " ")}</div>
             </div>
           </div>
           {showUserMenu && <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl shadow-2xl overflow-hidden z-50 animate-scale-in">
@@ -2265,7 +2288,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         <div><h1 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-amber-800 dark:text-[#FFB800]" /> Users</h1>
           <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">{filtered.length} active registered users</p></div>
         <div className="flex items-center gap-3">
-          <button onClick={() => setShowNewUser(true)} className="px-4 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:shadow-md transition-all cursor-pointer"><UserPlus className="w-4 h-4" /> Add User</button>
+          <button onClick={() => setShowNewUser(true)} className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"><UserPlus className="w-4 h-4" /> Add User</button>
           <div className="flex-1 sm:flex-none"><SearchInput value={search} onChange={setSearch} placeholder="Search users..." /></div>
         </div>
       </div>
@@ -2281,34 +2304,66 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         {newUserStep === 1 ? (
           <div className="space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">
-              <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Full Name *</label>
-                <input value={newUserForm.name} onChange={e => setNewUserForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Osas Ighodaro" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
-              <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Email Address *</label>
-                <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(f => ({ ...f, email: e.target.value }))} placeholder="e.g. user@esdispatch.com" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Full Name *</label>
+                <div className="relative">
+                  <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                  <input value={newUserForm.name} onChange={e => setNewUserForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Osas Ighodaro" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Email Address *</label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                  <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(f => ({ ...f, email: e.target.value }))} placeholder="e.g. user@esdispatch.com" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                </div>
+              </div>
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
-              <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Phone Number</label>
-                <input value={newUserForm.phone} onChange={e => setNewUserForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 08012345678" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
-              <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Account Role</label>
-                <Select value={newUserForm.role} onChange={v => setNewUserForm(f => ({ ...f, role: v }))} options={[{ value: "customer", label: "Customer" }, { value: "rider", label: "Rider / Courier" }, { value: "vendor", label: "Vendor" }, { value: "admin", label: "Admin" }]} /></div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Phone Number</label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                  <input value={newUserForm.phone} onChange={e => setNewUserForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 08012345678" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Account Role</label>
+                <Select value={newUserForm.role} onChange={v => setNewUserForm(f => ({ ...f, role: v }))} options={[{ value: "customer", label: "Customer" }, { value: "rider", label: "Rider / Courier" }, { value: "vendor", label: "Vendor" }, { value: "admin", label: "Admin" }]} />
+              </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else { addLog("Error", "Fill in name and email first"); if (addToast) addToast("error", "Fill in name and email first"); } }} className="px-6 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black transition-all cursor-pointer">Next →</button>
+              <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else { addLog("Error", "Fill in name and email first"); if (addToast) addToast("error", "Fill in name and email first"); } }} className="h-10 px-6 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black transition-all cursor-pointer">Next →</button>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            {newUserForm.role === "rider" && <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Bike / Plate Number</label>
-              <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>}
+            {newUserForm.role === "rider" && <div>
+              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Bike / Plate Number</label>
+              <div className="relative">
+                <Truck className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+              </div>
+            </div>}
             <div className="grid sm:grid-cols-2 gap-3">
-              <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Set 4-Digit PIN *</label>
-                <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
-              <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Confirm PIN *</label>
-                <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(f => ({ ...f, confirmPin: e.target.value }))} placeholder="••••" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Set 4-Digit PIN *</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                  <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Confirm PIN *</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                  <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(f => ({ ...f, confirmPin: e.target.value }))} placeholder="••••" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                </div>
+              </div>
             </div>
             <div className="flex items-center justify-between gap-2 pt-2">
-              <button onClick={() => setNewUserStep(1)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">← Back</button>
-              <button onClick={createUser} disabled={creatingUser || !newUserForm.pin || !newUserForm.confirmPin} className="px-6 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 disabled:opacity-50 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-1.5 cursor-pointer">
+              <button onClick={() => setNewUserStep(1)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">← Back</button>
+              <button onClick={createUser} disabled={creatingUser || !newUserForm.pin || !newUserForm.confirmPin} className="h-10 px-6 bg-[#FFB800] hover:bg-[#FFB800]/90 disabled:opacity-50 text-[#111] rounded-xl text-xs font-black shadow-xs transition-all flex items-center gap-1.5 cursor-pointer">
                 {creatingUser ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Create User
               </button>
             </div>
@@ -2474,14 +2529,14 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
 
           <div className="flex items-center justify-between gap-3 pt-2">
             <div className="flex gap-2">
-              <button onClick={() => { setFundUser(previewUser); setPreviewUser(null); }} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer">
+              <button onClick={() => { setFundUser(previewUser); setPreviewUser(null); }} className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer">
                 <DollarSign size={14} /> Fund Wallet
               </button>
-              <button onClick={() => { setEditUser(previewUser); setForm({ name: previewUser.name, role: previewUser.role || "customer", phone: previewUser.phone || "", bikeNumber: previewUser.bikeNumber || "", status: previewUser.status || "active" }); setPreviewUser(null); }} className="px-3.5 py-2 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer">
+              <button onClick={() => { setEditUser(previewUser); setForm({ name: previewUser.name, role: previewUser.role || "customer", phone: previewUser.phone || "", bikeNumber: previewUser.bikeNumber || "", status: previewUser.status || "active" }); setPreviewUser(null); }} className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer">
                 <Edit3 size={14} /> Edit
               </button>
             </div>
-            <button onClick={() => setPreviewUser(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Close</button>
+            <button onClick={() => setPreviewUser(null)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Close</button>
           </div>
         </div>
       </div>}
@@ -2498,22 +2553,25 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
             <div>
               <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Operation</label>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setFundAction("credit")} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${fundAction === "credit" ? "bg-emerald-600 text-white shadow-sm" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10"}`}>Credit (+)</button>
-                <button type="button" onClick={() => setFundAction("debit")} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${fundAction === "debit" ? "bg-red-600 text-white shadow-sm" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10"}`}>Debit (-)</button>
+                <button type="button" onClick={() => setFundAction("credit")} className={`flex-1 h-10 rounded-xl text-xs font-black transition-all flex items-center justify-center cursor-pointer ${fundAction === "credit" ? "bg-emerald-600 text-white shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10"}`}>Credit (+)</button>
+                <button type="button" onClick={() => setFundAction("debit")} className={`flex-1 h-10 rounded-xl text-xs font-black transition-all flex items-center justify-center cursor-pointer ${fundAction === "debit" ? "bg-red-600 text-white shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10"}`}>Debit (-)</button>
               </div>
             </div>
             <div>
               <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Amount (₦) *</label>
-              <input type="number" min="1" value={fundAmount} onChange={e => setFundAmount(e.target.value)} placeholder="e.g. 5000" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 font-bold focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-gray-500">₦</span>
+                <input type="number" min="1" value={fundAmount} onChange={e => setFundAmount(e.target.value)} placeholder="5000" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-8 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 font-bold focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+              </div>
             </div>
             <div>
               <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Reason / Narration</label>
-              <input type="text" value={fundReason} onChange={e => setFundReason(e.target.value)} placeholder="e.g. Customer promo credit / order refund" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+              <input type="text" value={fundReason} onChange={e => setFundReason(e.target.value)} placeholder="e.g. Customer promo credit / order refund" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-200 dark:border-white/10">
-            <button onClick={() => setFundUser(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Cancel</button>
-            <button onClick={handleFundWallet} disabled={fundingWallet || !fundAmount} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all disabled:opacity-50 cursor-pointer">
+            <button onClick={() => setFundUser(null)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Cancel</button>
+            <button onClick={handleFundWallet} disabled={fundingWallet || !fundAmount} className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all disabled:opacity-50 cursor-pointer">
               {fundingWallet ? "Processing..." : `Confirm ${fundAction === "credit" ? "Credit" : "Debit"}`}
             </button>
           </div>
@@ -2531,12 +2589,12 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
             <div>
               <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Full Name</label>
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
             <div>
               <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Phone Number</label>
               <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -2564,11 +2622,11 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
             <div>
               <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Bike / Vehicle Number</label>
               <input value={form.bikeNumber} onChange={e => setForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204"
-                className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-2">
-            <button onClick={() => setEditUser(null)} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Cancel</button>
+            <button onClick={() => setEditUser(null)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Cancel</button>
             <SaveBtn onClick={saveUser} label="Update User" />
           </div>
         </div>
@@ -3218,7 +3276,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
               </div>
               <button
                 onClick={() => setShowNew(true)}
-                className="px-4 py-2.5 min-h-[38px] bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" /> New Delivery
               </button>
@@ -3722,7 +3780,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       placeholder="e.g. Legal Documents, Cake, Spare Part"
                       value={newForm.itemName}
                       onChange={e => setNewForm({ ...newForm, itemName: e.target.value })}
-                      className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-[#FFB800]/40 outline-none"
+                      className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-[#FFB800]/40 outline-none"
                       required
                     />
                   </div>
@@ -3757,7 +3815,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                         placeholder="Sender Full Name"
                         value={newForm.senderName}
                         onChange={e => setNewForm({ ...newForm, senderName: e.target.value })}
-                        className="w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none"
+                        className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                       />
                     </div>
                     <div>
@@ -3767,7 +3825,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                         placeholder="080XXXXXXXX"
                         value={newForm.senderPhone}
                         onChange={e => setNewForm({ ...newForm, senderPhone: e.target.value })}
-                        className="w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none"
+                        className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                       />
                     </div>
                   </div>
@@ -3778,7 +3836,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       placeholder="e.g. 15 Airport Road, GRA, Benin City"
                       value={newForm.pickupAddress}
                       onChange={e => setNewForm({ ...newForm, pickupAddress: e.target.value })}
-                      className="w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none"
+                      className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                     />
                   </div>
                 </div>
@@ -3796,7 +3854,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                         placeholder="Receiver Full Name"
                         value={newForm.receiverName}
                         onChange={e => setNewForm({ ...newForm, receiverName: e.target.value })}
-                        className="w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none"
+                        className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                       />
                     </div>
                     <div>
@@ -3806,7 +3864,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                         placeholder="080XXXXXXXX"
                         value={newForm.receiverPhone}
                         onChange={e => setNewForm({ ...newForm, receiverPhone: e.target.value })}
-                        className="w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none"
+                        className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                       />
                     </div>
                   </div>
@@ -3817,7 +3875,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       placeholder="e.g. 84 Uselu Lagos Road, Benin City"
                       value={newForm.deliveryAddress}
                       onChange={e => setNewForm({ ...newForm, deliveryAddress: e.target.value })}
-                      className="w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none"
+                      className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                     />
                   </div>
                 </div>
@@ -3832,7 +3890,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       step="0.1"
                       value={newForm.weight}
                       onChange={e => setNewForm({ ...newForm, weight: Number(e.target.value) })}
-                      className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white outline-none"
+                      className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                     />
                   </div>
                   <div>
@@ -3842,7 +3900,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       min="1"
                       value={newForm.quantity}
                       onChange={e => setNewForm({ ...newForm, quantity: Number(e.target.value) })}
-                      className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white outline-none"
+                      className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                     />
                   </div>
                   <div>
@@ -3853,7 +3911,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       step="100"
                       value={newForm.price}
                       onChange={e => setNewForm({ ...newForm, price: Number(e.target.value) })}
-                      className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white outline-none font-bold"
+                      className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 text-xs text-[#111] dark:text-white outline-none font-bold focus:ring-2 focus:ring-[#FFB800]/40"
                     />
                   </div>
                 </div>
@@ -3882,14 +3940,14 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-black/10 dark:border-white/10">
                 <button
                   onClick={() => setShowNew(false)}
-                  className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer"
+                  className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={createDelivery}
                   disabled={creating}
-                  className="px-5 py-2.5 min-h-[38px] bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  className="h-10 px-5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
                   {creating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Create & Dispatch Booking
@@ -3917,19 +3975,19 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
               {/* Rider Search & Online Filter */}
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3 top-2.5 text-gray-500 dark:text-gray-400" />
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search rider name, phone, bike #..."
                     value={riderSearch}
                     onChange={e => setRiderSearch(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl pl-9 pr-3.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => setRiderOnlineOnly(!riderOnlineOnly)}
-                  className={"px-3 py-2 rounded-xl text-[11px] font-bold border transition-colors shrink-0 cursor-pointer " + (riderOnlineOnly ? "bg-emerald-600 text-white border-emerald-600" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]")}
+                  className={"h-10 px-3.5 rounded-xl text-xs font-bold border transition-colors shrink-0 flex items-center justify-center cursor-pointer " + (riderOnlineOnly ? "bg-emerald-600 text-white border-emerald-600" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]")}
                 >
                   Online Only
                 </button>
@@ -4023,19 +4081,19 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
               {/* Rider Search & Online Filter */}
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3 top-2.5 text-gray-500 dark:text-gray-400" />
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search rider name, phone, bike #..."
                     value={riderSearch}
                     onChange={e => setRiderSearch(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl pl-9 pr-3.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => setRiderOnlineOnly(!riderOnlineOnly)}
-                  className={"px-3 py-2 rounded-xl text-[11px] font-bold border transition-colors shrink-0 cursor-pointer " + (riderOnlineOnly ? "bg-emerald-600 text-white border-emerald-600" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]")}
+                  className={"h-10 px-3.5 rounded-xl text-xs font-bold border transition-colors shrink-0 flex items-center justify-center cursor-pointer " + (riderOnlineOnly ? "bg-emerald-600 text-white border-emerald-600" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]")}
                 >
                   Online Only
                 </button>
@@ -4597,13 +4655,13 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><DollarSign className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Pricing</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">BASE FARE (₦)</label>
-          <input type="number" value={sForm.baseFare ?? ""} onChange={e => upd("baseFare", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
+          <input type="number" value={sForm.baseFare ?? ""} onChange={e => upd("baseFare", parseFloat(e.target.value) || 0)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
         <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">PER KG RATE (₦)</label>
-          <input type="number" step="0.1" value={sForm.perKgRate ?? ""} onChange={e => upd("perKgRate", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
+          <input type="number" step="0.1" value={sForm.perKgRate ?? ""} onChange={e => upd("perKgRate", parseFloat(e.target.value) || 0)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
         <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">EXPRESS SURCHARGE (₦)</label>
-          <input type="number" value={sForm.expressSurcharge ?? ""} onChange={e => upd("expressSurcharge", parseFloat(e.target.value) || 0)} className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
+          <input type="number" value={sForm.expressSurcharge ?? ""} onChange={e => upd("expressSurcharge", parseFloat(e.target.value) || 0)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
         <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">SURGE MULTIPLIER (×)</label>
-          <input type="number" step="0.1" min="1" value={sForm.surgeMultiplier ?? ""} onChange={e => upd("surgeMultiplier", parseFloat(e.target.value) || 1)} className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-[#111] dark:text-white" /></div>
+          <input type="number" step="0.1" min="1" value={sForm.surgeMultiplier ?? ""} onChange={e => upd("surgeMultiplier", parseFloat(e.target.value) || 1)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Pricing")} loading={saving} /></div>
     </div>
@@ -4981,50 +5039,50 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
     }
   };
 
-  return <div className="tab-content space-y-8">
+  return <div className="tab-content space-y-5">
     {/* Header & Metrics */}
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
-        <h1 className="text-[28px] font-extrabold tracking-tight text-[#111] dark:text-white flex items-center gap-3">
-          <ShoppingBag className="w-7 h-7 text-[#FFB800]" /> Marketplace & Store Operations
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#111] dark:text-white flex items-center gap-3">
+          <ShoppingBag className="w-6 h-6 text-[#FFB800]" /> Marketplace & Store Operations
         </h1>
-        <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mt-1">Manage vendor product catalogs, store enlistments, prices, inventory, and sales commissions.</p>
+        <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mt-0.5">Manage vendor product catalogs, store enlistments, prices, inventory, and sales commissions.</p>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5 flex-wrap">
         {products.length === 0 && (
-          <button onClick={seedMarketplace} className="px-4 py-2.5 bg-[#FFB800]/20 border border-[#FFB800]/40 text-[#111] dark:text-white text-xs font-bold rounded-2xl hover:bg-[#FFB800]/30 transition-all flex items-center gap-2">
+          <button onClick={seedMarketplace} className="h-10 px-4 bg-[#FFB800]/20 border border-[#FFB800]/40 text-[#111] dark:text-white text-xs font-bold rounded-xl hover:bg-[#FFB800]/30 transition-all flex items-center gap-2 cursor-pointer">
             <RefreshCw className="w-4 h-4 text-[#FFB800]" /> Seed Marketplace Data
           </button>
         )}
-        <button onClick={() => setShowAddModal(true)} className="px-5 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black text-xs rounded-2xl shadow-md transition-all flex items-center gap-2">
+        <button onClick={() => setShowAddModal(true)} className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer">
           <Plus className="w-4 h-4" /> Add Product
         </button>
-        <button onClick={() => setShowAddStoreModal(true)} className="px-5 py-2.5 bg-[#111] dark:bg-white text-white dark:text-[#111] font-black text-xs rounded-2xl shadow-md transition-all flex items-center gap-2">
+        <button onClick={() => setShowAddStoreModal(true)} className="h-10 px-4 bg-[#111] dark:bg-white text-white dark:text-[#111] font-black text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer">
           <Store className="w-4 h-4" /> Enlist Store
         </button>
       </div>
     </div>
 
     {/* Master Killswitch Banner */}
-    <div className={`p-5 rounded-3xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all shadow-sm ${
+    <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all shadow-xs ${
       marketplaceEnabled 
         ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200" 
         : "bg-red-500/10 border-red-500/30 text-red-950 dark:text-red-200"
     }`}>
       <div className="flex items-center gap-3.5">
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
-          <Store className="w-6 h-6" />
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
+          <Store className="w-5 h-5" />
         </div>
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="text-sm font-black uppercase tracking-wider">
+            <span className="text-xs font-black uppercase tracking-wider">
               App Marketplace & Stores Master Switch:
             </span>
-            <span className={`text-xs font-black px-3 py-0.5 rounded-full shadow-sm ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
+            <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
               {marketplaceEnabled ? "ENABLED (LIVE ON MOBILE APP)" : "DISABLED (HIDDEN ON MOBILE APP)"}
             </span>
           </div>
-          <p className="text-xs opacity-90 font-medium mt-1 max-w-2xl">
+          <p className="text-xs opacity-90 font-medium mt-0.5 max-w-2xl">
             {marketplaceEnabled 
               ? "All store catalogs, verified shops carousel, and vendor recruitment cards are currently visible to customers on mobile. Click the switch button anytime to turn off and hide everything marketplace." 
               : "Marketplace is completely hidden on mobile app (no store catalogs, no merchant enrollment, and the mobile dashboard hero button dynamically converts to 'Live Tracking' radar). Click to turn on."}
@@ -5033,7 +5091,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
       </div>
       <button
         onClick={toggleMarketplace}
-        className={`px-6 py-3 rounded-2xl text-xs font-black shrink-0 transition-all shadow-md flex items-center gap-2 hover:scale-[1.02] ${
+        className={`h-10 px-5 rounded-xl text-xs font-black shrink-0 transition-all shadow-xs flex items-center gap-2 cursor-pointer ${
           marketplaceEnabled 
             ? "bg-red-500 hover:bg-red-600 text-white" 
             : "bg-emerald-500 hover:bg-emerald-600 text-white"
@@ -5053,20 +5111,20 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
     </div>
 
     {/* Sub-tab Navigation & Search Bar */}
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/10 dark:border-white/10 pb-4">
-      <div className="flex gap-2">
-        <button onClick={() => setActiveSubTab("products")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "products" ? "bg-[#FFB800] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          📦 Products Catalog ({totalProducts})
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/10 dark:border-white/10 pb-3">
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={() => setActiveSubTab("products")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all flex items-center cursor-pointer " + (activeSubTab === "products" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
+          📦 Products ({totalProducts})
         </button>
-        <button onClick={() => setActiveSubTab("stores")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all relative " + (activeSubTab === "stores" ? "bg-[#FFB800] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
+        <button onClick={() => setActiveSubTab("stores")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all relative flex items-center cursor-pointer " + (activeSubTab === "stores" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
           🏪 Vendor Stores ({stores.length})
           {pendingStores.length > 0 && <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">{pendingStores.length}</span>}
         </button>
-        <button onClick={() => setActiveSubTab("orders")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all " + (activeSubTab === "orders" ? "bg-[#FFB800] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          🛒 Sales & Cart Orders ({orders.length})
+        <button onClick={() => setActiveSubTab("orders")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all flex items-center cursor-pointer " + (activeSubTab === "orders" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
+          🛒 Orders ({orders.length})
         </button>
-        <button onClick={() => setActiveSubTab("payouts")} className={"px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all relative " + (activeSubTab === "payouts" ? "bg-[#FFB800] text-[#111] shadow-md" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          💳 Payout Requests ({payoutRequests.length})
+        <button onClick={() => setActiveSubTab("payouts")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all relative flex items-center cursor-pointer " + (activeSubTab === "payouts" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
+          💳 Payouts ({payoutRequests.length})
           {payoutRequests.filter(p => p.status === "PENDING").length > 0 && (
             <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">
               {payoutRequests.filter(p => p.status === "PENDING").length}
@@ -5802,12 +5860,12 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
                   placeholder={`Reply to ${selectedTicket.userName}...`}
-                  className="flex-1 bg-white dark:bg-[#202020] text-[#111] dark:text-white px-4 py-3 rounded-2xl text-xs outline-none border border-black/10 dark:border-white/10 focus:border-[#FFB800]"
+                  className="h-10 flex-1 bg-white dark:bg-[#202020] text-[#111] dark:text-white px-3.5 rounded-xl text-xs outline-none border border-black/10 dark:border-white/10 focus:ring-2 focus:ring-[#FFB800]/40"
                 />
                 <button
                   type="submit"
                   disabled={!replyText.trim()}
-                  className="bg-[#FFB800] text-[#111] px-5 py-3 rounded-2xl font-black text-xs flex items-center gap-2 hover:bg-[#FFB800]/90 disabled:opacity-50 transition-all shadow-md"
+                  className="h-10 bg-[#FFB800] text-[#111] px-5 rounded-xl font-black text-xs flex items-center gap-2 hover:bg-[#FFB800]/90 disabled:opacity-50 transition-all shadow-xs cursor-pointer"
                 >
                   <Send size={14} />
                   Send
@@ -5905,7 +5963,7 @@ function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: 
         <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-5 h-5 text-[#FFB800]" /> Hero Banners & Slides</h1>
         <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">Manage promotional banners displayed on mobile app hero carousel</p>
       </div>
-      <button onClick={() => setShowAdd(true)} className="px-4 py-2.5 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:bg-[#FFB800]/80"><Plus size={16} /> Add Slide</button>
+      <button onClick={() => setShowAdd(true)} className="h-10 px-4 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs hover:bg-[#FFB800]/90 transition-all cursor-pointer"><Plus size={16} /> Add Slide</button>
     </div>
 
     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -5922,8 +5980,8 @@ function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: 
               <p className="font-bold text-xs text-[#111] dark:text-white">{b.title}</p>
               <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium leading-relaxed">{b.subtitle || "No subtitle"}</p>
               <div className="flex items-center justify-between pt-2 border-t border-black/5 dark:border-white/5">
-                <button onClick={() => toggleActive(b.id, b.active)} className="text-[10px] font-black text-amber-800 dark:text-[#FFB800] hover:underline">{b.active ? "Disable" : "Enable"}</button>
-                <button onClick={() => deleteBanner(b.id)} className="text-[10px] font-bold text-red-600 dark:text-red-400 hover:underline">Delete</button>
+                <button onClick={() => toggleActive(b.id, b.active)} className="text-[10px] font-black text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer">{b.active ? "Disable" : "Enable"}</button>
+                <button onClick={() => deleteBanner(b.id)} className="text-[10px] font-bold text-red-600 dark:text-red-400 hover:underline cursor-pointer">Delete</button>
               </div>
             </div>
           </div>
@@ -5936,16 +5994,16 @@ function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: 
         <form onSubmit={handleAdd} className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
           <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#FFB800]" /> New Hero Slide</h3>
           <div className="space-y-3 text-xs">
-            <div><label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Title</label>
-              <input value={title} onChange={e => setTitle(e.target.value)} required className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Subtitle</label>
-              <input value={subtitle} onChange={e => setSubtitle(e.target.value)} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
-            <div><label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Image URL</label>
-              <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} required placeholder="https://..." className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white" /></div>
+            <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Title</label>
+              <input value={title} onChange={e => setTitle(e.target.value)} required className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
+            <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Subtitle</label>
+              <input value={subtitle} onChange={e => setSubtitle(e.target.value)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
+            <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Image URL</label>
+              <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} required placeholder="https://..." className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={() => setShowAdd(false)} className="px-4 py-2 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors text-xs font-bold rounded-xl">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-[#FFB800] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFB800]/80">{saving ? "Saving..." : "Add Slide"}</button>
+            <button type="button" onClick={() => setShowAdd(false)} className="h-10 px-4 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors text-xs font-bold rounded-xl cursor-pointer">Cancel</button>
+            <button type="submit" disabled={saving} className="h-10 px-5 bg-[#FFB800] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFB800]/90 transition-all shadow-xs cursor-pointer">{saving ? "Saving..." : "Add Slide"}</button>
           </div>
         </form>
       </div>
@@ -6021,7 +6079,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
         showUserMenu={showUserMenu} currentUser={currentUser} userRole={userRole} toggleDark={toggleDark} dark={dark} 
         setMobileSidebar={setMobileSidebar} notifications={notifications} markNotifRead={markNotifRead} 
       />
-      <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 pb-10 pt-6">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 pb-8 pt-3">
         {newOrderAlert && (
           <div className="mb-6 bg-gradient-to-r from-amber-500/15 via-[#FFB800]/20 to-amber-500/10 border border-[#FFB800]/50 rounded-3xl p-4 flex items-center justify-between gap-4 animate-fade-in shadow-lg">
             <div className="flex items-center gap-3 min-w-0">
