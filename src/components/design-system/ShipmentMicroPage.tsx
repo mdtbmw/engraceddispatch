@@ -219,20 +219,20 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gray-100 dark:bg-[#262626] text-black/70 dark:text-white/80 hover:bg-black/10 dark:hover:bg-white/10 font-black text-xs transition-all cursor-pointer group"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gray-100 dark:bg-[#262626] text-gray-800 dark:text-gray-200 hover:bg-black/10 dark:hover:bg-white/10 font-black text-xs transition-all cursor-pointer group"
           >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform text-[#FFB800]" />
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform text-amber-600 dark:text-[#FFB800]" />
             Back to Shipments
           </button>
           <div className="h-5 w-px bg-black/10 dark:border-white/10" />
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-mono font-bold text-black/50 dark:text-white/50">
+              <span className="text-xs font-mono font-bold text-gray-600 dark:text-gray-400">
                 #{delivery?.id ? delivery.id.slice(0, 8) : "--------"}
               </span>
               <StatusBadge status={delivery?.status || "PENDING"} size="default" useAdminLabel={true} />
               {delivery.category && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-gray-100 dark:bg-[#333] text-black/60 dark:text-white/60">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-gray-100 dark:bg-[#333] text-gray-800 dark:text-gray-200">
                   {delivery.category}
                 </span>
               )}
@@ -249,12 +249,12 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
             className="px-4 py-2 bg-gray-100 dark:bg-[#262626] hover:bg-gray-200 dark:hover:bg-[#333] text-[#111] dark:text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
             title="Print Thermal Waybill"
           >
-            <Printer size={15} className="text-[#FFB800]" />
+            <Printer size={15} className="text-amber-600 dark:text-[#FFB800]" />
             Print Waybill
           </button>
           <button
             onClick={() => copyToClipboard(delivery.id, "Shipment ID")}
-            className="px-3 py-2 bg-gray-100 dark:bg-[#262626] text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
+            className="px-3 py-2 bg-gray-100 dark:bg-[#262626] text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
             title="Copy ID"
           >
             {copiedField === "Shipment ID" ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
@@ -272,13 +272,13 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-[#FFB800]">
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-[#FFB800]">
               Operational Lifecycle Controller
             </span>
             <h2 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
-              Dispatch State: <span className="text-[#FFB800] uppercase">{currentStatus.replace(/_/g, " ")}</span>
+              Dispatch State: <span className="text-amber-800 dark:text-[#FFB800] uppercase font-black">{currentStatus.replace(/_/g, " ")}</span>
             </h2>
-            <p className="text-xs text-black/50 dark:text-white/50 mt-0.5">
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
               1-click immediate status switcher. Advancing status automatically updates customer and courier notifications.
             </p>
           </div>
@@ -300,7 +300,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                 <button
                   disabled={updatingStatus}
                   onClick={() => handleStatusClick("PICKED_UP")}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
                 >
                   <Package size={14} /> Mark Picked Up
                 </button>
@@ -380,7 +380,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
             <div className="overflow-hidden h-2 mb-4 flex rounded-full bg-gray-100 dark:bg-[#262626]">
               <div
                 style={{ width: `${(activeStepIdx / (statusPipeline.length - 1)) * 100}%` }}
-                className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-[#FFB800] transition-all duration-500"
+                className="shadow-none flex flex-col text-center whitespace-nowrap text-[#111] font-black justify-center bg-[#FFB800] transition-all duration-500"
               />
             </div>
             <div className="grid grid-cols-5 gap-2 text-center">
@@ -395,7 +395,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                           ? "bg-[#FFB800] text-[#111] ring-4 ring-[#FFB800]/20 scale-110"
                           : isPassed
                           ? "bg-[#FFB800]/80 text-[#111]"
-                          : "bg-gray-100 dark:bg-[#262626] text-black/30 dark:text-white/30"
+                          : "bg-gray-100 dark:bg-[#262626] text-gray-500 dark:text-gray-400"
                       }`}
                     >
                       {idx + 1}
@@ -403,10 +403,10 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                     <span
                       className={`text-[10px] font-bold ${
                         isCurrent
-                          ? "text-[#FFB800]"
+                          ? "text-amber-800 dark:text-[#FFB800] font-black"
                           : isPassed
                           ? "text-[#111] dark:text-white"
-                          : "text-black/40 dark:text-white/40"
+                          : "text-gray-500 dark:text-gray-400"
                       }`}
                     >
                       {step.label}
@@ -426,12 +426,12 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
           <div className="bg-white dark:bg-[#1a1a1a] p-5 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black text-[#111] dark:text-white flex items-center gap-2">
-                <Truck className="w-4 h-4 text-[#FFB800]" /> Assigned Fleet Courier
+                <Truck className="w-4 h-4 text-amber-600 dark:text-[#FFB800]" /> Assigned Fleet Courier
               </h3>
               {assignedDriver && (
                 <button
                   onClick={() => setShowRiderPicker(!showRiderPicker)}
-                  className="text-xs font-bold text-[#FFB800] hover:underline cursor-pointer"
+                  className="text-xs font-bold text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer"
                 >
                   {showRiderPicker ? "Close" : "Change Rider"}
                 </button>
@@ -448,7 +448,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                     <p className="font-extrabold text-sm text-[#111] dark:text-white truncate">
                       {assignedDriver.name}
                     </p>
-                    <p className="text-xs text-black/50 dark:text-white/50 font-mono">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 font-mono font-medium">
                       {assignedDriver.bikeNumber || "Fleet Bike"}
                     </p>
                   </div>
@@ -480,7 +480,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                 <p className="text-xs font-bold text-[#111] dark:text-white">
                   No Courier Assigned Yet
                 </p>
-                <p className="text-[11px] text-black/60 dark:text-white/60">
+                <p className="text-[11px] text-gray-700 dark:text-gray-300">
                   Select an available fleet driver below to dispatch this booking.
                 </p>
                 <button
@@ -496,10 +496,10 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
             {(showRiderPicker || !assignedDriver) && (
               <div className="pt-2 border-t border-black/10 dark:border-white/10 space-y-3 animate-fade-in">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-black uppercase text-black/50 dark:text-white/50">
+                  <span className="text-[11px] font-black uppercase text-gray-700 dark:text-gray-300">
                     Available Fleet Couriers
                   </span>
-                  <span className="text-[10px] text-black/40 dark:text-white/40">
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
                     {rankedDrivers.length} couriers
                   </span>
                 </div>
@@ -509,12 +509,12 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                   placeholder="Search name, phone, bike number..."
                   value={riderSearch}
                   onChange={(e) => setRiderSearch(e.target.value)}
-                  className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-[#111] dark:text-white outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                  className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                 />
 
                 <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
                   {rankedDrivers.length === 0 ? (
-                    <p className="text-xs text-black/40 dark:text-white/40 text-center py-4">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 text-center py-4">
                       No matching couriers found.
                     </p>
                   ) : (
@@ -524,14 +524,14 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                         className="p-2.5 rounded-xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 flex items-center justify-between gap-2 hover:border-[#FFB800]/40 transition-all"
                       >
                         <div className="min-w-0 flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-[#FFB800]/20 text-[#FFB800] font-bold text-xs flex items-center justify-center shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-[#FFB800]/20 text-amber-900 dark:text-[#FFB800] font-bold text-xs flex items-center justify-center shrink-0">
                             {(r.name || "C").charAt(0)}
                           </div>
                           <div className="min-w-0">
                             <p className="text-xs font-bold text-[#111] dark:text-white truncate">
                               {r.name}
                             </p>
-                            <p className="text-[10px] text-black/40 dark:text-white/40 truncate">
+                            <p className="text-[10px] text-gray-600 dark:text-gray-400 truncate">
                               {load === 0 ? "Free (0 drops)" : `${load} active drops`} • {r.phone || "No phone"}
                             </p>
                           </div>
@@ -558,11 +558,11 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
 
           {/* Handover OTP & Security */}
           <div className="bg-white dark:bg-[#1a1a1a] p-5 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-3">
-            <h3 className="text-xs font-black uppercase tracking-wider text-black/50 dark:text-white/50 flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-[#FFB800]" /> Handover Security OTP
+            <h3 className="text-xs font-black uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-[#FFB800]" /> Handover Security OTP
             </h3>
             <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-center">
-              <p className="text-[10px] font-bold text-black/60 dark:text-white/60 mb-1">
+              <p className="text-[10px] font-bold text-gray-700 dark:text-gray-300 mb-1">
                 Recipient Verification Code
               </p>
               <div className="flex items-center justify-center gap-2">
@@ -572,7 +572,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                 {delivery.otpCode && (
                   <button
                     onClick={() => copyToClipboard(delivery.otpCode, "OTP Code")}
-                    className="p-1.5 text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white rounded-lg"
+                    className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white rounded-lg"
                     title="Copy OTP"
                   >
                     {copiedField === "OTP Code" ? (
@@ -583,7 +583,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                   </button>
                 )}
               </div>
-              <p className="text-[10px] text-black/40 dark:text-white/40 mt-1">
+              <p className="text-[10px] text-gray-600 dark:text-gray-400 mt-1">
                 Courier requests this 4-digit code at destination to complete drop-off.
               </p>
             </div>
@@ -595,7 +595,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
           {/* Routing Overview Card */}
           <div className="bg-white dark:bg-[#1a1a1a] p-6 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-4">
             <h3 className="text-sm font-black text-[#111] dark:text-white flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-[#FFB800]" /> Benin City Delivery Route
+              <MapPin className="w-4 h-4 text-amber-600 dark:text-[#FFB800]" /> Benin City Delivery Route
             </h3>
             <RouteDisplay
               pickupAddress={delivery.pickupAddress || "Pickup Address Unavailable"}
@@ -609,7 +609,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
             {/* Shipper Card */}
             <div className="bg-white dark:bg-[#1a1a1a] p-5 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-black/40 dark:text-white/40">
+                <span className="text-[10px] font-black uppercase tracking-wider text-gray-700 dark:text-gray-300">
                   Sender (Shipper)
                 </span>
                 <span className="w-2 h-2 rounded-full bg-[#FFB800]" />
@@ -618,7 +618,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                 <p className="font-extrabold text-sm text-[#111] dark:text-white">
                   {delivery.senderName || "Sender Not Specified"}
                 </p>
-                <p className="text-xs text-black/60 dark:text-white/60 mt-0.5">
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                   {delivery.pickupAddress || "Benin City"}
                 </p>
               </div>
@@ -646,7 +646,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
             {/* Consignee Card */}
             <div className="bg-white dark:bg-[#1a1a1a] p-5 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-black/40 dark:text-white/40">
+                <span className="text-[10px] font-black uppercase tracking-wider text-gray-700 dark:text-gray-300">
                   Receiver (Consignee)
                 </span>
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -655,7 +655,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                 <p className="font-extrabold text-sm text-[#111] dark:text-white">
                   {delivery.receiverName || "Receiver Not Specified"}
                 </p>
-                <p className="text-xs text-black/60 dark:text-white/60 mt-0.5">
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                   {delivery.deliveryAddress || "Benin City"}
                 </p>
               </div>
@@ -685,24 +685,24 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Particulars */}
             <div className="bg-white dark:bg-[#1a1a1a] p-5 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-black/40 dark:text-white/40">
+              <h4 className="text-xs font-black uppercase tracking-wider text-gray-700 dark:text-gray-300">
                 Consignment Details
               </h4>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
-                  <span className="text-black/50 dark:text-white/50">Item Name:</span>
+                  <span className="text-gray-600 dark:text-gray-400">Item Name:</span>
                   <span className="font-bold text-[#111] dark:text-white">{delivery.itemName || "Parcel"}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
-                  <span className="text-black/50 dark:text-white/50">Weight:</span>
+                  <span className="text-gray-600 dark:text-gray-400">Weight:</span>
                   <span className="font-bold text-[#111] dark:text-white">{delivery.weight || 1} kg</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
-                  <span className="text-black/50 dark:text-white/50">Quantity:</span>
+                  <span className="text-gray-600 dark:text-gray-400">Quantity:</span>
                   <span className="font-bold text-[#111] dark:text-white">{delivery.quantity || 1} unit(s)</span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-black/50 dark:text-white/50">Category:</span>
+                  <span className="text-gray-600 dark:text-gray-400">Category:</span>
                   <span className="font-bold text-[#111] dark:text-white">{delivery.category || "Standard"}</span>
                 </div>
               </div>
@@ -710,17 +710,17 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
 
             {/* Financial Breakdown */}
             <div className="bg-white dark:bg-[#1a1a1a] p-5 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-black/40 dark:text-white/40">
+              <h4 className="text-xs font-black uppercase tracking-wider text-gray-700 dark:text-gray-300">
                 Payment & Fare
               </h4>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
-                  <span className="text-black/50 dark:text-white/50">Delivery Charge:</span>
+                  <span className="text-gray-600 dark:text-gray-400">Delivery Charge:</span>
                   <PriceDisplay amount={delivery.price || 0} variant="compact" />
                 </div>
                 {delivery.tipAmount > 0 && (
                   <div className="flex justify-between py-1 border-b border-black/5 dark:border-white/5">
-                    <span className="text-black/50 dark:text-white/50">Driver Tip:</span>
+                    <span className="text-gray-600 dark:text-gray-400">Driver Tip:</span>
                     <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
                       +₦{delivery.tipAmount.toLocaleString()}
                     </span>
@@ -734,7 +734,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                   />
                 </div>
                 <div className="flex justify-between items-center py-1">
-                  <span className="text-black/50 dark:text-white/50">Payment Status:</span>
+                  <span className="text-gray-600 dark:text-gray-400">Payment Status:</span>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                     {delivery.paymentStatus || "PAID"}
                   </span>
