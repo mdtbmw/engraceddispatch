@@ -25,6 +25,30 @@ html {
   scroll-behavior: smooth;
 }
 
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body,
+body.dark {
+  background-color: #050505;
+  color: #f3f4f6;
+}
+
+/* Hardened Dark Mode Surface Overrides */
+.dark .dark\:bg-\[\#050505\] {
+  background-color: #050505 !important;
+}
+.dark .dark\:bg-\[\#1a1a1a\] {
+  background-color: #1a1a1a !important;
+}
+.dark .dark\:bg-\[\#222\] {
+  background-color: #222222 !important;
+}
+.dark .dark\:bg-\[\#111\] {
+  background-color: #111111 !important;
+}
+
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }

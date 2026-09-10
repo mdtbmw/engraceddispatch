@@ -1,5 +1,9 @@
 import { Inter, Raleway, Outfit } from "next/font/google";
 import { SmoothScroll } from "~/components/Animations";
+import "~/assets/css/bootstrap.min.css";
+import "~/assets/css/app.css";
+import "~/assets/css/main.css";
+import "~/assets/css/react-adjustment.css";
 
 const inter = Inter({
   subsets: ["latin"],

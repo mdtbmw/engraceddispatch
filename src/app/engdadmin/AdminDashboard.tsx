@@ -239,9 +239,9 @@ function getLifecycleStageIndex(status: string): number {
 
 function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
   return <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all duration-200">
-    <div className="flex items-center justify-between"><span className="text-xs font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider">{label}</span>{icon}</div>
+    <div className="flex items-center justify-between"><span className="text-xs font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider">{label}</span>{icon}</div>
     <h2 className="text-3xl font-black text-gray-900 dark:text-white mt-2">{value}</h2>
-    <p className="text-[11px] text-gray-700 dark:text-[#FFB800] font-semibold mt-1">{sub}</p>
+    <p className="text-[11px] text-gray-600 dark:text-gray-400 font-semibold mt-1">{sub}</p>
   </div>;
 }
 function QuickBtn({ label, desc, onClick, loading = false, variant = "default" }: { label: string; desc: string; onClick: () => void; loading?: boolean; variant?: "default" | "warning" | "danger" | "setup" }) {
@@ -580,21 +580,21 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
   return <div className="tab-content space-y-8">
       <div className={`p-4 rounded-3xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
         marketplaceEnabled 
-          ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-950 dark:text-emerald-300" 
-          : "bg-red-500/10 border-red-500/25 text-red-950 dark:text-red-300"
+          ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200" 
+          : "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800/60 text-red-900 dark:text-red-200"
       }`}>
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${marketplaceEnabled ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
             <Store className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-black uppercase tracking-wider">Marketplace & Storefront App Visibility:</span>
-              <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
+              <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${marketplaceEnabled ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
                 {marketplaceEnabled ? "LIVE ON APP" : "HIDDEN ON APP"}
               </span>
             </div>
-            <p className="text-[11px] opacity-80 mt-0.5">
+            <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium mt-0.5">
               {marketplaceEnabled 
                 ? "Customer mobile app displays vendor store catalogs, verified shops carousel, and merchant enrollment. Click button to immediately turn off." 
                 : "Marketplace is completely hidden on mobile. Mobile dashboard hero button dynamically converts to 'Live Tracking' radar."}
@@ -1379,13 +1379,21 @@ function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showN
           Welcome to<br /><span className="font-extrabold text-gray-900 dark:text-white text-lg sm:text-xl tracking-tight">ES<span className="text-amber-600 dark:text-[#FFB800]">DISPATCH</span></span>
         </div>
       </div>
-      <div className="flex items-center gap-2 sm:gap-5">
+      <div className="flex items-center gap-2 sm:gap-4">
         <div className="hidden sm:flex items-center border border-gray-300 dark:border-white/20 rounded-full pl-5 pr-1.5 py-1.5 w-[200px] lg:w-[280px] shadow-sm bg-gray-50/50 dark:bg-[#1a1a1a]/50">
           <input type="text" placeholder="Search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="outline-none flex-1 text-sm bg-transparent font-medium text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500" />
           <button className="bg-[#FFB800] text-[#111] p-2 rounded-xl hover:bg-[#FFB800]/90 transition-colors cursor-pointer"><Search size={18} strokeWidth={2.5} /></button>
         </div>
+        <button 
+          onClick={toggleDark} 
+          className="p-2.5 border border-gray-300 dark:border-white/20 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+          title={dark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          aria-label="Toggle Theme"
+        >
+          {dark ? <Sun size={20} className="text-[#FFB800]" /> : <Moon size={20} className="text-gray-900" />}
+        </button>
         <div className="relative" id="notif-area">
-          <button onClick={(e) => { e.stopPropagation(); setShowNotifs(!showNotifs); setShowUserMenu(false); }} className="relative p-2.5 border border-gray-300 dark:border-white/20 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+          <button onClick={(e) => { e.stopPropagation(); setShowNotifs(!showNotifs); setShowUserMenu(false); }} className="relative p-2.5 border border-gray-300 dark:border-white/20 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-black/5 dark:hover:bg-white/10 transition-colors" title="Notifications">
             <Bell size={20} className="text-gray-900 dark:text-white" />
             {unreadCount > 0 && <div className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-[#FFB800] rounded-full border-2 border-white dark:border-[#1a1a1a] animate-pulse-ring"></div>}
           </button>
@@ -1405,7 +1413,7 @@ function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showN
         </div>
         <div className="relative" id="user-menu-area">
           <div className="flex items-center gap-3 ml-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); setShowNotifs(false); }}>
-            <div className="w-11 h-11 rounded-full bg-[#FFB800]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-amber-900 dark:text-white font-black text-sm"><EdLogoSvg size={20} /></div>
+            <div className="w-11 h-11 rounded-full bg-[#FFB800]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-amber-900 dark:text-white font-black text-sm"><EdLogoSvg size={20} dark={!dark} /></div>
             <div className="text-sm hidden sm:block">
               <div className="font-extrabold text-gray-900 dark:text-white">{currentUser?.email?.split("@")[0] || "Admin"}</div>
               <div className="text-gray-600 dark:text-gray-400 font-bold text-xs mt-0.5">{(userRole || "admin").replace("_", " ").toUpperCase()}</div>
@@ -1479,16 +1487,19 @@ function AdminDashboardPage() {
       const isDark = saved === "true";
       setDark(isDark);
       document.documentElement.classList.toggle("dark", isDark);
+      document.body.classList.toggle("dark", isDark);
     } else {
       const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       setDark(prefersDark);
       document.documentElement.classList.toggle("dark", prefersDark);
+      document.body.classList.toggle("dark", prefersDark);
     }
   }, []);
 
   useEffect(() => {
     localStorage.setItem("ed_dark", String(dark));
     document.documentElement.classList.toggle("dark", dark);
+    document.body.classList.toggle("dark", dark);
   }, [dark]);
 
   useEffect(() => {
