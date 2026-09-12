@@ -48,9 +48,13 @@ fun AppLockScreen(
 
     val shakeOffset = remember { Animatable(0f) }
 
+    val biometricRegistered by viewModel.biometricRegistered.collectAsState()
+    val biometricEnabled by viewModel.biometricEnabled.collectAsState()
+
     val biometricAvailable = remember(context) {
         BiometricHelper.isBiometricAvailable(context)
     }
+    val canUseBiometrics = biometricAvailable && biometricRegistered && biometricEnabled
 
     val triggerBiometrics: () -> Unit = {
         (context as? FragmentActivity)?.let { activity ->
@@ -71,10 +75,10 @@ fun AppLockScreen(
         }
     }
 
-    // Automatically prompt biometrics on launch if available
-    LaunchedEffect(Unit) {
+    // Automatically prompt biometrics on launch only if enrolled & enabled
+    LaunchedEffect(canUseBiometrics) {
         delay(350)
-        if (biometricAvailable) {
+        if (canUseBiometrics) {
             triggerBiometrics()
         }
     }
@@ -126,10 +130,18 @@ fun AppLockScreen(
         }
     }
 
+    val isLight = MaterialTheme.colorScheme.background == BackgroundLight
+    val isDark = !isLight
+    val screenBg = if (isDark) BackgroundDark else BackgroundLight
+    val keyBg = Charcoal
+    val keyBorder = if (isDark) Color(0xFF2C2C2C) else BorderLight
+    val keyTextColor = AppTextColor
+    val iconColor = AppTextColor
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(LuxuryBlack)
+            .background(screenBg)
             .navigationBarsPadding()
             .statusBarsPadding(),
         contentAlignment = Alignment.Center
@@ -170,7 +182,7 @@ fun AppLockScreen(
                     text = if (userName.isNotBlank()) "Welcome Back, $userName" else "Welcome Back",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = keyTextColor,
                     textAlign = TextAlign.Center
                 )
 
@@ -196,7 +208,7 @@ fun AppLockScreen(
                         val dotColor = when {
                             isError -> Color(0xFFEF4444)
                             isFilled -> Gold
-                            else -> Color(0xFF2C2C2C)
+                            else -> if (isDark) Color(0xFF2C2C2C) else Color(0xFFE2E8F0)
                         }
                         Box(
                             modifier = Modifier
@@ -205,7 +217,7 @@ fun AppLockScreen(
                                 .background(dotColor)
                                 .border(
                                     1.5.dp,
-                                    if (isFilled || isError) dotColor else Color(0xFF404040),
+                                    if (isFilled || isError) dotColor else if (isDark) Color(0xFF404040) else Color(0xFFCBD5E1),
                                     CircleShape
                                 )
                         )
@@ -251,13 +263,14 @@ fun AppLockScreen(
                                         modifier = Modifier
                                             .size(72.dp)
                                             .clip(CircleShape)
-                                            .background(if (biometricAvailable) Charcoal else Color.Transparent)
-                                            .clickable(enabled = biometricAvailable) {
+                                            .background(if (canUseBiometrics) keyBg else Color.Transparent)
+                                            .then(if (canUseBiometrics) Modifier.border(1.dp, keyBorder, CircleShape) else Modifier)
+                                            .clickable(enabled = canUseBiometrics) {
                                                 triggerBiometrics()
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        if (biometricAvailable) {
+                                        if (canUseBiometrics) {
                                             Icon(
                                                 imageVector = Icons.Default.Fingerprint,
                                                 contentDescription = "Fingerprint Login",
@@ -272,14 +285,15 @@ fun AppLockScreen(
                                         modifier = Modifier
                                             .size(72.dp)
                                             .clip(CircleShape)
-                                            .background(Charcoal)
+                                            .background(keyBg)
+                                            .border(1.dp, keyBorder, CircleShape)
                                             .clickable { onDeletePress() },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Backspace,
                                             contentDescription = "Delete",
-                                            tint = Color.White,
+                                            tint = iconColor,
                                             modifier = Modifier.size(24.dp)
                                         )
                                     }
@@ -289,8 +303,8 @@ fun AppLockScreen(
                                         modifier = Modifier
                                             .size(72.dp)
                                             .clip(CircleShape)
-                                            .background(Charcoal)
-                                            .border(1.dp, Color(0xFF2C2C2C), CircleShape)
+                                            .background(keyBg)
+                                            .border(1.dp, keyBorder, CircleShape)
                                             .clickable { onDigitPress(key) },
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -298,7 +312,7 @@ fun AppLockScreen(
                                             text = key,
                                             fontSize = 24.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color.White
+                                            color = keyTextColor
                                         )
                                     }
                                 }

@@ -33,6 +33,9 @@ open class AuthViewModel : BaseViewModel() {
     protected val _userEmail = MutableStateFlow("")
     val userEmail: StateFlow<String> = _userEmail.asStateFlow()
 
+    protected val _rememberedEmail = MutableStateFlow("")
+    val rememberedEmail: StateFlow<String> = _rememberedEmail.asStateFlow()
+
     protected val _isAppLocked = MutableStateFlow(false)
     val isAppLocked: StateFlow<Boolean> = _isAppLocked.asStateFlow()
 

@@ -2184,7 +2184,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
             title: fundAction === "credit" ? "Wallet Credited!" : "Wallet Debited",
             message: fundReason 
               ? `${fundReason} (₦${amt.toLocaleString()})`
-              : `Your account was ${fundAction === "credit" ? "credited with" : "debited by"} ₦${amt.toLocaleString()} by Admin.`,
+              : `Your account was ${fundAction === "credit" ? "credited with" : "debited by"} ₦${amt.toLocaleString()} by ESDispatch.`,
             amount: actualDelta,
             read: false,
             createdAt: Timestamp.now()
@@ -4570,6 +4570,7 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
         <Toggle label="Referral System" desc="Referral rewards and invite codes" checked={!!sForm.referralEnabled} onChange={v => upd("referralEnabled", v)} />
         <Toggle label="Dynamic Pricing" desc="Surge pricing based on demand" checked={!!sForm.dynamicPricing} onChange={v => upd("dynamicPricing", v)} />
         <Toggle label="Phone Verification (SMS/WhatsApp/Call)" desc="Require phone number OTP verification for order booking and account security" checked={!!sForm.phoneVerificationEnabled} onChange={v => upd("phoneVerificationEnabled", v)} />
+        <Toggle label="QR Code Delivery Handover" desc="Display QR code alongside 4-digit PIN for parcel handover verification (disabled by default for direct PIN entry)" checked={!!sForm.enableQrCodeHandover} onChange={v => upd("enableQrCodeHandover", v)} />
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Feature Toggles")} loading={saving} /></div>
     </div>

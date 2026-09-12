@@ -1125,10 +1125,15 @@ object FirebaseManager {
                             val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
                             val title = doc.getString("title") ?: ""
                             val message = doc.getString("message") ?: ""
-                            val time = doc.getString("time") ?: "Just now"
                             val isRead = doc.getBoolean("isRead") ?: false
                             val parcelId = doc.getString("parcelId") ?: ""
-                            list.add(NotificationItem(id, title, message, time, isRead, parcelId))
+                            val ts = when (val raw = doc.get("createdAt") ?: doc.get("timestamp")) {
+                                is com.google.firebase.Timestamp -> raw.toDate().time
+                                is Number -> raw.toLong()
+                                else -> System.currentTimeMillis()
+                            }
+                            val timeStr = doc.getString("time") ?: formatTimestampToHumanDate(ts)
+                            list.add(NotificationItem(id, title, message, timeStr, isRead, parcelId, ts))
                         } catch (e: Exception) {
                             Log.e(TAG, "Error parsing notification: ${e.message}")
                         }
@@ -1140,6 +1145,31 @@ object FirebaseManager {
         awaitClose {
             listener.remove()
         }
+    }
+
+    fun formatTimestampToHumanDate(timestamp: Long): String {
+        if (timestamp <= 0L) return "Just now"
+        val now = System.currentTimeMillis()
+        val diff = now - timestamp
+        if (diff in 0..59_999) return "Just now"
+        val calNow = java.util.Calendar.getInstance().apply { timeInMillis = now }
+        val calMsg = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
+        val isToday = calNow.get(java.util.Calendar.YEAR) == calMsg.get(java.util.Calendar.YEAR) &&
+                calNow.get(java.util.Calendar.DAY_OF_YEAR) == calMsg.get(java.util.Calendar.DAY_OF_YEAR)
+        val timeFormat = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
+        if (isToday) return "Today, ${timeFormat.format(java.util.Date(timestamp))}"
+        calNow.add(java.util.Calendar.DAY_OF_YEAR, -1)
+        val isYesterday = calNow.get(java.util.Calendar.YEAR) == calMsg.get(java.util.Calendar.YEAR) &&
+                calNow.get(java.util.Calendar.DAY_OF_YEAR) == calMsg.get(java.util.Calendar.DAY_OF_YEAR)
+        if (isYesterday) return "Yesterday, ${timeFormat.format(java.util.Date(timestamp))}"
+        calNow.timeInMillis = now
+        val daysDiff = (now - timestamp) / (24 * 60 * 60 * 1000L)
+        if (daysDiff < 7) {
+            val weekFormat = java.text.SimpleDateFormat("EEE, h:mm a", java.util.Locale.getDefault())
+            return weekFormat.format(java.util.Date(timestamp))
+        }
+        val dateFormat = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault())
+        return dateFormat.format(java.util.Date(timestamp))
     }
 
     /**

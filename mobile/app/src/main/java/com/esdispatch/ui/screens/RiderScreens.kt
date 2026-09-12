@@ -1229,7 +1229,29 @@ fun RiderUpdateBottomSheetContent(
     val context = LocalContext.current
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
     var isSubmitting by remember { mutableStateOf(false) }
+    var isUploadingArrivalPhoto by remember { mutableStateOf(false) }
+    var arrivalPhotoUploaded by remember { mutableStateOf(false) }
     var otpInput by remember { mutableStateOf("") }
+
+    val cameraLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            isUploadingArrivalPhoto = true
+            val stream = java.io.ByteArrayOutputStream()
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, stream)
+            val bytes = stream.toByteArray()
+            viewModel.uploadArrivalPhoto(parcel.id, bytes) { success, _ ->
+                isUploadingArrivalPhoto = false
+                if (success) {
+                    arrivalPhotoUploaded = true
+                    Toast.makeText(context, "Arrival photo uploaded successfully!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Failed to upload photo", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1668,29 +1690,118 @@ fun RiderUpdateBottomSheetContent(
                     Text("MARK OUT FOR DELIVERY", fontWeight = FontWeight.Bold)
                 }
             }
-        } else {
-            // Out for delivery -> OTP Verification
+        } else if (parcel.status == ParcelStatus.OUT_FOR_DELIVERY) {
             Text(
-                text = "Confirm Secure OTP to Deliver",
+                text = "When you arrive at the recipient's delivery location, mark as arrived to notify the customer with their 4-digit handover PIN.",
+                color = AppTextColor,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(
+                onClick = {
+                    isSubmitting = true
+                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED, 0.90f) { success, err ->
+                        isSubmitting = false
+                        if (success) {
+                            Toast.makeText(context, "Marked as arrived! Customer notified with PIN.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, err ?: "Failed to update status", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                shape = RoundedCornerShape(14.dp),
+                enabled = !isSubmitting
+            ) {
+                if (isSubmitting) {
+                    CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(20.dp))
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Obsidian)
+                        Text("MARK ARRIVED AT DESTINATION", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        } else {
+            // Arrived / Handover -> Capture arrival photo (optional) & PIN Verification
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = if (isDark) Charcoal else GoldenWhiteLight,
+                border = BorderStroke(1.dp, Gold)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Gold, modifier = Modifier.size(20.dp))
+                    Text(
+                        text = "Arrived at Destination — Awaiting Handover PIN",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) GoldLight else Obsidian
+                    )
+                }
+            }
+
+            // Arrival Photo Capture Button
+            OutlinedButton(
+                onClick = {
+                    cameraLauncher.launch(null)
+                },
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, if (arrivalPhotoUploaded) SuccessGreen else Gold),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = if (arrivalPhotoUploaded) SuccessGreen.copy(alpha = 0.1f) else Color.Transparent,
+                    contentColor = if (arrivalPhotoUploaded) SuccessGreen else (if (isDark) Gold else Obsidian)
+                ),
+                enabled = !isUploadingArrivalPhoto
+            ) {
+                if (isUploadingArrivalPhoto) {
+                    CircularProgressIndicator(color = Gold, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Uploading Arrival Photo...", fontSize = 12.sp)
+                } else if (arrivalPhotoUploaded) {
+                    Icon(Icons.Default.Check, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Arrival Photo Recorded", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                } else {
+                    Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Capture Arrival Photo (Optional)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Text(
+                text = "Enter Customer Handover PIN",
                 color = AppTextColor,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "The recipient must provide their unique 4-digit code. Enter it below to complete and instantly receive your payout split.",
+                text = "Ask the recipient for their 4-digit PIN. Enter it below to complete handover and receive your payout.",
                 color = TextGray,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 textAlign = TextAlign.Center,
-                lineHeight = 18.sp
+                lineHeight = 16.sp
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = otpInput,
                 onValueChange = { if (it.length <= 4) otpInput = it },
-                label = { Text("4-Digit Secure OTP") },
+                label = { Text("4-Digit PIN") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(0.6f),
@@ -1702,12 +1813,12 @@ fun RiderUpdateBottomSheetContent(
                 )
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             Button(
                 onClick = {
                     if (otpInput.length != 4) {
-                        Toast.makeText(context, "Please enter a 4-digit PIN", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Please enter the 4-digit PIN", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
                     isSubmitting = true
@@ -1718,7 +1829,7 @@ fun RiderUpdateBottomSheetContent(
                             onDismiss()
                             onNavigateToPOD("ProofOfDelivery/${parcel.id}")
                         } else {
-                            Toast.makeText(context, err ?: "Incorrect OTP", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, err ?: "Incorrect PIN", Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
@@ -1730,7 +1841,7 @@ fun RiderUpdateBottomSheetContent(
                 if (isSubmitting) {
                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
                 } else {
-                    Text("VERIFY & COMPLETE", fontWeight = FontWeight.Black)
+                    Text("VERIFY PIN & COMPLETE", fontWeight = FontWeight.Black)
                 }
             }
         }

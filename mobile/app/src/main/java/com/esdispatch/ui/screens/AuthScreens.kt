@@ -128,12 +128,19 @@ fun LoginScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
+    val rememberedEmail by viewModel.rememberedEmail.collectAsState()
     var step by remember { mutableStateOf(LoginStep.EMAIL) }
-    var email by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf(rememberedEmail) }
     var pin by remember { mutableStateOf("") }
     var isPinError by remember { mutableStateOf(false) }
     var isValidatingPin by remember { mutableStateOf(false) }
     var showSupportDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(rememberedEmail) {
+        if (email.isBlank() && rememberedEmail.isNotBlank()) {
+            email = rememberedEmail
+        }
+    }
 
     // Google Sign-In & Biometrics
     var showBiometricEnroll by remember { mutableStateOf(false) }

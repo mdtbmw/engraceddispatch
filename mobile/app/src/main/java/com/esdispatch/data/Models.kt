@@ -82,7 +82,17 @@ data class NotificationItem(
     val message: String,
     val time: String,
     val isRead: Boolean = false,
-    val parcelId: String = ""
+    val parcelId: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class BatchDestinationItem(
+    val id: String = UUID.randomUUID().toString(),
+    val destinationAddress: String = "",
+    val recipientName: String = "",
+    val recipientPhone: String = "",
+    val itemName: String = "",
+    val weight: String = "1.5"
 )
 
 data class PromoCode(

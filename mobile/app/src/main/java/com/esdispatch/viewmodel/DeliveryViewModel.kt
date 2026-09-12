@@ -167,7 +167,15 @@ class DeliveryViewModel : WalletViewModel() {
         _userName.value = prefs.getString("user_name", "") ?: ""
         _userEmail.value = prefs.getString("user_email", "") ?: ""
         _userPhone.value = prefs.getString("user_phone", "") ?: ""
-        _photoUrl.value = prefs.getString("photo_url", "https://api.dicebear.com/7.x/avataaars/png?seed=elite&backgroundColor=c0aede") ?: "https://api.dicebear.com/7.x/avataaars/png?seed=elite&backgroundColor=c0aede"
+        val savedPhoto = prefs.getString("photo_url", "") ?: ""
+        if (savedPhoto.startsWith("file://")) {
+            val f = java.io.File(savedPhoto.removePrefix("file://"))
+            _photoUrl.value = if (f.exists()) savedPhoto else "https://api.dicebear.com/7.x/avataaars/png?seed=elite&backgroundColor=c0aede"
+        } else if (savedPhoto.isNotEmpty()) {
+            _photoUrl.value = savedPhoto
+        } else {
+            _photoUrl.value = "https://api.dicebear.com/7.x/avataaars/png?seed=elite&backgroundColor=c0aede"
+        }
         _isVerified.value = prefs.getBoolean("is_verified", false)
         _totalEarned.value = prefs.getString("total_earned", "0.0")?.toDoubleOrNull() ?: 0.0
         _deliveryCount.value = prefs.getInt("delivery_count", 0)
@@ -182,9 +190,19 @@ class DeliveryViewModel : WalletViewModel() {
             val hashed = SecurityUtils.hashPin(plain)
             savePinSecurely("user_pin", hashed)
             hashed
-        } else {
+        } else if (storedPin.isNotEmpty()) {
             storedPin
+        } else {
+            val localP = getPinSecurely("local_pin", "")
+            if (localP.isNotEmpty()) {
+                val hashed = SecurityUtils.hashPin(localP)
+                savePinSecurely("user_pin", hashed)
+                hashed
+            } else {
+                ""
+            }
         }
+        _rememberedEmail.value = prefs.getString("remembered_email", "") ?: prefs.getString("user_email", "") ?: prefs.getString("local_email", "") ?: ""
         _loginMode.value = prefs.getString("login_mode", "free") ?: "free"
         _biometricRegistered.value = prefs.getBoolean("biometric_registered", false)
         _biometricEnabled.value = prefs.getBoolean("biometric_enabled", false)
@@ -211,6 +229,7 @@ class DeliveryViewModel : WalletViewModel() {
         _tipSystemEnabled.value = prefs.getBoolean("tip_system_enabled", true)
         _emailVerificationRequired.value = prefs.getBoolean("email_verification_required", false)
         _phoneVerificationRequired.value = prefs.getBoolean("phone_verification_required", false)
+        _enableQrCodeHandover.value = prefs.getBoolean("enable_qr_code_handover", false)
         _dashboardSectionsEnabled.value = mapOf(
             "promo_banner" to prefs.getBoolean("section_promo_banner", true),
             "active_shipments" to prefs.getBoolean("section_active_shipments", true),
@@ -257,6 +276,10 @@ class DeliveryViewModel : WalletViewModel() {
                     (snap.get("tipSystemEnabled") as? Boolean)?.let { _tipSystemEnabled.value = it }
                     (snap.get("emailVerificationRequired") as? Boolean)?.let { _emailVerificationRequired.value = it }
                     (snap.get("phoneVerificationRequired") as? Boolean)?.let { _phoneVerificationRequired.value = it }
+                    (snap.get("enableQrCodeHandover") as? Boolean)?.let {
+                        _enableQrCodeHandover.value = it
+                        savePref("enable_qr_code_handover", it)
+                    }
                     (snap.get("maintenanceMode") as? Boolean)?.let { _maintenanceMode.value = it }
                     
                     ((snap.get("surgeMultiplier") as? Number)?.toDouble() ?: (snap.get("surgePriceMultiplier") as? Number)?.toDouble())?.let { 
@@ -440,6 +463,9 @@ class DeliveryViewModel : WalletViewModel() {
     // Admin & System Configurations
     private val _marketplaceEnabled = MutableStateFlow(true)
     val marketplaceEnabled: StateFlow<Boolean> = _marketplaceEnabled.asStateFlow()
+
+    private val _enableQrCodeHandover = MutableStateFlow(false)
+    val enableQrCodeHandover: StateFlow<Boolean> = _enableQrCodeHandover.asStateFlow()
 
     private val _pointsSystemEnabled = MutableStateFlow(true)
     val pointsSystemEnabled: StateFlow<Boolean> = _pointsSystemEnabled.asStateFlow()
@@ -1082,6 +1108,36 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    /** Upload an arrival photo captured by the rider before parcel handover */
+    fun uploadArrivalPhoto(parcelId: String, photoBytes: ByteArray, onComplete: ((Boolean, String?) -> Unit)? = null) {
+        try {
+            val ref = com.google.firebase.storage.FirebaseStorage.getInstance()
+                .reference.child("arrival_photos/$parcelId-${System.currentTimeMillis()}.jpg")
+            ref.putBytes(photoBytes)
+                .addOnSuccessListener {
+                    ref.downloadUrl.addOnSuccessListener { url ->
+                        com.esdispatch.data.FirebaseManager.firestore?.collection("deliveries")?.document(parcelId)
+                            ?.update(
+                                mapOf(
+                                    "arrivalPhotoUrl" to url.toString(),
+                                    "arrivalTimestamp" to com.google.firebase.Timestamp.now()
+                                )
+                            )
+                        onComplete?.invoke(true, url.toString())
+                    }.addOnFailureListener {
+                        onComplete?.invoke(true, null)
+                    }
+                }
+                .addOnFailureListener { e ->
+                    android.util.Log.e("ArrivalPhoto", "Upload failed: ${e.message}")
+                    onComplete?.invoke(false, e.message)
+                }
+        } catch (e: Exception) {
+            android.util.Log.e("ArrivalPhoto", "Error: ${e.message}")
+            onComplete?.invoke(false, e.message)
+        }
+    }
+
     fun updateCourierLocationByRider(parcelId: String, lat: Double, lng: Double, onComplete: (Boolean, String?) -> Unit) {
         com.esdispatch.data.FirebaseManager.updateCourierLocationByRider(
             parcelId = parcelId,
@@ -1358,9 +1414,9 @@ class DeliveryViewModel : WalletViewModel() {
                 }
             }
             if (list.isNotEmpty()) {
-                showCustomToast("Successfully synchronized ${list.size} offline items with corporate server!")
+                android.util.Log.d("DeliveryViewModel", "Successfully synchronized ${list.size} offline items in background.")
             } else {
-                showCustomToast("Offline queue is already fully synchronized.")
+                android.util.Log.d("DeliveryViewModel", "Offline queue is fully synchronized in background.")
             }
         }
     }
@@ -2334,19 +2390,22 @@ class DeliveryViewModel : WalletViewModel() {
                         }
                     }
 
-                    // Keep selection in sync
+                    // Keep selection in sync with active parcels (don't stick on DELIVERED)
+                    val activeParcels = filtered.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED }
                     val currentSelected = _selectedParcel.value
                     if (currentSelected != null) {
                         val updatedSelected = filtered.find { it.id == currentSelected.id }
                         if (updatedSelected != null) {
-                            _selectedParcel.value = updatedSelected
+                            if (updatedSelected.status == ParcelStatus.DELIVERED || updatedSelected.status == ParcelStatus.CANCELLED) {
+                                _selectedParcel.value = activeParcels.firstOrNull()
+                            } else {
+                                _selectedParcel.value = updatedSelected
+                            }
                         } else {
-                            _selectedParcel.value = filtered.firstOrNull()
+                            _selectedParcel.value = activeParcels.firstOrNull()
                         }
-                    } else if (filtered.isNotEmpty()) {
-                        _selectedParcel.value = filtered.first()
                     } else {
-                        _selectedParcel.value = null
+                        _selectedParcel.value = activeParcels.firstOrNull()
                     }
                 }
             }
@@ -2429,9 +2488,39 @@ class DeliveryViewModel : WalletViewModel() {
                                     }
 
                                     val photo = data["photoUrl"] as? String
-                                    if (!photo.isNullOrEmpty()) {
-                                        _photoUrl.value = photo
-                                        savePref("photo_url", photo)
+                                    val b64 = data["avatarBase64"] as? String
+                                    if (!b64.isNullOrEmpty()) {
+                                        try {
+                                            val bBytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                                            val aFile = java.io.File(context.filesDir, "avatar_${uid}.jpg")
+                                            java.io.FileOutputStream(aFile).use { it.write(bBytes) }
+                                            val localUri = "file://${aFile.absolutePath}"
+                                            _photoUrl.value = localUri
+                                            savePref("photo_url", localUri)
+                                        } catch (e: Exception) {
+                                            if (!photo.isNullOrEmpty() && (photo.startsWith("http://") || photo.startsWith("https://"))) {
+                                                _photoUrl.value = photo
+                                                savePref("photo_url", photo)
+                                            }
+                                        }
+                                    } else if (!photo.isNullOrEmpty()) {
+                                        if (photo.startsWith("data:image")) {
+                                            try {
+                                                val commaIdx = photo.indexOf(",")
+                                                val rawB64 = if (commaIdx != -1) photo.substring(commaIdx + 1) else photo
+                                                val bBytes = android.util.Base64.decode(rawB64, android.util.Base64.DEFAULT)
+                                                val aFile = java.io.File(context.filesDir, "avatar_${uid}.jpg")
+                                                java.io.FileOutputStream(aFile).use { it.write(bBytes) }
+                                                val localUri = "file://${aFile.absolutePath}"
+                                                _photoUrl.value = localUri
+                                                savePref("photo_url", localUri)
+                                            } catch (e: Exception) {
+                                                android.util.Log.e("AvatarLoad", "Failed to decode data url: ${e.message}")
+                                            }
+                                        } else {
+                                            _photoUrl.value = photo
+                                            savePref("photo_url", photo)
+                                        }
                                     }
 
                                     val isVerifiedVal = data["isVerified"] as? Boolean
@@ -2521,6 +2610,28 @@ class DeliveryViewModel : WalletViewModel() {
                             com.esdispatch.data.FirebaseManager.listenToUserDeliveries(uid).collect { parcelList ->
                                 if (parcelList.isNotEmpty()) {
                                     repository?.saveParcels(parcelList)
+                                    _parcels.value = parcelList
+                                    val updatedCount = maxOf(_deliveryCount.value, parcelList.size)
+                                    if (updatedCount != _deliveryCount.value) {
+                                        _deliveryCount.value = updatedCount
+                                        savePref("delivery_count", updatedCount)
+                                    }
+                                    val activeParcels = parcelList.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED }
+                                    val curr = _selectedParcel.value
+                                    if (curr != null) {
+                                        val updatedCurr = parcelList.find { it.id == curr.id }
+                                        if (updatedCurr != null) {
+                                            if (updatedCurr.status == ParcelStatus.DELIVERED || updatedCurr.status == ParcelStatus.CANCELLED) {
+                                                _selectedParcel.value = activeParcels.firstOrNull()
+                                            } else {
+                                                _selectedParcel.value = updatedCurr
+                                            }
+                                        } else {
+                                            _selectedParcel.value = activeParcels.firstOrNull()
+                                        }
+                                    } else {
+                                        _selectedParcel.value = activeParcels.firstOrNull()
+                                    }
                                 }
                             }
                         }
@@ -3053,20 +3164,28 @@ class DeliveryViewModel : WalletViewModel() {
         viewModelScope.launch {
             // Check local stored credentials for instant offline login
             appContext?.let { ctx ->
-
                 val prefs = ctx.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
                 val storedEmail = prefs.getString("local_email", "") ?: ""
-                val storedPin = getPinSecurely("local_pin")
                 val storedUid = prefs.getString("local_uid", "") ?: ""
-                if (storedEmail.trim().equals(email.trim(), ignoreCase = true) && storedPin == pin && storedUid.isNotEmpty() && !storedUid.startsWith("local_user_")) {
+                val cleanEmail = email.trim().lowercase().replace("[^a-z0-9]".toRegex(), "_")
+                val isPinMatch = SecurityUtils.verifyPin(pin, getPinSecurely("local_pin")) ||
+                        SecurityUtils.verifyPin(pin, getPinSecurely("user_pin")) ||
+                        SecurityUtils.verifyPin(pin, getPinSecurely("google_pin_$cleanEmail"))
+
+                if (storedEmail.trim().equals(email.trim(), ignoreCase = true) && isPinMatch && storedUid.isNotEmpty() && !storedUid.startsWith("local_user_")) {
                     val storedName = prefs.getString("local_name", "") ?: ""
                     val storedPhone = prefs.getString("local_phone", "") ?: ""
+                    val storedRole = prefs.getString("local_role", "customer") ?: "customer"
 
                     _firebaseUserId.value = storedUid
                     _firebaseConnected.value = false
+                    _userRole.value = storedRole
+                    _activeViewMode.value = storedRole
                     updateProfile(storedName, email, storedPhone)
                     setUserPin(pin)
                     setLoginMode("pin")
+                    savePref("remembered_email", email.trim().lowercase())
+                    _rememberedEmail.value = email.trim().lowercase()
                     triggerWelcomeNotification(storedName)
                     onComplete(true, null)
                     return@launch
@@ -3109,6 +3228,8 @@ class DeliveryViewModel : WalletViewModel() {
                                 savePref("user_role", role)
                                 savePref("active_view_mode", role)
                                 savePref("bike_number", bikeNumber)
+                                savePref("remembered_email", email.trim().lowercase())
+                                _rememberedEmail.value = email.trim().lowercase()
                                 if (role == "admin" || role == "super_admin") {
                                     _isAdminVerified.value = true
                                 }
@@ -3126,8 +3247,10 @@ class DeliveryViewModel : WalletViewModel() {
                                         .putString("local_phone", phone)
                                         .putString("local_role", role)
                                         .putString("local_bike_number", bikeNumber)
+                                        .putString("remembered_email", email.trim().lowercase())
                                         .apply()
                                     savePinSecurely("local_pin", pin)
+                                    savePinSecurely("user_pin", pin)
                                 }
                                 
                                 triggerWelcomeNotification(name)
@@ -3149,6 +3272,8 @@ class DeliveryViewModel : WalletViewModel() {
                         savePref("user_role", fallbackRole)
                         savePref("active_view_mode", fallbackRole)
                         savePref("bike_number", fallbackBike)
+                        savePref("remembered_email", email.trim().lowercase())
+                        _rememberedEmail.value = email.trim().lowercase()
                         
                         updateProfile(fallbackName, email, fallbackPhone)
                         setUserPin(pin)
@@ -3163,8 +3288,10 @@ class DeliveryViewModel : WalletViewModel() {
                                 .putString("local_phone", fallbackPhone)
                                 .putString("local_role", fallbackRole)
                                 .putString("local_bike_number", fallbackBike)
+                                .putString("remembered_email", email.trim().lowercase())
                                 .apply()
                             savePinSecurely("local_pin", pin)
+                            savePinSecurely("user_pin", pin)
                         }
                         
                         triggerWelcomeNotification(fallbackName)
@@ -3179,7 +3306,69 @@ class DeliveryViewModel : WalletViewModel() {
                     syncUserParcelHistoryFromFirebase(user.uid)
                     startShipmentsTriggerListener(user.uid)
                 } else {
-                    onComplete(false, error ?: "Authentication failed. Please check your credentials or network connection.")
+                    // Fallback: Check Firestore users doc in case user was registered via Google Sign-In with a PIN
+                    val db = com.esdispatch.data.FirebaseManager.firestore
+                    if (db != null) {
+                        db.collection("users").whereEqualTo("email", email.trim().lowercase()).get()
+                            .addOnSuccessListener { qs ->
+                                val doc = qs.documents.firstOrNull()
+                                if (doc != null) {
+                                    val remotePin = doc.getString("pin") ?: doc.getString("pinHash") ?: ""
+                                    if (remotePin.isNotEmpty() && SecurityUtils.verifyPin(pin, remotePin)) {
+                                        val uid = doc.id
+                                        val name = doc.getString("name") ?: "Engraced Member"
+                                        val phone = doc.getString("phone") ?: ""
+                                        val role = doc.getString("role") ?: "customer"
+                                        val bikeNumber = doc.getString("bikeNumber") ?: ""
+
+                                        _firebaseUserId.value = uid
+                                        _firebaseConnected.value = true
+                                        _userRole.value = role
+                                        _bikeNumber.value = bikeNumber
+                                        _activeViewMode.value = role
+                                        savePref("user_role", role)
+                                        savePref("active_view_mode", role)
+                                        savePref("bike_number", bikeNumber)
+                                        savePref("remembered_email", email.trim().lowercase())
+                                        _rememberedEmail.value = email.trim().lowercase()
+                                        if (role == "admin" || role == "super_admin") {
+                                            _isAdminVerified.value = true
+                                        }
+
+                                        updateProfile(name, email, phone)
+                                        setUserPin(pin)
+                                        setLoginMode("pin")
+
+                                        appContext?.let { ctx ->
+                                            val prefs = ctx.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
+                                            prefs.edit()
+                                                .putString("local_uid", uid)
+                                                .putString("local_name", name)
+                                                .putString("local_email", email.trim().lowercase())
+                                                .putString("local_phone", phone)
+                                                .putString("local_role", role)
+                                                .putString("local_bike_number", bikeNumber)
+                                                .putString("remembered_email", email.trim().lowercase())
+                                                .apply()
+                                            savePinSecurely("local_pin", pin)
+                                            savePinSecurely("user_pin", pin)
+                                        }
+
+                                        triggerWelcomeNotification(name)
+                                        syncUserParcelHistoryFromFirebase(uid)
+                                        startShipmentsTriggerListener(uid)
+                                        onComplete(true, null)
+                                        return@addOnSuccessListener
+                                    }
+                                }
+                                onComplete(false, error ?: "Invalid email or secure PIN.")
+                            }
+                            .addOnFailureListener {
+                                onComplete(false, error ?: "Authentication failed. Please check your credentials or network connection.")
+                            }
+                    } else {
+                        onComplete(false, error ?: "Authentication failed. Please check your credentials or network connection.")
+                    }
                 }
             }
         }
@@ -3259,16 +3448,24 @@ class DeliveryViewModel : WalletViewModel() {
                     val scaledWidth = (width * ratio).toInt().coerceAtLeast(1)
                     val scaledHeight = (height * ratio).toInt().coerceAtLeast(1)
                     val scaledBitmap = android.graphics.Bitmap.createScaledBitmap(originalBitmap, scaledWidth, scaledHeight, true)
+                    val baos = java.io.ByteArrayOutputStream()
+                    scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, baos)
+                    val bytes = baos.toByteArray()
                     
-                    val outputStream = java.io.ByteArrayOutputStream()
-                    scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, outputStream)
-                    val bytes = outputStream.toByteArray()
+                    val avatarFile = java.io.File(ctx.filesDir, "avatar_${uid}.jpg")
+                    try {
+                        java.io.FileOutputStream(avatarFile).use { fos -> fos.write(bytes) }
+                    } catch (e: Exception) {
+                        android.util.Log.e("AvatarUpload", "Failed to save local file: ${e.message}")
+                    }
+                    val localUri = "file://${avatarFile.absolutePath}"
+
                     val base64Str = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                     val dataUrl = "data:image/jpeg;base64,$base64Str"
                     
                     withContext(Dispatchers.Main) {
-                        _photoUrl.value = dataUrl
-                        savePref("photo_url", dataUrl)
+                        _photoUrl.value = localUri
+                        savePref("photo_url", localUri)
                     }
                     
                     com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users").document(uid)
@@ -3356,15 +3553,37 @@ class DeliveryViewModel : WalletViewModel() {
         val hashed = SecurityUtils.hashPin(cleanPin)
         _userPin.value = hashed
         savePinSecurely("user_pin", hashed)
-        val uid = FirebaseManager.auth?.currentUser?.uid
+        if (cleanPin.length == 4 && cleanPin.all { it.isDigit() }) {
+            savePinSecurely("local_pin", cleanPin)
+        } else {
+            savePinSecurely("local_pin", hashed)
+        }
+        val uid = _firebaseUserId.value ?: FirebaseManager.auth?.currentUser?.uid
         if (uid != null && hashed.isNotEmpty()) {
             FirebaseManager.firestore?.collection("users")?.document(uid)?.update("pin", hashed)
         }
     }
 
     fun verifyUserPin(inputPin: String): Boolean {
-        val stored = _userPin.value.ifEmpty { getPinSecurely("user_pin", "") }
-        return SecurityUtils.verifyPin(inputPin, stored)
+        if (inputPin.length != 4 || !inputPin.all { it.isDigit() }) return false
+        val stored = _userPin.value.ifEmpty {
+            val p1 = getPinSecurely("user_pin", "")
+            if (p1.isNotEmpty()) p1 else getPinSecurely("local_pin", "")
+        }
+        if (SecurityUtils.verifyPin(inputPin, stored)) return true
+
+        val localP = getPinSecurely("local_pin", "")
+        if (localP.isNotEmpty() && SecurityUtils.verifyPin(inputPin, localP)) return true
+
+        val userP = getPinSecurely("user_pin", "")
+        if (userP.isNotEmpty() && SecurityUtils.verifyPin(inputPin, userP)) return true
+
+        val cleanEmail = _userEmail.value.trim().lowercase().replace("[^a-z0-9]".toRegex(), "_")
+        if (cleanEmail.isNotEmpty()) {
+            val googlePin = getPinSecurely("google_pin_$cleanEmail", "")
+            if (googlePin.isNotEmpty() && SecurityUtils.verifyPin(inputPin, googlePin)) return true
+        }
+        return false
     }
 
     
@@ -3540,6 +3759,12 @@ class DeliveryViewModel : WalletViewModel() {
             startRealTimeTrackingListener(parcelId)
             checkRouteTrafficViaMapbox(found.pickupAddress, found.deliveryAddress)
         }
+    }
+
+    fun selectParcel(parcel: Parcel) {
+        _selectedParcel.value = parcel
+        startRealTimeTrackingListener(parcel.id)
+        checkRouteTrafficViaMapbox(parcel.pickupAddress, parcel.deliveryAddress)
     }
 
     fun searchAndTrackParcel(context: Context, trackingNumber: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
@@ -4316,6 +4541,150 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    /**
+     * Creates distinct Parcel entities for each destination stop in a batch booking under a shared batchId.
+     * Each stop has its own tracking ID, independent status lifecycle, receiver details, and handover OTP.
+     */
+    fun confirmBatchStopsBooking(
+        pickupAddress: String,
+        senderName: String,
+        senderPhone: String,
+        stops: List<BatchDestinationItem>,
+        totalCost: Double,
+        onComplete: ((Boolean, String) -> Unit)? = null
+    ) {
+        if (stops.isEmpty()) {
+            onComplete?.invoke(false, "Please add at least one destination stop.")
+            return
+        }
+        val sPhone = senderPhone.ifBlank { _userPhone.value }
+        if (sPhone.isNotBlank() && !isValidNigerianPhoneNumber(sPhone)) {
+            onComplete?.invoke(false, "Sender phone number is invalid. Please enter a valid Nigerian mobile number.")
+            return
+        }
+        val invalidStop = stops.find { it.recipientPhone.isNotBlank() && !isValidNigerianPhoneNumber(it.recipientPhone) }
+        if (invalidStop != null) {
+            onComplete?.invoke(false, "Invalid phone number for recipient '${invalidStop.recipientName}'.")
+            return
+        }
+        if (_walletBalance.value < totalCost) {
+            com.esdispatch.util.SoundManager.playErrorBuzz()
+            onComplete?.invoke(false, "Insufficient wallet balance (₦${String.format("%,.0f", totalCost)} needed).")
+            return
+        }
+
+        val uid = _firebaseUserId.value
+        val batchId = "BATCH-${System.currentTimeMillis().toString().takeLast(6)}"
+        val costPerStop = totalCost / stops.size
+
+        fun executeBatchCreation() {
+            val newParcels = mutableListOf<Parcel>()
+            val newNotifications = mutableListOf<NotificationItem>()
+            val currentTime = System.currentTimeMillis()
+
+            stops.forEachIndexed { index, stop ->
+                val parcelId = "PC-${currentTime.toString().takeLast(6)}-${index + 1}"
+                val otp = (1000..9999).random().toString()
+                val itemName = if (stop.itemName.isNotBlank()) stop.itemName else "Batch Delivery #${index + 1}"
+                val parcel = Parcel(
+                    id = parcelId,
+                    itemName = itemName,
+                    imageUrl = "https://images.unsplash.com/photo-1589409514187-c21d14bf0d13?w=100&h=100&fit=crop",
+                    status = ParcelStatus.PENDING,
+                    pickupAddress = pickupAddress.ifBlank { "Unspecified Pickup" },
+                    deliveryAddress = stop.destinationAddress.ifBlank { "Unspecified Delivery" },
+                    senderName = senderName.ifBlank { _userName.value.ifBlank { "Engraced Member" } },
+                    senderPhone = sPhone,
+                    receiverName = stop.recipientName.ifBlank { "Recipient #${index + 1}" },
+                    receiverPhone = stop.recipientPhone,
+                    quantity = 1,
+                    weight = stop.weight.toDoubleOrNull() ?: 1.5,
+                    price = costPerStop,
+                    progress = 0.0f,
+                    userId = uid ?: "",
+                    otpCode = otp,
+                    additionalStops = "batch:$batchId"
+                )
+                newParcels.add(parcel)
+
+                val notif = NotificationItem(
+                    id = "NT-${currentTime.toString().takeLast(6)}-${index + 1}",
+                    title = "Batch Delivery #${index + 1} Booked",
+                    message = "Stop '$itemName' (#$parcelId) to ${stop.destinationAddress} booked successfully! Handover PIN: $otp",
+                    time = "Just now",
+                    parcelId = parcelId,
+                    timestamp = currentTime
+                )
+                newNotifications.add(notif)
+            }
+
+            val batchTx = Transaction(
+                id = "TX-${currentTime.toString().takeLast(6)}",
+                title = "Batch Delivery (${stops.size} Stops)",
+                date = "Today",
+                amount = -totalCost,
+                isTopUp = false,
+                type = "DEBIT",
+                reference = batchId,
+                userId = uid ?: ""
+            )
+
+            _parcels.value = newParcels + _parcels.value
+            _selectedParcel.value = newParcels.firstOrNull()
+            _notifications.value = newNotifications + _notifications.value
+            _transactions.value = listOf(batchTx) + _transactions.value
+
+            com.esdispatch.util.SoundManager.playDispatchSweep()
+
+            viewModelScope.launch {
+                repository?.saveParcels(newParcels)
+                newNotifications.forEach { repository?.saveNotification(it) }
+                repository?.saveTransaction(batchTx)
+                newParcels.forEach { syncParcel(it) }
+                if (uid != null) {
+                    com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
+                        userId = uid,
+                        amount = -totalCost,
+                        title = "Batch Delivery (${stops.size} Stops)",
+                        isTopUp = false,
+                        reference = batchId
+                    ) {}
+                    com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(uid, _loyaltyPoints.value, _deliveryCount.value)
+                }
+            }
+
+            appContext?.let { ctx ->
+                try {
+                    com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                        context = ctx,
+                        title = "Batch Booking Confirmed",
+                        message = "${stops.size} stops booked under batch $batchId. Fleet couriers will handle your dispatch.",
+                        parcelId = newParcels.firstOrNull()?.id ?: ""
+                    )
+                } catch (e: Exception) {}
+            }
+
+            onComplete?.invoke(true, "Batch delivery booked successfully!")
+        }
+
+        if (uid != null) {
+            com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, -totalCost) { success, newBal ->
+                if (!success) {
+                    com.esdispatch.util.SoundManager.playErrorBuzz()
+                    onComplete?.invoke(false, "Wallet debit failed — batch booking was NOT created. Please retry.")
+                    return@updateUserWalletBalance
+                }
+                _walletBalance.value = newBal
+                savePref("wallet_balance", newBal)
+                executeBatchCreation()
+            }
+        } else {
+            _walletBalance.value -= totalCost
+            savePref("wallet_balance", _walletBalance.value)
+            executeBatchCreation()
+        }
+    }
+
     // Wallet Actions
     
 
@@ -4726,6 +5095,9 @@ class DeliveryViewModel : WalletViewModel() {
                                 if (isDelivered && !_pushAlertsDelivered.value) continue
                                 if (isCancelled && !_pushAlertsCancelled.value) continue
 
+                                val otpCode = doc.getString("otpCode") ?: ""
+                                val pinNotice = if (otpCode.isNotBlank()) " Handover PIN: $otpCode. Give this PIN to the courier upon delivery." else ""
+
                                 val (title, message) = when (status) {
                                     "ASSIGNED" -> Pair(
                                         "Courier Assigned!",
@@ -4741,7 +5113,7 @@ class DeliveryViewModel : WalletViewModel() {
                                     )
                                     "ARRIVED" -> Pair(
                                         "Courier Arrived!",
-                                        "Courier has arrived at the destination for '$itemName' (#${id.take(8)})!"
+                                        "Courier has arrived at your destination for '$itemName' (#${id.take(8)})!$pinNotice"
                                     )
                                     "DELIVERED" -> Pair(
                                         "Delivery Completed!",
@@ -6880,22 +7252,29 @@ object SecurityUtils {
     
     fun hashPin(pin: String): String {
         if (pin.isEmpty()) return ""
+        val cleanPin = pin.trim()
+        // If pin is already a 64-character SHA-256 hexadecimal hash, do NOT re-hash it!
+        if (cleanPin.length == 64 && cleanPin.all { it in "0123456789abcdefABCDEF" }) {
+            return cleanPin.lowercase()
+        }
         return try {
             val md = java.security.MessageDigest.getInstance("SHA-256")
-            val digest = md.digest((pin + SALT).toByteArray(Charsets.UTF_8))
+            val digest = md.digest((cleanPin + SALT).toByteArray(Charsets.UTF_8))
             digest.joinToString("") { "%02x".format(it) }
         } catch (e: Exception) {
-            pin
+            cleanPin
         }
     }
 
     fun verifyPin(inputPin: String, storedPinOrHash: String): Boolean {
         if (inputPin.isEmpty() || storedPinOrHash.isEmpty()) return false
-        val hashedInput = hashPin(inputPin)
-        if (storedPinOrHash == hashedInput) return true
-        if (storedPinOrHash == inputPin) return true
-        val legacyDecrypted = decryptLegacy(storedPinOrHash)
-        if (legacyDecrypted == inputPin) return true
+        val cleanInput = inputPin.trim()
+        val cleanStored = storedPinOrHash.trim()
+        val hashedInput = hashPin(cleanInput)
+        if (cleanStored.equals(hashedInput, ignoreCase = true)) return true
+        if (cleanStored == cleanInput) return true
+        val legacyDecrypted = decryptLegacy(cleanStored)
+        if (legacyDecrypted == cleanInput) return true
         return false
     }
     

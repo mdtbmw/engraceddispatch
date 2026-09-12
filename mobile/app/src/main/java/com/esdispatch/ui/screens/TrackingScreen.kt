@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import android.content.Intent
 import android.net.Uri
@@ -317,11 +318,18 @@ fun ActiveTrackingScreen(
     }
 
     val userParcels by viewModel.parcels.collectAsState()
-    val activeParcel = selectedParcel ?: userParcels.firstOrNull { 
-        it.status == ParcelStatus.TRANSIT || 
-        it.status == ParcelStatus.PENDING || 
-        it.status == ParcelStatus.ASSIGNED || 
-        it.status == ParcelStatus.OUT_FOR_DELIVERY 
+    val enableQrCodeHandover by viewModel.enableQrCodeHandover.collectAsState()
+    val activeParcels = remember(userParcels) {
+        userParcels.filter { 
+            it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED
+        }
+    }
+    val activeParcel = remember(selectedParcel, activeParcels) {
+        if (selectedParcel != null && selectedParcel?.status != ParcelStatus.DELIVERED && selectedParcel?.status != ParcelStatus.CANCELLED) {
+            selectedParcel
+        } else {
+            activeParcels.firstOrNull()
+        }
     }
 
     val previewParcel = remember {
@@ -666,6 +674,49 @@ fun ActiveTrackingScreen(
                     SupportButton(onClick = { showSupportDialog = true })
                 }
             )
+
+            // Multi-delivery Switcher Carousel
+            if (activeParcels.size > 1) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    items(activeParcels) { p ->
+                        val isSelected = p.id == activeParcel?.id
+                        val chipBg = if (isSelected) (if (isDark) Obsidian else Gold) else (if (isDark) Gold.copy(alpha = 0.25f) else Obsidian.copy(alpha = 0.15f))
+                        val chipText = if (isSelected) (if (isDark) Gold else Obsidian) else (if (isDark) Obsidian else Gold)
+                        Surface(
+                            onClick = { viewModel.selectParcel(p) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = chipBg,
+                            border = BorderStroke(1.dp, if (isSelected) (if (isDark) Obsidian else Gold) else Color.Transparent),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSelected) chipText else SuccessGreen)
+                                )
+                                Text(
+                                    text = "${p.itemName.ifBlank { "Shipment" }.take(14)} (#${p.id.takeLast(4)})",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
+                                    color = chipText
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             if (showSupportDialog) {
                 SupportDialog(onDismiss = { showSupportDialog = false })
@@ -1324,77 +1375,74 @@ fun ActiveTrackingScreen(
 
                                                 HorizontalDivider(color = if (isDark) BorderDark else BorderLight)
 
-                                                // QR Code Parcel Handover Verification
-                                                Column(
-                                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) {
-                                                    Text(
-                                                        text = "QR HANDOVER VERIFICATION",
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Black,
-                                                        letterSpacing = 1.sp,
-                                                        color = if (isDark) GoldLight else Obsidian
-                                                    )
-                                                    Spacer(modifier = Modifier.height(8.dp))
-                                                    
-                                                    // Beautiful Dynamic QR Code Drawing
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(120.dp)
-                                                            .background(Color.White, RoundedCornerShape(12.dp))
-                                                            .padding(10.dp),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        QRCodeImage(
-                                                            text = selectedParcel?.id ?: "INVALID_ID",
-                                                            sizeDp = 100.dp
-                                                        )
-                                                    }
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Text(
-                                                        text = "Show this QR to courier to verify parcel handover.",
-                                                        fontSize = 10.sp,
-                                                        color = TextGray,
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                }
-
-                                                HorizontalDivider(color = if (isDark) BorderDark else BorderLight)
-
-                                                // 4-Digit Handover OTP Display
+                                                // Prominent 4-Digit Handover PIN Card
                                                 if (parcel.otpCode.isNotBlank() || parcel.status !in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED)) {
                                                     val displayOtp = parcel.otpCode.ifBlank { "8421" }
                                                     Column(
                                                         horizontalAlignment = Alignment.CenterHorizontally,
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .padding(vertical = 4.dp)
+                                                            .padding(vertical = 6.dp)
                                                     ) {
+                                                        if (parcel.status == ParcelStatus.ARRIVED) {
+                                                            Surface(
+                                                                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                                                                shape = RoundedCornerShape(14.dp),
+                                                                color = if (isDark) Charcoal else GoldenWhiteLight,
+                                                                border = BorderStroke(1.5.dp, Gold)
+                                                            ) {
+                                                                Row(
+                                                                    modifier = Modifier.padding(12.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                                ) {
+                                                                    Box(
+                                                                        modifier = Modifier.size(36.dp).clip(CircleShape).background(Gold),
+                                                                        contentAlignment = Alignment.Center
+                                                                    ) {
+                                                                        Icon(Icons.Filled.DirectionsBike, contentDescription = null, tint = Obsidian, modifier = Modifier.size(20.dp))
+                                                                    }
+                                                                    Column(modifier = Modifier.weight(1f)) {
+                                                                        Text(
+                                                                            text = "Courier Has Arrived!",
+                                                                            fontSize = 12.sp,
+                                                                            fontWeight = FontWeight.Black,
+                                                                            color = if (isDark) GoldLight else Obsidian
+                                                                        )
+                                                                        Text(
+                                                                            text = "Please meet your courier and share your 4-digit Handover PIN below to receive your package.",
+                                                                            fontSize = 11.sp,
+                                                                            color = TextGray
+                                                                        )
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
                                                         Text(
-                                                            text = "HANDOVER OTP CODE",
-                                                            fontSize = 11.sp,
+                                                            text = "HANDOVER PIN",
+                                                            fontSize = 12.sp,
                                                             fontFamily = SpaceGrotesk,
                                                             fontWeight = FontWeight.Black,
                                                             letterSpacing = 1.sp,
                                                             color = if (isDark) GoldLight else Obsidian
                                                         )
-                                                        Spacer(modifier = Modifier.height(8.dp))
+                                                        Spacer(modifier = Modifier.height(10.dp))
                                                         Row(
-                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
                                                             displayOtp.forEach { digit ->
                                                                 Box(
                                                                     modifier = Modifier
-                                                                        .size(44.dp)
-                                                                        .background(if (isDark) LuxuryBlack else Color.White, RoundedCornerShape(10.dp))
-                                                                        .border(1.5.dp, Gold, RoundedCornerShape(10.dp)),
+                                                                        .size(50.dp)
+                                                                        .background(if (isDark) LuxuryBlack else Color.White, RoundedCornerShape(12.dp))
+                                                                        .border(2.dp, Gold, RoundedCornerShape(12.dp)),
                                                                     contentAlignment = Alignment.Center
                                                                 ) {
                                                                     Text(
                                                                         text = digit.toString(),
-                                                                        fontSize = 20.sp,
+                                                                        fontSize = 22.sp,
                                                                         fontWeight = FontWeight.Black,
                                                                         fontFamily = SpaceGrotesk,
                                                                         color = if (isDark) Gold else Obsidian
@@ -1402,9 +1450,49 @@ fun ActiveTrackingScreen(
                                                                 }
                                                             }
                                                         }
+                                                        Spacer(modifier = Modifier.height(8.dp))
+                                                        Text(
+                                                            text = "Provide this 4-digit PIN to courier upon delivery to verify handover",
+                                                            fontSize = 11.sp,
+                                                            color = TextGray,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                    }
+
+                                                    HorizontalDivider(color = if (isDark) BorderDark else BorderLight)
+                                                }
+
+                                                // Optional QR Code Handover (only shown if admin enabled enableQrCodeHandover)
+                                                if (enableQrCodeHandover) {
+                                                    Column(
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(vertical = 6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "QR HANDOVER VERIFICATION",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Black,
+                                                            letterSpacing = 1.sp,
+                                                            color = if (isDark) GoldLight else Obsidian
+                                                        )
+                                                        Spacer(modifier = Modifier.height(8.dp))
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(120.dp)
+                                                                .background(Color.White, RoundedCornerShape(12.dp))
+                                                                .padding(10.dp),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            QRCodeImage(
+                                                                text = activeParcel?.id ?: "INVALID_ID",
+                                                                sizeDp = 100.dp
+                                                            )
+                                                        }
                                                         Spacer(modifier = Modifier.height(6.dp))
                                                         Text(
-                                                            text = "Provide this 4-digit code to courier upon delivery",
+                                                            text = "Show this QR to courier to verify parcel handover.",
                                                             fontSize = 10.sp,
                                                             color = TextGray,
                                                             textAlign = TextAlign.Center

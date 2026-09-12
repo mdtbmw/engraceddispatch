@@ -130,16 +130,23 @@ class MainActivity : FragmentActivity() {
         lastBackgroundTime = System.currentTimeMillis()
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (lastBackgroundTime > 0L && System.currentTimeMillis() - lastBackgroundTime > 30_000L) {
+    override fun onStop() {
+        super.onStop()
+        if (::viewModel.isInitialized && !viewModel.isGoogleAuthInProgress.value) {
             val prefs = getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
             val hasLocalUser = !prefs.getString("local_uid", "").isNullOrEmpty()
             val hasFirebaseUser = com.esdispatch.data.FirebaseManager.auth?.currentUser != null
-            if (hasLocalUser || hasFirebaseUser) {
+            val hasPin = viewModel.userPin.value.isNotBlank() ||
+                    !prefs.getString("local_pin", "").isNullOrEmpty() ||
+                    !prefs.getString("user_pin", "").isNullOrEmpty()
+            if ((hasLocalUser || hasFirebaseUser) && hasPin) {
                 viewModel.lockApp()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

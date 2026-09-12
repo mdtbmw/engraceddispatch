@@ -51,15 +51,7 @@ import com.esdispatch.util.CargoFeasibilityValidator
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
 import android.content.Intent
-
-data class BatchDestinationItem(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    val destinationAddress: String = "",
-    val recipientName: String = "",
-    val recipientPhone: String = "",
-    val itemName: String = "",
-    val weight: String = "1.5"
-)
+import com.esdispatch.data.BatchDestinationItem
 
 val beninLandmarks = listOf(
     "Ring Road (King's Square), City Center, Benin City",
@@ -998,21 +990,13 @@ fun BatchBookingScreen(
                 walletBalance = viewModel.walletBalance.collectAsState().value,
                 onConfirmWalletPayment = {
                     showCheckoutSheet = false
-                    val firstStop = batchStops.firstOrNull()
-                    viewModel.updateDraftPickup(pickup)
-                    viewModel.updateDraftDelivery(firstStop?.destinationAddress ?: "")
-                    viewModel.updateDraftSenderInfo(sName, sPhone)
-                    viewModel.updateDraftReceiverInfo(firstStop?.recipientName ?: "", firstStop?.recipientPhone ?: "")
-                    viewModel.updateDraftSpecs(
-                        quantity = batchStops.size,
-                        weight = totalBatchWeight,
-                        length = 20,
-                        width = 15,
-                        height = 10
-                    )
-                    viewModel.updateDraftAdditionalStops(batchStops.drop(1).map { it.destinationAddress })
-                    viewModel.finalizeDraftPrice("Batch", quotePrice)
-                    viewModel.confirmBooking { ok, msg ->
+                    viewModel.confirmBatchStopsBooking(
+                        pickupAddress = pickup,
+                        senderName = sName,
+                        senderPhone = sPhone,
+                        stops = batchStops,
+                        totalCost = quotePrice
+                    ) { ok, msg ->
                         if (ok) {
                             onNavigate("PaymentSuccess")
                         } else {
@@ -1034,22 +1018,14 @@ fun BatchBookingScreen(
                 amount = pendingAmount,
                 onPaymentComplete = { reference ->
                     showPaystackSheet = false
-                    val firstStop = batchStops.firstOrNull()
                     viewModel.topUpWallet(pendingAmount)
-                    viewModel.updateDraftPickup(pickup)
-                    viewModel.updateDraftDelivery(firstStop?.destinationAddress ?: "")
-                    viewModel.updateDraftSenderInfo(sName, sPhone)
-                    viewModel.updateDraftReceiverInfo(firstStop?.recipientName ?: "", firstStop?.recipientPhone ?: "")
-                    viewModel.updateDraftSpecs(
-                        quantity = batchStops.size,
-                        weight = totalBatchWeight,
-                        length = 20,
-                        width = 15,
-                        height = 10
-                    )
-                    viewModel.updateDraftAdditionalStops(batchStops.drop(1).map { it.destinationAddress })
-                    viewModel.finalizeDraftPrice("Batch", quotePrice)
-                    viewModel.confirmBooking { ok, msg ->
+                    viewModel.confirmBatchStopsBooking(
+                        pickupAddress = pickup,
+                        senderName = sName,
+                        senderPhone = sPhone,
+                        stops = batchStops,
+                        totalCost = quotePrice
+                    ) { ok, msg ->
                         if (ok) {
                             onNavigate("PaymentSuccess")
                         } else {

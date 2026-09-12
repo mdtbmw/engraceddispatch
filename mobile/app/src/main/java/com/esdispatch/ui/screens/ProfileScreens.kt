@@ -95,6 +95,8 @@ fun ProfileScreen(
     }
     val totalEarned by viewModel.totalEarned.collectAsState()
     val deliveryCount by viewModel.deliveryCount.collectAsState()
+    val userParcels by viewModel.parcels.collectAsState()
+    val effectiveShipmentCount = maxOf(deliveryCount, userParcels.size)
     val userRating by viewModel.userRating.collectAsState()
     val memberSince by viewModel.memberSince.collectAsState()
     val isDark by viewModel.darkModeEnabled.collectAsState()
@@ -428,7 +430,7 @@ fun ProfileScreen(
                                     Column {
                                         Text("DELIVERIES", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
                                         Spacer(modifier = Modifier.height(2.dp))
-                                        Text("$deliveryCount", fontSize = 15.sp, fontWeight = FontWeight.Black, color = AppTextColor)
+                                        Text("$effectiveShipmentCount", fontSize = 15.sp, fontWeight = FontWeight.Black, color = AppTextColor)
                                     }
                                     Column {
                                         Text("TIPS EARNED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
@@ -479,7 +481,7 @@ fun ProfileScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = deliveryCount.toString(),
+                                    text = effectiveShipmentCount.toString(),
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Black,
                                     color = Obsidian
@@ -669,20 +671,20 @@ fun ProfileScreen(
                     // 2. Becoming a Vendor Card (if marketplace enabled and not rider)
                     if (marketplaceEnabled && userRole != "rider") {
                         Spacer(modifier = Modifier.height(14.dp))
-                        val meetsDeliveryReq = deliveryCount >= 10
+                        val meetsDeliveryReq = effectiveShipmentCount >= 10
                         val stepProgress = when {
                             isVendorVerified -> 1f
                             vendorKycSubmitted -> 0.85f
                             vendorStoreExists -> 0.6f
                             meetsDeliveryReq -> 0.45f
-                            else -> (deliveryCount / 10f).coerceIn(0f, 0.4f)
+                            else -> (effectiveShipmentCount / 10f).coerceIn(0f, 0.4f)
                         }
                         val statusText = when {
                             isVendorVerified -> "Store LIVE on Marketplace!"
                             vendorKycSubmitted -> "KYC submitted — awaiting review"
                             vendorStoreExists -> "Store created — complete KYC"
                             meetsDeliveryReq -> "Milestone unlocked! Register store"
-                            else -> "Complete ${10 - deliveryCount} more deliveries to unlock"
+                            else -> "Complete ${10 - effectiveShipmentCount} more deliveries to unlock"
                         }
 
                         Surface(
@@ -3088,8 +3090,13 @@ fun NotificationsScreen(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
+                                            val formattedTime = if (item.timestamp > 0L) {
+                                                com.esdispatch.data.FirebaseManager.formatTimestampToHumanDate(item.timestamp)
+                                            } else {
+                                                item.time
+                                            }
                                             Text(
-                                                text = item.time,
+                                                text = formattedTime,
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Medium,
                                                 color = TextGray,
