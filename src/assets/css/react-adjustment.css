@@ -797,3 +797,23 @@ a.zubuz-connect-login {
     align-items: center;
   }
 }
+
+/* =========================================================
+   ADMIN PORTAL UI ISOLATION RESETS
+   Eliminates legacy template paragraph margins & input padding overrides
+   ========================================================= */
+#notif-area p,
+#notif-area div,
+#notif-area span {
+  margin-bottom: 0 !important;
+}
+
+input.admin-search-input,
+.group > input.admin-search-input,
+.group > input[type="text"] {
+  padding-left: 3rem !important;
+  padding-right: 2.25rem !important;
+  height: 2.5rem !important;
+  font-size: 0.75rem !important;
+}
+
