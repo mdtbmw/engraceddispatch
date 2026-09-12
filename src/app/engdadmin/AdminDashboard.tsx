@@ -293,7 +293,7 @@ function ConfirmModal({ show, title, message, confirmLabel, onConfirm, onCancel 
   </div>;
 }
 function SearchInput({ value, onChange, placeholder = "Search...", className = "" }: { value: string; onChange: (v: string) => void; placeholder?: string; className?: string }) {
-  return <div className={"relative group flex items-center " + className}>
+  return <div className={"relative group flex items-center w-full " + className}>
     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 group-focus-within:text-[#FFB800] pointer-events-none transition-colors" />
     <input
       type="text"
@@ -1428,6 +1428,26 @@ interface HeaderProps {
   onClearAllNotifs?: () => void;
 }
 
+function formatNotifTime(n: any): string {
+  const ts = n.timestamp?.toMillis ? n.timestamp.toMillis() : (n.createdAt?.toMillis ? n.createdAt.toMillis() : (typeof n.timestamp === "number" ? n.timestamp : (n.createdAt ? new Date(n.createdAt).getTime() : null)));
+  if (!ts) {
+    if (n.time && n.time !== "Just now") return n.time;
+    return "Just now";
+  }
+  const now = Date.now();
+  const diffMs = now - ts;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 function Header({ 
   searchQuery, setSearchQuery, unreadCount, setShowNotifs, showNotifs, setShowUserMenu, showUserMenu, 
   currentUser, userRole, toggleDark, dark, setMobileSidebar, notifications, markNotifRead,
@@ -1444,17 +1464,8 @@ function Header({
         </div>
       </div>
       <div className="flex items-center gap-2 sm:gap-3">
-        <div className="hidden sm:flex items-center h-10 border border-gray-300 dark:border-white/15 rounded-full pl-4 pr-1.5 w-[220px] lg:w-[300px] shadow-2xs bg-white dark:bg-[#1a1a1a] transition-all focus-within:border-[#FFB800] focus-within:ring-2 focus-within:ring-[#FFB800]/25">
-          <input
-            type="text"
-            placeholder="Search console..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="outline-none flex-1 text-xs bg-transparent font-medium text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
-          />
-          <button className="bg-[#FFB800] text-[#111] w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#FFB800]/90 transition-colors cursor-pointer shrink-0">
-            <Search size={14} strokeWidth={2.5} />
-          </button>
+        <div className="hidden sm:block w-[220px] lg:w-[300px]">
+          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search console..." />
         </div>
         <button 
           onClick={toggleDark} 
@@ -1477,13 +1488,13 @@ function Header({
           </button>
 
           {showNotifs && (
-            <div className="absolute right-0 top-full mt-2 w-[310px] sm:w-[320px] max-w-[calc(100vw-1rem)] bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-2xl shadow-xl overflow-hidden z-50 flex flex-col">
+            <div className="absolute right-0 top-full mt-2 w-[340px] sm:w-[380px] max-w-[calc(100vw-1.5rem)] bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-2xl shadow-2xl overflow-hidden z-50 flex flex-col animate-scale-in">
               {/* Compact Header */}
-              <div className="px-3 py-2 border-b border-gray-100 dark:border-white/10 flex items-center justify-between bg-gray-50 dark:bg-white/5 shrink-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-wider">Notifications</span>
+              <div className="px-4 py-2.5 border-b border-gray-100 dark:border-white/10 flex items-center justify-between bg-gray-50 dark:bg-white/5 shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-wider">Notifications</span>
                   {unreadCount > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-[#FFB800] text-[#111]">
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-[#FFB800] text-[#111]">
                       {unreadCount} new
                     </span>
                   )}
@@ -1491,20 +1502,20 @@ function Header({
                 {unreadCount > 0 && onMarkAllNotifsRead && (
                   <button 
                     onClick={(e) => { e.stopPropagation(); onMarkAllNotifsRead(); }} 
-                    className="text-[10px] font-bold text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer"
+                    className="text-[11px] font-bold text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer"
                   >
                     Mark all read
                   </button>
                 )}
               </div>
 
-              {/* High-Density Ultra-Compact List */}
-              <div className="max-h-[250px] overflow-y-auto divide-y divide-gray-100 dark:divide-white/5">
+              {/* High-Density Clean List — EXACT Marketplace & Stores standard */}
+              <div className="max-h-[300px] overflow-y-auto divide-y divide-gray-100 dark:divide-white/5">
                 {notifications.length === 0 ? (
-                  <div className="py-6 px-4 text-center">
-                    <Bell className="w-5 h-5 text-gray-300 dark:text-gray-600 mx-auto mb-1.5 opacity-60" />
-                    <p className="text-[11px] text-gray-600 dark:text-gray-400 font-bold">No notifications</p>
-                    <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5">Alerts appear here in real-time.</p>
+                  <div className="py-8 px-4 text-center">
+                    <Bell className="w-6 h-6 text-gray-300 dark:text-gray-600 mx-auto mb-2 opacity-60" />
+                    <p className="text-xs text-gray-600 dark:text-gray-400 font-bold">No notifications</p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Alerts appear here in real-time.</p>
                   </div>
                 ) : (
                   notifications.map((n: any) => {
@@ -1515,27 +1526,39 @@ function Header({
                       <div 
                         key={n.id} 
                         onClick={() => markNotifRead(n.id)} 
-                        className={"py-2 px-3 flex items-start gap-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer " + (n.read ? "opacity-75" : "bg-[#FFB800]/5")}
+                        className={`px-3.5 py-2.5 flex items-center gap-3 transition-colors cursor-pointer border-l-2 ${
+                          !n.read 
+                            ? "bg-[#FFB800]/10 border-l-[#FFB800] hover:bg-[#FFB800]/15" 
+                            : "bg-transparent border-l-transparent hover:bg-black/5 dark:hover:bg-white/5 opacity-80"
+                        }`}
                       >
-                        <div className={"w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 " + (
-                          n.read 
-                            ? "bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-gray-500" 
-                            : isOrder 
-                              ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
-                              : isWallet 
-                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                                : "bg-[#FFB800]/20 text-amber-900 dark:text-[#FFB800] border border-[#FFB800]/30"
-                        )}>
-                          {isOrder ? <Package size={12} /> : isWallet ? <DollarSign size={12} /> : isUser ? <User size={12} /> : <Bell size={12} />}
+                        {/* Icon on the Left */}
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                          isOrder 
+                            ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                            : isWallet 
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                              : isUser 
+                                ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                                : "bg-[#FFB800]/20 text-amber-900 dark:text-[#FFB800]"
+                        }`}>
+                          {isOrder ? <Package size={15} /> : isWallet ? <DollarSign size={15} /> : isUser ? <User size={15} /> : <Bell size={15} />}
                         </div>
+
+                        {/* Text Stack: Title on top, Subtitle right below it */}
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-1.5">
-                            <p className="text-[11px] font-bold text-gray-900 dark:text-white truncate">{n.title}</p>
-                            <span className="text-[9px] text-gray-400 dark:text-gray-500 shrink-0 font-medium">{n.time || "Just now"}</span>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                              {n.title}
+                            </p>
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium shrink-0 whitespace-nowrap">
+                              {formatNotifTime(n)}
+                            </span>
                           </div>
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5 leading-snug">{n.description}</p>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium truncate mt-0.5">
+                            {n.description}
+                          </p>
                         </div>
-                        {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-[#FFB800] shrink-0 mt-1.5" />}
                       </div>
                     );
                   })
@@ -1543,7 +1566,7 @@ function Header({
               </div>
 
               {/* Compact Footer */}
-              <div className="py-1.5 px-3 bg-gray-50 dark:bg-white/5 border-t border-gray-100 dark:border-white/10 flex items-center justify-between text-[10px] shrink-0">
+              <div className="py-2 px-3.5 bg-gray-50 dark:bg-white/5 border-t border-gray-100 dark:border-white/10 flex items-center justify-between text-[11px] shrink-0">
                 <span className="text-gray-500 dark:text-gray-400 font-medium">{notifications.length} alerts</span>
                 {notifications.length > 0 && onClearAllNotifs && (
                   <button onClick={(e) => { e.stopPropagation(); onClearAllNotifs(); }} className="text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 font-bold transition-colors cursor-pointer">
@@ -5079,13 +5102,13 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
               {/* Rider Search & Online Filter */}
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3 top-2.5 text-gray-500 dark:text-gray-400" />
+                  <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search rider name, phone, bike #..."
                     value={riderSearch}
                     onChange={e => setRiderSearch(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl pl-12 pr-3.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                   />
                 </div>
                 <button
