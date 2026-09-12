@@ -132,7 +132,7 @@ service cloud.firestore {
           request.auth.token.email.matches('(?i).*engraced.*') ||
           request.auth.token.email.matches('(?i).*esdispatch.*')
         ));
-      allow delete: if isSuperAdmin();
+      allow delete: if isAdmin() || isSuperAdmin();
 
       match /ratings/{ratingId} {
         allow read: if true;

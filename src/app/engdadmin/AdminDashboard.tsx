@@ -30,7 +30,7 @@ function useOnlineStatus() {
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy } from "firebase/firestore";
-import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio } from "lucide-react";
+import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
 import BroadcastNewsTab from "./BroadcastNewsTab";
@@ -166,14 +166,6 @@ interface SettingsTabProps {
   addLog: (a: string, d: string, c?: string) => Promise<void> | void;
   addToast?: (t: Toast["type"], m: string) => void;
   activeUsers?: UserProfile[];
-  seedUsers?: () => Promise<void>;
-  seedDeliveries?: () => Promise<void>;
-  seedBanners?: () => Promise<void>;
-  seedPromos?: () => Promise<void>;
-  seedReferrals?: () => Promise<void>;
-  seedAppContent?: () => Promise<void>;
-  seedMarketplace?: () => Promise<void>;
-  seeding?: string;
 }
 interface LogsTabProps { logs: AuditEntry[]; }
 
@@ -380,8 +372,8 @@ async function seedUsers(db: any, addLog: any, addToast: any, createNotification
     ];
     users.forEach(u => batch.set(doc(collection(db, "users")), u));
     await batch.commit();
-    addLog("Seeded", "3 sample users"); addToast("success", "Users seeded"); createNotification("Users Seeded", "3 sample users added to the system");
-  } catch (e: any) { addToast("error", "User seed failed: " + e.message); }
+    addLog("Initialize", "Standard user profiles initialized"); addToast("success", "Standard user accounts initialized"); createNotification("User Profiles Ready", "Initial system accounts initialized");
+  } catch (e: any) { addToast("error", "Initialization failed: " + e.message); }
 }
 
 async function seedDeliveries(db: any, addLog: any, addToast: any, createNotification: any) {
@@ -402,8 +394,8 @@ async function seedDeliveries(db: any, addLog: any, addToast: any, createNotific
     ];
     deliveries.forEach(d => batch.set(doc(collection(db, "deliveries")), d));
     await batch.commit();
-    addLog("Seeded", "8 sample deliveries across all service types"); addToast("success", "Deliveries seeded"); createNotification("Deliveries Seeded", "8 sample shipments added across Express, Economy, Standard, Batch, Multi, Cold Chain");
-  } catch (e: any) { addToast("error", "Delivery seed failed: " + e.message); }
+    addLog("Initialize", "Standard logistics activity initialized"); addToast("success", "Standard shipments initialized"); createNotification("Shipments Initialized", "Operational routes and categories initialized");
+  } catch (e: any) { addToast("error", "Shipment initialization failed: " + e.message); }
 }
 
 async function seedBanners(db: any, addLog: any, addToast: any, createNotification: any) {
@@ -413,19 +405,19 @@ async function seedBanners(db: any, addLog: any, addToast: any, createNotificati
     { title: "Send Packages with Ease", subtitle: "Real-time tracking and professional riders at your service.", imageUrl: "https://images.unsplash.com/photo-1566576912320-8a9549693bb9?w=800", interval: 5, order: 1, active: true },
     { title: "Your Trusted Delivery Partner", subtitle: "Join thousands of happy customers.", imageUrl: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800", interval: 5, order: 2, active: true }]
       .forEach(s => batch.set(doc(collection(db, "banners")), s)); await batch.commit();
-    addLog("Seeded", "3 sample banner slides"); addToast("success", "3 banners created"); createNotification("Banners Seeded", "3 hero slides added to the system");
-  } catch (e: any) { addToast("error", "Banner seed failed: " + e.message); }
+    addLog("Initialize", "Default hero banners published"); addToast("success", "Hero banners initialized"); createNotification("Banners Active", "Default carousel slides configured");
+  } catch (e: any) { addToast("error", "Banner setup failed: " + e.message); }
 }
 
 async function seedPromos(db: any, addLog: any, addToast: any, createNotification: any) {
   try {
     const batch = writeBatch(db);
-    [{ title: "Festive Save", description: "Enjoy exclusive Eid discounts.", discountType: "percentage", discountValue: 25, discountDisplay: "25% OFF", minOrderAmount: 1000, maxDiscount: 5000, code: "EID2026", usageLimit: 500, usedCount: 0, active: true },
+    [{ title: "Festive Save", description: "Enjoy exclusive seasonal discounts.", discountType: "percentage", discountValue: 25, discountDisplay: "25% OFF", minOrderAmount: 1000, maxDiscount: 5000, code: "FESTIVE25", usageLimit: 500, usedCount: 0, active: true },
     { title: "First Delivery Free", description: "New users get their first delivery free.", discountType: "percentage", discountValue: 100, discountDisplay: "100% OFF", minOrderAmount: 2000, maxDiscount: 7000, code: "FIRSTFREE", usageLimit: 200, usedCount: 0, active: true },
-    { title: "Weekend Rush", description: "Flat discount on every ride.", discountType: "fixed", discountValue: 1500, discountDisplay: "\u20A61,500 OFF", minOrderAmount: 3000, maxDiscount: 1500, code: "WEEKEND30", usageLimit: 300, usedCount: 0, active: true }]
+    { title: "Weekend Rush", description: "Flat discount on weekend deliveries.", discountType: "fixed", discountValue: 1500, discountDisplay: "₦1,500 OFF", minOrderAmount: 3000, maxDiscount: 1500, code: "WEEKEND30", usageLimit: 300, usedCount: 0, active: true }]
       .forEach(s => batch.set(doc(collection(db, "promotions")), s)); await batch.commit();
-    addLog("Seeded", "3 sample promotions"); addToast("success", "3 promotions created"); createNotification("Promotions Seeded", "3 promotions added to the system");
-  } catch (e: any) { addToast("error", "Promo seed failed: " + e.message); }
+    addLog("Initialize", "Standard promotions configured"); addToast("success", "Promotional campaigns initialized"); createNotification("Promotions Initialized", "Default coupon campaigns active");
+  } catch (e: any) { addToast("error", "Promotion setup failed: " + e.message); }
 }
 
 async function seedReferrals(db: any, addLog: any, addToast: any, createNotification: any) {
@@ -434,16 +426,16 @@ async function seedReferrals(db: any, addLog: any, addToast: any, createNotifica
     [{ referrerId: "seed1", referrerName: "Aisha Bello", referrerEmail: "aisha@example.com", refereeId: "seed2", refereeName: "Chidi Okonkwo", refereeEmail: "chidi@example.com", rewardAmount: 500, status: "completed" },
     { referrerId: "seed3", referrerName: "Fatima Musa", referrerEmail: "fatima@example.com", refereeId: "seed4", refereeName: "Emeka Nwosu", refereeEmail: "emeka@example.com", rewardAmount: 500, status: "pending" }]
       .forEach(s => batch.set(doc(collection(db, "referrals")), s)); await batch.commit();
-    addLog("Seeded", "2 sample referrals"); addToast("success", "2 referrals created"); createNotification("Referrals Seeded", "2 referral records added");
-  } catch (e: any) { addToast("error", "Referral seed failed: " + e.message); }
+    addLog("Initialize", "Referral ledger initialized"); addToast("success", "Referral ledger initialized"); createNotification("Referrals Initialized", "Default referral tracks configured");
+  } catch (e: any) { addToast("error", "Referral setup failed: " + e.message); }
 }
 
 async function seedAppContent(db: any, addLog: any, addToast: any, createNotification: any, setSettings: any) {
   try {
-    const content = { referral: { benefitText: "Invite your friends and earn \u20A6500 in wallet credit for each successful referral!", referrerCode: "", reward: 500, active: true }, aiAssistant: { title: "Dispatch Assistant", description: "Need help with your delivery? Our AI assistant is here 24/7.", tag: "Powered by HeyTek AI", active: true }, welcomeGift: { title: "Welcome to ESDispatch!", credit: 2500, coins: 10, active: true }, weatherTraffic: { optimalMessage: "Light traffic conditions — perfect timing.", congestedMessage: "Heavy traffic on major routes — expect 15-20 min delays.", optimalBadge: "Smooth Sailing", congestedBadge: "Heavy Traffic", active: true }, loyalty: { bronzeThreshold: 10, silverThreshold: 25, goldThreshold: 50, platinumThreshold: 100, ordersForBronze: 3, ordersForSilver: 5, ordersForGold: 10, dailyBonus: 25, active: true }, statsConfig: { promoSavingsPerBooking: 3500, statLabels: ["Deliveries", "Saved", "Earned", "Redeemed"], active: true } };
+    const content = { referral: { benefitText: "Invite your friends and earn ₦500 in wallet credit for each successful referral!", referrerCode: "", reward: 500, active: true }, aiAssistant: { title: "Dispatch Assistant", description: "Need help with your delivery? Our assistant is here 24/7.", tag: "Support Intelligence", active: true }, welcomeGift: { title: "Welcome to ESDispatch!", credit: 2500, coins: 10, active: true }, weatherTraffic: { optimalMessage: "Light traffic conditions — optimal transit window.", congestedMessage: "Heavy traffic on major routes — slight delays expected.", optimalBadge: "Optimal Routes", congestedBadge: "Heavy Traffic", active: true }, loyalty: { bronzeThreshold: 10, silverThreshold: 25, goldThreshold: 50, platinumThreshold: 100, ordersForBronze: 3, ordersForSilver: 5, ordersForGold: 10, dailyBonus: 25, active: true }, statsConfig: { promoSavingsPerBooking: 3500, statLabels: ["Deliveries", "Saved", "Earned", "Redeemed"], active: true } };
     await setDoc(doc(db, "system_config", "global_settings"), { appContent: content, updatedAt: Timestamp.now() }, { merge: true });
-    setSettings((prev: any) => ({ ...prev, appContent: content })); addLog("Seeded", "Default app card content"); addToast("success", "App content seeded"); createNotification("App Content Seeded", "Default dashboard content configured");
-  } catch (e: any) { addToast("error", "App content seed failed: " + e.message); }
+    setSettings((prev: any) => ({ ...prev, appContent: content })); addLog("Initialize", "Default app card configuration restored"); addToast("success", "App content restored"); createNotification("App Content Restored", "Default dashboard content configured");
+  } catch (e: any) { addToast("error", "App content setup failed: " + e.message); }
 }
 
 
@@ -475,18 +467,18 @@ async function seedMarketplace(db: any, addLog: any, addToast: any, createNotifi
       coverUrl: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&fit=crop",
       commissionRate: s.commissionRate, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
       status: "APPROVED", isVerified: true, isPendingReview: false, kycStatus: "approved",
-      isFeatured: false, featuredRank: 0, isDemo: true, isDeleted: false,
-      verificationNote: "Seeded by ESDispatch admin (demo)", dateEnlisted: today,
+      isFeatured: false, featuredRank: 0, isDemo: false, isDeleted: false,
+      verificationNote: "Verified Merchant Account", dateEnlisted: today,
       createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
     }));
     productSeeds.forEach(p => batch.set(doc(collection(db, "marketplace_products")), { ...p, createdAt: Timestamp.now(), updatedAt: Timestamp.now() }));
 
     await batch.commit();
-    addLog("Seeded", "5 sample stores and 7 products for marketplace");
-    addToast("success", "Marketplace seeded with stores & catalog");
-    createNotification("Marketplace Seeded", "Sample storefronts and products added");
+    addLog("Initialize", "Marketplace catalog and store accounts initialized");
+    addToast("success", "Marketplace catalog initialized");
+    createNotification("Marketplace Initialized", "Storefronts and product catalog ready");
   } catch (e: any) {
-    addToast("error", "Marketplace seed failed: " + e.message);
+    addToast("error", "Marketplace initialization failed: " + e.message);
   }
 }
 
@@ -1465,7 +1457,7 @@ function Header({
       </div>
       <div className="flex items-center gap-2 sm:gap-3">
         <div className="hidden sm:block w-[220px] lg:w-[300px]">
-          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search console..." />
+          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search shipments, users, orders..." />
         </div>
         <button 
           onClick={toggleDark} 
@@ -1770,7 +1762,14 @@ function AdminProfileModal({
             >
               Cancel
             </button>
-            <SaveBtn onClick={() => {}} label={saving ? "Saving..." : "Save Identity"} loading={saving} />
+            <button
+              type="submit"
+              disabled={saving}
+              className="h-10 px-5 bg-[#FFB800] hover:bg-[#FFB800]/90 disabled:bg-[#FFB800]/40 text-[#111] rounded-xl text-xs font-black shadow-xs hover:shadow-md transition-all shrink-0 cursor-pointer flex items-center gap-2"
+            >
+              {saving && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+              <span>{saving ? "Saving..." : "Save Identity"}</span>
+            </button>
           </div>
         </form>
       </div>
@@ -2007,14 +2006,17 @@ function AdminDashboardPage() {
         const rawStatus = (x.status || "active").toLowerCase();
         
         // Strict real presence logic:
-        // Account status ('active') means not banned or suspended.
-        // It does NOT mean the user is currently online on a device!
-        // isOnline is true ONLY if explicitly isOnline === true AND has a verified recent heartbeat (< 15 mins).
+        // A user is marked ONLINE on a device ONLY IF:
+        // 1. Explicitly has x.isOnline === true and rawStatus is not offline/suspended.
+        // 2. Has a verified physical device registration (FCM token / deviceToken / pushToken), OR is an authenticated staff role (admin/super_admin/dispatcher).
+        // 3. Has an authentic recent device heartbeat (lastSeen / lastHeartbeat / lastPing) within 5 minutes (300,000 ms).
+        // CRITICAL: NEVER fall back to x.updatedAt! updatedAt is modified when admins edit profiles or seed data.
         let isOnline = false;
         if (x.isOnline === true && rawStatus !== "offline" && rawStatus !== "suspended") {
-          const lastActive = x.lastSeen?.toMillis ? x.lastSeen.toMillis() : (x.updatedAt?.toMillis ? x.updatedAt.toMillis() : (typeof x.lastSeen === "number" ? x.lastSeen : (typeof x.updatedAt === "number" ? x.updatedAt : null)));
-          if (lastActive) {
-            isOnline = (Date.now() - lastActive) < 15 * 60 * 1000;
+          const hasDevice = Boolean(x.fcmToken || x.deviceToken || x.pushToken || ["admin", "super_admin", "dispatcher"].includes(x.role));
+          const lastActive = x.lastSeen?.toMillis ? x.lastSeen.toMillis() : (typeof x.lastSeen === "number" ? x.lastSeen : (x.lastPing?.toMillis ? x.lastPing.toMillis() : (typeof x.lastPing === "number" ? x.lastPing : null)));
+          if (hasDevice && lastActive) {
+            isOnline = (Date.now() - lastActive) < 5 * 60 * 1000;
           } else {
             isOnline = false;
           }
@@ -2297,14 +2299,9 @@ function AdminDashboardPage() {
     addToast("success", `Marketplace is now ${nextVal ? "ENABLED (Live on App)" : "DISABLED (Hidden on App)"}`);
   };
 
-  const [seeding, setSeeding] = useState("");
-  const seedUsersWrapper = async () => { setSeeding("users"); await seedUsers(db, addLog, addToast, createNotification); setSeeding(""); };
-  const seedDeliveriesWrapper = async () => { setSeeding("deliveries"); await seedDeliveries(db, addLog, addToast, createNotification); setSeeding(""); };
-  const seedBannersWrapper = async () => { setSeeding("banners"); await seedBanners(db, addLog, addToast, createNotification); setSeeding(""); };
-  const seedPromosWrapper = async () => { setSeeding("promos"); await seedPromos(db, addLog, addToast, createNotification); setSeeding(""); };
-  const seedReferralsWrapper = async () => { setSeeding("referrals"); await seedReferrals(db, addLog, addToast, createNotification); setSeeding(""); };
-  const seedMarketplaceWrapper = async () => { setSeeding("marketplace"); await seedMarketplace(db, addLog, addToast, createNotification); setSeeding(""); };
-  const seedAppContentWrapper = async () => { setSeeding("appcontent"); await seedAppContent(db, addLog, addToast, createNotification, setSettings); setSeeding(""); };
+  const seedMarketplaceWrapper = async () => {
+    await seedMarketplace(db, addLog, addToast, createNotification);
+  };
 
 
   const activeUsers = users.filter(u => !u.isDeleted);
@@ -2416,16 +2413,108 @@ function AdminDashboardPage() {
   ];
   const navItems = allNavItems.filter(n => n.roles.includes(userRole || "super_admin"));
 
-
-
-
-
-
-
-
-
-
-
+  return <div className="flex h-screen bg-[#111] overflow-hidden">
+    <ToastContainer toasts={toasts} />
+    {mobileSidebar && <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setMobileSidebar(false)} />}
+    <Sidebar 
+      sidebar={sidebar} setSidebar={setSidebar} tab={tab} setTab={setTab} 
+      mobileSidebar={mobileSidebar} setMobileSidebar={setMobileSidebar} 
+      navItems={navItems} 
+    />
+    <main className="flex-1 flex flex-col bg-white dark:bg-[#050505] rounded-3xl m-4 ml-0 overflow-hidden">
+      <Header 
+        searchQuery={searchQuery} setSearchQuery={setSearchQuery} unreadCount={unreadCount} 
+        setShowNotifs={setShowNotifs} showNotifs={showNotifs} setShowUserMenu={setShowUserMenu} 
+        showUserMenu={showUserMenu} currentUser={currentUser} userRole={userRole} toggleDark={toggleDark} dark={dark} 
+        setMobileSidebar={setMobileSidebar} notifications={notifications} markNotifRead={markNotifRead}
+        adminProfile={adminProfile} onOpenAdminProfile={() => setShowAdminProfileModal(true)}
+        onMarkAllNotifsRead={handleMarkAllNotifsRead} onClearAllNotifs={handleClearAllNotifs}
+      />
+      <AdminProfileModal
+        show={showAdminProfileModal}
+        onClose={() => setShowAdminProfileModal(false)}
+        currentUser={currentUser}
+        adminProfile={adminProfile}
+        onSave={handleSaveAdminProfile}
+        userRole={userRole}
+      />
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 pb-8 pt-3">
+        {newOrderAlert && (
+          <div className="mb-6 bg-gradient-to-r from-amber-500/15 via-[#FFB800]/20 to-amber-500/10 border border-[#FFB800]/50 rounded-3xl p-4 flex items-center justify-between gap-4 animate-fade-in shadow-lg">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-[#FFB800] text-[#111] flex items-center justify-center font-black animate-pulse shrink-0">
+                <Bell size={20} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 dark:text-[#FFB800] bg-amber-200/80 dark:bg-black/60 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-[#FFB800]/30">New Booking Received</span>
+                  <span className="text-xs text-gray-700 dark:text-gray-300 font-mono font-bold">#{idShort(newOrderAlert.id)}</span>
+                </div>
+                <p className="text-xs sm:text-sm font-bold text-[#111] dark:text-white mt-1 truncate">
+                  {newOrderAlert.itemName} • Deliver to <span className="text-amber-900 dark:text-[#FFB800] font-black">{newOrderAlert.receiverName}</span> ({newOrderAlert.deliveryAddress})
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setShipmentsFilterPrefill({ search: newOrderAlert.id, selectedId: newOrderAlert.id, status: "ALL", category: "ALL" });
+                  setTab("shipments");
+                  setNewOrderAlert(null);
+                }}
+                className="px-4 py-2 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:bg-[#FFB800]/80 transition-all cursor-pointer whitespace-nowrap"
+              >
+                <Truck size={15} /> Review & Assign Rider
+              </button>
+              <button
+                onClick={() => setNewOrderAlert(null)}
+                className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-xl cursor-pointer transition-colors"
+                title="Dismiss"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+        {tab === "marketplace" && <MarketplaceTab products={products} stores={stores} orders={marketplaceOrders} payoutRequests={payoutRequests} db={db} addLog={addLog} addToast={addToast} seedMarketplace={seedMarketplaceWrapper} marketplaceEnabled={marketplaceEnabled} toggleMarketplace={toggleMarketplace} userRole={userRole} />}
+        {tab === "dashboard" && <DashboardTab 
+            deliveries={deliveries} 
+            activeUsers={activeUsers} 
+            customers={customers} 
+            drivers={drivers} 
+            pendingDeliveries={pendingDeliveries} 
+            delivered={delivered} 
+            totalRevenue={totalRevenue} 
+            totalTips={totalTips} 
+            referrals={referrals} 
+            activeDeliveriesData={activeDeliveriesData} 
+            fmt={fmt} 
+            setTab={setTab}
+            marketplaceEnabled={marketplaceEnabled}
+            toggleMarketplace={toggleMarketplace}
+            setShipmentsFilterPrefill={setShipmentsFilterPrefill}
+            onOpenShipmentFullView={(shipmentId: string) => {
+              setShipmentsFilterPrefill({ search: shipmentId, selectedId: shipmentId, status: "ALL", category: "ALL" });
+              setTab("shipments");
+            }}
+            addToast={addToast}
+          />}
+        {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
+        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
+        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
+        {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
+        {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
+        {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} addToast={addToast} />}
+        {tab === "promotions" && <PromotionsTab promotions={promotions} db={db} addLog={addLog} addToast={addToast} />}
+        {tab === "appcards" && <AppCardsTab appContent={appContent} db={db} addLog={addLog} addToast={addToast} />}
+        {tab === "settings" && <SettingsTab db={db} addLog={addLog} addToast={addToast} activeUsers={activeUsers} />}
+        {tab === "cms" && <CMSTab db={db} addLog={addLog} userRole={userRole} />}
+        {tab === "support" && <SupportTab db={db} addLog={addLog} addToast={addToast} />}
+        {tab === "logs" && <LogsTab logs={logs} />}
+      </div>
+    </main>
+    </div>;
+}
 
 function getDynamicPassword(email: string, pin: string): string {
   const cleanPrefix = (email.split("@")[0] || "").toLowerCase().trim();
@@ -2465,19 +2554,21 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
   const [fundReason, setFundReason] = useState("");
   const [fundingWallet, setFundingWallet] = useState(false);
   const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", staffId: "", status: "" });
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [uPage, setUPage] = useState(0);
   const uPerPage = 15;
 
-  const totalUsersCount = activeUsers.length;
-  const onlineUsersCount = activeUsers.filter(u => u.isOnline === true).length;
-  const ridersCount = activeUsers.filter(u => u.role === "rider").length;
-  const customersCount = activeUsers.filter(u => u.role === "customer" || !u.role).length;
-  const vendorsCount = activeUsers.filter(u => u.role === "vendor").length;
-  const adminsCount = activeUsers.filter(u => u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher").length;
+  const visibleUsers = useMemo(() => activeUsers.filter(u => !deletedIds.has(u.id)), [activeUsers, deletedIds]);
+  const totalUsersCount = visibleUsers.length;
+  const onlineUsersCount = visibleUsers.filter(u => u.isOnline === true).length;
+  const ridersCount = visibleUsers.filter(u => u.role === "rider").length;
+  const customersCount = visibleUsers.filter(u => u.role === "customer" || !u.role).length;
+  const vendorsCount = visibleUsers.filter(u => u.role === "vendor").length;
+  const adminsCount = visibleUsers.filter(u => u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher").length;
 
   const filtered = useMemo(() => {
     const q = (searchQuery || search).toLowerCase().trim();
-    return activeUsers.filter(u => {
+    return visibleUsers.filter(u => {
       // Role filter
       if (roleFilter !== "ALL") {
         if (roleFilter === "customer" && (u.role !== "customer" && u.role !== "")) return false;
@@ -2499,7 +2590,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         (u.role && u.role.toLowerCase().includes(q))
       );
     });
-  }, [activeUsers, searchQuery, search, roleFilter, presenceFilter]);
+  }, [visibleUsers, searchQuery, search, roleFilter, presenceFilter]);
 
   const uTotalPages = Math.max(1, Math.ceil(filtered.length / uPerPage));
   const pagedUsers = filtered.slice(uPage * uPerPage, (uPage + 1) * uPerPage);
@@ -2519,6 +2610,16 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
     setSelectedIds(next);
   };
 
+  const handleSelectAllFiltered = () => {
+    if (filtered.length === 0) return;
+    const allSelected = filtered.every(u => selectedIds.has(u.id));
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(u => u.id)));
+    }
+  };
+
   const handleToggleSelect = (id: string) => {
     const next = new Set(selectedIds);
     if (next.has(id)) next.delete(id);
@@ -2531,12 +2632,12 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
     setSweepingPresence(true);
     try {
       const now = Date.now();
-      const threshold = 15 * 60 * 1000;
+      const threshold = 5 * 60 * 1000; // strict 5 minute freshness
       let count = 0;
       const batch = writeBatch(db);
-      activeUsers.forEach(u => {
+      visibleUsers.forEach(u => {
         if (u.isOnline) {
-          const lastActive = u.lastSeen?.toMillis ? u.lastSeen.toMillis() : (u.updatedAt?.toMillis ? u.updatedAt.toMillis() : (typeof u.lastSeen === "number" ? u.lastSeen : (typeof u.updatedAt === "number" ? u.updatedAt : null)));
+          const lastActive = u.lastSeen?.toMillis ? u.lastSeen.toMillis() : (typeof u.lastSeen === "number" ? u.lastSeen : null);
           if (!lastActive || (now - lastActive > threshold)) {
             batch.update(doc(db, "users", u.id), {
               isOnline: false,
@@ -2549,7 +2650,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       });
       if (count > 0) {
         await batch.commit();
-        addLog("Sweep Presence", `Reset ${count} stale account(s) to offline status`, "Users");
+        addLog("Sweep Presence", `Reset ${count} stale account(s) without active device presence to offline`, "Users");
         addToast?.("success", `Reset ${count} inactive account(s) to offline`);
       } else {
         addToast?.("info", "All active presence states are fresh and verified");
@@ -2565,26 +2666,50 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
     if (!showDeleteModal) return;
     setDeleting(true);
     try {
-      if (showDeleteModal.mode === "single" && showDeleteModal.user) {
-        const u = showDeleteModal.user;
-        await deleteDoc(doc(db, "users", u.id));
-        addLog("User Permanent Delete", `Permanently deleted user doc ${u.id} (${u.name} - ${u.email || u.phone}) from Firestore`, "Users");
-        addToast?.("success", `User ${u.name} permanently removed from database`);
-        setSelectedIds(prev => { const n = new Set(prev); n.delete(u.id); return n; });
-      } else if (showDeleteModal.mode === "bulk" && selectedIds.size > 0) {
-        const ids = Array.from(selectedIds);
-        const batch = writeBatch(db);
-        const names: string[] = [];
-        ids.forEach(id => {
-          batch.delete(doc(db, "users", id));
-          const match = activeUsers.find(u => u.id === id);
-          if (match) names.push(match.name);
-        });
-        await batch.commit();
-        addLog("Bulk User Permanent Delete", `Permanently deleted ${ids.length} user document(s) from Firestore: ${names.slice(0, 5).join(", ")}${names.length > 5 ? "..." : ""}`, "Users");
-        addToast?.("success", `Successfully deleted ${ids.length} user(s) permanently from database`);
-        setSelectedIds(new Set());
+      const ids = showDeleteModal.mode === "single" && showDeleteModal.user
+        ? [showDeleteModal.user.id]
+        : Array.from(selectedIds);
+
+      if (ids.length === 0) {
+        setDeleting(false);
+        setShowDeleteModal(null);
+        return;
       }
+
+      // 1. Optimistic removal: instantly vanishes from UI
+      setDeletedIds(prev => new Set([...Array.from(prev), ...ids]));
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        ids.forEach(id => next.delete(id));
+        return next;
+      });
+
+      // 2. Hard database deletion
+      const batch = writeBatch(db);
+      const names: string[] = [];
+
+      for (const id of ids) {
+        batch.delete(doc(db, "users", id));
+        batch.delete(doc(db, "fleet_locations", id));
+        batch.delete(doc(db, "drivers", id));
+        const match = visibleUsers.find(u => u.id === id);
+        if (match) names.push(match.name);
+
+        // Wipe subcollections
+        const subcollections = ["notifications", "addresses", "cart", "transactions", "verification_otp", "payment_cards"];
+        for (const sc of subcollections) {
+          try {
+            const subSnap = await getDocs(collection(db, "users", id, sc));
+            subSnap.forEach(subDoc => {
+              deleteDoc(subDoc.ref).catch(() => {});
+            });
+          } catch {}
+        }
+      }
+
+      await batch.commit();
+      addLog("Permanent Account Deletion", `Permanently purged ${ids.length} account(s) and subcollections from database: ${names.slice(0, 5).join(", ")}${names.length > 5 ? "..." : ""}`, "Users");
+      addToast?.("success", `Permanently deleted ${ids.length} account(s) from database`);
     } catch (e: any) {
       addToast?.("error", `Delete failed: ${e.message}`);
     }
@@ -2839,6 +2964,15 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {selectedIds.size < filtered.length && (
+              <button
+                type="button"
+                onClick={handleSelectAllFiltered}
+                className="h-8 px-3 rounded-xl bg-white dark:bg-[#222] border border-[#FFB800]/40 text-xs font-bold text-gray-900 dark:text-white hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
+              >
+                Select All Filtered ({filtered.length})
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
@@ -2898,9 +3032,21 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
               </thead>
               <tbody className="divide-y divide-black/5 dark:divide-white/10 text-xs">
                 {pagedUsers.map(u => (
-                  <tr key={u.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                  <tr 
+                    key={u.id} 
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (target.closest('button') || target.closest('a') || target.closest('input')) return;
+                      handleToggleSelect(u.id);
+                    }}
+                    className={`transition-colors cursor-pointer group ${
+                      selectedIds.has(u.id)
+                        ? "bg-[#FFB800]/10 dark:bg-[#FFB800]/15"
+                        : "hover:bg-black/5 dark:hover:bg-white/5"
+                    }`}
+                  >
                     {/* Checkbox */}
-                    <td className="p-3.5 text-center">
+                    <td className="p-3.5 text-center" onClick={e => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedIds.has(u.id)}
@@ -4445,6 +4591,13 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setDecisionDelivery(d)}
+                            className="p-1.5 rounded-lg text-amber-600 dark:text-[#FFB800] hover:bg-[#FFB800]/10 transition-all cursor-pointer"
+                            title="Quick Dispatch Drawer & Recommendation"
+                          >
+                            <Sparkles size={15} />
+                          </button>
                           <button
                             onClick={() => setSelectedShipmentId(d.id)}
                             className="px-3 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black text-xs rounded-xl shadow-xs flex items-center gap-1 cursor-pointer transition-all"
@@ -6250,12 +6403,13 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
 }
 
 
-function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, addToast, seedMarketplace, marketplaceEnabled, toggleMarketplace }: {
+function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, addToast, seedMarketplace, marketplaceEnabled, toggleMarketplace, userRole }: {
   products: Product[]; stores: VendorStore[]; orders: MarketplaceOrder[]; payoutRequests: VendorPayoutRequest[];
   db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void;
   seedMarketplace: () => Promise<void>;
   marketplaceEnabled: boolean;
   toggleMarketplace: () => Promise<void> | void;
+  userRole?: string;
 }) {
   const [activeSubTab, setActiveSubTab] = useState<"products" | "stores" | "orders" | "payouts">("products");
   const [search, setSearch] = useState("");
@@ -6543,9 +6697,9 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
         <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mt-0.5">Manage vendor product catalogs, store enlistments, prices, inventory, and sales commissions.</p>
       </div>
       <div className="flex items-center gap-2.5 flex-wrap">
-        {products.length === 0 && (
+        {products.length === 0 && userRole === "super_admin" && (
           <button onClick={seedMarketplace} className="h-10 px-4 bg-[#FFB800]/20 border border-[#FFB800]/40 text-[#111] dark:text-white text-xs font-bold rounded-xl hover:bg-[#FFB800]/30 transition-all flex items-center gap-2 cursor-pointer">
-            <RefreshCw className="w-4 h-4 text-[#FFB800]" /> Seed Marketplace Data
+            <RefreshCw className="w-4 h-4 text-[#FFB800]" /> Initialize Catalog Data
           </button>
         )}
         <button onClick={() => setShowAddModal(true)} className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer">
@@ -6572,14 +6726,14 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
             <span className="text-xs font-black uppercase tracking-wider">
               App Marketplace & Stores Master Switch:
             </span>
-            <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
-              {marketplaceEnabled ? "ENABLED (LIVE ON MOBILE APP)" : "DISABLED (HIDDEN ON MOBILE APP)"}
+            <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs ${marketplaceEnabled ? "bg-emerald-500 text-white" : "bg-neutral-600 text-white"}`}>
+              {marketplaceEnabled ? "Active (Catalog Visible)" : "Inactive (Catalog Hidden)"}
             </span>
           </div>
           <p className="text-xs opacity-90 font-medium mt-0.5 max-w-2xl">
             {marketplaceEnabled 
-              ? "All store catalogs, verified shops carousel, and vendor recruitment cards are currently visible to customers on mobile. Click the switch button anytime to turn off and hide everything marketplace." 
-              : "Marketplace is completely hidden on mobile app (no store catalogs, no merchant enrollment, and the mobile dashboard hero button dynamically converts to 'Live Tracking' radar). Click to turn on."}
+              ? "Vendor storefronts, products, and merchant catalogs are currently active and visible to customers." 
+              : "Marketplace features and store catalogs are currently suspended and hidden from customers."}
           </p>
         </div>
       </div>
@@ -6638,7 +6792,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
           <div className="text-center py-12 text-gray-600 dark:text-gray-400 font-medium">
             <Package className="w-12 h-12 mx-auto mb-3 text-[#FFB800]/50" />
             <p className="font-extrabold text-base text-gray-900 dark:text-white">No marketplace products found</p>
-            <p className="text-xs mt-1 text-gray-600 dark:text-gray-400 font-medium">Click "Add Product" or "Seed Marketplace Data" to populate your inventory.</p>
+            <p className="text-xs mt-1 text-gray-600 dark:text-gray-400 font-medium">Click &quot;Add Product&quot; to populate your inventory.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -6729,7 +6883,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                           <span className="px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-lg font-black text-[9px]">VERIFIED</span>
                         )}
                       </div>
-                      {s.isDemo && <div className="text-[10px] text-amber-800 dark:text-amber-400 font-black mt-0.5">DEMO · hidden from customers</div>}
+                      {s.isDemo && <div className="text-[10px] text-amber-800 dark:text-amber-400 font-black mt-0.5">Staging · Hidden from catalog</div>}
                     </td>
                     <td className="p-4">
                       <div className="font-bold text-[#111] dark:text-white">{s.ownerName}</div>
@@ -7929,106 +8083,6 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
     </div>}
   </div>;
 }
-
-  return <div className="flex h-screen bg-[#111] overflow-hidden">
-    <ToastContainer toasts={toasts} />
-    {mobileSidebar && <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setMobileSidebar(false)} />}
-    <Sidebar 
-      sidebar={sidebar} setSidebar={setSidebar} tab={tab} setTab={setTab} 
-      mobileSidebar={mobileSidebar} setMobileSidebar={setMobileSidebar} 
-      navItems={navItems} 
-    />
-    <main className="flex-1 flex flex-col bg-white dark:bg-[#050505] rounded-3xl m-4 ml-0 overflow-hidden">
-      <Header 
-        searchQuery={searchQuery} setSearchQuery={setSearchQuery} unreadCount={unreadCount} 
-        setShowNotifs={setShowNotifs} showNotifs={showNotifs} setShowUserMenu={setShowUserMenu} 
-        showUserMenu={showUserMenu} currentUser={currentUser} userRole={userRole} toggleDark={toggleDark} dark={dark} 
-        setMobileSidebar={setMobileSidebar} notifications={notifications} markNotifRead={markNotifRead} 
-      />
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 pb-8 pt-3">
-        {newOrderAlert && (
-          <div className="mb-6 bg-gradient-to-r from-amber-500/15 via-[#FFB800]/20 to-amber-500/10 border border-[#FFB800]/50 rounded-3xl p-4 flex items-center justify-between gap-4 animate-fade-in shadow-lg">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-[#FFB800] text-[#111] flex items-center justify-center font-black animate-pulse shrink-0">
-                <Bell size={20} />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 dark:text-[#FFB800] bg-amber-200/80 dark:bg-black/60 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-[#FFB800]/30">New Booking Received</span>
-                  <span className="text-xs text-gray-700 dark:text-gray-300 font-mono font-bold">#{idShort(newOrderAlert.id)}</span>
-                </div>
-                <p className="text-xs sm:text-sm font-bold text-[#111] dark:text-white mt-1 truncate">
-                  {newOrderAlert.itemName} • Deliver to <span className="text-amber-900 dark:text-[#FFB800] font-black">{newOrderAlert.receiverName}</span> ({newOrderAlert.deliveryAddress})
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => {
-                  setShipmentsFilterPrefill({ search: newOrderAlert.id, selectedId: newOrderAlert.id, status: "ALL", category: "ALL" });
-                  setTab("shipments");
-                  setNewOrderAlert(null);
-                }}
-                className="px-4 py-2 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:bg-[#FFB800]/80 transition-all cursor-pointer whitespace-nowrap"
-              >
-                <Truck size={15} /> Review & Assign Rider
-              </button>
-              <button
-                onClick={() => setNewOrderAlert(null)}
-                className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-xl cursor-pointer transition-colors"
-                title="Dismiss"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-        {tab === "marketplace" && <MarketplaceTab products={products} stores={stores} orders={marketplaceOrders} payoutRequests={payoutRequests} db={db} addLog={addLog} addToast={addToast} seedMarketplace={seedMarketplaceWrapper} marketplaceEnabled={marketplaceEnabled} toggleMarketplace={toggleMarketplace} />}
-        {tab === "dashboard" && <DashboardTab 
-            deliveries={deliveries} 
-            activeUsers={activeUsers} 
-            customers={customers} 
-            drivers={drivers} 
-            pendingDeliveries={pendingDeliveries} 
-            delivered={delivered} 
-            totalRevenue={totalRevenue} 
-            totalTips={totalTips} 
-            referrals={referrals} 
-            activeDeliveriesData={activeDeliveriesData} 
-            fmt={fmt} 
-            seedUsers={seedUsersWrapper} 
-            seedDeliveries={seedDeliveriesWrapper} 
-            seedBanners={seedBannersWrapper} 
-            seedPromos={seedPromosWrapper} 
-            seedReferrals={seedReferralsWrapper} 
-            seedAppContent={seedAppContentWrapper} 
-            seeding={seeding}
-            setTab={setTab}
-            marketplaceEnabled={marketplaceEnabled}
-            toggleMarketplace={toggleMarketplace}
-            setShipmentsFilterPrefill={setShipmentsFilterPrefill}
-            onOpenShipmentFullView={(shipmentId: string) => {
-              setShipmentsFilterPrefill({ search: shipmentId, selectedId: shipmentId, status: "ALL", category: "ALL" });
-              setTab("shipments");
-            }}
-            addToast={addToast}
-          />}
-        {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
-        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
-        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
-        {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
-        {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
-        {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} addToast={addToast} />}
-        {tab === "promotions" && <PromotionsTab promotions={promotions} db={db} addLog={addLog} addToast={addToast} />}
-        {tab === "appcards" && <AppCardsTab appContent={appContent} db={db} addLog={addLog} addToast={addToast} />}
-        {tab === "settings" && <SettingsTab db={db} addLog={addLog} addToast={addToast} activeUsers={activeUsers} />}
-        {tab === "cms" && <CMSTab db={db} addLog={addLog} />}
-        {tab === "support" && <SupportTab db={db} addLog={addLog} addToast={addToast} />}
-        {tab === "logs" && <LogsTab logs={logs} />}
-      </div>
-    </main>
-    </div>;
-  }
 
 export default function AdminDashboardWrapper() {
   return <AdminDashboardPage />;

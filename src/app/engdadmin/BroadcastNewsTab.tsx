@@ -409,7 +409,7 @@ export default function BroadcastNewsTab({
             <h3 className="text-sm font-extrabold text-[#111] dark:text-white flex items-center gap-2">
               <Smartphone size={16} className="text-[#FFB800]" /> Mobile Feed Preview
             </h3>
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Live Mock</span>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Preview</span>
           </div>
 
           <div className="bg-gray-100 dark:bg-[#111] rounded-2xl p-4 border border-black/5 dark:border-white/5 space-y-3">

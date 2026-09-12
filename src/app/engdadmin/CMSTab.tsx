@@ -189,7 +189,7 @@ function CrudTable({ collectionName, label, icon, fields, items, onAdd, onUpdate
   </div>;
 }
 
-export default function CMSTab({ db, addLog }: { db: any; addLog: any }) {
+export default function CMSTab({ db, addLog, userRole }: { db: any; addLog: any; userRole?: string }) {
   const [content, setContent] = useState<SiteContent>(defaultContent);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -209,86 +209,102 @@ export default function CMSTab({ db, addLog }: { db: any; addLog: any }) {
     const unsub = onSnapshot(doc(db, "site_content", "settings"), snap => {
       if (snap.exists()) setContent({ ...defaultContent, ...snap.data() } as SiteContent);
       setLoading(false);
-    }, () => setLoading(false));
-    return unsub;
-  }, []);
+    });
+    return () => unsub();
+  }, [db]);
 
   useEffect(() => {
-    const cols = ["cms_services", "cms_team", "cms_blog", "cms_portfolio", "cms_testimonials"];
-    const setters = [setServices, setTeamMembers, setBlogPosts, setPortfolioItems, setTestimonials];
-    const unsubs = cols.map((col, i) => {
-      const q = query(collection(db, col), orderBy("order"));
-      return onSnap2(q, snap => setters[i](snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    });
-    return () => unsubs.forEach(u => u());
-  }, []);
+    const unsub1 = onSnapshot(collection(db, "cms_services"), s => setServices(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsub2 = onSnapshot(collection(db, "cms_team"), s => setTeamMembers(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsub3 = onSnapshot(collection(db, "cms_blog"), s => setBlogPosts(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsub4 = onSnapshot(collection(db, "cms_portfolio"), s => setPortfolioItems(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsub5 = onSnapshot(collection(db, "cms_testimonials"), s => setTestimonials(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
+  }, [db]);
 
   const saveContent = async () => {
     setSaving(true);
-    await setDoc(doc(db, "site_content", "settings"), { ...content, updatedAt: Timestamp.now() }, { merge: true });
-    addLog("Update CMS", "Site content updated");
-    setSaving(false);
+    try {
+      await setDoc(doc(db, "site_content", "settings"), { ...content, updatedAt: Timestamp.now() }, { merge: true });
+      addLog("Update Content", "Updated site landing text content");
+    } catch (e) {
+      console.error(e);
+    } finally { setSaving(false); }
+  };
+
+  const addTo = async (col: string, data: any) => {
+    try {
+      await addDoc(collection(db, col), { ...data, createdAt: Timestamp.now() });
+      addLog("Add CMS Item", `Added item to ${col}`);
+    } catch (e) { console.error(e); }
+  };
+  const updateIn = async (col: string, id: string, data: any) => {
+    try {
+      await updateDoc(doc(db, col, id), { ...data, updatedAt: Timestamp.now() });
+      addLog("Update CMS Item", `Updated item ${id} in ${col}`);
+    } catch (e) { console.error(e); }
+  };
+  const deleteFrom = async (col: string, id: string) => {
+    try {
+      await deleteDoc(doc(db, col, id));
+      addLog("Delete CMS Item", `Deleted item ${id} from ${col}`);
+    } catch (e) { console.error(e); }
   };
 
   const sections = [
-    { id: "hero", label: "Hero" },
-    { id: "about", label: "About" },
-    { id: "services", label: "Services" },
-    { id: "team", label: "Team" },
-    { id: "contact", label: "Contact & Social" },
-    { id: "footer", label: "Footer" },
+    { id: "hero", label: "Hero Banner" },
+    { id: "about", label: "About Section" },
+    { id: "services", label: "Services Header" },
+    { id: "cta", label: "Call to Action" },
+    { id: "footer", label: "Footer Info" },
+    { id: "meta", label: "SEO & Brand" },
   ];
-
-  const addTo = async (col: string, data: any) => { const r = await addDoc(collection(db, col), { ...data, createdAt: Timestamp.now() }); addLog("Add", `${col} item`); return r; };
-  const updateIn = async (col: string, id: string, data: any) => { await updateDoc(doc(db, col, id), { ...data, updatedAt: Timestamp.now() }); addLog("Update", `${col} item`); };
-  const deleteFrom = async (col: string, id: string) => { await deleteDoc(doc(db, col, id)); addLog("Delete", `${col} item`); };
 
   const serviceFields = [
-    { key: "title", label: "Title" },
-    { key: "icon", label: "Icon Name (FaMotorcycle, FaTruck, etc.)" },
-    { key: "description", label: "Description" },
-    { key: "link", label: "Link" },
+    { key: "title", label: "Service Title" },
+    { key: "description", label: "Description", type: "textarea" },
+    { key: "iconName", label: "Icon Identifier" },
+    { key: "accentColor", label: "Accent Color Hex" },
   ];
   const teamFields = [
-    { key: "name", label: "Name" },
-    { key: "role", label: "Role" },
-    { key: "image", label: "Image Path" },
-    { key: "twitter", label: "Twitter URL" },
-    { key: "facebook", label: "Facebook URL" },
-    { key: "linkedin", label: "LinkedIn URL" },
+    { key: "name", label: "Full Name" },
+    { key: "role", label: "Job Title" },
+    { key: "bio", label: "Bio Summary", type: "textarea" },
+    { key: "avatarUrl", label: "Photo Image URL" },
   ];
   const blogFields = [
-    { key: "title", label: "Title" },
-    { key: "category", label: "Category" },
-    { key: "date", label: "Date" },
-    { key: "image", label: "Image Path" },
-    { key: "description", label: "Description" },
-    { key: "link", label: "Link" },
+    { key: "title", label: "Article Title" },
+    { key: "snippet", label: "Preview Snippet", type: "textarea" },
+    { key: "author", label: "Author Name" },
+    { key: "publishDate", label: "Publish Date" },
+    { key: "coverImage", label: "Cover Image URL" },
   ];
   const portfolioFields = [
-    { key: "title", label: "Title" },
-    { key: "category", label: "Category (branding, ui, website)" },
-    { key: "image", label: "Image Path" },
-    { key: "description", label: "Description" },
-    { key: "link", label: "Link" },
+    { key: "title", label: "Case Study / Fleet Title" },
+    { key: "category", label: "Category" },
+    { key: "description", label: "Details", type: "textarea" },
+    { key: "imageUrl", label: "Media URL" },
   ];
   const testimonialFields = [
-    { key: "title", label: "Title" },
-    { key: "description", label: "Description" },
-    { key: "authorName", label: "Author Name" },
-    { key: "authorRole", label: "Author Role" },
+    { key: "quote", label: "Quote", type: "textarea" },
+    { key: "authorName", label: "Client Name" },
+    { key: "authorCompany", label: "Company / Location" },
     { key: "authorAvatar", label: "Author Avatar Path" },
     { key: "rating", label: "Rating (1-5)", type: "number" },
   ];
 
   const handleSeed = async () => {
-    if (!confirm("This will replace all existing CMS data with seed data from JSON files. Continue?")) return;
+    if (userRole !== "super_admin") {
+      alert("Super Administrator role required to restore content defaults.");
+      return;
+    }
+    if (!confirm("This will restore standard default content for all public landing pages. Continue?")) return;
     setSeeding(true); setSeedResult(null);
     try {
       const { seedCmsData } = await import("~/lib/seedCmsData");
       const r = await seedCmsData();
       setSeedResult(r);
-      addLog("Seed CMS", "All CMS collections seeded from JSON");
+      addLog("Reset Content", "Restored standard default landing page content");
     } catch (e) {
       setSeedResult(["Error: " + (e instanceof Error ? e.message : String(e))]);
     } finally { setSeeding(false); }
@@ -310,9 +326,11 @@ export default function CMSTab({ db, addLog }: { db: any; addLog: any }) {
       <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#FFB800]" /> Site Content</h1>
         <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">Edit all landing page content</p></div>
       <div className="flex items-center gap-2.5">
-        <button onClick={handleSeed} disabled={seeding} className="h-10 px-3.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors flex items-center gap-1.5 cursor-pointer">
-          <RefreshCw size={14} className={seeding ? "animate-spin" : ""} /> {seeding ? "Seeding..." : "Seed from JSON"}
-        </button>
+        {userRole === "super_admin" && (
+          <button onClick={handleSeed} disabled={seeding} className="h-10 px-3.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors flex items-center gap-1.5 cursor-pointer">
+            <RefreshCw size={14} className={seeding ? "animate-spin" : ""} /> {seeding ? "Restoring..." : "Restore Defaults"}
+          </button>
+        )}
         <button onClick={saveContent} disabled={saving} className="h-10 px-5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-xs flex items-center gap-2 disabled:opacity-50 transition-all cursor-pointer">
           <Save size={14} /> {saving ? "Saving..." : "Save All Changes"}
         </button>
@@ -330,7 +348,7 @@ export default function CMSTab({ db, addLog }: { db: any; addLog: any }) {
     </div>
 
     {seedResult && <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-2xl p-4">
-      <p className="text-xs font-bold text-green-700 dark:text-green-300 mb-1">Seed Results:</p>
+      <p className="text-xs font-bold text-green-700 dark:text-green-300 mb-1">Synchronization Status:</p>
       {seedResult.map((r, i) => <p key={i} className="text-[10px] text-green-600 dark:text-green-400">{r}</p>)}
     </div>}
 
