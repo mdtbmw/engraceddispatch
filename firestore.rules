@@ -447,6 +447,10 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /payout_settlements/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // =========================================================
     // LOYALTY POINTS & LEGACY PARCEL MIRRORS
     // =========================================================

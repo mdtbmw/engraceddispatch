@@ -3936,7 +3936,7 @@ fun Modifier.shimmer(
     val highlightColor = if (isLight) Color(0xFFF5F5F5) else Color(0xFF2D2D2D)
     val shimmerColors = listOf(
         baseColor,
-        if (isLight) highlightColor else Color(0xFFD4AF37).copy(alpha = 0.25f),
+        if (isLight) highlightColor else Gold.copy(alpha = 0.25f),
         baseColor
     )
 

@@ -4367,7 +4367,7 @@ fun LiveChatSheet(
                                         text = msg.senderName.ifBlank { "Dispatcher" } + " (HQ)",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Gold
+                                        color = if (MaterialTheme.colorScheme.background == BackgroundDark) Gold else Obsidian
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                 }
@@ -5805,11 +5805,11 @@ fun PaystackCheckoutSheet(
                                     text-align: center;
                                 }
                                 .loader {
-                                    border: 4px solid rgba(212, 175, 55, 0.1);
+                                    border: 4px solid rgba(255, 184, 0, 0.1);
                                     width: 48px;
                                     height: 48px;
                                     border-radius: 50%;
-                                    border-left-color: #D4AF37;
+                                    border-left-color: #FFB800;
                                     animation: spin 1s linear infinite;
                                     margin-bottom: 20px;
                                 }

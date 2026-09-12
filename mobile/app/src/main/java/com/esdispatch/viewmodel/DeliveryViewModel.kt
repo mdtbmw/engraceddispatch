@@ -7075,42 +7075,6 @@ class DeliveryViewModel : WalletViewModel() {
             .addOnFailureListener { e -> onResult(false, "Failed: " + e.message) }
     }
 
-    // ==========================================================================
-    // LIVE SUPPORT CHAT - Firebase Realtime Database
-    // Path: support_chats/{uid}/messages
-    // ==========================================================================
-
-    fun sendSupportChatMessage(message: String, isAgent: Boolean = false, onResult: (Boolean) -> Unit) {
-        val uid = _firebaseUserId.value ?: run { onResult(false); return }
-        val db = com.google.firebase.database.FirebaseDatabase.getInstance()
-        val msgRef = db.getReference("support_chats/$uid/messages").push()
-        val msgData = mapOf(
-            "text" to message,
-            "isUser" to !isAgent,
-            "senderId" to uid,
-            "senderName" to (if (isAgent) "ESDispatch Support" else _userName.value),
-            "timestamp" to com.google.firebase.database.ServerValue.TIMESTAMP
-        )
-        msgRef.setValue(msgData)
-            .addOnSuccessListener { onResult(true) }
-            .addOnFailureListener { onResult(false) }
-    }
-
-    fun listenToSupportChat(onMessages: (List<Map<String, Any>>) -> Unit) {
-        val uid = _firebaseUserId.value ?: return
-        val db = com.google.firebase.database.FirebaseDatabase.getInstance()
-        db.getReference("support_chats/$uid/messages")
-            .orderByChild("timestamp")
-            .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                override fun onDataChange(snap: com.google.firebase.database.DataSnapshot) {
-                    @Suppress("UNCHECKED_CAST")
-                    val msgs = snap.children.mapNotNull { it.value as? Map<String, Any> }
-                    onMessages(msgs)
-                }
-                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
-            })
-    }
-
     // Active promo state: set by applyPromoCode, applied at booking/checkout fees
     private var _activePromo = ActivePromo()
 

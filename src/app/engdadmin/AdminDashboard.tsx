@@ -489,7 +489,7 @@ async function seedMarketplace(db: any, addLog: any, addToast: any, createNotifi
   }
 }
 
-function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, setTab, setShipmentsFilterPrefill, marketplaceEnabled, toggleMarketplace, onOpenShipmentFullView }: any) {
+function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, setTab, setShipmentsFilterPrefill, marketplaceEnabled, toggleMarketplace, onOpenShipmentFullView, addToast }: any) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = (d: any) => {
     if (!d.dateString) return true;
@@ -534,9 +534,11 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
           });
         } catch (_) {}
       }
+      if (addToast) addToast("success", `Assigned ${rider.name} to shipment #${idShort(deliveryId)}`);
     } catch (err: any) {
       console.error("Failed to assign rider:", err);
-      alert("Could not assign rider: " + err.message);
+      if (addToast) addToast("error", "Could not assign rider: " + err.message);
+      else alert("Could not assign rider: " + err.message);
     }
   };
 
@@ -544,7 +546,8 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
     const del = deliveries.find((x: any) => x.id === deliveryId);
     const hasRider = !!(del?.riderId || del?.driverId || (del?.courierName && del.courierName !== "Unassigned"));
     if (!hasRider && (newStatus === "TRANSIT" || newStatus === "OUT_FOR_DELIVERY" || newStatus === "DELIVERED" || newStatus === "ARRIVED")) {
-      alert("Operational Guard: Assign a rider before updating status to " + newStatus.replace(/_/g, " ") + ".");
+      if (addToast) addToast("error", "Operational Guard: Assign a rider before updating status to " + newStatus.replace(/_/g, " ") + ".");
+      else alert("Operational Guard: Assign a rider before updating status.");
       return;
     }
     try {
@@ -552,6 +555,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
         status: newStatus,
         updatedAt: Timestamp.now()
       });
+      if (addToast) addToast("success", `Updated status to ${newStatus.replace(/_/g, " ")}`);
       if (del?.userId) {
         try {
           const statusMessages: Record<string, string> = {
@@ -580,7 +584,8 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
       }
     } catch (err: any) {
       console.error("Failed to update status:", err);
-      alert("Could not update status: " + err.message);
+      if (addToast) addToast("error", "Could not update status: " + err.message);
+      else alert("Could not update status: " + err.message);
     }
   };
 
@@ -2896,12 +2901,14 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
       if (!del) return;
 
       if (!isValidStatusTransition(del.status, s)) {
-        alert(`Cannot change status from ${del.status} to ${s}. Invalid transition.`);
+        if (addToast) addToast("error", `Cannot change status from ${del.status} to ${s}. Invalid transition.`);
+        else alert(`Cannot change status from ${del.status} to ${s}. Invalid transition.`);
         return;
       }
 
       if (requiresRider(s) && !del.riderId && !del.driverId) {
-        alert(`Cannot set status to ${s} without assigning a rider first.`);
+        if (addToast) addToast("error", `Cannot set status to ${s} without assigning a rider first.`);
+        else alert(`Cannot set status to ${s} without assigning a rider first.`);
         return;
       }
 
@@ -2948,7 +2955,8 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
         }
       } catch (e) {
         console.error("Failed to update status:", e);
-        alert("Failed to update status. Please try again.");
+        if (addToast) addToast("error", "Failed to update status. Please try again.");
+        else alert("Failed to update status. Please try again.");
       }
       setOverrideReason("");
       setConfirmStatusModal({ delivery: null as any, newStatus: "", show: false });
@@ -3062,12 +3070,16 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
       });
 
       if (invalidTransitions.length > 0) {
-        alert(`Invalid transitions for ${invalidTransitions.length} shipment(s):\n${invalidTransitions.slice(0, 5).join("\n")}${invalidTransitions.length > 5 ? "\n..." : ""}`);
+        const msg = `Invalid transitions for ${invalidTransitions.length} shipment(s): ${invalidTransitions.slice(0, 3).join(", ")}${invalidTransitions.length > 3 ? "..." : ""}`;
+        if (addToast) addToast("error", msg);
+        else alert(msg);
         return;
       }
 
       if (missingRiders.length > 0) {
-        alert(`${missingRiders.length} shipment(s) have no rider assigned. Cannot set to ${bulkStatus}.\n${missingRiders.slice(0, 5).join(", ")}${missingRiders.length > 5 ? "..." : ""}`);
+        const msg = `${missingRiders.length} shipment(s) have no rider assigned. Cannot set to ${bulkStatus}.`;
+        if (addToast) addToast("error", msg);
+        else alert(msg);
         return;
       }
 
@@ -3137,7 +3149,8 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
 
     const createDelivery = async () => {
       if (!newForm.receiverName.trim() || !newForm.deliveryAddress.trim() || !newForm.senderName.trim() || !newForm.pickupAddress.trim()) {
-        alert("Please provide Sender Name, Pickup Address, Receiver Name, and Delivery Address.");
+        if (addToast) addToast("error", "Please provide Sender Name, Pickup Address, Receiver Name, and Delivery Address.");
+        else alert("Please provide Sender Name, Pickup Address, Receiver Name, and Delivery Address.");
         return;
       }
       setCreating(true);
@@ -5834,6 +5847,7 @@ interface SupportChatMessage {
 function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: any }) {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "OPEN" | "RESOLVED" | "CLOSED">("ALL");
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
   const [replyText, setReplyText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -5915,6 +5929,26 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
     }
   };
 
+  const handleToggleStatus = async () => {
+    if (!selectedTicket || !db) return;
+    const newStatus = selectedTicket.status === "RESOLVED" ? "OPEN" : "RESOLVED";
+    try {
+      await updateDoc(doc(db, "support_chats", selectedTicket.id), {
+        status: newStatus,
+        lastUpdated: Date.now()
+      });
+      setSelectedTicket({ ...selectedTicket, status: newStatus });
+      addLog("Support Status", `Marked ticket ${selectedTicket.ticketId} as ${newStatus}`);
+      addToast("success", `Ticket marked as ${newStatus}`);
+    } catch (err: any) {
+      addToast("error", err.message || "Failed to update ticket status");
+    }
+  };
+
+  const filteredTickets = tickets.filter(
+    (t) => statusFilter === "ALL" || (t.status || "OPEN").toUpperCase() === statusFilter
+  );
+
   return (
     <div className="tab-content space-y-6">
       <div className="flex items-center justify-between">
@@ -5931,14 +5965,32 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[650px]">
         <div className="bg-[#f9f9f9] dark:bg-[#141414] rounded-3xl p-4 border border-black/10 dark:border-white/10 flex flex-col overflow-hidden">
-          <h3 className="font-bold text-sm text-[#111] dark:text-white mb-3 px-2">Support Conversations ({tickets.length})</h3>
+          <div className="flex items-center justify-between px-2 mb-2">
+            <h3 className="font-bold text-sm text-[#111] dark:text-white">Conversations ({filteredTickets.length})</h3>
+          </div>
+          <div className="flex items-center gap-1 px-2 mb-3">
+            {(["ALL", "OPEN", "RESOLVED", "CLOSED"] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setStatusFilter(filter)}
+                className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                  statusFilter === filter
+                    ? "bg-[#FFB800] text-[#111] shadow-xs"
+                    : "bg-black/5 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:text-[#111] dark:hover:text-white"
+                }`}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
           <div className="flex-1 overflow-y-auto space-y-2 pr-1">
             {loading ? (
               <p className="text-xs text-gray-600 dark:text-gray-400 font-medium p-3">Loading tickets...</p>
-            ) : tickets.length === 0 ? (
-              <p className="text-xs text-gray-600 dark:text-gray-400 font-medium p-3">No support conversations yet.</p>
+            ) : filteredTickets.length === 0 ? (
+              <p className="text-xs text-gray-600 dark:text-gray-400 font-medium p-3">No conversations match the selected filter.</p>
             ) : (
-              tickets.map((t) => (
+              filteredTickets.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setSelectedTicket(t)}
@@ -5953,7 +6005,9 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                       selectedTicket?.id === t.id 
                         ? "bg-black text-[#FFB800]" 
-                        : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        : t.status === "RESOLVED"
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
                     }`}>
                       {t.status}
                     </span>
@@ -5970,15 +6024,36 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
         <div className="lg:col-span-2 bg-[#f9f9f9] dark:bg-[#141414] rounded-3xl p-5 border border-black/10 dark:border-white/10 flex flex-col overflow-hidden">
           {selectedTicket ? (
             <>
-              <div className="pb-3 border-b border-black/10 dark:border-white/10 flex items-center justify-between">
+              <div className="pb-3 border-b border-black/10 dark:border-white/10 flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <h4 className="font-black text-sm text-[#111] dark:text-white">{selectedTicket.userName}</h4>
                   <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">Ticket: {selectedTicket.ticketId} • User ID: {selectedTicket.userId}</p>
                 </div>
-                <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-500/15 px-2.5 py-1 rounded-full flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Live Connected
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleStatus}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                      selectedTicket.status === "RESOLVED"
+                        ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20"
+                        : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
+                    }`}
+                  >
+                    {selectedTicket.status === "RESOLVED" ? (
+                      <>
+                        <RefreshCw size={13} /> Reopen Ticket
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={13} /> Mark Resolved
+                      </>
+                    )}
+                  </button>
+                  <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-500/15 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Live Connected
+                  </span>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto py-4 space-y-3 pr-2">
@@ -6303,6 +6378,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
               setShipmentsFilterPrefill({ search: shipmentId, selectedId: shipmentId, status: "ALL", category: "ALL" });
               setTab("shipments");
             }}
+            addToast={addToast}
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}

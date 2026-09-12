@@ -1145,7 +1145,7 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    for (i in 0 until 3) {
+                    for (i in promoMockups.indices.take(5)) {
                         val isSelected = i == currentIndex
                         val width = if (isSelected) 24.dp else 8.dp
                         Box(

@@ -84,6 +84,29 @@ export default function PublicTrackingPage() {
     setLoading(true);
     setNotFound(false);
 
+    let innerUnsub: (() => void) | null = null;
+
+    const tryPublicTracking = () => {
+      const pubRef = doc(db, "public_tracking", trackingId);
+      return onSnapshot(
+        pubRef,
+        (pSnap) => {
+          setLoading(false);
+          if (pSnap.exists()) {
+            setDelivery({ id: pSnap.id, ...pSnap.data() } as DeliveryDetails);
+            setNotFound(false);
+          } else {
+            setNotFound(true);
+          }
+        },
+        (pErr) => {
+          console.warn("Public tracking listener error:", pErr);
+          setLoading(false);
+          setNotFound(true);
+        }
+      );
+    };
+
     const docRef = doc(db, "deliveries", trackingId);
     const unsubscribe = onSnapshot(
       docRef,
@@ -93,27 +116,35 @@ export default function PublicTrackingPage() {
           setLoading(false);
           setNotFound(false);
         } else {
-          // Fallback to parcels collection
+          // Fallback to parcels collection or public_tracking
           const parcelRef = doc(db, "parcels", trackingId);
-          onSnapshot(parcelRef, (pSnap) => {
-            setLoading(false);
-            if (pSnap.exists()) {
-              setDelivery({ id: pSnap.id, ...pSnap.data() } as DeliveryDetails);
-              setNotFound(false);
-            } else {
-              setNotFound(true);
+          innerUnsub = onSnapshot(
+            parcelRef,
+            (pSnap) => {
+              if (pSnap.exists()) {
+                setDelivery({ id: pSnap.id, ...pSnap.data() } as DeliveryDetails);
+                setLoading(false);
+                setNotFound(false);
+              } else {
+                innerUnsub = tryPublicTracking();
+              }
+            },
+            () => {
+              innerUnsub = tryPublicTracking();
             }
-          });
+          );
         }
       },
       (err) => {
-        console.error("Tracking listener error:", err);
-        setLoading(false);
-        setNotFound(true);
+        // Authenticated access failed (e.g. unauthenticated public visitor) - fallback to public_tracking projection
+        innerUnsub = tryPublicTracking();
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (innerUnsub) innerUnsub();
+    };
   }, [trackingId]);
 
   const getActiveStepIndex = (statusStr: string) => {
