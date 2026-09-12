@@ -29,10 +29,11 @@ function useOnlineStatus() {
 }
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment } from "firebase/firestore";
-import { Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag } from "lucide-react";
+import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy } from "firebase/firestore";
+import { Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
+import BroadcastNewsTab from "./BroadcastNewsTab";
 import { SoundEngine } from "@/lib/interaction/SoundEngine";
 import { StatusBadge } from "@/components/design-system/StatusBadge";
 import { RouteDisplay } from "@/components/design-system/RouteDisplay";
@@ -40,7 +41,7 @@ import { PriceDisplay } from "@/components/design-system/PriceDisplay";
 import { DispatchDecisionDrawer } from "@/components/design-system/DispatchDecisionDrawer";
 import { NotificationLifecycleManager } from "@/components/design-system/NotificationLifecycle";
 import { ShipmentMicroPage } from "@/components/design-system/ShipmentMicroPage";
-type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "tracking" | "support";
+type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "broadcast" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
 interface Delivery {
   id: string;
@@ -82,6 +83,11 @@ interface Delivery {
   podUrl?: string;
   exceptionType?: string;
   exceptionReason?: string;
+  additionalStops?: string;
+  otpVerified?: boolean;
+  adminOverrideReason?: string;
+  adminOverrideBy?: string;
+  adminOverrideAt?: any;
 }
 interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
 interface Referral { id: string; referrerId: string; referrerName: string; referrerEmail: string; refereeId: string; refereeName: string; refereeEmail: string; rewardAmount: number; status: string; }
@@ -1825,6 +1831,22 @@ function AdminDashboardPage() {
     unsubs.push(onSnapshot(doc(db, "system_config", "global_settings"), s => {
       if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() }));
     }, () => {}));
+    unsubs.push(onSnapshot(query(collection(db, "audit_logs"), orderBy("timestamp", "desc"), limit(100)), snap => {
+      const list: AuditEntry[] = [];
+      snap.forEach(d => {
+        const x = d.data();
+        const ts = x.timestamp?.toMillis ? x.timestamp.toMillis() : (x.timestamp ? new Date(x.timestamp).getTime() : Date.now());
+        list.push({
+          id: d.id,
+          time: new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          action: x.action || "Action",
+          details: x.details || "",
+          admin: x.admin || "Admin",
+          timestamp: ts,
+        });
+      });
+      setLogs(list);
+    }, () => {}));
     getDoc(doc(db, "system_config", "pricing")).then(s => { if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() })); }).catch(() => {});
     return () => unsubs.forEach(f => f());
   }, [currentUser]);
@@ -1987,6 +2009,7 @@ function AdminDashboardPage() {
     { id: "marketplace", label: "Marketplace & Stores", icon: <ShoppingBag size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"], badge: pendingDeliveries.length > 0 ? pendingDeliveries.length : undefined },
     { id: "tracking", label: "Live Tracking", icon: <MapPin size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
+    { id: "broadcast", label: "Broadcast News", icon: <Radio size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "users", label: "Users", icon: <Users size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "banners", label: "Hero Slides", icon: <ImageIcon size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "referrals", label: "Referrals", icon: <Gift size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
@@ -2077,16 +2100,12 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       if (isNaN(amt) || amt <= 0 || !fundUser) return;
       setFundingWallet(true);
       try {
-        const currentBal = fundUser.walletBalance || 0;
         const requestedDelta = fundAction === "credit" ? amt : -amt;
-        const newBal = Math.max(0, currentBal + requestedDelta);
-        const actualDelta = newBal - currentBal;
-        
         const primaryDocId = fundUser.id || fundUser.uid;
         await setDoc(doc(db, "users", primaryDocId), {
-          walletBalance: newBal,
-          balance: newBal,
-          wallet_balance: newBal,
+          walletBalance: increment(requestedDelta),
+          balance: increment(requestedDelta),
+          wallet_balance: increment(requestedDelta),
           updatedAt: Timestamp.now()
         }, { merge: true });
 
@@ -2094,9 +2113,9 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         if (fundUser.uid && fundUser.uid !== primaryDocId) {
           try {
             await setDoc(doc(db, "users", fundUser.uid), {
-              walletBalance: newBal,
-              balance: newBal,
-              wallet_balance: newBal,
+              walletBalance: increment(requestedDelta),
+              balance: increment(requestedDelta),
+              wallet_balance: increment(requestedDelta),
               updatedAt: Timestamp.now()
             }, { merge: true });
           } catch (_) {}
@@ -2108,7 +2127,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
           userId: primaryDocId,
           userName: fundUser.name,
           title: fundReason || (fundAction === "credit" ? "Wallet Top-up" : "Wallet Debit"),
-          amount: Math.abs(actualDelta),
+          amount: Math.abs(requestedDelta),
           type: fundAction === "credit" ? "CREDIT" : "DEBIT",
           isTopUp: fundAction === "credit",
           date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
@@ -2139,9 +2158,9 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
               if (dSnap.id !== primaryDocId && dSnap.id !== fundUser.uid) {
                 try {
                   await setDoc(doc(db, "users", dSnap.id), {
-                    walletBalance: newBal,
-                    balance: newBal,
-                    wallet_balance: newBal,
+                    walletBalance: increment(requestedDelta),
+                    balance: increment(requestedDelta),
+                    wallet_balance: increment(requestedDelta),
                     updatedAt: Timestamp.now()
                   }, { merge: true });
                   await setDoc(doc(db, "users", dSnap.id, "transactions", txId), txDoc);
@@ -2159,9 +2178,9 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
               if (dSnap.id !== primaryDocId && dSnap.id !== fundUser.uid) {
                 try {
                   await setDoc(doc(db, "users", dSnap.id), {
-                    walletBalance: newBal,
-                    balance: newBal,
-                    wallet_balance: newBal,
+                    walletBalance: increment(requestedDelta),
+                    balance: increment(requestedDelta),
+                    wallet_balance: increment(requestedDelta),
                     updatedAt: Timestamp.now()
                   }, { merge: true });
                   await setDoc(doc(db, "users", dSnap.id, "transactions", txId), txDoc);
@@ -2185,7 +2204,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
             message: fundReason 
               ? `${fundReason} (₦${amt.toLocaleString()})`
               : `Your account was ${fundAction === "credit" ? "credited with" : "debited by"} ₦${amt.toLocaleString()} by ESDispatch.`,
-            amount: actualDelta,
+            amount: Math.abs(requestedDelta),
             read: false,
             createdAt: Timestamp.now()
           });
@@ -2193,7 +2212,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
           console.warn("Could not dispatch user in-app notification:", nErr);
         }
 
-        addLog("Wallet Adjustment", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name} (${fundUser.email}). New balance: ₦${newBal.toLocaleString()}`);
+        addLog("Wallet Adjustment", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name} (${fundUser.email}).`);
         if (addToast) {
           addToast("success", `Successfully ${fundAction === "credit" ? "credited" : "debited"} ₦${amt.toLocaleString()} for ${fundUser.name}`);
         }
@@ -2650,6 +2669,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
     const [confirmStatusModal, setConfirmStatusModal] = useState<{ delivery: Delivery; newStatus: string; show: boolean }>({ delivery: null as any, newStatus: "", show: false });
     const [confirmBulkModal, setConfirmBulkModal] = useState<{ show: boolean }>({ show: false });
     const [bulkAssignModal, setBulkAssignModal] = useState(false);
+    const [overrideReason, setOverrideReason] = useState("");
     const [riderSearch, setRiderSearch] = useState("");
     const [riderOnlineOnly, setRiderOnlineOnly] = useState(false);
     const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
@@ -2893,8 +2913,13 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
       if (!delivery || !newStatus) return;
 
       try {
-        await updateDoc(doc(db, "deliveries", delivery.id), { status: newStatus, updatedAt: Timestamp.now() });
-        addLog("Status", idShort(delivery.id) + " -> " + newStatus);
+        const updatePayload: any = { status: newStatus, updatedAt: Timestamp.now() };
+        if (newStatus === "DELIVERED" && !delivery.otpVerified) {
+          updatePayload.adminOverrideReason = overrideReason.trim() || "Administrative manual verification";
+          updatePayload.adminOverrideAt = Timestamp.now();
+        }
+        await updateDoc(doc(db, "deliveries", delivery.id), updatePayload);
+        addLog("Status", `${idShort(delivery.id)} -> ${newStatus}${updatePayload.adminOverrideReason ? ` (Override: ${updatePayload.adminOverrideReason})` : ""}`);
         const del = deliveries.find(d => d.id === delivery.id);
         if (del && del.userId) {
           try {
@@ -2925,6 +2950,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
         console.error("Failed to update status:", e);
         alert("Failed to update status. Please try again.");
       }
+      setOverrideReason("");
       setConfirmStatusModal({ delivery: null as any, newStatus: "", show: false });
     };
 
@@ -3375,9 +3401,9 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
 
         {/* High-Fidelity Shipments Table */}
         <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[700px]">
             <table className="w-full text-xs">
-              <thead className="bg-gray-100 dark:bg-[#222] border-b border-gray-200 dark:border-white/10">
+              <thead className="bg-gray-100 dark:bg-[#222] border-b border-gray-200 dark:border-white/10 sticky top-0 z-10 backdrop-blur-md">
                 <tr>
                   <th className="p-3.5 text-left w-10">
                     <input
@@ -3419,9 +3445,19 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                         />
                       </td>
                       <td className="p-3.5 cursor-pointer" onClick={() => setSelectedShipmentId(d.id)}>
-                        <p className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                        <p className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5 flex-wrap">
                           {d.itemName || "Parcel"}
                           {d.category && <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-gray-100 dark:bg-[#333] text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10">{d.category}</span>}
+                          {d.additionalStops && d.additionalStops.startsWith("batch:") && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/20 text-amber-800 dark:text-[#FFB800] border border-amber-500/30 flex items-center gap-1">
+                              <Layers size={10} /> BATCH RUN
+                            </span>
+                          )}
+                          {(d as any).adminOverrideReason && (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-red-500/15 text-red-700 dark:text-red-400 border border-red-500/30" title={`Manual Override: ${(d as any).adminOverrideReason}`}>
+                              OVERRIDE
+                            </span>
+                          )}
                         </p>
                         <p className="text-[10px] font-mono text-gray-600 dark:text-gray-400 font-semibold mt-0.5 flex items-center gap-1">
                           #{idShort(d.id)}
@@ -4259,10 +4295,35 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                   <span className="text-gray-500 dark:text-gray-400 font-bold">→</span>
                   <span className={"px-2 py-1 rounded-lg text-[10px] font-bold " + sStyle(confirmStatusModal.newStatus)}>{confirmStatusModal.newStatus}</span>
                 </div>
+
+                {confirmStatusModal.newStatus === "DELIVERED" && !confirmStatusModal.delivery?.otpVerified && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-2 text-left mt-2">
+                    <div className="flex items-center gap-2 text-amber-800 dark:text-[#FFB800] font-black text-xs">
+                      <ShieldAlert size={15} /> Handover PIN Not Verified
+                    </div>
+                    <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">
+                      Recipient 4-digit Handover PIN was not entered by courier. To force status to DELIVERED, enter an administrative justification:
+                    </p>
+                    <textarea
+                      value={overrideReason}
+                      onChange={e => setOverrideReason(e.target.value)}
+                      placeholder="e.g. Recipient confirmed safe delivery by phone call; courier phone battery drained."
+                      rows={2}
+                      className="w-full p-2.5 bg-white dark:bg-[#111] border border-black/10 dark:border-white/10 rounded-xl text-xs font-medium text-[#111] dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50"
+                      required
+                    />
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-end gap-3 pt-2">
-                <button onClick={() => setConfirmStatusModal({ delivery: null as any, newStatus: "", show: false })} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer">Cancel</button>
-                <button onClick={confirmUpdateStatus} className="px-4 py-2.5 min-h-[38px] bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-colors cursor-pointer">Confirm Change</button>
+                <button onClick={() => { setOverrideReason(""); setConfirmStatusModal({ delivery: null as any, newStatus: "", show: false }); }} className="px-4 py-2.5 min-h-[38px] bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer">Cancel</button>
+                <button
+                  disabled={confirmStatusModal.newStatus === "DELIVERED" && !confirmStatusModal.delivery?.otpVerified && !overrideReason.trim()}
+                  onClick={confirmUpdateStatus}
+                  className="px-4 py-2.5 min-h-[38px] bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Confirm Change
+                </button>
               </div>
             </div>
           </div>
@@ -4804,6 +4865,12 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
   const [transferStoreTarget, setTransferStoreTarget] = useState<VendorStore | null>(null);
   const [transferEmail, setTransferEmail] = useState("");
   const [savingStoreOp, setSavingStoreOp] = useState(false);
+
+  // Payout Settlement Modal
+  const [settlePayoutTarget, setSettlePayoutTarget] = useState<VendorPayoutRequest | null>(null);
+  const [settleBankRef, setSettleBankRef] = useState("");
+  const [settleNotes, setSettleNotes] = useState("");
+  const [settlingPayout, setSettlingPayout] = useState(false);
 
   const totalProducts = products.filter(p => !p.isDeleted).length;
   const approvedStores = stores.filter(s => s.status === "APPROVED" && !s.isDeleted);
@@ -5375,14 +5442,12 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                       {p.status === "PENDING" && (
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={async () => {
-                              try {
-                                await updateDoc(doc(db, "vendor_payout_requests", p.id), { status: "APPROVED", processedAt: Timestamp.now() });
-                                addLog("Approve Payout", `Approved ₦${p.amount.toLocaleString()} for ${p.storeName}`);
-                                addToast("success", `Approved ₦${p.amount.toLocaleString()} payout`);
-                              } catch (err: any) { addToast("error", err.message); }
+                            onClick={() => {
+                              setSettlePayoutTarget(p);
+                              setSettleBankRef(`TXN-BNK-${Date.now().toString().slice(-6)}`);
+                              setSettleNotes("");
                             }}
-                            className="px-3 py-1.5 bg-emerald-500 text-white font-black text-[10px] rounded-xl hover:bg-emerald-600 transition-colors"
+                            className="px-3 py-1.5 bg-emerald-500 text-white font-black text-[10px] rounded-xl hover:bg-emerald-600 transition-colors cursor-pointer"
                           >
                             Approve
                           </button>
@@ -5409,6 +5474,98 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
             </table>
           </div>
         )}
+      </div>
+    )}
+
+    {/* Settle Payout Modal */}
+    {settlePayoutTarget && (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" onClick={() => setSettlePayoutTarget(null)}>
+        <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-md shadow-2xl border border-black/10 dark:border-white/10 space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
+            <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-[#FFB800]" /> Approve Vendor Payout
+            </h3>
+            <button onClick={() => setSettlePayoutTarget(null)} className="text-xs font-bold text-gray-500 hover:text-red-500 cursor-pointer">Cancel</button>
+          </div>
+          
+          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl space-y-1">
+            <p className="text-xs font-extrabold text-emerald-900 dark:text-emerald-200">{settlePayoutTarget.storeName || "Vendor Store"}</p>
+            <p className="text-xl font-black text-[#111] dark:text-white">₦{settlePayoutTarget.amount.toLocaleString()}</p>
+            <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium">{settlePayoutTarget.bankName} • {settlePayoutTarget.accountNumber}</p>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-extrabold text-gray-700 dark:text-gray-300 mb-1">Bank Reference / Session ID *</label>
+              <input
+                type="text"
+                value={settleBankRef}
+                onChange={e => setSettleBankRef(e.target.value)}
+                placeholder="e.g. 00001324091211550001"
+                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 text-xs font-mono font-bold text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-extrabold text-gray-700 dark:text-gray-300 mb-1">Settlement Notes (Optional)</label>
+              <input
+                type="text"
+                value={settleNotes}
+                onChange={e => setSettleNotes(e.target.value)}
+                placeholder="e.g. Cleared via corporate NIP transfer"
+                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 text-xs font-medium text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              onClick={() => setSettlePayoutTarget(null)}
+              className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold hover:bg-gray-200 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              disabled={settlingPayout || !settleBankRef.trim()}
+              onClick={async () => {
+                setSettlingPayout(true);
+                try {
+                  const txId = "PAYOUT-" + Date.now();
+                  await updateDoc(doc(db, "vendor_payout_requests", settlePayoutTarget.id), {
+                    status: "APPROVED",
+                    referenceId: settleBankRef.trim(),
+                    notes: settleNotes.trim() || null,
+                    processedAt: Timestamp.now()
+                  });
+                  await setDoc(doc(db, "transactions", txId), {
+                    id: txId,
+                    type: "VENDOR_PAYOUT",
+                    title: `Vendor Payout Settlement: ${settlePayoutTarget.storeName || "Vendor"}`,
+                    amount: settlePayoutTarget.amount,
+                    vendorId: settlePayoutTarget.vendorId,
+                    bankName: settlePayoutTarget.bankName,
+                    accountNumber: settlePayoutTarget.accountNumber,
+                    referenceId: settleBankRef.trim(),
+                    notes: settleNotes.trim() || null,
+                    status: "SUCCESS",
+                    createdAt: Timestamp.now(),
+                    timestamp: Date.now()
+                  });
+                  addLog("Approve Payout", `Approved ₦${settlePayoutTarget.amount.toLocaleString()} for ${settlePayoutTarget.storeName} (Ref: ${settleBankRef.trim()})`);
+                  addToast("success", `Approved ₦${settlePayoutTarget.amount.toLocaleString()} payout with reference ${settleBankRef.trim()}`);
+                  setSettlePayoutTarget(null);
+                } catch (err: any) {
+                  addToast("error", "Settlement failed: " + err.message);
+                } finally {
+                  setSettlingPayout(false);
+                }
+              }}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-xl shadow-md cursor-pointer disabled:opacity-50"
+            >
+              {settlingPayout ? "Recording..." : "Confirm Settlement"}
+            </button>
+          </div>
+        </div>
       </div>
     )}
 
@@ -6150,6 +6307,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
         {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
         {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
+        {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} />}
         {tab === "promotions" && <PromotionsTab promotions={promotions} db={db} addLog={addLog} addToast={addToast} />}

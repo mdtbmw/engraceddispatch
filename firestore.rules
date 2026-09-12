@@ -346,6 +346,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /broadcast_news/{docId} {
+      allow read: if isAuth();
+      allow create, update, delete: if isAdmin();
+    }
+
     // =========================================================
     // AUDIT LOGS — only admins may record entries (anti-forgery)
     // =========================================================

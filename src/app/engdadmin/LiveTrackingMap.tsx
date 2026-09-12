@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -6,45 +6,50 @@ import "leaflet/dist/leaflet.css";
 interface Coord { lat: number; lng: number; }
 type LatLng = [number, number];
 
-const NIGERIA_CENTER: Coord = { lat: 9.082, lng: 8.6753 };
+const BENIN_CITY_CENTER: Coord = { lat: 6.3350, lng: 5.6275 };
 
 const ADDRESS_COORDS: Record<string, Coord> = {
-  "ikeja": { lat: 6.6018, lng: 3.3515 },
-  "victoria island": { lat: 6.4281, lng: 3.4219 },
-  "lekki": { lat: 6.4308, lng: 3.4664 },
-  "surulere": { lat: 6.5013, lng: 3.3586 },
-  "yaba": { lat: 6.5134, lng: 3.377 },
-  "ajah": { lat: 6.4667, lng: 3.6 },
-  "port harcourt": { lat: 4.8158, lng: 7.0301 },
-  "gwarinpa": { lat: 9.0899, lng: 7.4019 },
-  "abuja": { lat: 9.0579, lng: 7.4951 },
-  "wuse": { lat: 9.0609, lng: 7.4891 },
+  // Benin City Core & Landmarks
+  "ring road": { lat: 6.3350, lng: 5.6275 },
+  "king's square": { lat: 6.3350, lng: 5.6275 },
+  "kings square": { lat: 6.3350, lng: 5.6275 },
+  "oba market": { lat: 6.3365, lng: 5.6260 },
+  "oba palace": { lat: 6.3325, lng: 5.6240 },
+  "ugbowo": { lat: 6.3980, lng: 5.6120 },
+  "uniben": { lat: 6.4020, lng: 5.6140 },
+  "ubth": { lat: 6.3910, lng: 5.6105 },
+  "gra": { lat: 6.3150, lng: 5.6180 },
+  "boundary road": { lat: 6.3120, lng: 5.6190 },
+  "ihama": { lat: 6.3180, lng: 5.6160 },
+  "airport road": { lat: 6.3080, lng: 5.5980 },
+  "airport": { lat: 6.3170, lng: 5.5995 },
+  "ikpoba hill": { lat: 6.3520, lng: 5.6550 },
+  "ramat park": { lat: 6.3540, lng: 5.6580 },
+  "sapele road": { lat: 6.3000, lng: 5.6350 },
+  "country home": { lat: 6.2950, lng: 5.6380 },
+  "new benin": { lat: 6.3450, lng: 5.6310 },
+  "uselu": { lat: 6.3680, lng: 5.6150 },
+  "ekenwan": { lat: 6.3200, lng: 5.5800 },
+  "siluko": { lat: 6.3580, lng: 5.5950 },
+  "aduwawa": { lat: 6.3750, lng: 5.6700 },
+  "upper sakponba": { lat: 6.3150, lng: 5.6550 },
+  "st saviour": { lat: 6.3050, lng: 5.6600 },
+  "ugbor": { lat: 6.2850, lng: 5.6150 },
+  "etete": { lat: 6.2980, lng: 5.6180 },
+  "textile mill": { lat: 6.3620, lng: 5.6020 },
+  "benin": { lat: 6.3350, lng: 5.6275 },
+
+  // Regional & Interstate Hubs
   "warri": { lat: 5.5167, lng: 5.75 },
-  "benin": { lat: 6.3176, lng: 5.6145 },
-  "kano": { lat: 12.0022, lng: 8.592 },
-  "ibadan": { lat: 7.3775, lng: 3.947 },
-  "bodija": { lat: 7.4167, lng: 3.9167 },
-  "dugbe": { lat: 7.3833, lng: 3.9 },
-  "enugu": { lat: 6.4403, lng: 7.504 },
-  "awka": { lat: 6.2128, lng: 7.0673 },
-  "aba": { lat: 5.1066, lng: 7.3667 },
-  "owerri": { lat: 5.4853, lng: 7.0363 },
-  "calabar": { lat: 4.9755, lng: 8.3417 },
-  "uyo": { lat: 5.0333, lng: 7.9333 },
-  "lagos": { lat: 6.5244, lng: 3.3792 },
-  "island": { lat: 6.4281, lng: 3.4219 },
-  "mainland": { lat: 6.5013, lng: 3.3586 },
   "asaba": { lat: 6.2021, lng: 6.6915 },
   "onitsha": { lat: 6.1349, lng: 6.7852 },
-  "ilorin": { lat: 8.4966, lng: 4.5421 },
-  "kaduna": { lat: 10.5264, lng: 7.4388 },
-  "jos": { lat: 9.8965, lng: 8.8583 },
-  "maiduguri": { lat: 11.8314, lng: 13.1505 },
-  "sokoto": { lat: 13.0606, lng: 5.2426 },
-  "yenogoa": { lat: 4.9188, lng: 6.2647 },
+  "lagos": { lat: 6.5244, lng: 3.3792 },
+  "ikeja": { lat: 6.6018, lng: 3.3515 },
+  "abuja": { lat: 9.0579, lng: 7.4951 },
+  "port harcourt": { lat: 4.8158, lng: 7.0301 },
 };
 
-function addressToCoord(addr: string, fallback: Coord = NIGERIA_CENTER): Coord {
+function addressToCoord(addr: string, fallback: Coord = BENIN_CITY_CENTER): Coord {
   const lower = addr.toLowerCase();
   for (const [key, coord] of Object.entries(ADDRESS_COORDS)) {
     if (lower.includes(key)) return coord;
@@ -77,8 +82,8 @@ export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSel
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
     const map = L.map(mapRef.current, {
-      center: [NIGERIA_CENTER.lat, NIGERIA_CENTER.lng],
-      zoom: 6,
+      center: [BENIN_CITY_CENTER.lat, BENIN_CITY_CENTER.lng],
+      zoom: 12,
       zoomControl: true,
       attributionControl: false,
     });
