@@ -30,7 +30,7 @@ function useOnlineStatus() {
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy } from "firebase/firestore";
-import { Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio } from "lucide-react";
+import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
 import BroadcastNewsTab from "./BroadcastNewsTab";
@@ -42,7 +42,7 @@ import { DispatchDecisionDrawer } from "@/components/design-system/DispatchDecis
 import { NotificationLifecycleManager } from "@/components/design-system/NotificationLifecycle";
 import { ShipmentMicroPage } from "@/components/design-system/ShipmentMicroPage";
 type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "broadcast" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support";
-interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; }
+interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; }
 interface Delivery {
   id: string;
   status: string;
@@ -92,7 +92,7 @@ interface Delivery {
 interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
 interface Referral { id: string; referrerId: string; referrerName: string; referrerEmail: string; refereeId: string; refereeName: string; refereeEmail: string; rewardAmount: number; status: string; }
 interface Promotion { id: string; title: string; description: string; discountType: string; discountValue: number; discountDisplay: string; minOrderAmount: number; maxDiscount: number; code: string; usageLimit: number; usedCount: number; active: boolean; }
-interface AuditEntry { id: string; time: string; action: string; details: string; admin: string; timestamp: number; }
+interface AuditEntry { id: string; time: string; action: string; details: string; admin: string; timestamp: number; staffId?: string; adminEmail?: string; category?: string; }
 
 interface Product {
   id: string;
@@ -163,8 +163,9 @@ interface PromotionsTabProps { promotions: Promotion[]; db: any; addLog: (a: str
 interface AppCardsTabProps { appContent: AppContent[]; db: any; addLog: (a: string, d: string) => Promise<void> | void; addToast: (t: Toast["type"], m: string) => void; }
 interface SettingsTabProps {
   db: any;
-  addLog: (a: string, d: string) => Promise<void> | void;
+  addLog: (a: string, d: string, c?: string) => Promise<void> | void;
   addToast?: (t: Toast["type"], m: string) => void;
+  activeUsers?: UserProfile[];
   seedUsers?: () => Promise<void>;
   seedDeliveries?: () => Promise<void>;
   seedBanners?: () => Promise<void>;
@@ -293,19 +294,19 @@ function ConfirmModal({ show, title, message, confirmLabel, onConfirm, onCancel 
 }
 function SearchInput({ value, onChange, placeholder = "Search...", className = "" }: { value: string; onChange: (v: string) => void; placeholder?: string; className?: string }) {
   return <div className={"relative group flex items-center " + className}>
-    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 group-focus-within:text-[#FFB800] pointer-events-none transition-colors" />
+    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 group-focus-within:text-[#FFB800] pointer-events-none transition-colors" />
     <input
       type="text"
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
-      className="h-10 pl-10 pr-9 bg-white dark:bg-[#1c1c1c] border border-gray-300 dark:border-white/15 rounded-xl text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 focus:border-[#FFB800] w-full transition-all shadow-2xs"
+      className="h-10 pl-12 pr-9 bg-white dark:bg-[#1c1c1c] border border-gray-300 dark:border-white/15 rounded-xl text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 focus:border-[#FFB800] w-full transition-all shadow-2xs"
     />
     {value && (
       <button
         type="button"
         onClick={() => onChange("")}
-        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-md transition-colors cursor-pointer"
+        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-md transition-colors cursor-pointer"
         title="Clear search"
       >
         <X className="w-3.5 h-3.5" />
@@ -1421,13 +1422,21 @@ interface HeaderProps {
   setMobileSidebar: (v: boolean) => void;
   notifications: any[];
   markNotifRead: (id: string) => void;
+  adminProfile?: { name: string; staffId: string; phone: string; role: string } | null;
+  onOpenAdminProfile?: () => void;
+  onMarkAllNotifsRead?: () => void;
+  onClearAllNotifs?: () => void;
 }
 
-function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showNotifs, setShowUserMenu, showUserMenu, currentUser, userRole, toggleDark, dark, setMobileSidebar, notifications, markNotifRead }: HeaderProps) {
+function Header({ 
+  searchQuery, setSearchQuery, unreadCount, setShowNotifs, showNotifs, setShowUserMenu, showUserMenu, 
+  currentUser, userRole, toggleDark, dark, setMobileSidebar, notifications, markNotifRead,
+  adminProfile, onOpenAdminProfile, onMarkAllNotifsRead, onClearAllNotifs
+}: HeaderProps) {
   return (
     <header className="flex justify-between items-center px-4 sm:px-6 lg:px-8 pt-4 sm:pt-5 pb-2 shrink-0 gap-4">
       <div className="flex items-center gap-3">
-        <button className="lg:hidden p-2 text-gray-900 dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition-colors" onClick={() => setMobileSidebar(true)}>
+        <button className="lg:hidden p-2 text-gray-900 dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition-colors cursor-pointer" onClick={() => setMobileSidebar(true)}>
           <Menu size={22} />
         </button>
         <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
@@ -1455,59 +1464,301 @@ function Header({ searchQuery, setSearchQuery, unreadCount, setShowNotifs, showN
         >
           {dark ? <Sun size={18} className="text-[#FFB800]" /> : <Moon size={18} className="text-gray-900" />}
         </button>
+
+        {/* High-Density Compact Notification Dropdown */}
         <div className="relative" id="notif-area">
-          <button onClick={(e) => { e.stopPropagation(); setShowNotifs(!showNotifs); setShowUserMenu(false); }} className="relative w-10 h-10 border border-gray-300 dark:border-white/15 rounded-full flex items-center justify-center cursor-pointer shadow-2xs hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0" title="Notifications">
+          <button 
+            onClick={(e) => { e.stopPropagation(); setShowNotifs(!showNotifs); setShowUserMenu(false); }} 
+            className="relative w-10 h-10 border border-gray-300 dark:border-white/15 rounded-full flex items-center justify-center cursor-pointer shadow-2xs hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0" 
+            title="Notifications"
+          >
             <Bell size={18} className="text-gray-900 dark:text-white" />
-            {unreadCount > 0 && <div className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-[#FFB800] rounded-full border-2 border-white dark:border-[#1a1a1a] animate-pulse-ring"></div>}
+            {unreadCount > 0 && <div className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-[#FFB800] rounded-full border-2 border-white dark:border-[#1a1a1a] animate-pulse-ring" />}
           </button>
-          {showNotifs && <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl shadow-2xl overflow-hidden z-50 animate-scale-in">
-            <div className="p-4 border-b border-gray-200 dark:border-white/10"><p className="text-xs font-black text-amber-800 dark:text-[#FFB800] tracking-wider uppercase">NOTIFICATIONS</p></div>
-            <div className="max-h-72 overflow-y-auto">
-              {notifications.length === 0 && <div className="p-6 text-center text-xs text-gray-600 dark:text-gray-400 font-semibold">No notifications yet.</div>}
-              {notifications.map((n: any) => <div key={n.id} onClick={() => markNotifRead(n.id)} className={"p-4 border-b border-gray-100 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer " + (n.read ? "" : "bg-[#FFB800]/10")}>
-                <div className="flex items-start gap-3">
-                  <div className={"w-2 h-2 mt-1.5 rounded-full shrink-0 " + (n.read ? "bg-transparent" : "bg-[#FFB800]")}></div>
-                  <div><p className="text-xs font-bold text-gray-900 dark:text-white">{n.title}</p><p className="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5">{n.description}</p><p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-medium">{n.time || "Just now"}</p></div>
+
+          {showNotifs && (
+            <div className="absolute right-0 top-full mt-2 w-88 sm:w-96 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-2xl shadow-2xl overflow-hidden z-50 animate-scale-in">
+              {/* Compact Header */}
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-white/10 flex items-center justify-between bg-gray-50/70 dark:bg-white/5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-wider">Notifications</span>
+                  {unreadCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-[#FFB800] text-[#111]">
+                      {unreadCount} new
+                    </span>
+                  )}
                 </div>
-              </div>)}
+                {unreadCount > 0 && onMarkAllNotifsRead && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onMarkAllNotifsRead(); }} 
+                    className="text-[11px] font-bold text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+
+              {/* High-Density Compact List */}
+              <div className="max-h-84 overflow-y-auto divide-y divide-gray-100 dark:divide-white/5">
+                {notifications.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <Bell className="w-7 h-7 text-gray-300 dark:text-gray-600 mx-auto mb-2 opacity-60" />
+                    <p className="text-xs text-gray-600 dark:text-gray-400 font-bold">No notifications yet</p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Alerts, dispatch updates, and orders appear here.</p>
+                  </div>
+                ) : (
+                  notifications.map((n: any) => {
+                    const isOrder = n.title?.toLowerCase().includes("order") || n.title?.toLowerCase().includes("shipment");
+                    const isWallet = n.title?.toLowerCase().includes("wallet") || n.title?.toLowerCase().includes("credit") || n.title?.toLowerCase().includes("payout");
+                    const isUser = n.title?.toLowerCase().includes("user") || n.title?.toLowerCase().includes("rider");
+                    return (
+                      <div 
+                        key={n.id} 
+                        onClick={() => markNotifRead(n.id)} 
+                        className={"py-2.5 px-3.5 flex items-start gap-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer " + (n.read ? "" : "bg-[#FFB800]/5")}
+                      >
+                        <div className={"w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 " + (
+                          n.read 
+                            ? "bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400" 
+                            : isOrder 
+                              ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
+                              : isWallet 
+                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                                : "bg-[#FFB800]/20 text-amber-900 dark:text-[#FFB800] border border-[#FFB800]/30"
+                        )}>
+                          {isOrder ? <Package size={13} /> : isWallet ? <DollarSign size={13} /> : isUser ? <User size={13} /> : <Bell size={13} />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{n.title}</p>
+                            {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-[#FFB800] shrink-0" />}
+                          </div>
+                          <p className="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-2 leading-tight mt-0.5">{n.description}</p>
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500 font-medium mt-1">{n.time || "Just now"}</p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Compact Footer */}
+              <div className="py-2 px-4 bg-gray-50/70 dark:bg-white/5 border-t border-gray-100 dark:border-white/10 flex items-center justify-between text-[11px]">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">{notifications.length} total alerts</span>
+                {notifications.length > 0 && onClearAllNotifs && (
+                  <button onClick={(e) => { e.stopPropagation(); onClearAllNotifs(); }} className="text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 font-bold transition-colors cursor-pointer">
+                    Clear all
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="p-3 text-center border-t border-gray-200 dark:border-white/10"><button className="text-xs text-amber-800 dark:text-[#FFB800] font-black hover:underline cursor-pointer">View all notifications</button></div>
-          </div>}
+          )}
         </div>
+
+        {/* User Profile Menu with Staff ID */}
         <div className="relative" id="user-menu-area">
           <div className="flex items-center gap-2.5 ml-1 cursor-pointer h-10 select-none" onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); setShowNotifs(false); }}>
-            <div className="w-10 h-10 rounded-full bg-[#FFB800]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-amber-900 dark:text-white font-black text-sm shrink-0"><EdLogoSvg size={18} dark={!dark} /></div>
+            <div className="w-10 h-10 rounded-full bg-[#FFB800]/20 border border-black/10 dark:border-white/10 flex items-center justify-center text-amber-900 dark:text-white font-black text-sm shrink-0">
+              <EdLogoSvg size={18} dark={!dark} />
+            </div>
             <div className="text-sm hidden sm:block">
-              <div className="font-extrabold text-gray-900 dark:text-white leading-tight">{currentUser?.email?.split("@")[0] || "Admin"}</div>
-              <div className="text-gray-600 dark:text-gray-400 font-bold text-[10px] uppercase tracking-wider leading-tight mt-0.5">{(userRole || "admin").replace("_", " ")}</div>
+              <div className="font-extrabold text-gray-900 dark:text-white leading-tight">
+                {adminProfile?.name || currentUser?.email?.split("@")[0] || "Admin"}
+              </div>
+              <div className="text-gray-600 dark:text-gray-400 font-bold text-[10px] uppercase tracking-wider leading-tight mt-0.5 flex items-center gap-1">
+                {adminProfile?.staffId && <span className="text-[#FFB800]">{adminProfile.staffId} •</span>}
+                <span>{(userRole || "admin").replace("_", " ")}</span>
+              </div>
             </div>
           </div>
-          {showUserMenu && <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl shadow-2xl overflow-hidden z-50 animate-scale-in">
-            <div className="p-4 border-b border-gray-200 dark:border-white/10">
-              <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{currentUser?.email}</p>
-              <p className="text-[10px] text-gray-600 dark:text-gray-400 font-bold mt-0.5 uppercase tracking-wider">{(userRole || "Admin").replace("_", " ")}</p>
+
+          {showUserMenu && (
+            <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-2xl shadow-2xl overflow-hidden z-50 animate-scale-in">
+              <div className="p-3.5 border-b border-gray-200 dark:border-white/10 bg-gray-50/70 dark:bg-white/5">
+                <p className="text-xs font-black text-gray-900 dark:text-white truncate">{adminProfile?.name || "Administrator"}</p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{currentUser?.email}</p>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/30 uppercase">
+                    {(userRole || "Admin").replace("_", " ")}
+                  </span>
+                  {adminProfile?.staffId && (
+                    <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300">
+                      ID: {adminProfile.staffId}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="p-2 space-y-1">
+                <button 
+                  onClick={() => { setShowUserMenu(false); onOpenAdminProfile?.(); }} 
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-xs font-bold text-gray-900 dark:text-white cursor-pointer"
+                >
+                  <User className="w-4 h-4 text-[#FFB800]" />
+                  <span>My Profile & Staff ID</span>
+                </button>
+                <button 
+                  onClick={toggleDark} 
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-xs font-bold text-gray-900 dark:text-white cursor-pointer"
+                >
+                  {dark ? <Sun className="w-4 h-4 text-amber-700 dark:text-[#FFB800]" /> : <Moon className="w-4 h-4 text-amber-700 dark:text-[#FFB800]" />}
+                  <span>{dark ? "Light Mode" : "Dark Mode"}</span>
+                </button>
+                <button 
+                  onClick={() => { document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); }} 
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs font-bold text-red-600 dark:text-red-400 cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" /> 
+                  <span>Sign Out</span>
+                </button>
+              </div>
             </div>
-            <div className="p-2">
-              <button onClick={toggleDark} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-xs font-bold text-gray-900 dark:text-white cursor-pointer">
-                {dark ? <Sun className="w-4 h-4 text-amber-700 dark:text-[#FFB800]" /> : <Moon className="w-4 h-4 text-amber-700 dark:text-[#FFB800]" />}
-                {dark ? "Light Mode" : "Dark Mode"}
-              </button>
-              <button onClick={() => { document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs font-bold text-red-600 dark:text-red-400 mt-1 cursor-pointer">
-                <LogOut className="w-4 h-4" /> Sign Out
-              </button>
-            </div>
-          </div>}
+          )}
         </div>
       </div>
     </header>
   );
 }
 
+function AdminProfileModal({
+  show,
+  onClose,
+  currentUser,
+  adminProfile,
+  onSave,
+  userRole
+}: {
+  show: boolean;
+  onClose: () => void;
+  currentUser: any;
+  adminProfile: { name: string; staffId: string; phone: string; role: string } | null;
+  onSave: (data: { name: string; staffId: string; phone: string }) => Promise<void>;
+  userRole: string;
+}) {
+  const [name, setName] = useState(adminProfile?.name || "");
+  const [staffId, setStaffId] = useState(adminProfile?.staffId || "");
+  const [phone, setPhone] = useState(adminProfile?.phone || "");
+  const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (adminProfile) {
+      setName(adminProfile.name || "");
+      setStaffId(adminProfile.staffId || "");
+      setPhone(adminProfile.phone || "");
+    }
+  }, [adminProfile, show]);
 
+  if (!show) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    await onSave({ name, staffId, phone });
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
+      <div className="w-full max-w-md bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/30 flex items-center justify-center font-black">
+              <User className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-gray-900 dark:text-white">Admin Profile & Staff ID</h3>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">Internal audit identity & credentials</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          <div>
+            <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+              Admin Full Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. Osasogie Ekhator"
+              className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+                Official Staff ID
+              </label>
+              <input
+                type="text"
+                value={staffId}
+                onChange={e => setStaffId(e.target.value.toUpperCase())}
+                placeholder="e.g. ESD-ADM-001"
+                className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono font-bold"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+                System Role
+              </label>
+              <div className="h-10 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3.5 flex items-center text-xs font-black text-amber-800 dark:text-[#FFB800] uppercase">
+                {(userRole || "admin").replace("_", " ")}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+              Phone Number
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="e.g. +234 801 234 5678"
+              className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
+              Admin Email (Read-Only)
+            </label>
+            <input
+              type="email"
+              value={currentUser?.email || ""}
+              disabled
+              className="w-full h-10 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-gray-500 dark:text-gray-400 cursor-not-allowed"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100 dark:border-white/10">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-10 px-4 rounded-xl border border-gray-200 dark:border-white/10 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <SaveBtn onClick={() => {}} label={saving ? "Saving..." : "Save Identity"} loading={saving} />
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 function AdminDashboardPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [adminProfile, setAdminProfile] = useState<{ name: string; staffId: string; phone: string; role: string } | null>(null);
+  const [showAdminProfileModal, setShowAdminProfileModal] = useState(false);
   const [userRole, setUserRole] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [signingUp, setSigningUp] = useState(false);
@@ -1635,13 +1886,74 @@ function AdminDashboardPage() {
     }
   }, []);
 
-  const addLog = useCallback(async (action: string, details: string) => {
-    const entry = { action, details, admin: currentUser?.email || "Admin", timestamp: Timestamp.now() };
-    try { await addDoc(collection(db, "audit_logs"), entry); } catch (e: any) {
+  const addLog = useCallback(async (action: string, details: string, category?: string) => {
+    const adminName = adminProfile?.name || currentUser?.email?.split("@")[0] || "Admin";
+    const staffId = adminProfile?.staffId || "ESD-ADM-001";
+    const adminIdentifier = `${adminName} [${staffId}]`;
+    const entry: any = { 
+      action, 
+      details, 
+      admin: adminIdentifier, 
+      staffId,
+      adminEmail: currentUser?.email || "",
+      category: category || "System",
+      timestamp: Timestamp.now() 
+    };
+    try { 
+      await addDoc(collection(db, "audit_logs"), entry); 
+    } catch (e: any) {
       console.error("addLog failed:", e);
     }
     setLogs((prev: AuditEntry[]) => [{ id: Date.now().toString(), time: "Just now", ...entry, timestamp: Date.now() }, ...prev]);
-  }, [currentUser]);
+  }, [currentUser, adminProfile]);
+
+  const handleMarkAllNotifsRead = async () => {
+    try {
+      const batch = writeBatch(db);
+      notifications.filter(n => !n.read).forEach(n => {
+        batch.update(doc(db, "notifications", n.id), { read: true });
+      });
+      await batch.commit();
+      addToast("success", "All notifications marked as read");
+    } catch (e: any) {
+      console.error("Failed to mark all read:", e);
+    }
+  };
+
+  const handleClearAllNotifs = async () => {
+    try {
+      const batch = writeBatch(db);
+      notifications.forEach(n => {
+        batch.delete(doc(db, "notifications", n.id));
+      });
+      await batch.commit();
+      addToast("success", "Notification feed cleared");
+    } catch (e: any) {
+      console.error("Failed to clear notifications:", e);
+    }
+  };
+
+  const handleSaveAdminProfile = async (data: { name: string; staffId: string; phone: string }) => {
+    if (!currentUser) return;
+    try {
+      await setDoc(doc(db, "users", currentUser.uid), {
+        name: data.name,
+        staffId: data.staffId,
+        phone: data.phone,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+      setAdminProfile(prev => ({
+        name: data.name,
+        staffId: data.staffId,
+        phone: data.phone,
+        role: prev?.role || userRole || "admin"
+      }));
+      addToast("success", "Admin identity & Staff ID saved successfully");
+      addLog("Admin Profile Update", `Updated admin identity: ${data.name} [${data.staffId}] (${currentUser.email})`, "Staff");
+    } catch (e: any) {
+      addToast("error", `Failed to save profile: ${e.message}`);
+    }
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -1652,8 +1964,8 @@ function AdminDashboardPage() {
             const snap = await getDoc(doc(db, "users", u.uid));
             if (!snap.exists()) { setAuthErr("Account not found. Contact an administrator."); document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null); setLoading(false); return; }
             const d = snap.data();
-            if (d?.role === "admin" || d?.role === "super_admin") { setCurrentUser(u); setUserRole(d.role); document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`; setLoading(false); return; }
-            if (d?.role === "dispatcher") { setCurrentUser(u); setUserRole("dispatcher"); document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`; setLoading(false); return; }
+            if (d?.role === "admin" || d?.role === "super_admin") { setCurrentUser(u); setUserRole(d.role); setAdminProfile({ name: d.name || u.email?.split("@")[0] || "Admin", staffId: d.staffId || "ESD-ADM-001", phone: d.phone || "", role: d.role }); document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`; setLoading(false); return; }
+            if (d?.role === "dispatcher") { setCurrentUser(u); setUserRole("dispatcher"); setAdminProfile({ name: d.name || u.email?.split("@")[0] || "Dispatcher", staffId: d.staffId || "ESD-DSP-001", phone: d.phone || "", role: "dispatcher" }); document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`; setLoading(false); return; }
             setAuthErr("Unauthorized"); document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null);
           } catch { setAuthErr("Authentication error. Please try again."); document.cookie = "admin_token=; path=/; max-age=0; SameSite=Strict"; signOut(auth); setCurrentUser(null); }
       } else { setCurrentUser(null); setUserRole(""); setLoading(false); return; }
@@ -1669,16 +1981,32 @@ function AdminDashboardPage() {
       const list: UserProfile[] = [];
       snap.forEach(d => {
         const x = d.data();
-        const rawStatus = (x.status || "").toLowerCase();
-        const isOnline = (x.isOnline === true || rawStatus === "active" || rawStatus === "online") && rawStatus !== "offline" && rawStatus !== "suspended";
+        const rawStatus = (x.status || "active").toLowerCase();
+        
+        // Strict real presence logic:
+        // Account status ('active') means not banned or suspended.
+        // It does NOT mean the user is currently online on a device!
+        // isOnline is true ONLY if explicitly isOnline === true AND has a verified recent heartbeat (< 15 mins).
+        let isOnline = false;
+        if (x.isOnline === true && rawStatus !== "offline" && rawStatus !== "suspended") {
+          const lastActive = x.lastSeen?.toMillis ? x.lastSeen.toMillis() : (x.updatedAt?.toMillis ? x.updatedAt.toMillis() : (typeof x.lastSeen === "number" ? x.lastSeen : (typeof x.updatedAt === "number" ? x.updatedAt : null)));
+          if (lastActive) {
+            isOnline = (Date.now() - lastActive) < 15 * 60 * 1000;
+          } else {
+            isOnline = false;
+          }
+        }
+
         list.push({
           id: d.id, uid: x.uid || d.id, name: x.name || "User", email: x.email || "", phone: x.phone || "",
-          role: x.role || "customer", status: rawStatus || "offline", isOnline,
+          role: x.role || "customer",
+          status: rawStatus === "offline" || rawStatus === "suspended" || rawStatus === "pending" ? rawStatus : "active",
+          isOnline,
           rating: x.rating || 5.0, deliveryCount: x.deliveryCount || 0,
           walletBalance: x.walletBalance || x.balance || x.wallet_balance || 0,
           loyaltyPoints: x.loyaltyPoints || 0, photoUrl: x.photoUrl || "",
-          bikeNumber: x.bikeNumber || "", lat: x.lat || x.latitude, lng: x.lng || x.longitude,
-          isDeleted: x.isDeleted || false, updatedAt: x.updatedAt,
+          bikeNumber: x.bikeNumber || "", staffId: x.staffId || "", lat: x.lat || x.latitude, lng: x.lng || x.longitude,
+          isDeleted: x.isDeleted || false, updatedAt: x.updatedAt, lastSeen: x.lastSeen,
         });
       });
       setUsers(list); setConnected(true); setRefreshT(new Date().toLocaleTimeString());
@@ -1882,6 +2210,9 @@ function AdminDashboardPage() {
           action: x.action || "Action",
           details: x.details || "",
           admin: x.admin || "Admin",
+          staffId: x.staffId || "",
+          adminEmail: x.adminEmail || "",
+          category: x.category || "General",
           timestamp: ts,
         });
       });
@@ -1997,11 +2328,11 @@ function AdminDashboardPage() {
           {authOk && <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl text-green-700 dark:text-green-400 text-xs flex items-center gap-2"><ShieldCheck className="w-4 h-4 shrink-0" /> {authOk}</div>}
           <form onSubmit={handleAuth} className="space-y-4">
             <div><label className="block text-xs font-bold text-gray-800 dark:text-gray-200 mb-1">Admin Email</label>
-              <div className="relative"><Mail className="absolute left-3.5 top-3 w-4 h-4 text-gray-500 dark:text-gray-400" />
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@engraced.com" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-10 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
+              <div className="relative"><Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-gray-400 pointer-events-none" />
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@engraced.com" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
             <div><label className="block text-xs font-bold text-gray-800 dark:text-gray-200 mb-1">Password</label>
-              <div className="relative"><Key className="absolute left-3.5 top-3 w-4 h-4 text-gray-500 dark:text-gray-400" />
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-10 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
+              <div className="relative"><Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-gray-400 pointer-events-none" />
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
             {signingUp && <div><label className="block text-[10px] font-black text-gray-800 dark:text-gray-200 mb-1 uppercase tracking-wider">ROLE</label>
                   <Select value={signupRole} onChange={setSignupRole} options={[{value:"super_admin",label:"Super Admin (full access)"},{value:"admin",label:"Admin (restricted)"},{value:"dispatcher",label:"Dispatcher (orders only)"}]} className="w-full" /></div>}
             <button type="submit" className="w-full bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black py-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-sm tracking-wider cursor-pointer">
@@ -2095,20 +2426,22 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [presenceFilter, setPresenceFilter] = useState<string>("ALL");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editUser, setEditUser] = useState<UserProfile | null>(null);
   const [previewUser, setPreviewUser] = useState<UserProfile | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState<{ mode: "single" | "bulk"; user?: UserProfile; count?: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [showNewUser, setShowNewUser] = useState(false);
   const [newUserStep, setNewUserStep] = useState(1);
-  const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
+  const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "", staffId: "" });
   const [creatingUser, setCreatingUser] = useState(false);
-  const [syncingPresence, setSyncingPresence] = useState(false);
+  const [sweepingPresence, setSweepingPresence] = useState(false);
   const [fundUser, setFundUser] = useState<UserProfile | null>(null);
   const [fundAction, setFundAction] = useState<"credit" | "debit">("credit");
   const [fundAmount, setFundAmount] = useState("");
   const [fundReason, setFundReason] = useState("");
   const [fundingWallet, setFundingWallet] = useState(false);
-  const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "" });
+  const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", staffId: "", status: "" });
   const [uPage, setUPage] = useState(0);
   const uPerPage = 15;
 
@@ -2117,6 +2450,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
   const ridersCount = activeUsers.filter(u => u.role === "rider").length;
   const customersCount = activeUsers.filter(u => u.role === "customer" || !u.role).length;
   const vendorsCount = activeUsers.filter(u => u.role === "vendor").length;
+  const adminsCount = activeUsers.filter(u => u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher").length;
 
   const filtered = useMemo(() => {
     const q = (searchQuery || search).toLowerCase().trim();
@@ -2124,7 +2458,8 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       // Role filter
       if (roleFilter !== "ALL") {
         if (roleFilter === "customer" && (u.role !== "customer" && u.role !== "")) return false;
-        if (roleFilter !== "customer" && u.role !== roleFilter) return false;
+        if (roleFilter === "admin" && (u.role !== "admin" && u.role !== "super_admin" && u.role !== "dispatcher")) return false;
+        if (roleFilter !== "customer" && roleFilter !== "admin" && u.role !== roleFilter) return false;
       }
       // Presence filter
       if (presenceFilter === "online" && !u.isOnline) return false;
@@ -2137,6 +2472,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         (u.email && u.email.toLowerCase().includes(q)) ||
         (u.phone && u.phone.includes(q)) ||
         (u.bikeNumber && u.bikeNumber.toLowerCase().includes(q)) ||
+        (u.staffId && u.staffId.toLowerCase().includes(q)) ||
         (u.role && u.role.toLowerCase().includes(q))
       );
     });
@@ -2147,18 +2483,38 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
 
   useEffect(() => { setUPage(0); }, [search, searchQuery, roleFilter, presenceFilter]);
 
-  /** Clean up any stale presence flags left from previous mock/seed sessions */
-  const handleSyncPresence = async () => {
-    setSyncingPresence(true);
+  // Selection handlers
+  const handleSelectAll = () => {
+    if (pagedUsers.length === 0) return;
+    const allSelectedOnPage = pagedUsers.every(u => selectedIds.has(u.id));
+    const next = new Set(selectedIds);
+    if (allSelectedOnPage) {
+      pagedUsers.forEach(u => next.delete(u.id));
+    } else {
+      pagedUsers.forEach(u => next.add(u.id));
+    }
+    setSelectedIds(next);
+  };
+
+  const handleToggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  /** Sweep all stale presence in database */
+  const handleSweepStalePresence = async () => {
+    setSweepingPresence(true);
     try {
       const now = Date.now();
-      const threshold = 30 * 60 * 1000;
+      const threshold = 15 * 60 * 1000;
       let count = 0;
       const batch = writeBatch(db);
       activeUsers.forEach(u => {
         if (u.isOnline) {
-          const lastActive = u.updatedAt?.toMillis ? u.updatedAt.toMillis() : (typeof u.updatedAt === "number" ? u.updatedAt : null);
-          if (lastActive && (now - lastActive > threshold)) {
+          const lastActive = u.lastSeen?.toMillis ? u.lastSeen.toMillis() : (u.updatedAt?.toMillis ? u.updatedAt.toMillis() : (typeof u.lastSeen === "number" ? u.lastSeen : (typeof u.updatedAt === "number" ? u.updatedAt : null)));
+          if (!lastActive || (now - lastActive > threshold)) {
             batch.update(doc(db, "users", u.id), {
               isOnline: false,
               status: "offline",
@@ -2170,289 +2526,224 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       });
       if (count > 0) {
         await batch.commit();
-        addLog("Presence Sync", `Reset ${count} inactive online session(s)`);
-        if (addToast) addToast("success", `Presence synced: reset ${count} stale session(s)`);
+        addLog("Sweep Presence", `Reset ${count} stale account(s) to offline status`, "Users");
+        addToast?.("success", `Reset ${count} inactive account(s) to offline`);
       } else {
-        if (addToast) addToast("info", "User presence is fully synchronized.");
+        addToast?.("info", "All active presence states are fresh and verified");
       }
-    } catch (err: any) {
-      if (addToast) addToast("error", "Presence sync failed: " + err.message);
-    } finally {
-      setSyncingPresence(false);
+    } catch (e: any) {
+      addToast?.("error", `Sweep failed: ${e.message}`);
     }
+    setSweepingPresence(false);
+  };
+
+  /** Execute hard permanent deletion from Firestore */
+  const executePermanentDelete = async () => {
+    if (!showDeleteModal) return;
+    setDeleting(true);
+    try {
+      if (showDeleteModal.mode === "single" && showDeleteModal.user) {
+        const u = showDeleteModal.user;
+        await deleteDoc(doc(db, "users", u.id));
+        addLog("User Permanent Delete", `Permanently deleted user doc ${u.id} (${u.name} - ${u.email || u.phone}) from Firestore`, "Users");
+        addToast?.("success", `User ${u.name} permanently removed from database`);
+        setSelectedIds(prev => { const n = new Set(prev); n.delete(u.id); return n; });
+      } else if (showDeleteModal.mode === "bulk" && selectedIds.size > 0) {
+        const ids = Array.from(selectedIds);
+        const batch = writeBatch(db);
+        const names: string[] = [];
+        ids.forEach(id => {
+          batch.delete(doc(db, "users", id));
+          const match = activeUsers.find(u => u.id === id);
+          if (match) names.push(match.name);
+        });
+        await batch.commit();
+        addLog("Bulk User Permanent Delete", `Permanently deleted ${ids.length} user document(s) from Firestore: ${names.slice(0, 5).join(", ")}${names.length > 5 ? "..." : ""}`, "Users");
+        addToast?.("success", `Successfully deleted ${ids.length} user(s) permanently from database`);
+        setSelectedIds(new Set());
+      }
+    } catch (e: any) {
+      addToast?.("error", `Delete failed: ${e.message}`);
+    }
+    setDeleting(false);
+    setShowDeleteModal(null);
   };
 
   const saveUser = async () => {
     if (!editUser) return;
-    await updateDoc(doc(db, "users", editUser.id), {
-      name: form.name || editUser.name,
-      role: form.role || editUser.role,
-      phone: form.phone || editUser.phone,
-      bikeNumber: form.bikeNumber || editUser.bikeNumber,
-      status: form.status || editUser.status,
-      updatedAt: Timestamp.now()
-    });
-    addLog("Update User", `${editUser.name} -> ${form.name || editUser.name}`);
-    if (addToast) addToast("success", `Updated details for ${form.name || editUser.name}`);
-    setEditUser(null);
-  };
-
-  const deleteUser = async (id: string) => {
-    await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() });
-    addLog("Delete User", "Deactivated user " + id);
-    if (addToast) addToast("info", "User deactivated");
-    setConfirmDelete(null);
+    try {
+      const payload: any = {
+        name: form.name,
+        role: form.role,
+        phone: form.phone,
+        status: form.status,
+        updatedAt: Timestamp.now()
+      };
+      if (form.bikeNumber) payload.bikeNumber = form.bikeNumber;
+      if (form.staffId) payload.staffId = form.staffId;
+      await updateDoc(doc(db, "users", editUser.id), payload);
+      addLog("Update User", `Updated profile of ${form.name} (${editUser.email || editUser.id})`, "Users");
+      addToast?.("success", "User profile updated successfully");
+      setEditUser(null);
+    } catch (e: any) {
+      addToast?.("error", "Failed to update user: " + e.message);
+    }
   };
 
   const promoteToVendor = async (u: UserProfile) => {
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      await setDoc(doc(db, "marketplace_stores", u.id), {
-        id: u.id, ownerId: u.id, storeName: u.name + "'s Store", category: "General",
-        ownerName: u.name, email: u.email, phone: u.phone, description: "", address: "",
-        commissionRate: 8.5, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
-        isVerified: true, isPendingReview: false, kycStatus: "approved", status: "APPROVED",
-        dateEnlisted: today, createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
-      }, { merge: true });
-      await updateDoc(doc(db, "users", u.id), { role: "vendor", userRole: "Vendor", isVendorVerified: true, updatedAt: Timestamp.now() });
-      addLog("Upgrade Vendor", `Upgraded '${u.name}' (${u.email}) to vendor storefront`);
-      if (addToast) addToast("success", `Upgraded ${u.name} to Vendor!`);
-    } catch (err: any) {
-      addLog("Error", "Upgrade to vendor failed: " + (err.message || "unknown"));
-      if (addToast) addToast("error", "Failed to upgrade vendor");
+      await updateDoc(doc(db, "users", u.id), { role: "vendor", updatedAt: Timestamp.now() });
+      const storeRef = doc(collection(db, "marketplace_stores"));
+      await setDoc(storeRef, {
+        storeName: `${u.name}'s Store`,
+        ownerId: u.id,
+        phone: u.phone,
+        email: u.email,
+        status: "APPROVED",
+        isVerified: true,
+        dateEnlisted: new Date().toISOString(),
+        storeRating: 5.0,
+        totalSales: 0,
+        vendorBalance: 0,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      addLog("Upgrade User", `Upgraded ${u.name} to Vendor and created store`, "Marketplace");
+      addToast?.("success", `${u.name} promoted to Vendor store owner`);
+    } catch (e: any) {
+      addToast?.("error", "Failed to promote user: " + e.message);
     }
   };
 
   const handleFundWallet = async () => {
+    if (!fundUser) return;
     const amt = parseFloat(fundAmount);
-    if (isNaN(amt) || amt <= 0 || !fundUser) return;
+    if (!amt || isNaN(amt) || amt <= 0) {
+      addToast?.("error", "Please enter a valid amount greater than 0");
+      return;
+    }
+    const currentBal = fundUser.walletBalance || 0;
+    if (fundAction === "debit" && amt > currentBal) {
+      addToast?.("error", `Cannot debit ${fmt(amt)}. User only has ${fmt(currentBal)} available.`);
+      return;
+    }
     setFundingWallet(true);
     try {
-      const requestedDelta = fundAction === "credit" ? amt : -amt;
-      const primaryDocId = fundUser.id || fundUser.uid;
-
-      if (fundAction === "debit" && (fundUser.walletBalance || 0) < amt) {
-        if (addToast) addToast("error", `Cannot debit ₦${amt.toLocaleString()} - balance is only ₦${(fundUser.walletBalance || 0).toLocaleString()}`);
-        setFundingWallet(false);
-        return;
-      }
-
-      await setDoc(doc(db, "users", primaryDocId), {
-        walletBalance: increment(requestedDelta),
-        balance: increment(requestedDelta),
-        wallet_balance: increment(requestedDelta),
-        updatedAt: Timestamp.now()
-      }, { merge: true });
-
-      if (fundUser.uid && fundUser.uid !== primaryDocId) {
-        try {
-          await setDoc(doc(db, "users", fundUser.uid), {
-            walletBalance: increment(requestedDelta),
-            balance: increment(requestedDelta),
-            wallet_balance: increment(requestedDelta),
-            updatedAt: Timestamp.now()
-          }, { merge: true });
-        } catch (_) {}
-      }
-
-      const txId = "TXN-" + Date.now();
-      const txDoc = {
-        id: txId,
-        userId: primaryDocId,
-        userName: fundUser.name,
-        title: fundReason || (fundAction === "credit" ? "Wallet Top-up" : "Wallet Debit"),
-        amount: Math.abs(requestedDelta),
-        type: fundAction === "credit" ? "CREDIT" : "DEBIT",
-        isTopUp: fundAction === "credit",
-        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-        status: "SUCCESS",
-        timestamp: Timestamp.now(),
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
-      };
-
-      try {
-        await setDoc(doc(db, "users", primaryDocId, "transactions", txId), txDoc);
-      } catch (_) {}
-
-      if (fundUser.uid && fundUser.uid !== primaryDocId) {
-        try {
-          await setDoc(doc(db, "users", fundUser.uid, "transactions", txId), txDoc);
-        } catch (_) {}
-      }
-
-      try {
-        await setDoc(doc(db, "transactions", txId), txDoc);
-      } catch (_) {}
-
-      try {
-        await addDoc(collection(db, "users", primaryDocId, "notifications"), {
-          title: fundAction === "credit" ? "Wallet Credited!" : "Wallet Debited",
-          message: fundReason 
-            ? `${fundReason} (₦${amt.toLocaleString()})`
-            : `Your account was ${fundAction === "credit" ? "credited with" : "debited by"} ₦${amt.toLocaleString()} by ESDispatch.`,
-          amount: Math.abs(requestedDelta),
-          read: false,
-          createdAt: Timestamp.now()
-        });
-      } catch (_) {}
-
-      addLog("Wallet Adjustment", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name} (${fundUser.email}).`);
-      if (addToast) addToast("success", `Successfully ${fundAction === "credit" ? "credited" : "debited"} ₦${amt.toLocaleString()} for ${fundUser.name}`);
-      if (createNotification) createNotification("Wallet Funded", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name}`);
-
-      setFundUser(null);
-      setFundAmount("");
-      setFundReason("");
-    } catch (err: any) {
-      addLog("Error", "Fund wallet failed: " + (err.message || "unknown"));
-      if (addToast) addToast("error", "Fund wallet failed: " + (err.message || "unknown"));
-    } finally {
-      setFundingWallet(false);
-    }
-  };
-
-  const createUser = async () => {
-    if (newUserForm.pin !== newUserForm.confirmPin) {
-      if (addToast) addToast("error", "PIN mismatch");
-      return;
-    }
-    if (newUserForm.pin.length < 4) {
-      if (addToast) addToast("error", "PIN must be at least 4 digits");
-      return;
-    }
-    setCreatingUser(true);
-    try {
-      const derivedPwd = getDynamicPassword(newUserForm.email, newUserForm.pin);
-      const secondaryAuth = getSecondaryAuth();
-      const cred = await createUserWithEmailAndPassword(secondaryAuth, newUserForm.email, derivedPwd);
-      
-      const isRider = newUserForm.role === "rider";
-      const isAdmin = newUserForm.role === "admin";
-      const isVendor = newUserForm.role === "vendor";
-      const bikeNum = newUserForm.bikeNumber || (isRider ? `ES-BIKE-${Math.floor(100 + Math.random() * 900)}` : "");
-
-      await setDoc(doc(db, "users", cred.user.uid), {
-        uid: cred.user.uid,
-        id: cred.user.uid,
-        name: newUserForm.name,
-        email: newUserForm.email,
-        phone: newUserForm.phone,
-        role: newUserForm.role,
-        userRole: isRider ? "Rider" : (isVendor ? "Vendor" : (isAdmin ? "Admin" : "Customer")),
-        bikeNumber: bikeNum,
-        pin: newUserForm.pin,
-        status: "offline",
-        riderStatus: "offline",
-        isOnline: false,
-        walletBalance: 0,
-        loyaltyPoints: 0,
-        deliveryCount: 0,
-        rating: 5.0,
-        photoUrl: "",
-        isDeleted: false,
-        createdAt: Timestamp.now(),
+      const delta = fundAction === "credit" ? amt : -amt;
+      const userRef = doc(db, "users", fundUser.id);
+      await updateDoc(userRef, {
+        walletBalance: increment(delta),
         updatedAt: Timestamp.now()
       });
 
-      if (isVendor) {
-        const today = new Date().toISOString().slice(0, 10);
-        await setDoc(doc(db, "marketplace_stores", cred.user.uid), {
-          id: cred.user.uid, ownerId: cred.user.uid, storeName: newUserForm.name + "'s Store", category: "General",
-          ownerName: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone, description: "", address: "",
-          commissionRate: 8.5, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
-          isVerified: true, isPendingReview: false, kycStatus: "approved", status: "APPROVED",
-          dateEnlisted: today, createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
-        });
-        await updateDoc(doc(db, "users", cred.user.uid), { userRole: "Vendor", isVendorVerified: true });
+      const txRef = doc(collection(db, "users", fundUser.id, "transactions"));
+      await setDoc(txRef, {
+        id: txRef.id,
+        amount: amt,
+        type: fundAction.toUpperCase(),
+        title: `Wallet ${fundAction === "credit" ? "Credit" : "Debit"} (Admin)`,
+        narration: fundReason.trim() || (fundAction === "credit" ? "Manual credit by Admin" : "Manual debit by Admin"),
+        status: "completed",
+        timestamp: Timestamp.now(),
+        createdAt: Timestamp.now()
+      });
+
+      if (createNotification) {
+        await createNotification(
+          `Wallet ${fundAction === "credit" ? "Credited" : "Debited"}`,
+          `Your wallet has been ${fundAction === "credit" ? "credited with" : "debited by"} ${fmt(amt)}. ${fundReason ? `Reason: ${fundReason}` : ""}`
+        );
       }
 
-      addLog("Create User", `Created ${newUserForm.role} '${newUserForm.name}' (${newUserForm.email})`);
-      if (addToast) addToast("success", `Created ${newUserForm.role} ${newUserForm.name}`);
-      setShowNewUser(false);
-      setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
-      setNewUserStep(1);
-    } catch (err: any) {
-      let msg = err.message || "Failed to create user";
-      if (err.code === "auth/email-already-in-use") msg = "This email is already in use.";
-      else if (err.code === "auth/invalid-email") msg = "The provided email address is invalid.";
-      addLog("Error", "Create user failed: " + msg);
-      if (addToast) addToast("error", "Create user failed: " + msg);
-    } finally {
-      try {
-        const secondaryAuth = getSecondaryAuth();
-        await signOut(secondaryAuth);
-      } catch (_) {}
-      setCreatingUser(false);
+      addLog(
+        fundAction === "credit" ? "Credit Wallet" : "Debit Wallet",
+        `${fundAction === "credit" ? "Credited" : "Debited"} ${fmt(amt)} for ${fundUser.name} (${fundUser.email || fundUser.id}). New projected balance: ${fmt(currentBal + delta)}`,
+        "Wallet"
+      );
+
+      addToast?.("success", `Successfully ${fundAction === "credit" ? "credited" : "debited"} ${fmt(amt)} for ${fundUser.name}`);
+      setFundUser(null);
+      setFundAmount("");
+      setFundReason("");
+    } catch (e: any) {
+      addToast?.("error", "Failed to update wallet: " + e.message);
     }
+    setFundingWallet(false);
+  };
+
+  const getInitials = (name?: string) => {
+    if (!name) return "U";
+    const parts = name.trim().split(" ");
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
   };
 
   return (
     <div className="tab-content space-y-6">
-      {/* Top Header & Metrics Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Header with Title and Actions */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#111] dark:text-white flex items-center gap-3">
-            <Users className="w-6 h-6 text-[#FFB800]" /> User & Account Operations
+          <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2">
+            <Users className="w-5 h-5 text-[#FFB800]" /> User Accounts & Fleet
           </h1>
-          <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mt-0.5">
-            Manage customers, fleet couriers, marketplace vendor accounts, and financial wallet ledgers.
+          <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">
+            Manage customers, active couriers, merchants, and administrative personnel across the platform.
           </p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
           <button
             type="button"
-            onClick={handleSyncPresence}
-            disabled={syncingPresence}
-            className="h-10 px-4 bg-gray-100 hover:bg-gray-200 dark:bg-[#222] dark:hover:bg-[#333] border border-gray-200 dark:border-white/10 text-xs font-bold text-[#111] dark:text-white rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-            title="Scan and synchronize real-time user presence"
+            onClick={handleSweepStalePresence}
+            disabled={sweepingPresence}
+            title="Clean up stale device sessions"
+            className="h-10 px-3.5 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:border-[#FFB800]/50 transition-all flex items-center gap-2 shadow-2xs cursor-pointer"
           >
-            <RefreshCw className={`w-4 h-4 ${syncingPresence ? "animate-spin text-[#FFB800]" : "text-gray-500"}`} />
-            Sync Presence
+            <RefreshCw className={`w-3.5 h-3.5 text-[#FFB800] ${sweepingPresence ? "animate-spin" : ""}`} />
+            <span className="hidden sm:inline">Sweep Stale Presence</span>
           </button>
           <button
             type="button"
-            onClick={() => setShowNewUser(true)}
-            className="h-10 px-5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+            onClick={() => {
+              setNewUserStep(1);
+              setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "", staffId: "" });
+              setShowNewUser(true);
+            }}
+            className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-xs hover:shadow-md transition-all flex items-center gap-2 cursor-pointer"
           >
             <UserPlus className="w-4 h-4" /> Add User
           </button>
         </div>
       </div>
 
-      {/* Top Metrics Cards (Marketplace unified style) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 shadow-xs">
-          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Total Users</span>
+      {/* 4 Spacious Executive Metric Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Total Accounts</span>
           <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{totalUsersCount}</p>
-          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">All active accounts</span>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Registered records</span>
         </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-emerald-500/30 bg-emerald-500/5 shadow-xs">
+        <div className="bg-white dark:bg-[#1a1a1a] border border-emerald-500/20 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider block">Online Now</span>
+            <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">Currently Online</span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           </div>
           <p className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{onlineUsersCount}</p>
-          <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-500 mt-0.5 block">Live active sessions</span>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Verified device presence</span>
         </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 shadow-xs">
-          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Fleet Couriers</span>
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Couriers / Fleet</span>
           <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{ridersCount}</p>
-          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">{activeUsers.filter(u => u.role === "rider" && u.isOnline).length} online</span>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Active riders</span>
         </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 shadow-xs">
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs">
           <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Customers</span>
           <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{customersCount}</p>
-          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Registered shoppers</span>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">App buyers & senders</span>
         </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 shadow-xs col-span-2 sm:col-span-1">
-          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Vendors</span>
-          <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{vendorsCount}</p>
-          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Storefront partners</span>
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs col-span-2 sm:col-span-1">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Vendors & Staff</span>
+          <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{vendorsCount + adminsCount}</p>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">{vendorsCount} stores • {adminsCount} staff</span>
         </div>
       </div>
 
@@ -2466,7 +2757,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
             { id: "customer", label: "Customers", count: customersCount },
             { id: "rider", label: "Riders", count: ridersCount },
             { id: "vendor", label: "Vendors", count: vendorsCount },
-            { id: "admin", label: "Admins", count: activeUsers.filter(u => u.role === "admin" || u.role === "super_admin").length },
+            { id: "admin", label: "Staff & Admins", count: adminsCount },
           ].map(tab => (
             <button
               key={tab.id}
@@ -2507,206 +2798,197 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
           ))}
         </div>
 
-        {/* Search Input */}
-        <div className="w-full md:w-72 shrink-0">
+        {/* Generous Search Bar with pl-12 */}
+        <div className="w-full md:w-80 shrink-0">
           <SearchInput value={search} onChange={setSearch} placeholder="Search name, email, phone, bike #..." />
         </div>
       </div>
 
-      {/* Add User Modal */}
-      {showNewUser && (
-        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-sm space-y-4 animate-scale-in">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
-              <UserPlus className="w-4 h-4 text-[#FFB800]" /> New Account Registration — Step {newUserStep}/2
-            </h3>
-            <button onClick={() => { setShowNewUser(false); setNewUserStep(1); }} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white cursor-pointer">
-              <X className="w-4 h-4" />
+      {/* Bulk Operations Toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-[#FFB800]/15 border border-[#FFB800]/40 rounded-2xl p-3 px-4 flex items-center justify-between flex-wrap gap-3 animate-fade-in shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="w-7 h-7 rounded-lg bg-[#FFB800] text-[#111] font-black text-xs flex items-center justify-center">
+              {selectedIds.size}
+            </span>
+            <span className="text-xs font-bold text-gray-900 dark:text-white">
+              user account(s) selected
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="h-8 px-3 rounded-xl bg-white dark:bg-[#222] border border-gray-200 dark:border-white/10 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer"
+            >
+              Deselect All
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal({ mode: "bulk", count: selectedIds.size })}
+              className="h-8 px-3.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Selected ({selectedIds.size})</span>
             </button>
           </div>
-          <div className="flex gap-2">
-            <div className={"h-1.5 flex-1 rounded-full " + (newUserStep >= 1 ? "bg-[#FFB800]" : "bg-gray-200 dark:bg-gray-700")} />
-            <div className={"h-1.5 flex-1 rounded-full " + (newUserStep >= 2 ? "bg-[#FFB800]" : "bg-gray-200 dark:bg-gray-700")} />
-          </div>
-          {newUserStep === 1 ? (
-            <div className="space-y-3">
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Full Name *</label>
-                  <div className="relative">
-                    <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                    <input value={newUserForm.name} onChange={e => setNewUserForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Osas Ighodaro" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Email Address *</label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                    <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(f => ({ ...f, email: e.target.value }))} placeholder="e.g. user@esdispatch.com" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-                  </div>
-                </div>
-              </div>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Phone Number</label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                    <input value={newUserForm.phone} onChange={e => setNewUserForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 08012345678" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Account Role</label>
-                  <Select value={newUserForm.role} onChange={v => setNewUserForm(f => ({ ...f, role: v }))} options={[{ value: "customer", label: "Customer" }, { value: "rider", label: "Rider / Courier" }, { value: "vendor", label: "Vendor" }, { value: "admin", label: "Admin" }]} />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else { if (addToast) addToast("error", "Fill in name and email first"); } }} className="h-10 px-6 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black transition-all cursor-pointer">Next →</button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {newUserForm.role === "rider" && (
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Bike / Plate Number</label>
-                  <div className="relative">
-                    <Truck className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                    <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-                  </div>
-                </div>
-              )}
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Set 4-Digit PIN *</label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                    <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Confirm PIN *</label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                    <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(f => ({ ...f, confirmPin: e.target.value }))} placeholder="••••" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-2 pt-2">
-                <button onClick={() => setNewUserStep(1)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">← Back</button>
-                <button onClick={createUser} disabled={creatingUser || !newUserForm.pin || !newUserForm.confirmPin} className="h-10 px-6 bg-[#FFB800] hover:bg-[#FFB800]/90 disabled:opacity-50 text-[#111] rounded-xl text-xs font-black shadow-xs transition-all flex items-center gap-1.5 cursor-pointer">
-                  {creatingUser ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Create User
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Main Unified Users List / Table (Matching MarketplaceTab standard) */}
-      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 sm:p-6 shadow-xs">
+      {/* Main Table Container */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs overflow-hidden">
         {filtered.length === 0 ? (
-          <div className="text-center py-16 text-gray-600 dark:text-gray-400 font-medium">
-            <Users className="w-12 h-12 mx-auto mb-3 text-[#FFB800]/50" />
-            <p className="font-extrabold text-base text-gray-900 dark:text-white">No users match the selected filters</p>
-            <p className="text-xs mt-1 text-gray-600 dark:text-gray-400">Try changing your search terms, role filters, or online presence filter.</p>
+          <div className="text-center py-16">
+            <div className="w-12 h-12 rounded-2xl bg-[#FFB800]/10 border border-[#FFB800]/20 flex items-center justify-center text-[#FFB800] mx-auto mb-3">
+              <Users className="w-6 h-6" />
+            </div>
+            <p className="text-sm font-bold text-gray-900 dark:text-white">No accounts found</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Try resetting your role or presence filters.</p>
+            <button
+              type="button"
+              onClick={() => { setSearch(""); setRoleFilter("ALL"); setPresenceFilter("ALL"); }}
+              className="mt-4 px-4 py-2 bg-gray-100 dark:bg-white/10 text-xs font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-white/20 transition-all cursor-pointer"
+            >
+              Clear Filters
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 dark:bg-[#222]">
-                <tr>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">User Profile</th>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Account Role</th>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Wallet & Loyalty</th>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Deliveries & Rating</th>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Live Presence</th>
-                  <th className="text-right font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Action Controls</th>
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-black/5 dark:border-white/10 text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50/50 dark:bg-white/5">
+                  <th className="p-3.5 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={pagedUsers.length > 0 && pagedUsers.every(u => selectedIds.has(u.id))}
+                      onChange={handleSelectAll}
+                      className="w-4 h-4 rounded-md accent-[#FFB800] cursor-pointer"
+                      title="Select all on this page"
+                    />
+                  </th>
+                  <th className="p-3.5">User Details</th>
+                  <th className="p-3.5">Role</th>
+                  <th className="p-3.5">Financial & Activity</th>
+                  <th className="p-3.5">Status & Presence</th>
+                  <th className="p-3.5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-black/5 dark:divide-white/10">
-                {pagedUsers.map((u, i) => (
-                  <tr key={u.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                    {/* User Profile: Left Avatar + Title + Subtitle */}
-                    <td className="p-4">
-                      <div className="flex items-center gap-3.5">
+              <tbody className="divide-y divide-black/5 dark:divide-white/10 text-xs">
+                {pagedUsers.map(u => (
+                  <tr key={u.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                    {/* Checkbox */}
+                    <td className="p-3.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(u.id)}
+                        onChange={() => handleToggleSelect(u.id)}
+                        className="w-4 h-4 rounded-md accent-[#FFB800] cursor-pointer"
+                      />
+                    </td>
+
+                    {/* User Identity Column */}
+                    <td className="p-3.5">
+                      <div className="flex items-center gap-3">
                         <div className="relative shrink-0">
-                          <div className="w-11 h-11 rounded-2xl bg-gray-100 dark:bg-[#222] border border-black/10 dark:border-white/10 overflow-hidden flex items-center justify-center font-black text-sm text-[#111] dark:text-white shadow-xs">
-                            {u.photoUrl ? (
-                              <img src={u.photoUrl} alt={u.name} className="w-full h-full object-cover" />
-                            ) : (
-                              u.name.charAt(0).toUpperCase()
-                            )}
-                          </div>
-                          {u.isOnline ? (
-                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#1a1a1a]" title="Online" />
+                          {u.photoUrl ? (
+                            <img src={u.photoUrl} alt={u.name} className="w-10 h-10 rounded-2xl object-cover border border-black/10 dark:border-white/15" />
                           ) : (
-                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-gray-400 ring-2 ring-white dark:ring-[#1a1a1a]" title="Offline" />
+                            <div className="w-10 h-10 rounded-2xl bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/30 flex items-center justify-center font-black text-xs">
+                              {getInitials(u.name)}
+                            </div>
+                          )}
+                          {/* Online indicator dot */}
+                          {u.isOnline ? (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#1a1a1a]" title="Online now" />
+                          ) : (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-zinc-400 dark:bg-zinc-600 ring-2 ring-white dark:ring-[#1a1a1a]" title="Offline" />
                           )}
                         </div>
                         <div className="min-w-0">
-                          <div className="font-extrabold text-sm text-[#111] dark:text-white flex items-center gap-2 truncate">
-                            <span className="truncate">{u.name}</span>
-                            {u.role === "rider" && u.bikeNumber && (
-                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-[#FFB800]/15 text-[#111] dark:text-[#FFB800] rounded-lg border border-[#FFB800]/30 shrink-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-extrabold text-gray-900 dark:text-white truncate">{u.name}</span>
+                            {u.staffId && (
+                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300">
+                                {u.staffId}
+                              </span>
+                            )}
+                            {u.bikeNumber && (
+                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-800 dark:text-[#FFB800] border border-amber-500/20">
                                 {u.bikeNumber}
                               </span>
                             )}
                           </div>
-                          <div className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-0.5 truncate">
-                            {u.email} {u.phone ? `· ${u.phone}` : ""}
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                            {u.email || u.phone || "No direct contact"}
                           </div>
                         </div>
                       </div>
                     </td>
 
-                    {/* Account Role */}
-                    <td className="p-4 hidden md:table-cell">
-                      <span className={"px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-2xs " + rBadge(u.role)}>
-                        {(u.role || "customer").toUpperCase()}
+                    {/* Role Column */}
+                    <td className="p-3.5">
+                      <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        u.role === "rider"
+                          ? "bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20"
+                          : u.role === "vendor"
+                          ? "bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20"
+                          : u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher"
+                          ? "bg-amber-500/15 text-amber-800 dark:text-[#FFB800] border border-amber-500/30"
+                          : "bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300"
+                      }`}>
+                        {u.role || "Customer"}
                       </span>
                     </td>
 
-                    {/* Financial Summary */}
-                    <td className="p-4">
-                      <div className="font-black text-sm text-emerald-600 dark:text-emerald-400">
-                        ₦{(u.walletBalance || 0).toLocaleString()}
-                      </div>
-                      <div className="text-[11px] font-bold text-amber-800 dark:text-amber-400 mt-0.5">
-                        {(u.loyaltyPoints || 0).toLocaleString()} pts
-                      </div>
-                    </td>
-
-                    {/* Deliveries & Rating */}
-                    <td className="p-4 hidden lg:table-cell">
-                      <div className="font-bold text-xs text-[#111] dark:text-white flex items-center gap-1.5">
-                        <Package className="w-3.5 h-3.5 text-gray-400" />
-                        <span>{u.deliveryCount || 0} deliveries</span>
-                      </div>
-                      <div className="text-[11px] font-medium text-gray-600 dark:text-gray-400 flex items-center gap-1 mt-0.5">
-                        <Star className="w-3 h-3 text-[#FFB800] fill-[#FFB800]" />
-                        <span>{(u.rating || 5.0).toFixed(1)} rating</span>
-                      </div>
-                    </td>
-
-                    {/* Live Presence */}
-                    <td className="p-4">
-                      {u.isOnline ? (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 shadow-2xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          ONLINE
+                    {/* Financials & Deliveries */}
+                    <td className="p-3.5">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-black text-gray-900 dark:text-white text-xs">
+                          {fmt(u.walletBalance || 0)}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-white/10">
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                          OFFLINE
-                        </span>
-                      )}
+                        <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                          <span>{u.deliveryCount || 0} orders</span>
+                          <span>•</span>
+                          <span className="flex items-center gap-0.5 text-amber-800 dark:text-[#FFB800] font-bold">
+                            <Star className="w-2.5 h-2.5 fill-current" /> {u.rating ? u.rating.toFixed(1) : "5.0"}
+                          </span>
+                        </div>
+                      </div>
                     </td>
 
-                    {/* Action Controls */}
-                    <td className="p-4 text-right">
+                    {/* Status & Real Presence */}
+                    <td className="p-3.5">
+                      <div className="flex flex-col gap-1 items-start">
+                        {/* Device Presence */}
+                        {u.isOnline ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            ONLINE
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+                            OFFLINE
+                          </span>
+                        )}
+                        {/* Account Status */}
+                        <span className={`text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.2 rounded ${
+                          u.status === "suspended" 
+                            ? "bg-red-500/10 text-red-600 border border-red-500/20" 
+                            : u.status === "pending"
+                            ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                            : "text-gray-500 dark:text-gray-400"
+                        }`}>
+                          {u.status === "suspended" ? "SUSPENDED" : u.status === "pending" ? "PENDING REVIEW" : "ACTIVE"}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Right-aligned Actions Suite */}
+                    <td className="p-3.5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          title="View Full Profile Details"
+                          title="View Full Profile"
                           onClick={() => setPreviewUser(u)}
                           className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-xl transition-all cursor-pointer"
                         >
@@ -2741,6 +3023,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
                               role: u.role || "customer",
                               phone: u.phone || "",
                               bikeNumber: u.bikeNumber || "",
+                              staffId: u.staffId || "",
                               status: u.status || "active"
                             });
                           }}
@@ -2749,8 +3032,8 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
-                          title="Deactivate User"
-                          onClick={() => setConfirmDelete(u.id)}
+                          title="Permanently Delete User"
+                          onClick={() => setShowDeleteModal({ mode: "single", user: u })}
                           className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-all cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -2809,322 +3092,332 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
-      <ConfirmModal
-        show={confirmDelete !== null}
-        title="Deactivate Account"
-        message="Soft-delete this user? They will no longer be able to sign in or perform dispatches."
-        confirmLabel="Deactivate"
-        onConfirm={() => deleteUser(confirmDelete!)}
-        onCancel={() => setConfirmDelete(null)}
-      />
-
-      {/* User Details Preview Modal */}
-      {previewUser && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setPreviewUser(null)}>
-          <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 sm:p-7 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-white/10">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-[#FFB800] text-[#111] flex items-center justify-center text-lg font-black shadow-sm">
-                  {previewUser.name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
-                    {previewUser.name}
-                    {previewUser.isOnline === true && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-500/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Online
-                      </span>
-                    )}
-                  </h3>
-                  <p className="text-xs text-gray-600 dark:text-gray-300 font-medium">{previewUser.email}</p>
-                </div>
+      {/* Permanent Deletion Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-[#1a1a1a] border border-red-500/30 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4">
+            <div className="flex items-center gap-3 text-red-600 dark:text-red-400">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
               </div>
-              <button onClick={() => setPreviewUser(null)} className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-xl cursor-pointer">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-3 text-center">
-                <p className="text-[10px] font-extrabold uppercase text-emerald-800 dark:text-emerald-400 tracking-wider">Wallet</p>
-                <p className="text-sm font-black text-emerald-700 dark:text-emerald-300 font-mono mt-0.5">₦{(previewUser.walletBalance || 0).toLocaleString()}</p>
-              </div>
-              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-500/20 rounded-2xl p-3 text-center">
-                <p className="text-[10px] font-extrabold uppercase text-amber-900 dark:text-[#FFB800] tracking-wider">Points</p>
-                <p className="text-sm font-black text-gray-900 dark:text-white font-mono mt-0.5">{previewUser.loyaltyPoints || 0}</p>
-              </div>
-              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-500/20 rounded-2xl p-3 text-center">
-                <p className="text-[10px] font-extrabold uppercase text-blue-800 dark:text-blue-400 tracking-wider">Deliveries</p>
-                <p className="text-sm font-black text-blue-700 dark:text-blue-300 font-mono mt-0.5">{previewUser.deliveryCount || 0}</p>
-              </div>
-              <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-500/20 rounded-2xl p-3 text-center">
-                <p className="text-[10px] font-extrabold uppercase text-purple-800 dark:text-purple-400 tracking-wider">Rating</p>
-                <p className="text-sm font-black text-purple-700 dark:text-purple-300 font-mono mt-0.5">{previewUser.rating ? `${previewUser.rating} ★` : "5.0 ★"}</p>
+              <div>
+                <h3 className="text-base font-black text-gray-900 dark:text-white">
+                  {showDeleteModal.mode === "bulk" ? "Permanent Bulk Deletion" : "Permanently Delete Account"}
+                </h3>
+                <p className="text-xs text-red-500 font-bold mt-0.5">Wipe record from database</p>
               </div>
             </div>
 
-            <div className="bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-2xl p-4 space-y-2 text-xs">
-              <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
-                <span className="text-gray-600 dark:text-gray-400 font-medium">Phone Number</span>
-                <span className="font-bold text-gray-900 dark:text-white">{previewUser.phone || "None registered"}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
-                <span className="text-gray-600 dark:text-gray-400 font-medium">Role</span>
-                <span className={"font-bold px-2 py-0.5 rounded-full text-[10px] " + rBadge(previewUser.role)}>{(previewUser.role || "customer").toUpperCase()}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
-                <span className="text-gray-600 dark:text-gray-400 font-medium">Live Presence</span>
-                {previewUser.isOnline === true ? (
-                  <span className="font-black text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> ONLINE
-                  </span>
-                ) : (
-                  <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400">
-                    OFFLINE
-                  </span>
-                )}
-              </div>
-              {previewUser.bikeNumber && (
-                <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
-                  <span className="text-gray-600 dark:text-gray-400 font-medium">Assigned Bike / Vehicle</span>
-                  <span className="font-mono font-bold text-gray-900 dark:text-white">{previewUser.bikeNumber}</span>
-                </div>
+            <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
+              {showDeleteModal.mode === "bulk" ? (
+                <p>
+                  You are about to permanently remove <b>{showDeleteModal.count} selected user accounts</b> from the Firestore database. This action completely clears their documents and cannot be undone.
+                </p>
+              ) : (
+                <p>
+                  Are you sure you want to permanently delete user <b>{showDeleteModal.user?.name}</b> ({showDeleteModal.user?.email || showDeleteModal.user?.phone || showDeleteModal.user?.id})? This will permanently wipe the record from Firestore.
+                </p>
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setFundUser(previewUser);
-                    setFundAmount("");
-                    setFundReason("");
-                    setPreviewUser(null);
-                  }}
-                  className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <DollarSign size={14} /> Fund Wallet
-                </button>
-                <button
-                  onClick={() => {
-                    setEditUser(previewUser);
-                    setForm({
-                      name: previewUser.name,
-                      role: previewUser.role || "customer",
-                      phone: previewUser.phone || "",
-                      bikeNumber: previewUser.bikeNumber || "",
-                      status: previewUser.status || "active"
-                    });
-                    setPreviewUser(null);
-                  }}
-                  className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <Edit3 size={14} /> Edit
-                </button>
-              </div>
-              <button onClick={() => setPreviewUser(null)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Upgraded Luxury Fund Wallet Modal */}
-      {fundUser && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setFundUser(null)}>
-          <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 sm:p-7 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-[#FFB800]/15 text-[#FFB800] flex items-center justify-center border border-[#FFB800]/30 shadow-xs">
-                  <DollarSign className="w-6 h-6 text-[#FFB800]" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-black text-[#111] dark:text-white">Fund & Manage Wallet</h3>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 font-medium">Atomic ledger adjustment with instant notification</p>
-                </div>
-              </div>
-              <button onClick={() => setFundUser(null)} className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Recipient Card */}
-            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-[#111] dark:bg-white text-white dark:text-[#111] flex items-center justify-center font-black text-sm shrink-0">
-                  {fundUser.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="font-extrabold text-sm text-[#111] dark:text-white truncate">{fundUser.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate">{fundUser.email}</p>
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Current Balance</span>
-                <span className="font-black text-sm sm:text-base text-emerald-600 dark:text-emerald-400">₦{(fundUser.walletBalance || 0).toLocaleString()}</span>
-              </div>
-            </div>
-
-            {/* Credit / Debit Pill Toggle */}
-            <div>
-              <label className="block text-[11px] font-extrabold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">Adjustment Type</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setFundAction("credit")}
-                  className={`h-11 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer border ${
-                    fundAction === "credit"
-                      ? "bg-emerald-600 text-white border-emerald-500 shadow-sm"
-                      : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]"
-                  }`}
-                >
-                  <Plus className="w-4 h-4" /> Credit Account (Top-Up)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFundAction("debit")}
-                  className={`h-11 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer border ${
-                    fundAction === "debit"
-                      ? "bg-rose-600 text-white border-rose-500 shadow-sm"
-                      : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]"
-                  }`}
-                >
-                  <span className="font-black text-base leading-none">-</span> Debit Account (Deduct)
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Amount Increment Chips */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-[11px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Quick Amount Chips</label>
-                {fundAmount && (
-                  <button type="button" onClick={() => setFundAmount("")} className="text-[10px] font-bold text-rose-500 hover:underline cursor-pointer">
-                    Clear Amount
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[1000, 2000, 5000, 10000, 25000, 50000, 100000].map(amt => (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => {
-                      const curr = parseFloat(fundAmount) || 0;
-                      setFundAmount((curr + amt).toString());
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#222] dark:hover:bg-[#333] border border-gray-200 dark:border-white/10 text-xs font-bold text-[#111] dark:text-white transition-all cursor-pointer active:scale-95"
-                  >
-                    +₦{amt >= 1000 ? `${amt / 1000}k` : amt.toLocaleString()}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Amount Input */}
-            <div>
-              <label className="block text-[11px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Amount (₦) *</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-sm text-[#FFB800]">₦</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={fundAmount}
-                  onChange={e => setFundAmount(e.target.value)}
-                  placeholder="e.g. 5,000"
-                  className="w-full h-12 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-2xl pl-10 pr-4 text-base font-black text-[#111] dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono"
-                />
-              </div>
-            </div>
-
-            {/* Live Calculation Card */}
-            {(() => {
-              const entered = parseFloat(fundAmount) || 0;
-              const currentBal = fundUser.walletBalance || 0;
-              const delta = fundAction === "credit" ? entered : -entered;
-              const projectedBal = Math.max(0, currentBal + delta);
-              return (
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="text-gray-600 dark:text-gray-400 font-semibold block">Projected Balance:</span>
-                    <span className="font-extrabold text-xs text-gray-700 dark:text-gray-300">
-                      ₦{currentBal.toLocaleString()} {fundAction === "credit" ? "+" : "-"} ₦{entered.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm sm:text-base font-black text-[#111] dark:text-[#FFB800]">
-                      = ₦{projectedBal.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Narration Presets & Input */}
-            <div>
-              <label className="block text-[11px] font-extrabold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wider">Reason / Narration</label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {[
-                  "Customer Promo Credit",
-                  "Order Refund",
-                  "Manual Deposit",
-                  "Correction / Reversal",
-                  "Driver Performance Bonus",
-                  "Account Settlement"
-                ].map(reason => (
-                  <button
-                    key={reason}
-                    type="button"
-                    onClick={() => setFundReason(reason)}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
-                      fundReason === reason
-                        ? "bg-[#FFB800] text-[#111] border-[#FFB800]"
-                        : "bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#333]"
-                    }`}
-                  >
-                    {reason}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="text"
-                value={fundReason}
-                onChange={e => setFundReason(e.target.value)}
-                placeholder="Or type custom narration..."
-                className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-[#111] dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-medium"
-              />
-            </div>
-
-            {/* Footer buttons */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100 dark:border-white/10">
+            <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setFundUser(null)}
-                className="h-11 px-5 bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/15 text-[#111] dark:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                disabled={deleting}
+                onClick={() => setShowDeleteModal(null)}
+                className="h-10 px-4 rounded-xl border border-gray-200 dark:border-white/10 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleFundWallet}
-                disabled={fundingWallet || !fundAmount || parseFloat(fundAmount) <= 0}
-                className={`h-11 px-6 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
+                disabled={deleting}
+                onClick={executePermanentDelete}
+                className="h-10 px-5 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white text-xs font-black flex items-center gap-2 shadow-md cursor-pointer"
+              >
+                {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                <span>{deleting ? "Deleting from Database..." : "Delete Permanently"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Inspector Modal */}
+      {previewUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-lg bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/30 flex items-center justify-center font-black text-sm">
+                  {getInitials(previewUser.name)}
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                    {previewUser.name}
+                    {previewUser.isOnline === true && (
+                      <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-black bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Online
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5">{previewUser.id}</p>
+                </div>
+              </div>
+              <button onClick={() => setPreviewUser(null)} className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/5">
+                <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Wallet Balance</span>
+                <span className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">{fmt(previewUser.walletBalance || 0)}</span>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/5">
+                <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Reward Points</span>
+                <span className="text-sm font-black text-[#FFB800] block mt-0.5">{previewUser.loyaltyPoints || 0} pts</span>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/5">
+                <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Completed Orders</span>
+                <span className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">{previewUser.deliveryCount || 0}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs border-t border-gray-100 dark:border-white/10 pt-3">
+              <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">Email Address</span>
+                <span className="font-bold text-gray-900 dark:text-white">{previewUser.email || "None"}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">Phone Number</span>
+                <span className="font-bold text-gray-900 dark:text-white">{previewUser.phone || "None"}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">Assigned Role</span>
+                <span className="font-bold uppercase text-[#FFB800]">{previewUser.role || "Customer"}</span>
+              </div>
+              {previewUser.staffId && (
+                <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
+                  <span className="text-gray-500 dark:text-gray-400 font-medium">Official Staff ID</span>
+                  <span className="font-mono font-bold text-gray-900 dark:text-white">{previewUser.staffId}</span>
+                </div>
+              )}
+              {previewUser.bikeNumber && (
+                <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
+                  <span className="text-gray-500 dark:text-gray-400 font-medium">Vehicle / Bike Number</span>
+                  <span className="font-mono font-bold text-gray-900 dark:text-white">{previewUser.bikeNumber}</span>
+                </div>
+              )}
+              <div className="flex justify-between py-1">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">Live Telemetry</span>
+                <span className="font-bold text-gray-900 dark:text-white">
+                  {previewUser.isOnline === true ? (
+                    <span className="text-emerald-500 font-black flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> ONLINE
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">Offline</span>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-white/10">
+              <button
+                type="button"
+                onClick={() => {
+                  const u = previewUser;
+                  setPreviewUser(null);
+                  setFundUser(u);
+                }}
+                className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <DollarSign className="w-3.5 h-3.5" /> Fund Wallet
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const u = previewUser;
+                  setPreviewUser(null);
+                  setEditUser(u);
+                  setForm({
+                    name: u.name,
+                    role: u.role || "customer",
+                    phone: u.phone || "",
+                    bikeNumber: u.bikeNumber || "",
+                    staffId: u.staffId || "",
+                    status: u.status || "active"
+                  });
+                }}
+                className="h-9 px-4 rounded-xl bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Edit3 className="w-3.5 h-3.5" /> Edit Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Luxury Obsidian/Gold Fund Wallet Modal */}
+      {fundUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-[#161616] text-white border border-[#FFB800]/30 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/40 flex items-center justify-center font-black">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Adjust Wallet Balance</h3>
+                  <p className="text-[11px] text-gray-400 font-medium">Direct ledger credit or debit</p>
+                </div>
+              </div>
+              <button onClick={() => setFundUser(null)} className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/5 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Target User Summary Card */}
+            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#FFB800]/15 text-[#FFB800] font-black text-xs flex items-center justify-center">
+                  {getInitials(fundUser.name)}
+                </div>
+                <div>
+                  <p className="text-xs font-black text-white">{fundUser.name}</p>
+                  <p className="text-[10px] text-gray-400 truncate">{fundUser.email || fundUser.phone}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-gray-400 font-medium block">Current Balance</span>
+                <span className="text-sm font-black text-[#FFB800]">{fmt(fundUser.walletBalance || 0)}</span>
+              </div>
+            </div>
+
+            {/* Credit / Debit Segmented Toggle */}
+            <div className="grid grid-cols-2 p-1 bg-black/40 border border-white/10 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setFundAction("credit")}
+                className={`py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
                   fundAction === "credit"
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
-                    : "bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50"
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "text-gray-400 hover:text-white"
                 }`}
               >
-                {fundingWallet ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" /> Processing...
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" /> Confirm {fundAction === "credit" ? "Credit" : "Debit"} (₦{(parseFloat(fundAmount) || 0).toLocaleString()})
-                  </>
-                )}
+                + Credit Account
+              </button>
+              <button
+                type="button"
+                onClick={() => setFundAction("debit")}
+                className={`py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                  fundAction === "debit"
+                    ? "bg-red-600 text-white shadow-xs"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                - Debit Account
+              </button>
+            </div>
+
+            {/* Amount Input with clear left icon and pl-12 */}
+            <div>
+              <label className="block text-[10px] font-extrabold text-gray-300 mb-1.5 uppercase tracking-wider">
+                Transaction Amount (₦)
+              </label>
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-[#FFB800] pointer-events-none">
+                  ₦
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  step="any"
+                  placeholder="0.00"
+                  value={fundAmount}
+                  onChange={e => setFundAmount(e.target.value)}
+                  className="w-full h-11 bg-white/5 border border-white/15 rounded-xl pl-12 pr-4 text-sm font-bold text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Quick Preset Chips */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Quick Presets</span>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[1000, 2500, 5000, 10000, 25000, 50000, 100000].map(amt => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setFundAmount(String(amt))}
+                    className="py-1.5 px-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[11px] font-bold text-gray-200 hover:text-[#FFB800] transition-colors cursor-pointer"
+                  >
+                    +{fmt(amt).replace("₦", "")}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setFundAmount("")}
+                  className="py-1.5 px-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[11px] font-bold text-gray-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* Narration Input */}
+            <div>
+              <label className="block text-[10px] font-extrabold text-gray-300 mb-1 uppercase tracking-wider">
+                Audit Narration & Reason
+              </label>
+              <input
+                type="text"
+                placeholder={fundAction === "credit" ? "e.g. Operational promo bonus" : "e.g. Overdraft correction"}
+                value={fundReason}
+                onChange={e => setFundReason(e.target.value)}
+                className="w-full h-10 bg-white/5 border border-white/15 rounded-xl px-3.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50"
+              />
+            </div>
+
+            {/* Projected Live Balance Card */}
+            {parseFloat(fundAmount) > 0 && (
+              <div className="p-3 bg-black/40 border border-[#FFB800]/30 rounded-xl flex items-center justify-between text-xs animate-fade-in">
+                <span className="text-gray-400 font-medium">Projected Balance:</span>
+                <span className="font-black text-white text-sm">
+                  {fmt(
+                    Math.max(
+                      0,
+                      (fundUser.walletBalance || 0) + (fundAction === "credit" ? parseFloat(fundAmount) : -parseFloat(fundAmount))
+                    )
+                  )}
+                </span>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setFundUser(null)}
+                className="h-10 px-4 rounded-xl border border-white/15 text-xs font-bold text-gray-300 hover:bg-white/5 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={fundingWallet || !parseFloat(fundAmount)}
+                onClick={handleFundWallet}
+                className={`h-10 px-5 rounded-xl font-black text-xs flex items-center gap-2 shadow-lg cursor-pointer transition-all ${
+                  fundAction === "credit"
+                    ? "bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111]"
+                    : "bg-red-600 hover:bg-red-700 text-white"
+                }`}
+              >
+                {fundingWallet ? <RefreshCw className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
+                <span>{fundingWallet ? "Executing..." : fundAction === "credit" ? "Credit Balance" : "Debit Balance"}</span>
               </button>
             </div>
           </div>
@@ -3133,14 +3426,23 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
 
       {/* Edit User Modal */}
       {editUser && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
-          <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
-                <Edit3 className="w-4 h-4 text-[#FFB800]" /> Edit Account Details
-              </h3>
-              <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">{editUser.email}</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/30 flex items-center justify-center font-black">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-gray-900 dark:text-white">Edit User Profile</h3>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono truncate">{editUser.email || editUser.id}</p>
+                </div>
+              </div>
+              <button onClick={() => setEditUser(null)} className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
             </div>
+
             <div className="space-y-3">
               <div>
                 <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Full Name</label>
@@ -3175,10 +3477,17 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
                     ]} />
                 </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Bike / Vehicle Number</label>
-                <input value={form.bikeNumber} onChange={e => setForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204"
-                  className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Staff ID</label>
+                  <input value={form.staffId} onChange={e => setForm(f => ({ ...f, staffId: e.target.value.toUpperCase() }))} placeholder="e.g. ESD-ADM-001"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Vehicle / Bike Number</label>
+                  <input value={form.bikeNumber} onChange={e => setForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono" />
+                </div>
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -3751,7 +4060,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
             onReserveRider={reserveRider}
             onUpdateStatus={async (delId: string, newStatus: string) => {
               await updateDoc(doc(db, "deliveries", delId), { status: newStatus, updatedAt: Timestamp.now() });
-              addLog("Status Update", `${idShort(delId)} → ${newStatus}`);
+              addLog("Status Update", `Shipment #${idShort(delId)} status updated to ${newStatus.toUpperCase()}`, "Shipments");
               if (addToast) addToast("success", `Status updated to ${newStatus.replace(/_/g, " ")}`);
             }}
             onPrintWaybill={(del: any) => setWaybillModal({ delivery: del, show: true })}
@@ -4558,13 +4867,13 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
               {/* Rider Search & Online Filter */}
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
+                  <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search rider name, phone, bike #..."
                     value={riderSearch}
                     onChange={e => setRiderSearch(e.target.value)}
-                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl pl-9 pr-3.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl pl-12 pr-3.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                   />
                 </div>
                 <button
@@ -4664,13 +4973,13 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
               {/* Rider Search & Online Filter */}
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
+                  <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search rider name, phone, bike #..."
                     value={riderSearch}
                     onChange={e => setRiderSearch(e.target.value)}
-                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl pl-9 pr-3.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl pl-12 pr-3.5 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                   />
                 </div>
                 <button
@@ -5426,11 +5735,39 @@ function Toggle({ label, desc, checked, onChange }: { label: string; desc?: stri
       <div className="w-9 h-5 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FFB800]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#FFB800]"></div></label></div>;
 }
 
-function SettingsTab({ db, addLog }: SettingsTabProps) {
+function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
   const [sForm, setSForm] = useState<any>({});
   const [fcmKey, setFcmKey] = useState("");
   const [showFcm, setShowFcm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<UserProfile | null>(null);
+  const [staffForm, setStaffForm] = useState({ name: "", staffId: "", role: "admin", phone: "", status: "active" });
+  const [savingStaff, setSavingStaff] = useState(false);
+
+  const staffMembers = useMemo(() => {
+    return (activeUsers || []).filter(u => u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher");
+  }, [activeUsers]);
+
+  const handleSaveStaff = async () => {
+    if (!editingStaff) return;
+    setSavingStaff(true);
+    try {
+      await updateDoc(doc(db, "users", editingStaff.id), {
+        name: staffForm.name,
+        staffId: staffForm.staffId.toUpperCase().trim(),
+        role: staffForm.role,
+        phone: staffForm.phone,
+        status: staffForm.status,
+        updatedAt: Timestamp.now()
+      });
+      addLog("Staff Profile Update", `Updated credentials for ${staffForm.name} [${staffForm.staffId}]`, "Staff");
+      addToast?.("success", "Staff profile updated successfully");
+      setEditingStaff(null);
+    } catch (e: any) {
+      addToast?.("error", "Failed to update staff: " + e.message);
+    }
+    setSavingStaff(false);
+  };
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "system_config", "global_settings"), snap => {
       if (snap.exists()) {
@@ -5671,6 +6008,220 @@ function SettingsTab({ db, addLog }: SettingsTabProps) {
         <Toggle label="Fleet Sync" desc="Force synchronization across all drivers" checked={!!sForm.fleetSync} onChange={v => upd("fleetSync", v)} />
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Master Overrides")} loading={saving} /></div>
+    </div>
+
+    {/* Section 7 — Administrative Staff & Sub-Admins */}
+    <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3 pb-2 border-b border-gray-100 dark:border-white/10">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5 text-[#FFB800]" />
+          <div>
+            <span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Administrative Staff & Sub-Admins</span>
+            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Manage corporate identities, Staff IDs, access roles, and permissions</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-white/10 px-2.5 py-1 rounded-xl">
+            {staffMembers.length} Officer(s)
+          </span>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 dark:border-white/10">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 dark:bg-[#222]">
+            <tr className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <th className="p-3 text-left">Staff Member</th>
+              <th className="p-3 text-left">Staff ID</th>
+              <th className="p-3 text-left">Role / Permission</th>
+              <th className="p-3 text-left">Phone</th>
+              <th className="p-3 text-left">Status</th>
+              <th className="p-3 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-white/10">
+            {staffMembers.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-6 text-center text-gray-500 font-medium">
+                  No administrative personnel records found.
+                </td>
+              </tr>
+            ) : (
+              staffMembers.map(staff => (
+                <tr key={staff.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                  <td className="p-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/30 flex items-center justify-center font-black text-[11px]">
+                        {(staff.name || "A").slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-bold text-[#111] dark:text-white text-xs">{staff.name || "Unnamed Staff"}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{staff.email || "No email"}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-3">
+                    <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg bg-black/5 dark:bg-white/10 text-gray-800 dark:text-gray-200 border border-black/10 dark:border-white/10">
+                      {staff.staffId || "UNASSIGNED"}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                      staff.role === "super_admin"
+                        ? "bg-[#FFB800] text-[#111]"
+                        : staff.role === "dispatcher"
+                        ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
+                        : "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-500/20"
+                    }`}>
+                      {staff.role.replace(/_/g, " ")}
+                    </span>
+                  </td>
+                  <td className="p-3 font-mono text-gray-600 dark:text-gray-300 text-[11px]">
+                    {staff.phone || "—"}
+                  </td>
+                  <td className="p-3">
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      staff.status === "active" || staff.status === "approved" || !staff.status
+                        ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
+                        : "bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300"
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${staff.status === "suspended" ? "bg-red-500" : "bg-emerald-500"}`} />
+                      {staff.status || "active"}
+                    </span>
+                  </td>
+                  <td className="p-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingStaff(staff);
+                        setStaffForm({
+                          name: staff.name || "",
+                          staffId: staff.staffId || "",
+                          role: staff.role || "admin",
+                          phone: staff.phone || "",
+                          status: staff.status || "active"
+                        });
+                      }}
+                      className="h-8 px-3 rounded-xl bg-gray-100 dark:bg-[#222] hover:bg-[#FFB800] hover:text-[#111] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>Edit Staff ID</span>
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Edit Staff Modal */}
+      {editingStaff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-white/10">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-[#FFB800]" />
+                <h3 className="text-sm font-black text-[#111] dark:text-white">Edit Staff Credentials</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingStaff(null)}
+                className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-[#222] flex items-center justify-center text-gray-500 hover:text-gray-900 dark:hover:text-white cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={staffForm.name}
+                  onChange={e => setStaffForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full h-10 rounded-xl bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 px-3.5 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">
+                  Corporate Staff ID
+                </label>
+                <input
+                  type="text"
+                  value={staffForm.staffId}
+                  onChange={e => setStaffForm(prev => ({ ...prev, staffId: e.target.value.toUpperCase() }))}
+                  placeholder="e.g. ESD-ADM-001"
+                  className="w-full h-10 rounded-xl bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 px-3.5 text-xs text-gray-900 dark:text-white font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    System Role
+                  </label>
+                  <Select
+                    value={staffForm.role}
+                    onChange={v => setStaffForm(prev => ({ ...prev, role: v }))}
+                    options={[
+                      { value: "super_admin", label: "Super Admin" },
+                      { value: "admin", label: "Admin" },
+                      { value: "dispatcher", label: "Dispatcher" }
+                    ]}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    Account Status
+                  </label>
+                  <Select
+                    value={staffForm.status}
+                    onChange={v => setStaffForm(prev => ({ ...prev, status: v }))}
+                    options={[
+                      { value: "active", label: "Active" },
+                      { value: "suspended", label: "Suspended" }
+                    ]}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="text"
+                  value={staffForm.phone}
+                  onChange={e => setStaffForm(prev => ({ ...prev, phone: e.target.value }))}
+                  className="w-full h-10 rounded-xl bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 px-3.5 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100 dark:border-white/10">
+              <button
+                type="button"
+                onClick={() => setEditingStaff(null)}
+                className="h-9 px-4 rounded-xl bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 text-xs font-bold hover:bg-gray-200 dark:hover:bg-white/10 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveStaff}
+                disabled={savingStaff}
+                className="h-9 px-4 rounded-xl bg-[#FFB800] text-[#111] text-xs font-black hover:bg-[#FFB800]/90 shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {savingStaff ? "Saving..." : "Save Credentials"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   </div>;
 }
@@ -6958,46 +7509,266 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
 }
 
 function LogsTab({ logs }: LogsTabProps) {
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [catFilter, setCatFilter] = useState("ALL");
   const [lPage, setLPage] = useState(0);
   const lPerPage = 20;
-  const filtered = typeFilter === "all" ? logs : logs.filter(l => l.action.includes(typeFilter));
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return logs.filter(l => {
+      // Category filter
+      if (catFilter !== "ALL") {
+        const itemCat = (l.category || "GENERAL").toUpperCase();
+        if (catFilter === "USERS & WALLET" && itemCat !== "USERS" && itemCat !== "WALLET") return false;
+        if (catFilter === "SETTINGS & STAFF" && itemCat !== "SETTINGS" && itemCat !== "STAFF") return false;
+        if (catFilter !== "USERS & WALLET" && catFilter !== "SETTINGS & STAFF" && itemCat !== catFilter) return false;
+      }
+      // Search text
+      if (!q) return true;
+      return (
+        l.action.toLowerCase().includes(q) ||
+        l.details.toLowerCase().includes(q) ||
+        (l.admin && l.admin.toLowerCase().includes(q)) ||
+        (l.staffId && l.staffId.toLowerCase().includes(q)) ||
+        (l.adminEmail && l.adminEmail.toLowerCase().includes(q)) ||
+        (l.category && l.category.toLowerCase().includes(q))
+      );
+    });
+  }, [logs, search, catFilter]);
+
   const lTotalPages = Math.max(1, Math.ceil(filtered.length / lPerPage));
   const pagedLogs = filtered.slice(lPage * lPerPage, (lPage + 1) * lPerPage);
-  useEffect(() => { setLPage(0); }, [typeFilter]);
-  return <div className="tab-content space-y-6">
-    <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-[#FFB800]" /> Audit Log</h1>
-        <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">{filtered.length} entries (page {lPage + 1}/{lTotalPages})</p></div>
-      <Select value={typeFilter} onChange={setTypeFilter} options={[{value:"all",label:"All Actions"},{value:"Create",label:"Create"},{value:"Update",label:"Update"},{value:"Delete",label:"Delete"},{value:"Toggle",label:"Toggle"},{value:"Login",label:"Login"}]} className="w-36" />
-    </div>
-    <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
-          <tr><th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-3 border-b border-black/10 dark:border-white/10">Action</th>
-            <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-3 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Detail</th>
-            <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-3 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Admin</th>
-            <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-3 border-b border-black/10 dark:border-white/10">Date</th></tr>
-        </thead><tbody className="divide-y divide-black/5 dark:divide-white/10">
-          {pagedLogs.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-gray-600 dark:text-gray-400 font-medium">No entries.</td></tr>}
-          {pagedLogs.map(l => <tr key={l.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-            <td className="p-3"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + (l.action.startsWith("Create") ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : l.action.startsWith("Delete") ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : l.action.startsWith("Update") ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300")}>{l.action}</span></td>
-            <td className="p-3 hidden md:table-cell"><span className="text-[#111] dark:text-white font-semibold">{l.details}</span></td>
-            <td className="p-3 hidden lg:table-cell"><span className="text-gray-700 dark:text-gray-300 font-medium">{l.admin}</span></td>
-            <td className="p-3"><span className="text-gray-600 dark:text-gray-400 font-medium text-[10px]">{new Date(l.timestamp).toLocaleDateString()}</span></td>
-          </tr>)}
-        </tbody></table>
+
+  useEffect(() => { setLPage(0); }, [search, catFilter]);
+
+  const exportCsv = () => {
+    if (filtered.length === 0) return;
+    const headers = ["Timestamp", "Action", "Category", "Details", "Admin", "Staff ID", "Admin Email"];
+    const rows = filtered.map(l => [
+      new Date(l.timestamp).toISOString(),
+      `"${(l.action || "").replace(/"/g, '""')}"`,
+      `"${(l.category || "GENERAL").replace(/"/g, '""')}"`,
+      `"${(l.details || "").replace(/"/g, '""')}"`,
+      `"${(l.admin || "").replace(/"/g, '""')}"`,
+      `"${(l.staffId || "").replace(/"/g, '""')}"`,
+      `"${(l.adminEmail || "").replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `esdispatch_audit_logs_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div className="tab-content space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2">
+            <FileText className="w-5 h-5 text-[#FFB800]" /> Forensic Audit Log & Activity Trail
+          </h1>
+          <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">
+            Tamper-evident chronological record of all administrative operations, status transitions, and wallet updates.
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={exportCsv}
+            disabled={filtered.length === 0}
+            className="h-10 px-3.5 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:border-[#FFB800]/50 transition-all flex items-center gap-2 shadow-2xs cursor-pointer disabled:opacity-40"
+          >
+            <Download className="w-3.5 h-3.5 text-[#FFB800]" />
+            <span>Export CSV</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Metrics Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Total Log Entries</span>
+          <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{logs.length}</p>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Recorded events</span>
+        </div>
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Matching Filter</span>
+          <p className="text-xl sm:text-2xl font-black text-[#FFB800] mt-1">{filtered.length}</p>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Visible entries</span>
+        </div>
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Wallet Events</span>
+          <p className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+            {logs.filter(l => (l.category || "").toLowerCase() === "wallet" || l.action.toLowerCase().includes("wallet")).length}
+          </p>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Credits & debits</span>
+        </div>
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Users & Fleet</span>
+          <p className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 mt-1">
+            {logs.filter(l => (l.category || "").toLowerCase() === "users" || l.action.toLowerCase().includes("user")).length}
+          </p>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Accounts & drivers</span>
+        </div>
+      </div>
+
+      {/* Filter & Search Bar */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-xs">
+        {/* Category Filter Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+          <span className="text-xs font-bold text-gray-500 dark:text-gray-400 mr-1 hidden lg:inline">Category:</span>
+          {["ALL", "USERS & WALLET", "SHIPMENTS", "MARKETPLACE", "SETTINGS & STAFF"].map(cat => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setCatFilter(cat)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                catFilter === cat
+                  ? "bg-[#FFB800] text-[#111] shadow-xs"
+                  : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#2c2c2c]"
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* Generous Search with pl-12 */}
+        <div className="w-full md:w-80 shrink-0">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search action, details, admin, ID..." />
+        </div>
+      </div>
+
+      {/* Main Table */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs overflow-hidden">
+        {filtered.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="w-12 h-12 rounded-2xl bg-[#FFB800]/10 border border-[#FFB800]/20 flex items-center justify-center text-[#FFB800] mx-auto mb-3">
+              <FileText className="w-6 h-6" />
+            </div>
+            <p className="text-sm font-bold text-gray-900 dark:text-white">No audit entries found</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Try resetting your search query or category filters.</p>
+            <button
+              type="button"
+              onClick={() => { setSearch(""); setCatFilter("ALL"); }}
+              className="mt-4 px-4 py-2 bg-gray-100 dark:bg-white/10 text-xs font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-white/20 transition-all cursor-pointer"
+            >
+              Clear Filters
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50/50 dark:bg-white/5 border-b border-black/5 dark:border-white/10">
+                <tr className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="p-3 text-left">Action & Category</th>
+                  <th className="p-3 text-left">Forensic Detail</th>
+                  <th className="p-3 text-left hidden sm:table-cell">Authorized Admin</th>
+                  <th className="p-3 text-right">Date & Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {pagedLogs.map(l => {
+                  const act = l.action.toLowerCase();
+                  const isCreate = act.includes("create") || act.includes("add") || act.includes("seed");
+                  const isDelete = act.includes("delete") || act.includes("remove");
+                  const isWallet = act.includes("credit") || act.includes("debit") || act.includes("wallet");
+                  const isUpdate = act.includes("update") || act.includes("edit") || act.includes("status");
+
+                  return (
+                    <tr key={l.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                      <td className="p-3">
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full whitespace-nowrap ${
+                            isDelete
+                              ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-500/20"
+                              : isWallet
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-500/20"
+                              : isCreate
+                              ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-500/20"
+                              : isUpdate
+                              ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-500/20"
+                              : "bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300"
+                          }`}>
+                            {l.action}
+                          </span>
+                          {l.category && (
+                            <span className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              {l.category}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <p className="text-gray-900 dark:text-white font-medium break-words leading-relaxed text-xs">
+                          {l.details}
+                        </p>
+                      </td>
+                      <td className="p-3 hidden sm:table-cell">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-gray-900 dark:text-white">
+                            {l.admin || "Admin"}
+                          </span>
+                          {(l.staffId || l.adminEmail) && (
+                            <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+                              {l.staffId ? `[${l.staffId}]` : l.adminEmail}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3 text-right whitespace-nowrap">
+                        <div className="flex flex-col items-end">
+                          <span className="text-xs font-semibold text-gray-900 dark:text-gray-200">
+                            {new Date(l.timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                          </span>
+                          <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+                            {new Date(l.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {lTotalPages > 1 && (
+          <div className="flex items-center justify-between flex-wrap gap-3 pt-4 border-t border-black/5 dark:border-white/10 mt-2">
+            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+              Page {lPage + 1} of {lTotalPages} ({filtered.length} entries)
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setLPage(p => Math.max(0, p - 1))}
+                disabled={lPage === 0}
+                className="h-8 px-3 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333] flex items-center gap-1 cursor-pointer"
+              >
+                <ChevronLeft size={14} /> Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setLPage(p => Math.min(lTotalPages - 1, p + 1))}
+                disabled={lPage >= lTotalPages - 1}
+                className="h-8 px-3 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333] flex items-center gap-1 cursor-pointer"
+              >
+                Next <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
-    {lTotalPages > 1 && <div className="flex items-center justify-center gap-2 pt-2">
-      <button onClick={() => setLPage(p => Math.max(0, p - 1))} disabled={lPage === 0} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronLeft size={14} /></button>
-      {Array.from({ length: lTotalPages }, (_, i) => <button key={i} onClick={() => setLPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold " + (i === lPage ? "bg-[#FFB800] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
-      <button onClick={() => setLPage(p => Math.min(lTotalPages - 1, p + 1))} disabled={lPage >= lTotalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
-    </div>}
-  </div>;
+  );
 }
-
-
 
 function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: any; addLog: any; addToast: any }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -7227,7 +7998,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
         {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} addToast={addToast} />}
         {tab === "promotions" && <PromotionsTab promotions={promotions} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "appcards" && <AppCardsTab appContent={appContent} db={db} addLog={addLog} addToast={addToast} />}
-        {tab === "settings" && <SettingsTab db={db} addLog={addLog} />}
+        {tab === "settings" && <SettingsTab db={db} addLog={addLog} addToast={addToast} activeUsers={activeUsers} />}
         {tab === "cms" && <CMSTab db={db} addLog={addLog} />}
         {tab === "support" && <SupportTab db={db} addLog={addLog} addToast={addToast} />}
         {tab === "logs" && <LogsTab logs={logs} />}
