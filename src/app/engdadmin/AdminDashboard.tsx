@@ -373,8 +373,8 @@ async function seedUsers(db: any, addLog: any, addToast: any, createNotification
   try {
     const batch = writeBatch(db);
     const users = [
-      { uid: "seed_u1", name: "John Doe", email: "john@example.com", phone: "08012345678", role: "rider", status: "online", isOnline: true, rating: 4.8, deliveryCount: 120, walletBalance: 5000, loyaltyPoints: 100, photoUrl: "" },
-      { uid: "seed_u2", name: "Jane Smith", email: "jane@example.com", phone: "08087654321", role: "customer", status: "online", isOnline: true, rating: 5.0, deliveryCount: 0, walletBalance: 2000, loyaltyPoints: 0, photoUrl: "" },
+      { uid: "seed_u1", name: "John Doe", email: "john@example.com", phone: "08012345678", role: "rider", status: "offline", isOnline: false, rating: 4.8, deliveryCount: 120, walletBalance: 5000, loyaltyPoints: 100, photoUrl: "" },
+      { uid: "seed_u2", name: "Jane Smith", email: "jane@example.com", phone: "08087654321", role: "customer", status: "offline", isOnline: false, rating: 5.0, deliveryCount: 0, walletBalance: 2000, loyaltyPoints: 0, photoUrl: "" },
       { uid: "seed_u3", name: "Samuel Ade", email: "sam@example.com", phone: "08055544433", role: "rider", status: "offline", isOnline: false, rating: 4.5, deliveryCount: 85, walletBalance: 1200, loyaltyPoints: 50, photoUrl: "" },
     ];
     users.forEach(u => batch.set(doc(collection(db, "users")), u));
@@ -1208,8 +1208,8 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
       })()}
       </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-4 gap-5 min-h-0">
-        <div className="lg:col-span-3 border border-gray-200 dark:border-white/10 rounded-2xl p-5 sm:p-6 flex flex-col bg-white dark:bg-[#1a1a1a] shadow-xs">
+      <section className="space-y-5 min-h-0">
+        <div className="border border-gray-200 dark:border-white/10 rounded-3xl p-5 sm:p-6 flex flex-col bg-white dark:bg-[#1a1a1a] shadow-xs">
           <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
             <div>
               <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-[#111] dark:text-white">Active Bookings Today</h2>
@@ -1217,7 +1217,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
             </div>
             <button 
               onClick={() => setTab("shipments")} 
-              className="h-9 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#222] dark:hover:bg-[#333] text-xs font-black text-[#111] dark:text-white transition-all cursor-pointer flex items-center gap-1.5"
+              className="h-9 px-3.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#222] dark:hover:bg-[#333] text-xs font-black text-[#111] dark:text-white transition-all cursor-pointer flex items-center gap-1.5"
             >
               View all ({deliveries.length}) <ChevronRight size={14} />
             </button>
@@ -1241,9 +1241,9 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                         <span className="text-[10px] font-mono font-bold text-gray-700 dark:text-gray-300">#{idShort(d.id)}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300 truncate mt-0.5">
-                        <span className="font-medium text-[#111] dark:text-white truncate max-w-[140px] sm:max-w-[180px]">{d.pickupAddress || "Pickup"}</span>
+                        <span className="font-medium text-[#111] dark:text-white truncate max-w-[140px] sm:max-w-[260px]">{d.pickupAddress || "Pickup"}</span>
                         <span className="text-gray-500 dark:text-gray-400 shrink-0 font-bold">→</span>
-                        <span className="truncate max-w-[160px] sm:max-w-[240px]">{d.deliveryAddress || "Destination"}</span>
+                        <span className="truncate max-w-[160px] sm:max-w-[340px]">{d.deliveryAddress || "Destination"}</span>
                       </div>
                     </div>
                   </div>
@@ -1267,21 +1267,41 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
             </div>
           )}
         </div>
-        <div className="border border-gray-200 dark:border-white/10 rounded-2xl p-5 sm:p-6 flex flex-col justify-between bg-white dark:bg-[#1a1a1a] shadow-xs">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-extrabold text-base text-[#111] dark:text-white">Fleet Readiness</h3>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider border border-emerald-500/30">
-                {drivers.filter((d: any) => d.isOnline !== false).length} Online
-              </span>
+
+        {/* Fleet Readiness: Dedicated uncompressed section directly under Active Bookings */}
+        <div className="border border-gray-200 dark:border-white/10 rounded-3xl p-5 sm:p-6 bg-white dark:bg-[#1a1a1a] shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-white/10">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#FFB800]/15 flex items-center justify-center text-[#FFB800]">
+                  <Truck size={18} />
+                </div>
+                <h3 className="font-extrabold text-base sm:text-lg text-[#111] dark:text-white">Fleet Readiness & Operations</h3>
+              </div>
+              <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">Active courier dispatch capacity, rider telemetry, and fulfillment readiness</p>
             </div>
-            <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mb-5">Active courier capacity & fleet status</p>
-            <div className="flex items-center gap-3 mb-6 p-3.5 rounded-2xl bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="px-3.5 py-1.5 rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 text-xs font-black uppercase tracking-wider border border-emerald-500/30 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                {drivers.filter((d: any) => d.isOnline === true).length} Online Couriers
+              </span>
+              <button 
+                onClick={() => setTab("shipments")} 
+                className="h-9 px-4 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black shadow-xs hover:bg-[#FFB800]/90 active:scale-[0.99] transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Truck size={14} /> Assign Riders ({pendingDeliveries.length})
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Courier Roster Card */}
+            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 flex items-center gap-3.5">
               <div className="flex -space-x-2 shrink-0">
-                {drivers.slice(0, 4).map((d: any) => (
+                {drivers.slice(0, 3).map((d: any) => (
                   <div 
                     key={d.id} 
-                    title={`${d.name || "Courier"} (${d.isOnline !== false ? "Online" : "Offline"})`} 
+                    title={`${d.name || "Courier"} (${d.isOnline === true ? "Online" : "Offline"})`} 
                     className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-[#222] bg-[#111] dark:bg-white text-white dark:text-[#111] flex items-center justify-center text-xs font-black shadow-xs"
                   >
                     {d.name?.charAt(0)?.toUpperCase() || "R"}
@@ -1293,32 +1313,41 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                   </div>
                 )}
               </div>
-              <div className="text-xs min-w-0">
-                <p className="font-extrabold text-[#111] dark:text-white truncate">{drivers.length} Registered Riders</p>
-                <p className="text-gray-600 dark:text-gray-400 text-[11px] font-medium truncate">{drivers.filter((d: any) => d.isOnline !== false).length} active for dispatch</p>
+              <div className="min-w-0">
+                <p className="font-extrabold text-sm text-[#111] dark:text-white truncate">{drivers.length} Registered Riders</p>
+                <p className="text-gray-600 dark:text-gray-400 text-xs font-medium truncate mt-0.5">{drivers.filter((d: any) => d.isOnline === true).length} active for dispatch</p>
+              </div>
+            </div>
+
+            {/* Deliveries Today */}
+            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 flex flex-col justify-between">
+              <span className="text-xs text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider">Deliveries Today</span>
+              <div className="flex items-baseline justify-between mt-2">
+                <span className="text-2xl font-black text-[#111] dark:text-white">{deliveries.length}</span>
+                <span className="text-xs font-bold text-gray-500 dark:text-gray-400">{delivered.length} completed</span>
+              </div>
+            </div>
+
+            {/* Today's Revenue */}
+            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 flex flex-col justify-between">
+              <span className="text-xs text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider">Today's Revenue</span>
+              <div className="flex items-baseline justify-between mt-2">
+                <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{fmt(totalRevenue)}</span>
+                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-500">Gross volume</span>
+              </div>
+            </div>
+
+            {/* Awaiting Dispatch (Uncompressed with ample room) */}
+            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 flex flex-col justify-between">
+              <span className="text-xs text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider">Awaiting Dispatch</span>
+              <div className="flex items-center justify-between mt-2 gap-2">
+                <span className="text-2xl font-black text-[#111] dark:text-white">{pendingDeliveries.length}</span>
+                <span className="font-extrabold text-xs px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-900 dark:text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                  {pendingDeliveries.length === 0 ? "0 Unassigned" : `${pendingDeliveries.length} Unassigned`}
+                </span>
               </div>
             </div>
           </div>
-          <div className="space-y-3 py-3 border-t border-b border-gray-200 dark:border-white/10 mb-4">
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-gray-700 dark:text-gray-300 font-semibold">Deliveries today</span>
-              <span className="font-extrabold text-[#111] dark:text-white text-sm">{deliveries.length}</span>
-            </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-gray-700 dark:text-gray-300 font-semibold">Today's Revenue</span>
-              <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm">{fmt(totalRevenue)}</span>
-            </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-gray-700 dark:text-gray-300 font-semibold">Awaiting Dispatch</span>
-              <span className="font-bold text-amber-800 dark:text-amber-300 text-xs px-2 py-0.5 rounded-md bg-amber-500/15">{pendingDeliveries.length} unassigned</span>
-            </div>
-          </div>
-          <button 
-            onClick={() => setTab("shipments")} 
-            className="w-full h-10 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black shadow-xs hover:bg-[#FFB800]/90 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Truck size={16} /> Assign Riders ({pendingDeliveries.length})
-          </button>
         </div>
       </section>
     </div>;
@@ -1638,14 +1667,20 @@ function AdminDashboardPage() {
     const unsubs: (() => void)[] = [];
     unsubs.push(onSnapshot(collection(db, "users"), snap => {
       const list: UserProfile[] = [];
-      snap.forEach(d => { const x = d.data(); list.push({
-        id: d.id, uid: x.uid || d.id, name: x.name || "", email: x.email || "", phone: x.phone || "",
-        role: x.role || "customer", status: x.status || "offline", isOnline: x.isOnline || false,
-        rating: x.rating || 0, deliveryCount: x.deliveryCount || 0, walletBalance: x.walletBalance || 0,
-        loyaltyPoints: x.loyaltyPoints || 0, photoUrl: x.photoUrl || "",
-        bikeNumber: x.bikeNumber || "", lat: x.lat || x.latitude, lng: x.lng || x.longitude,
-        isDeleted: x.isDeleted || false, updatedAt: x.updatedAt,
-      }); });
+      snap.forEach(d => {
+        const x = d.data();
+        const rawStatus = (x.status || "").toLowerCase();
+        const isOnline = (x.isOnline === true || rawStatus === "active" || rawStatus === "online") && rawStatus !== "offline" && rawStatus !== "suspended";
+        list.push({
+          id: d.id, uid: x.uid || d.id, name: x.name || "User", email: x.email || "", phone: x.phone || "",
+          role: x.role || "customer", status: rawStatus || "offline", isOnline,
+          rating: x.rating || 5.0, deliveryCount: x.deliveryCount || 0,
+          walletBalance: x.walletBalance || x.balance || x.wallet_balance || 0,
+          loyaltyPoints: x.loyaltyPoints || 0, photoUrl: x.photoUrl || "",
+          bikeNumber: x.bikeNumber || "", lat: x.lat || x.latitude, lng: x.lng || x.longitude,
+          isDeleted: x.isDeleted || false, updatedAt: x.updatedAt,
+        });
+      });
       setUsers(list); setConnected(true); setRefreshT(new Date().toLocaleTimeString());
     }, () => setConnected(false)));
     unsubs.push(onSnapshot(collection(db, "deliveries"), snap => {
@@ -2057,606 +2092,1105 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
   addToast?: (type: Toast["type"], message: string) => void;
   createNotification?: (title: string, desc: string) => Promise<void>;
 }) {
-    const [search, setSearch] = useState("");
-    const [editUser, setEditUser] = useState<UserProfile | null>(null);
-    const [previewUser, setPreviewUser] = useState<UserProfile | null>(null);
-    const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-    const [showNewUser, setShowNewUser] = useState(false);
-    const [newUserStep, setNewUserStep] = useState(1);
-    const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
-    const [creatingUser, setCreatingUser] = useState(false);
-    const [fundUser, setFundUser] = useState<UserProfile | null>(null);
-    const [fundAction, setFundAction] = useState<"credit" | "debit">("credit");
-    const [fundAmount, setFundAmount] = useState("");
-    const [fundReason, setFundReason] = useState("");
-    const [fundingWallet, setFundingWallet] = useState(false);
-    const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "" });
-    const [uPage, setUPage] = useState(0);
-    const uPerPage = 20;
-    const filtered = activeUsers.filter(u => { const q = (searchQuery || search).toLowerCase(); return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.phone && u.phone.includes(q)); });
-    const uTotalPages = Math.max(1, Math.ceil(filtered.length / uPerPage));
-    const pagedUsers = filtered.slice(uPage * uPerPage, (uPage + 1) * uPerPage);
-    useEffect(() => { setUPage(0); }, [search, searchQuery]);
-    const saveUser = async () => {
-      if (!editUser) return;
-      await updateDoc(doc(db, "users", editUser.id), { name: form.name || editUser.name, role: form.role || editUser.role, phone: form.phone || editUser.phone, bikeNumber: form.bikeNumber || editUser.bikeNumber, status: form.status || editUser.status, updatedAt: Timestamp.now() });
-      addLog("Update User", editUser.name + " -> " + (form.name || editUser.name));
-      if (addToast) addToast("success", `Updated details for ${form.name || editUser.name}`);
-      setEditUser(null);
-    };
-    const deleteUser = async (id: string) => { await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() }); addLog("Delete User", "Soft-deleted " + id); if (addToast) addToast("info", "User deactivated"); setConfirmDelete(null); };
-    const promoteToVendor = async (u: UserProfile) => {
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("ALL");
+  const [presenceFilter, setPresenceFilter] = useState<string>("ALL");
+  const [editUser, setEditUser] = useState<UserProfile | null>(null);
+  const [previewUser, setPreviewUser] = useState<UserProfile | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [showNewUser, setShowNewUser] = useState(false);
+  const [newUserStep, setNewUserStep] = useState(1);
+  const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [syncingPresence, setSyncingPresence] = useState(false);
+  const [fundUser, setFundUser] = useState<UserProfile | null>(null);
+  const [fundAction, setFundAction] = useState<"credit" | "debit">("credit");
+  const [fundAmount, setFundAmount] = useState("");
+  const [fundReason, setFundReason] = useState("");
+  const [fundingWallet, setFundingWallet] = useState(false);
+  const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", status: "" });
+  const [uPage, setUPage] = useState(0);
+  const uPerPage = 15;
+
+  const totalUsersCount = activeUsers.length;
+  const onlineUsersCount = activeUsers.filter(u => u.isOnline === true).length;
+  const ridersCount = activeUsers.filter(u => u.role === "rider").length;
+  const customersCount = activeUsers.filter(u => u.role === "customer" || !u.role).length;
+  const vendorsCount = activeUsers.filter(u => u.role === "vendor").length;
+
+  const filtered = useMemo(() => {
+    const q = (searchQuery || search).toLowerCase().trim();
+    return activeUsers.filter(u => {
+      // Role filter
+      if (roleFilter !== "ALL") {
+        if (roleFilter === "customer" && (u.role !== "customer" && u.role !== "")) return false;
+        if (roleFilter !== "customer" && u.role !== roleFilter) return false;
+      }
+      // Presence filter
+      if (presenceFilter === "online" && !u.isOnline) return false;
+      if (presenceFilter === "offline" && u.isOnline) return false;
+
+      // Search query
+      if (!q) return true;
+      return (
+        (u.name && u.name.toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q)) ||
+        (u.phone && u.phone.includes(q)) ||
+        (u.bikeNumber && u.bikeNumber.toLowerCase().includes(q)) ||
+        (u.role && u.role.toLowerCase().includes(q))
+      );
+    });
+  }, [activeUsers, searchQuery, search, roleFilter, presenceFilter]);
+
+  const uTotalPages = Math.max(1, Math.ceil(filtered.length / uPerPage));
+  const pagedUsers = filtered.slice(uPage * uPerPage, (uPage + 1) * uPerPage);
+
+  useEffect(() => { setUPage(0); }, [search, searchQuery, roleFilter, presenceFilter]);
+
+  /** Clean up any stale presence flags left from previous mock/seed sessions */
+  const handleSyncPresence = async () => {
+    setSyncingPresence(true);
+    try {
+      const now = Date.now();
+      const threshold = 30 * 60 * 1000;
+      let count = 0;
+      const batch = writeBatch(db);
+      activeUsers.forEach(u => {
+        if (u.isOnline) {
+          const lastActive = u.updatedAt?.toMillis ? u.updatedAt.toMillis() : (typeof u.updatedAt === "number" ? u.updatedAt : null);
+          if (lastActive && (now - lastActive > threshold)) {
+            batch.update(doc(db, "users", u.id), {
+              isOnline: false,
+              status: "offline",
+              updatedAt: Timestamp.now()
+            });
+            count++;
+          }
+        }
+      });
+      if (count > 0) {
+        await batch.commit();
+        addLog("Presence Sync", `Reset ${count} inactive online session(s)`);
+        if (addToast) addToast("success", `Presence synced: reset ${count} stale session(s)`);
+      } else {
+        if (addToast) addToast("info", "User presence is fully synchronized.");
+      }
+    } catch (err: any) {
+      if (addToast) addToast("error", "Presence sync failed: " + err.message);
+    } finally {
+      setSyncingPresence(false);
+    }
+  };
+
+  const saveUser = async () => {
+    if (!editUser) return;
+    await updateDoc(doc(db, "users", editUser.id), {
+      name: form.name || editUser.name,
+      role: form.role || editUser.role,
+      phone: form.phone || editUser.phone,
+      bikeNumber: form.bikeNumber || editUser.bikeNumber,
+      status: form.status || editUser.status,
+      updatedAt: Timestamp.now()
+    });
+    addLog("Update User", `${editUser.name} -> ${form.name || editUser.name}`);
+    if (addToast) addToast("success", `Updated details for ${form.name || editUser.name}`);
+    setEditUser(null);
+  };
+
+  const deleteUser = async (id: string) => {
+    await updateDoc(doc(db, "users", id), { isDeleted: true, updatedAt: Timestamp.now() });
+    addLog("Delete User", "Deactivated user " + id);
+    if (addToast) addToast("info", "User deactivated");
+    setConfirmDelete(null);
+  };
+
+  const promoteToVendor = async (u: UserProfile) => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await setDoc(doc(db, "marketplace_stores", u.id), {
+        id: u.id, ownerId: u.id, storeName: u.name + "'s Store", category: "General",
+        ownerName: u.name, email: u.email, phone: u.phone, description: "", address: "",
+        commissionRate: 8.5, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
+        isVerified: true, isPendingReview: false, kycStatus: "approved", status: "APPROVED",
+        dateEnlisted: today, createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
+      }, { merge: true });
+      await updateDoc(doc(db, "users", u.id), { role: "vendor", userRole: "Vendor", isVendorVerified: true, updatedAt: Timestamp.now() });
+      addLog("Upgrade Vendor", `Upgraded '${u.name}' (${u.email}) to vendor storefront`);
+      if (addToast) addToast("success", `Upgraded ${u.name} to Vendor!`);
+    } catch (err: any) {
+      addLog("Error", "Upgrade to vendor failed: " + (err.message || "unknown"));
+      if (addToast) addToast("error", "Failed to upgrade vendor");
+    }
+  };
+
+  const handleFundWallet = async () => {
+    const amt = parseFloat(fundAmount);
+    if (isNaN(amt) || amt <= 0 || !fundUser) return;
+    setFundingWallet(true);
+    try {
+      const requestedDelta = fundAction === "credit" ? amt : -amt;
+      const primaryDocId = fundUser.id || fundUser.uid;
+
+      if (fundAction === "debit" && (fundUser.walletBalance || 0) < amt) {
+        if (addToast) addToast("error", `Cannot debit ₦${amt.toLocaleString()} - balance is only ₦${(fundUser.walletBalance || 0).toLocaleString()}`);
+        setFundingWallet(false);
+        return;
+      }
+
+      await setDoc(doc(db, "users", primaryDocId), {
+        walletBalance: increment(requestedDelta),
+        balance: increment(requestedDelta),
+        wallet_balance: increment(requestedDelta),
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+
+      if (fundUser.uid && fundUser.uid !== primaryDocId) {
+        try {
+          await setDoc(doc(db, "users", fundUser.uid), {
+            walletBalance: increment(requestedDelta),
+            balance: increment(requestedDelta),
+            wallet_balance: increment(requestedDelta),
+            updatedAt: Timestamp.now()
+          }, { merge: true });
+        } catch (_) {}
+      }
+
+      const txId = "TXN-" + Date.now();
+      const txDoc = {
+        id: txId,
+        userId: primaryDocId,
+        userName: fundUser.name,
+        title: fundReason || (fundAction === "credit" ? "Wallet Top-up" : "Wallet Debit"),
+        amount: Math.abs(requestedDelta),
+        type: fundAction === "credit" ? "CREDIT" : "DEBIT",
+        isTopUp: fundAction === "credit",
+        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        status: "SUCCESS",
+        timestamp: Timestamp.now(),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      };
+
       try {
+        await setDoc(doc(db, "users", primaryDocId, "transactions", txId), txDoc);
+      } catch (_) {}
+
+      if (fundUser.uid && fundUser.uid !== primaryDocId) {
+        try {
+          await setDoc(doc(db, "users", fundUser.uid, "transactions", txId), txDoc);
+        } catch (_) {}
+      }
+
+      try {
+        await setDoc(doc(db, "transactions", txId), txDoc);
+      } catch (_) {}
+
+      try {
+        await addDoc(collection(db, "users", primaryDocId, "notifications"), {
+          title: fundAction === "credit" ? "Wallet Credited!" : "Wallet Debited",
+          message: fundReason 
+            ? `${fundReason} (₦${amt.toLocaleString()})`
+            : `Your account was ${fundAction === "credit" ? "credited with" : "debited by"} ₦${amt.toLocaleString()} by ESDispatch.`,
+          amount: Math.abs(requestedDelta),
+          read: false,
+          createdAt: Timestamp.now()
+        });
+      } catch (_) {}
+
+      addLog("Wallet Adjustment", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name} (${fundUser.email}).`);
+      if (addToast) addToast("success", `Successfully ${fundAction === "credit" ? "credited" : "debited"} ₦${amt.toLocaleString()} for ${fundUser.name}`);
+      if (createNotification) createNotification("Wallet Funded", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name}`);
+
+      setFundUser(null);
+      setFundAmount("");
+      setFundReason("");
+    } catch (err: any) {
+      addLog("Error", "Fund wallet failed: " + (err.message || "unknown"));
+      if (addToast) addToast("error", "Fund wallet failed: " + (err.message || "unknown"));
+    } finally {
+      setFundingWallet(false);
+    }
+  };
+
+  const createUser = async () => {
+    if (newUserForm.pin !== newUserForm.confirmPin) {
+      if (addToast) addToast("error", "PIN mismatch");
+      return;
+    }
+    if (newUserForm.pin.length < 4) {
+      if (addToast) addToast("error", "PIN must be at least 4 digits");
+      return;
+    }
+    setCreatingUser(true);
+    try {
+      const derivedPwd = getDynamicPassword(newUserForm.email, newUserForm.pin);
+      const secondaryAuth = getSecondaryAuth();
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, newUserForm.email, derivedPwd);
+      
+      const isRider = newUserForm.role === "rider";
+      const isAdmin = newUserForm.role === "admin";
+      const isVendor = newUserForm.role === "vendor";
+      const bikeNum = newUserForm.bikeNumber || (isRider ? `ES-BIKE-${Math.floor(100 + Math.random() * 900)}` : "");
+
+      await setDoc(doc(db, "users", cred.user.uid), {
+        uid: cred.user.uid,
+        id: cred.user.uid,
+        name: newUserForm.name,
+        email: newUserForm.email,
+        phone: newUserForm.phone,
+        role: newUserForm.role,
+        userRole: isRider ? "Rider" : (isVendor ? "Vendor" : (isAdmin ? "Admin" : "Customer")),
+        bikeNumber: bikeNum,
+        pin: newUserForm.pin,
+        status: "offline",
+        riderStatus: "offline",
+        isOnline: false,
+        walletBalance: 0,
+        loyaltyPoints: 0,
+        deliveryCount: 0,
+        rating: 5.0,
+        photoUrl: "",
+        isDeleted: false,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+
+      if (isVendor) {
         const today = new Date().toISOString().slice(0, 10);
-        await setDoc(doc(db, "marketplace_stores", u.id), {
-          id: u.id, ownerId: u.id, storeName: u.name + "'s Store", category: "General",
-          ownerName: u.name, email: u.email, phone: u.phone, description: "", address: "",
+        await setDoc(doc(db, "marketplace_stores", cred.user.uid), {
+          id: cred.user.uid, ownerId: cred.user.uid, storeName: newUserForm.name + "'s Store", category: "General",
+          ownerName: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone, description: "", address: "",
           commissionRate: 8.5, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
           isVerified: true, isPendingReview: false, kycStatus: "approved", status: "APPROVED",
           dateEnlisted: today, createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
-        }, { merge: true });
-        await updateDoc(doc(db, "users", u.id), { role: "vendor", userRole: "Vendor", isVendorVerified: true, updatedAt: Timestamp.now() });
-        addLog("Upgrade Vendor", `Upgraded '${u.name}' (${u.email}) to vendor with approved storefront`);
-        if (addToast) addToast("success", `Upgraded ${u.name} to Vendor!`);
-      } catch (err: any) { addLog("Error", "Upgrade to vendor failed: " + (err.message || "unknown")); if (addToast) addToast("error", "Failed to upgrade vendor"); }
-    };
-    const handleFundWallet = async () => {
-      const amt = parseFloat(fundAmount);
-      if (isNaN(amt) || amt <= 0 || !fundUser) return;
-      setFundingWallet(true);
-      try {
-        const requestedDelta = fundAction === "credit" ? amt : -amt;
-        const primaryDocId = fundUser.id || fundUser.uid;
-        await setDoc(doc(db, "users", primaryDocId), {
-          walletBalance: increment(requestedDelta),
-          balance: increment(requestedDelta),
-          wallet_balance: increment(requestedDelta),
-          updatedAt: Timestamp.now()
-        }, { merge: true });
-
-        // Also update by uid if distinct, ensuring older/migrated accounts are synchronized
-        if (fundUser.uid && fundUser.uid !== primaryDocId) {
-          try {
-            await setDoc(doc(db, "users", fundUser.uid), {
-              walletBalance: increment(requestedDelta),
-              balance: increment(requestedDelta),
-              wallet_balance: increment(requestedDelta),
-              updatedAt: Timestamp.now()
-            }, { merge: true });
-          } catch (_) {}
-        }
-
-        const txId = "TXN-" + Date.now();
-        const txDoc = {
-          id: txId,
-          userId: primaryDocId,
-          userName: fundUser.name,
-          title: fundReason || (fundAction === "credit" ? "Wallet Top-up" : "Wallet Debit"),
-          amount: Math.abs(requestedDelta),
-          type: fundAction === "credit" ? "CREDIT" : "DEBIT",
-          isTopUp: fundAction === "credit",
-          date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-          status: "SUCCESS",
-          timestamp: Timestamp.now(),
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now()
-        };
-
-        // Write to user's personal ledger subcollection (mobile app listens to this)
-        try {
-          await setDoc(doc(db, "users", primaryDocId, "transactions", txId), txDoc);
-        } catch (subTxErr) {
-          console.warn("Personal transactions subcollection write note:", subTxErr);
-        }
-
-        if (fundUser.uid && fundUser.uid !== primaryDocId) {
-          try {
-            await setDoc(doc(db, "users", fundUser.uid, "transactions", txId), txDoc);
-          } catch (_) {}
-        }
-
-        // Sync legacy email-keyed records if any exist
-        if (fundUser.email) {
-          try {
-            const emailSnap = await getDocs(query(collection(db, "users"), where("email", "==", fundUser.email)));
-            emailSnap.forEach(async (dSnap) => {
-              if (dSnap.id !== primaryDocId && dSnap.id !== fundUser.uid) {
-                try {
-                  await setDoc(doc(db, "users", dSnap.id), {
-                    walletBalance: increment(requestedDelta),
-                    balance: increment(requestedDelta),
-                    wallet_balance: increment(requestedDelta),
-                    updatedAt: Timestamp.now()
-                  }, { merge: true });
-                  await setDoc(doc(db, "users", dSnap.id, "transactions", txId), txDoc);
-                } catch (_) {}
-              }
-            });
-          } catch (_) {}
-        }
-
-        // Also sync by phone if present
-        if (fundUser.phone) {
-          try {
-            const phoneSnap = await getDocs(query(collection(db, "users"), where("phone", "==", fundUser.phone)));
-            phoneSnap.forEach(async (dSnap) => {
-              if (dSnap.id !== primaryDocId && dSnap.id !== fundUser.uid) {
-                try {
-                  await setDoc(doc(db, "users", dSnap.id), {
-                    walletBalance: increment(requestedDelta),
-                    balance: increment(requestedDelta),
-                    wallet_balance: increment(requestedDelta),
-                    updatedAt: Timestamp.now()
-                  }, { merge: true });
-                  await setDoc(doc(db, "users", dSnap.id, "transactions", txId), txDoc);
-                } catch (_) {}
-              }
-            });
-          } catch (_) {}
-        }
-
-        // Top-level ledger mirror in try/catch so subcollection funding never fails if root has constraint
-        try {
-          await setDoc(doc(db, "transactions", txId), txDoc);
-        } catch (rootTxErr) {
-          console.warn("Top-level transaction mirror note:", rootTxErr);
-        }
-
-        // Send in-app notification directly to user's notifications subcollection
-        try {
-          await addDoc(collection(db, "users", primaryDocId, "notifications"), {
-            title: fundAction === "credit" ? "Wallet Credited!" : "Wallet Debited",
-            message: fundReason 
-              ? `${fundReason} (₦${amt.toLocaleString()})`
-              : `Your account was ${fundAction === "credit" ? "credited with" : "debited by"} ₦${amt.toLocaleString()} by ESDispatch.`,
-            amount: Math.abs(requestedDelta),
-            read: false,
-            createdAt: Timestamp.now()
-          });
-        } catch (nErr) {
-          console.warn("Could not dispatch user in-app notification:", nErr);
-        }
-
-        addLog("Wallet Adjustment", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name} (${fundUser.email}).`);
-        if (addToast) {
-          addToast("success", `Successfully ${fundAction === "credit" ? "credited" : "debited"} ₦${amt.toLocaleString()} for ${fundUser.name}`);
-        }
-        if (createNotification) {
-          createNotification("Wallet Funded", `${fundAction.toUpperCase()} ₦${amt.toLocaleString()} for ${fundUser.name}`);
-        }
-        setFundUser(null);
-        setFundAmount("");
-        setFundReason("");
-      } catch (err: any) {
-        addLog("Error", "Fund wallet failed: " + (err.message || "unknown"));
-        if (addToast) addToast("error", "Fund wallet failed: " + (err.message || "unknown"));
-      }
-      setFundingWallet(false);
-    };
-    const createUser = async () => {
-      if (newUserForm.pin !== newUserForm.confirmPin) { addLog("Error", "PIN mismatch"); if (addToast) addToast("error", "PIN mismatch"); return; }
-      if (newUserForm.pin.length < 4) { addLog("Error", "PIN must be at least 4 digits"); if (addToast) addToast("error", "PIN must be at least 4 digits"); return; }
-      setCreatingUser(true);
-      try {
-        const derivedPwd = getDynamicPassword(newUserForm.email, newUserForm.pin);
-        const secondaryAuth = getSecondaryAuth();
-        const cred = await createUserWithEmailAndPassword(secondaryAuth, newUserForm.email, derivedPwd);
-        
-        const isRider = newUserForm.role === "rider";
-        const isAdmin = newUserForm.role === "admin";
-        const isVendor = newUserForm.role === "vendor";
-        const bikeNum = newUserForm.bikeNumber || (isRider ? `ES-BIKE-${Math.floor(100 + Math.random() * 900)}` : "");
-
-        await setDoc(doc(db, "users", cred.user.uid), {
-          uid: cred.user.uid,
-          id: cred.user.uid,
-          name: newUserForm.name,
-          email: newUserForm.email,
-          phone: newUserForm.phone,
-          role: newUserForm.role,
-          userRole: isRider ? "Rider" : (isVendor ? "Vendor" : (isAdmin ? "Admin" : "Customer")),
-          bikeNumber: bikeNum,
-          pin: newUserForm.pin,
-          status: isRider ? "active" : "offline",
-          riderStatus: isRider ? "active" : "offline",
-          isOnline: isRider ? true : false,
-          walletBalance: 0,
-          loyaltyPoints: 0,
-          deliveryCount: 0,
-          rating: 5.0,
-          photoUrl: "",
-          isDeleted: false,
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now()
         });
-
-        if (isVendor) {
-          const today = new Date().toISOString().slice(0, 10);
-          await setDoc(doc(db, "marketplace_stores", cred.user.uid), {
-            id: cred.user.uid, ownerId: cred.user.uid, storeName: newUserForm.name + "'s Store", category: "General",
-            ownerName: newUserForm.name, email: newUserForm.email, phone: newUserForm.phone, description: "", address: "",
-            commissionRate: 8.5, vendorBalance: 0, totalSales: 0, storeRating: 5.0,
-            isVerified: true, isPendingReview: false, kycStatus: "approved", status: "APPROVED",
-            dateEnlisted: today, createdAt: Timestamp.now(), verifiedAt: Timestamp.now(), updatedAt: Timestamp.now()
-          });
-          await updateDoc(doc(db, "users", cred.user.uid), { userRole: "Vendor", isVendorVerified: true });
-        }
-
-        addLog("Create User", `Created ${newUserForm.role} '${newUserForm.name}' (${newUserForm.email})`);
-        if (addToast) addToast("success", `Created ${newUserForm.role} ${newUserForm.name}`);
-        setShowNewUser(false);
-        setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
-        setNewUserStep(1);
-      } catch (err: any) {
-        let msg = err.message || "Failed to create user";
-        if (err.code === "auth/email-already-in-use") {
-          msg = "This email is already in use. Please use a different email.";
-        } else if (err.code === "auth/invalid-email") {
-          msg = "The provided email address is invalid.";
-        } else if (err.code === "auth/weak-password") {
-          msg = "The generated password from this PIN is too weak.";
-        }
-        addLog("Error", "Create user failed: " + msg);
-        if (addToast) addToast("error", "Create user failed: " + msg);
-      } finally {
-        try {
-          const secondaryAuth = getSecondaryAuth();
-          await signOut(secondaryAuth);
-        } catch (_) {}
-        setCreatingUser(false);
+        await updateDoc(doc(db, "users", cred.user.uid), { userRole: "Vendor", isVendorVerified: true });
       }
-    };
 
-    return <div className="space-y-6">
+      addLog("Create User", `Created ${newUserForm.role} '${newUserForm.name}' (${newUserForm.email})`);
+      if (addToast) addToast("success", `Created ${newUserForm.role} ${newUserForm.name}`);
+      setShowNewUser(false);
+      setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "" });
+      setNewUserStep(1);
+    } catch (err: any) {
+      let msg = err.message || "Failed to create user";
+      if (err.code === "auth/email-already-in-use") msg = "This email is already in use.";
+      else if (err.code === "auth/invalid-email") msg = "The provided email address is invalid.";
+      addLog("Error", "Create user failed: " + msg);
+      if (addToast) addToast("error", "Create user failed: " + msg);
+    } finally {
+      try {
+        const secondaryAuth = getSecondaryAuth();
+        await signOut(secondaryAuth);
+      } catch (_) {}
+      setCreatingUser(false);
+    }
+  };
+
+  return (
+    <div className="tab-content space-y-6">
+      {/* Top Header & Metrics Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div><h1 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2"><Users className="w-5 h-5 text-amber-800 dark:text-[#FFB800]" /> Users</h1>
-          <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">{filtered.length} active registered users</p></div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setShowNewUser(true)} className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"><UserPlus className="w-4 h-4" /> Add User</button>
-          <div className="flex-1 sm:flex-none"><SearchInput value={search} onChange={setSearch} placeholder="Search users..." /></div>
+        <div>
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#111] dark:text-white flex items-center gap-3">
+            <Users className="w-6 h-6 text-[#FFB800]" /> User & Account Operations
+          </h1>
+          <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mt-0.5">
+            Manage customers, fleet couriers, marketplace vendor accounts, and financial wallet ledgers.
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={handleSyncPresence}
+            disabled={syncingPresence}
+            className="h-10 px-4 bg-gray-100 hover:bg-gray-200 dark:bg-[#222] dark:hover:bg-[#333] border border-gray-200 dark:border-white/10 text-xs font-bold text-[#111] dark:text-white rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            title="Scan and synchronize real-time user presence"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncingPresence ? "animate-spin text-[#FFB800]" : "text-gray-500"}`} />
+            Sync Presence
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowNewUser(true)}
+            className="h-10 px-5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" /> Add User
+          </button>
         </div>
       </div>
-      {showNewUser && <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-sm space-y-4 animate-scale-in">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2"><UserPlus className="w-4 h-4 text-amber-800 dark:text-[#FFB800]" /> New User — Step {newUserStep}/2</h3>
-          <button onClick={() => { setShowNewUser(false); setNewUserStep(1); }} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white cursor-pointer"><X className="w-4 h-4" /></button>
+
+      {/* Top Metrics Cards (Marketplace unified style) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 shadow-xs">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Total Users</span>
+          <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{totalUsersCount}</p>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">All active accounts</span>
         </div>
-        <div className="flex gap-2">
-          <div className={"h-1.5 flex-1 rounded-full " + (newUserStep >= 1 ? "bg-[#FFB800]" : "bg-gray-200 dark:bg-gray-700")} />
-          <div className={"h-1.5 flex-1 rounded-full " + (newUserStep >= 2 ? "bg-[#FFB800]" : "bg-gray-200 dark:bg-gray-700")} />
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-emerald-500/30 bg-emerald-500/5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-extrabold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider block">Online Now</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          </div>
+          <p className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{onlineUsersCount}</p>
+          <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-500 mt-0.5 block">Live active sessions</span>
         </div>
-        {newUserStep === 1 ? (
-          <div className="space-y-3">
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Full Name *</label>
-                <div className="relative">
-                  <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                  <input value={newUserForm.name} onChange={e => setNewUserForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Osas Ighodaro" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 shadow-xs">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Fleet Couriers</span>
+          <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{ridersCount}</p>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">{activeUsers.filter(u => u.role === "rider" && u.isOnline).length} online</span>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 shadow-xs">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Customers</span>
+          <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{customersCount}</p>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Registered shoppers</span>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 shadow-xs col-span-2 sm:col-span-1">
+          <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Vendors</span>
+          <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{vendorsCount}</p>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">Storefront partners</span>
+        </div>
+      </div>
+
+      {/* Filter Chips & Search Bar */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-xs">
+        {/* Role & Presence Chips */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+          <span className="text-xs font-bold text-gray-500 dark:text-gray-400 mr-1 hidden lg:inline">Filter:</span>
+          {[
+            { id: "ALL", label: "All Roles", count: totalUsersCount },
+            { id: "customer", label: "Customers", count: customersCount },
+            { id: "rider", label: "Riders", count: ridersCount },
+            { id: "vendor", label: "Vendors", count: vendorsCount },
+            { id: "admin", label: "Admins", count: activeUsers.filter(u => u.role === "admin" || u.role === "super_admin").length },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setRoleFilter(tab.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                roleFilter === tab.id
+                  ? "bg-[#FFB800] text-[#111] shadow-xs"
+                  : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#2c2c2c]"
+              }`}
+            >
+              {tab.label}
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${roleFilter === tab.id ? "bg-[#111]/20 text-[#111]" : "bg-black/10 dark:bg-white/10"}`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+
+          <div className="h-4 w-px bg-gray-300 dark:bg-white/10 mx-1 hidden sm:block" />
+
+          {[
+            { id: "ALL", label: "All Status" },
+            { id: "online", label: "Online Only" },
+            { id: "offline", label: "Offline" }
+          ].map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPresenceFilter(p.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                presenceFilter === p.id
+                  ? "bg-[#111] dark:bg-white text-white dark:text-[#111] shadow-xs"
+                  : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#2c2c2c]"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search Input */}
+        <div className="w-full md:w-72 shrink-0">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search name, email, phone, bike #..." />
+        </div>
+      </div>
+
+      {/* Add User Modal */}
+      {showNewUser && (
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-sm space-y-4 animate-scale-in">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+              <UserPlus className="w-4 h-4 text-[#FFB800]" /> New Account Registration — Step {newUserStep}/2
+            </h3>
+            <button onClick={() => { setShowNewUser(false); setNewUserStep(1); }} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white cursor-pointer">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <div className={"h-1.5 flex-1 rounded-full " + (newUserStep >= 1 ? "bg-[#FFB800]" : "bg-gray-200 dark:bg-gray-700")} />
+            <div className={"h-1.5 flex-1 rounded-full " + (newUserStep >= 2 ? "bg-[#FFB800]" : "bg-gray-200 dark:bg-gray-700")} />
+          </div>
+          {newUserStep === 1 ? (
+            <div className="space-y-3">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Full Name *</label>
+                  <div className="relative">
+                    <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                    <input value={newUserForm.name} onChange={e => setNewUserForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Osas Ighodaro" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Email Address *</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                    <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(f => ({ ...f, email: e.target.value }))} placeholder="e.g. user@esdispatch.com" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Email Address *</label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                  <input type="email" value={newUserForm.email} onChange={e => setNewUserForm(f => ({ ...f, email: e.target.value }))} placeholder="e.g. user@esdispatch.com" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Phone Number</label>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                    <input value={newUserForm.phone} onChange={e => setNewUserForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 08012345678" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Account Role</label>
+                  <Select value={newUserForm.role} onChange={v => setNewUserForm(f => ({ ...f, role: v }))} options={[{ value: "customer", label: "Customer" }, { value: "rider", label: "Rider / Courier" }, { value: "vendor", label: "Vendor" }, { value: "admin", label: "Admin" }]} />
                 </div>
               </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else { if (addToast) addToast("error", "Fill in name and email first"); } }} className="h-10 px-6 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black transition-all cursor-pointer">Next →</button>
+              </div>
             </div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Phone Number</label>
-                <div className="relative">
-                  <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                  <input value={newUserForm.phone} onChange={e => setNewUserForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 08012345678" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+          ) : (
+            <div className="space-y-3">
+              {newUserForm.role === "rider" && (
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Bike / Plate Number</label>
+                  <div className="relative">
+                    <Truck className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                    <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                  </div>
+                </div>
+              )}
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Set 4-Digit PIN *</label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                    <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Confirm PIN *</label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                    <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(f => ({ ...f, confirmPin: e.target.value }))} placeholder="••••" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Account Role</label>
-                <Select value={newUserForm.role} onChange={v => setNewUserForm(f => ({ ...f, role: v }))} options={[{ value: "customer", label: "Customer" }, { value: "rider", label: "Rider / Courier" }, { value: "vendor", label: "Vendor" }, { value: "admin", label: "Admin" }]} />
+              <div className="flex items-center justify-between gap-2 pt-2">
+                <button onClick={() => setNewUserStep(1)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">← Back</button>
+                <button onClick={createUser} disabled={creatingUser || !newUserForm.pin || !newUserForm.confirmPin} className="h-10 px-6 bg-[#FFB800] hover:bg-[#FFB800]/90 disabled:opacity-50 text-[#111] rounded-xl text-xs font-black shadow-xs transition-all flex items-center gap-1.5 cursor-pointer">
+                  {creatingUser ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Create User
+                </button>
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => { if (newUserForm.name && newUserForm.email) setNewUserStep(2); else { addLog("Error", "Fill in name and email first"); if (addToast) addToast("error", "Fill in name and email first"); } }} className="h-10 px-6 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black transition-all cursor-pointer">Next →</button>
-            </div>
+          )}
+        </div>
+      )}
+
+      {/* Main Unified Users List / Table (Matching MarketplaceTab standard) */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-5 sm:p-6 shadow-xs">
+        {filtered.length === 0 ? (
+          <div className="text-center py-16 text-gray-600 dark:text-gray-400 font-medium">
+            <Users className="w-12 h-12 mx-auto mb-3 text-[#FFB800]/50" />
+            <p className="font-extrabold text-base text-gray-900 dark:text-white">No users match the selected filters</p>
+            <p className="text-xs mt-1 text-gray-600 dark:text-gray-400">Try changing your search terms, role filters, or online presence filter.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {newUserForm.role === "rider" && <div>
-              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Bike / Plate Number</label>
-              <div className="relative">
-                <Truck className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                <input value={newUserForm.bikeNumber} onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-              </div>
-            </div>}
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Set 4-Digit PIN *</label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                  <input type="password" maxLength={6} value={newUserForm.pin} onChange={e => setNewUserForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Confirm PIN *</label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                  <input type="password" maxLength={6} value={newUserForm.confirmPin} onChange={e => setNewUserForm(f => ({ ...f, confirmPin: e.target.value }))} placeholder="••••" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-9 pr-3.5 text-xs text-gray-900 dark:text-white font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-2 pt-2">
-              <button onClick={() => setNewUserStep(1)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">← Back</button>
-              <button onClick={createUser} disabled={creatingUser || !newUserForm.pin || !newUserForm.confirmPin} className="h-10 px-6 bg-[#FFB800] hover:bg-[#FFB800]/90 disabled:opacity-50 text-[#111] rounded-xl text-xs font-black shadow-xs transition-all flex items-center gap-1.5 cursor-pointer">
-                {creatingUser ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Create User
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">User Profile</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10 hidden md:table-cell">Account Role</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Wallet & Loyalty</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10 hidden lg:table-cell">Deliveries & Rating</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Live Presence</th>
+                  <th className="text-right font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Action Controls</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {pagedUsers.map((u, i) => (
+                  <tr key={u.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    {/* User Profile: Left Avatar + Title + Subtitle */}
+                    <td className="p-4">
+                      <div className="flex items-center gap-3.5">
+                        <div className="relative shrink-0">
+                          <div className="w-11 h-11 rounded-2xl bg-gray-100 dark:bg-[#222] border border-black/10 dark:border-white/10 overflow-hidden flex items-center justify-center font-black text-sm text-[#111] dark:text-white shadow-xs">
+                            {u.photoUrl ? (
+                              <img src={u.photoUrl} alt={u.name} className="w-full h-full object-cover" />
+                            ) : (
+                              u.name.charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          {u.isOnline ? (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#1a1a1a]" title="Online" />
+                          ) : (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-gray-400 ring-2 ring-white dark:ring-[#1a1a1a]" title="Offline" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-extrabold text-sm text-[#111] dark:text-white flex items-center gap-2 truncate">
+                            <span className="truncate">{u.name}</span>
+                            {u.role === "rider" && u.bikeNumber && (
+                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-[#FFB800]/15 text-[#111] dark:text-[#FFB800] rounded-lg border border-[#FFB800]/30 shrink-0">
+                                {u.bikeNumber}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-0.5 truncate">
+                            {u.email} {u.phone ? `· ${u.phone}` : ""}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Account Role */}
+                    <td className="p-4 hidden md:table-cell">
+                      <span className={"px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-2xs " + rBadge(u.role)}>
+                        {(u.role || "customer").toUpperCase()}
+                      </span>
+                    </td>
+
+                    {/* Financial Summary */}
+                    <td className="p-4">
+                      <div className="font-black text-sm text-emerald-600 dark:text-emerald-400">
+                        ₦{(u.walletBalance || 0).toLocaleString()}
+                      </div>
+                      <div className="text-[11px] font-bold text-amber-800 dark:text-amber-400 mt-0.5">
+                        {(u.loyaltyPoints || 0).toLocaleString()} pts
+                      </div>
+                    </td>
+
+                    {/* Deliveries & Rating */}
+                    <td className="p-4 hidden lg:table-cell">
+                      <div className="font-bold text-xs text-[#111] dark:text-white flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5 text-gray-400" />
+                        <span>{u.deliveryCount || 0} deliveries</span>
+                      </div>
+                      <div className="text-[11px] font-medium text-gray-600 dark:text-gray-400 flex items-center gap-1 mt-0.5">
+                        <Star className="w-3 h-3 text-[#FFB800] fill-[#FFB800]" />
+                        <span>{(u.rating || 5.0).toFixed(1)} rating</span>
+                      </div>
+                    </td>
+
+                    {/* Live Presence */}
+                    <td className="p-4">
+                      {u.isOnline ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 shadow-2xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          ONLINE
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-white/10">
+                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                          OFFLINE
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Action Controls */}
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          title="View Full Profile Details"
+                          onClick={() => setPreviewUser(u)}
+                          className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-xl transition-all cursor-pointer"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          title="Fund / Adjust Wallet"
+                          onClick={() => {
+                            setFundUser(u);
+                            setFundAmount("");
+                            setFundReason("");
+                          }}
+                          className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-xl transition-all cursor-pointer"
+                        >
+                          <DollarSign className="w-4 h-4" />
+                        </button>
+                        {u.role !== "vendor" && u.role !== "admin" && u.role !== "super_admin" && (
+                          <button
+                            title="Upgrade to Vendor Store"
+                            onClick={() => promoteToVendor(u)}
+                            className="p-2 text-amber-800 dark:text-[#FFB800] hover:bg-amber-50 dark:hover:bg-white/5 rounded-xl transition-all cursor-pointer"
+                          >
+                            <Store className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          title="Edit User"
+                          onClick={() => {
+                            setEditUser(u);
+                            setForm({
+                              name: u.name,
+                              role: u.role || "customer",
+                              phone: u.phone || "",
+                              bikeNumber: u.bikeNumber || "",
+                              status: u.status || "active"
+                            });
+                          }}
+                          className="p-2 text-gray-700 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-all cursor-pointer"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          title="Deactivate User"
+                          onClick={() => setConfirmDelete(u.id)}
+                          className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-all cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {uTotalPages > 1 && (
+          <div className="flex items-center justify-between pt-5 border-t border-black/5 dark:border-white/10 mt-4 flex-wrap gap-2">
+            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+              Showing page {uPage + 1} of {uTotalPages} ({filtered.length} matching users)
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setUPage(p => Math.max(0, p - 1))}
+                disabled={uPage === 0}
+                className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333] cursor-pointer flex items-center gap-1"
+              >
+                <ChevronLeft size={14} /> Prev
+              </button>
+              {Array.from({ length: Math.min(5, uTotalPages) }, (_, i) => {
+                let pNum = i;
+                if (uTotalPages > 5 && uPage > 2) {
+                  pNum = Math.min(uTotalPages - 5 + i, uPage - 2 + i);
+                }
+                return (
+                  <button
+                    key={pNum}
+                    onClick={() => setUPage(pNum)}
+                    className={`w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      pNum === uPage
+                        ? "bg-[#FFB800] text-[#111] shadow-xs"
+                        : "bg-gray-100 dark:bg-[#222] text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#333]"
+                    }`}
+                  >
+                    {pNum + 1}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => setUPage(p => Math.min(uTotalPages - 1, p + 1))}
+                disabled={uPage >= uTotalPages - 1}
+                className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333] cursor-pointer flex items-center gap-1"
+              >
+                Next <ChevronRight size={14} />
               </button>
             </div>
           </div>
         )}
-      </div>}
-      <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-100 dark:bg-[#222] border-b border-gray-200 dark:border-white/10">
-              <tr>
-                <th className="text-left font-extrabold text-gray-700 dark:text-gray-300 p-3.5 uppercase tracking-wider text-[11px]">User & Email</th>
-                <th className="text-left font-extrabold text-gray-700 dark:text-gray-300 p-3.5 uppercase tracking-wider text-[11px] hidden md:table-cell">Role & Presence</th>
-                <th className="text-right font-extrabold text-gray-700 dark:text-gray-300 p-3.5 uppercase tracking-wider text-[11px]">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-black/5 dark:divide-white/10">
-              {pagedUsers.length === 0 && <tr><td colSpan={3} className="p-8 text-center text-gray-500 dark:text-gray-400 font-medium">No users found.</td></tr>}
-              {pagedUsers.map((u, i) => (
-                <tr key={u.id} className={"hover:bg-gray-50 dark:hover:bg-white/5 transition-colors animate-fade-in " + (["stagger-1","stagger-2","stagger-3","stagger-4","stagger-5","stagger-6","stagger-7","stagger-8"][i] || "")}>
-                  <td className="p-3.5">
-                    <div className="flex items-center gap-2.5">
-                      <div className="relative shrink-0">
-                        <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-950/40 flex items-center justify-center text-xs font-black text-amber-900 dark:text-[#FFB800] border border-amber-300 dark:border-amber-700/40 shadow-xs">
-                          {u.name.charAt(0).toUpperCase()}
-                        </div>
-                        {u.isOnline === true && (
-                          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#1a1a1a]" title="Online" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-xs text-gray-900 dark:text-white flex items-center gap-1.5 leading-tight truncate">
-                          <span>{u.name}</span>
-                          {u.role === "rider" && u.bikeNumber && (
-                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-gray-100 dark:bg-white/10 rounded-md text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10">
-                              {u.bikeNumber}
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium leading-tight truncate mt-0.5">
-                          {u.email}
-                        </p>
-                        {u.phone && (
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400 font-mono leading-tight mt-0.5">
-                            {u.phone}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-3.5 hidden md:table-cell">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={"text-[10px] font-extrabold px-2.5 py-1 rounded-full shadow-2xs " + rBadge(u.role)}>
-                        {(u.role || "customer").toUpperCase()}
-                      </span>
-                      {u.isOnline === true ? (
-                        <span className="inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-500/30 shadow-2xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          Online
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-white/10">
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500" />
-                          Offline
-                        </span>
-                      )}
-                      {u.status && u.status !== "active" && u.status !== "online" && u.status !== "offline" && (
-                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900/30">
-                          {u.status.toUpperCase()}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-3.5 text-right whitespace-nowrap">
-                    <button title="View Full Details" onClick={() => setPreviewUser(u)} className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition-colors cursor-pointer"><Eye className="w-3.5 h-3.5" /></button>
-                    {(u.role !== "vendor" && u.role !== "admin" && u.role !== "super_admin") && <button title="Upgrade to Vendor" onClick={() => promoteToVendor(u)} className="p-2 text-amber-800 dark:text-[#FFB800] hover:bg-amber-50 dark:hover:bg-white/5 rounded-lg transition-colors cursor-pointer"><Store className="w-3.5 h-3.5" /></button>}
-                    <button title="Fund / Adjust Wallet" onClick={() => setFundUser(u)} className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors cursor-pointer"><DollarSign className="w-3.5 h-3.5" /></button>
-                    <button title="Edit User" onClick={() => { setEditUser(u); setForm({ name: u.name, role: u.role || "customer", phone: u.phone || "", bikeNumber: u.bikeNumber || "", status: u.status || "active" }); }} className="p-2 text-amber-800 dark:text-[#FFB800] hover:bg-amber-50 dark:hover:bg-white/5 rounded-lg transition-colors cursor-pointer"><Edit3 className="w-3.5 h-3.5" /></button>
-                    <button title="Deactivate User" onClick={() => setConfirmDelete(u.id)} className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
-      {uTotalPages > 1 && <div className="flex items-center justify-center gap-2 pt-2">
-        <button onClick={() => setUPage(p => Math.max(0, p - 1))} disabled={uPage === 0} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333] cursor-pointer"><ChevronLeft size={14} /></button>
-        {Array.from({ length: uTotalPages }, (_, i) => <button key={i} onClick={() => setUPage(i)} className={"w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer " + (i === uPage ? "bg-[#FFB800] text-[#111]" : "bg-gray-100 dark:bg-[#222] text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#333]")}>{i + 1}</button>)}
-        <button onClick={() => setUPage(p => Math.min(uTotalPages - 1, p + 1))} disabled={uPage >= uTotalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-[#333] cursor-pointer"><ChevronRight size={14} /></button>
-      </div>}
-      <ConfirmModal show={confirmDelete !== null} title="Delete User" message="Soft-delete this user? They will no longer be able to log in or transact." confirmLabel="Deactivate" onConfirm={() => deleteUser(confirmDelete!)} onCancel={() => setConfirmDelete(null)} />
-      
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        show={confirmDelete !== null}
+        title="Deactivate Account"
+        message="Soft-delete this user? They will no longer be able to sign in or perform dispatches."
+        confirmLabel="Deactivate"
+        onConfirm={() => deleteUser(confirmDelete!)}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
       {/* User Details Preview Modal */}
-      {previewUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setPreviewUser(null)}>
-        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-white/10">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-[#FFB800] text-[#111] flex items-center justify-center text-lg font-black shadow-md">
-                {previewUser.name.charAt(0).toUpperCase()}
+      {previewUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setPreviewUser(null)}>
+          <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 sm:p-7 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-white/10">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-[#FFB800] text-[#111] flex items-center justify-center text-lg font-black shadow-sm">
+                  {previewUser.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                    {previewUser.name}
+                    {previewUser.isOnline === true && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Online
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 font-medium">{previewUser.email}</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
-                  {previewUser.name}
-                  {previewUser.isOnline === true && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-500/20">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Online
-                    </span>
-                  )}
-                </h3>
-                <p className="text-xs text-gray-600 dark:text-gray-300 font-medium">{previewUser.email}</p>
+              <button onClick={() => setPreviewUser(null)} className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-xl cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-3 text-center">
+                <p className="text-[10px] font-extrabold uppercase text-emerald-800 dark:text-emerald-400 tracking-wider">Wallet</p>
+                <p className="text-sm font-black text-emerald-700 dark:text-emerald-300 font-mono mt-0.5">₦{(previewUser.walletBalance || 0).toLocaleString()}</p>
+              </div>
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-500/20 rounded-2xl p-3 text-center">
+                <p className="text-[10px] font-extrabold uppercase text-amber-900 dark:text-[#FFB800] tracking-wider">Points</p>
+                <p className="text-sm font-black text-gray-900 dark:text-white font-mono mt-0.5">{previewUser.loyaltyPoints || 0}</p>
+              </div>
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-500/20 rounded-2xl p-3 text-center">
+                <p className="text-[10px] font-extrabold uppercase text-blue-800 dark:text-blue-400 tracking-wider">Deliveries</p>
+                <p className="text-sm font-black text-blue-700 dark:text-blue-300 font-mono mt-0.5">{previewUser.deliveryCount || 0}</p>
+              </div>
+              <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-500/20 rounded-2xl p-3 text-center">
+                <p className="text-[10px] font-extrabold uppercase text-purple-800 dark:text-purple-400 tracking-wider">Rating</p>
+                <p className="text-sm font-black text-purple-700 dark:text-purple-300 font-mono mt-0.5">{previewUser.rating ? `${previewUser.rating} ★` : "5.0 ★"}</p>
               </div>
             </div>
-            <button onClick={() => setPreviewUser(null)} className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-full hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer"><X size={18} /></button>
-          </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-3 text-center">
-              <p className="text-[10px] font-extrabold uppercase text-emerald-800 dark:text-emerald-400 tracking-wider">Wallet</p>
-              <p className="text-sm font-black text-emerald-700 dark:text-emerald-300 font-mono mt-0.5">₦{(previewUser.walletBalance || 0).toLocaleString()}</p>
-            </div>
-            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-500/20 rounded-2xl p-3 text-center">
-              <p className="text-[10px] font-extrabold uppercase text-amber-900 dark:text-[#FFB800] tracking-wider">Points</p>
-              <p className="text-sm font-black text-gray-900 dark:text-white font-mono mt-0.5">{previewUser.loyaltyPoints || 0}</p>
-            </div>
-            <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-500/20 rounded-2xl p-3 text-center">
-              <p className="text-[10px] font-extrabold uppercase text-blue-800 dark:text-blue-400 tracking-wider">Deliveries</p>
-              <p className="text-sm font-black text-blue-700 dark:text-blue-300 font-mono mt-0.5">{previewUser.deliveryCount || 0}</p>
-            </div>
-            <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-500/20 rounded-2xl p-3 text-center">
-              <p className="text-[10px] font-extrabold uppercase text-purple-800 dark:text-purple-400 tracking-wider">Rating</p>
-              <p className="text-sm font-black text-purple-700 dark:text-purple-300 font-mono mt-0.5">{previewUser.rating ? `${previewUser.rating} ★` : "5.0 ★"}</p>
-            </div>
-          </div>
-
-          <div className="bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-2xl p-4 space-y-2 text-xs">
-            <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
-              <span className="text-gray-600 dark:text-gray-400 font-medium">Phone Number</span>
-              <span className="font-bold text-gray-900 dark:text-white">{previewUser.phone || "None registered"}</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
-              <span className="text-gray-600 dark:text-gray-400 font-medium">Role</span>
-              <span className={"font-bold px-2 py-0.5 rounded-full text-[10px] " + rBadge(previewUser.role)}>{(previewUser.role || "customer").toUpperCase()}</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
-              <span className="text-gray-600 dark:text-gray-400 font-medium">Presence</span>
-              {previewUser.isOnline === true ? (
-                <span className="font-black text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
-                  ONLINE
-                </span>
-              ) : (
-                <span className="font-bold text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400">
-                  OFFLINE
-                </span>
+            <div className="bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-2xl p-4 space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
+                <span className="text-gray-600 dark:text-gray-400 font-medium">Phone Number</span>
+                <span className="font-bold text-gray-900 dark:text-white">{previewUser.phone || "None registered"}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
+                <span className="text-gray-600 dark:text-gray-400 font-medium">Role</span>
+                <span className={"font-bold px-2 py-0.5 rounded-full text-[10px] " + rBadge(previewUser.role)}>{(previewUser.role || "customer").toUpperCase()}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
+                <span className="text-gray-600 dark:text-gray-400 font-medium">Live Presence</span>
+                {previewUser.isOnline === true ? (
+                  <span className="font-black text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> ONLINE
+                  </span>
+                ) : (
+                  <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400">
+                    OFFLINE
+                  </span>
+                )}
+              </div>
+              {previewUser.bikeNumber && (
+                <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
+                  <span className="text-gray-600 dark:text-gray-400 font-medium">Assigned Bike / Vehicle</span>
+                  <span className="font-mono font-bold text-gray-900 dark:text-white">{previewUser.bikeNumber}</span>
+                </div>
               )}
             </div>
-            {previewUser.bikeNumber && <div className="flex justify-between py-1 border-b border-gray-200 dark:border-white/10">
-              <span className="text-gray-600 dark:text-gray-400 font-medium">Assigned Bike / Vehicle</span>
-              <span className="font-mono font-bold text-gray-900 dark:text-white">{previewUser.bikeNumber}</span>
-            </div>}
-          </div>
 
-          <div className="flex items-center justify-between gap-3 pt-2">
-            <div className="flex gap-2">
-              <button onClick={() => { setFundUser(previewUser); setPreviewUser(null); }} className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer">
-                <DollarSign size={14} /> Fund Wallet
-              </button>
-              <button onClick={() => { setEditUser(previewUser); setForm({ name: previewUser.name, role: previewUser.role || "customer", phone: previewUser.phone || "", bikeNumber: previewUser.bikeNumber || "", status: previewUser.status || "active" }); setPreviewUser(null); }} className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer">
-                <Edit3 size={14} /> Edit
-              </button>
-            </div>
-            <button onClick={() => setPreviewUser(null)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Close</button>
-          </div>
-        </div>
-      </div>}
-
-      {/* Fund User Wallet Modal */}
-      {fundUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setFundUser(null)}>
-        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
-          <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2"><DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Fund & Manage Wallet</h3>
-          <div className="bg-amber-50 dark:bg-amber-950/30 rounded-2xl p-3 border border-amber-300 dark:border-amber-700/40">
-            <p className="text-xs font-bold text-gray-900 dark:text-white">{fundUser.name}</p>
-            <p className="text-[10px] text-gray-700 dark:text-gray-300 font-medium">{fundUser.email} · Current Balance: <span className="font-bold text-emerald-700 dark:text-emerald-400">₦{(fundUser.walletBalance || 0).toLocaleString()}</span></p>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Operation</label>
+            <div className="flex items-center justify-between gap-3 pt-2">
               <div className="flex gap-2">
-                <button type="button" onClick={() => setFundAction("credit")} className={`flex-1 h-10 rounded-xl text-xs font-black transition-all flex items-center justify-center cursor-pointer ${fundAction === "credit" ? "bg-emerald-600 text-white shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10"}`}>Credit (+)</button>
-                <button type="button" onClick={() => setFundAction("debit")} className={`flex-1 h-10 rounded-xl text-xs font-black transition-all flex items-center justify-center cursor-pointer ${fundAction === "debit" ? "bg-red-600 text-white shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10"}`}>Debit (-)</button>
+                <button
+                  onClick={() => {
+                    setFundUser(previewUser);
+                    setFundAmount("");
+                    setFundReason("");
+                    setPreviewUser(null);
+                  }}
+                  className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <DollarSign size={14} /> Fund Wallet
+                </button>
+                <button
+                  onClick={() => {
+                    setEditUser(previewUser);
+                    setForm({
+                      name: previewUser.name,
+                      role: previewUser.role || "customer",
+                      phone: previewUser.phone || "",
+                      bikeNumber: previewUser.bikeNumber || "",
+                      status: previewUser.status || "active"
+                    });
+                    setPreviewUser(null);
+                  }}
+                  className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Edit3 size={14} /> Edit
+                </button>
               </div>
+              <button onClick={() => setPreviewUser(null)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Close</button>
             </div>
-            <div>
-              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Amount (₦) *</label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-gray-500">₦</span>
-                <input type="number" min="1" value={fundAmount} onChange={e => setFundAmount(e.target.value)} placeholder="5000" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-8 pr-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 font-bold focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Reason / Narration</label>
-              <input type="text" value={fundReason} onChange={e => setFundReason(e.target.value)} placeholder="e.g. Customer promo credit / order refund" className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-200 dark:border-white/10">
-            <button onClick={() => setFundUser(null)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Cancel</button>
-            <button onClick={handleFundWallet} disabled={fundingWallet || !fundAmount} className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all disabled:opacity-50 cursor-pointer">
-              {fundingWallet ? "Processing..." : `Confirm ${fundAction === "credit" ? "Credit" : "Debit"}`}
-            </button>
           </div>
         </div>
-      </div>}
+      )}
 
-      {/* Edit User Modal with proper Dropdowns */}
-      {editUser && <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
-        <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2"><Edit3 className="w-4 h-4 text-amber-800 dark:text-[#FFB800]" /> Edit User</h3>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">{editUser.email}</span>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Full Name</label>
-              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Phone Number</label>
-              <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Role</label>
-                <Select value={form.role || editUser.role} onChange={v => setForm(f => ({ ...f, role: v }))} 
-                  options={[
-                    { value: "customer", label: "Customer" },
-                    { value: "rider", label: "Rider / Courier" },
-                    { value: "vendor", label: "Vendor" },
-                    { value: "admin", label: "Admin" },
-                    { value: "dispatcher", label: "Dispatcher" }
-                  ]} />
+      {/* Upgraded Luxury Fund Wallet Modal */}
+      {fundUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setFundUser(null)}>
+          <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 sm:p-7 w-full max-w-lg shadow-2xl space-y-5" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-[#FFB800]/15 text-[#FFB800] flex items-center justify-center border border-[#FFB800]/30 shadow-xs">
+                  <DollarSign className="w-6 h-6 text-[#FFB800]" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-[#111] dark:text-white">Fund & Manage Wallet</h3>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 font-medium">Atomic ledger adjustment with instant notification</p>
+                </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Status</label>
-                <Select value={form.status || editUser.status} onChange={v => setForm(f => ({ ...f, status: v }))}
-                  options={[
-                    { value: "active", label: "Active" },
-                    { value: "offline", label: "Offline" },
-                    { value: "suspended", label: "Suspended" },
-                    { value: "pending", label: "Pending Review" }
-                  ]} />
+              <button onClick={() => setFundUser(null)} className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Recipient Card */}
+            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-[#111] dark:bg-white text-white dark:text-[#111] flex items-center justify-center font-black text-sm shrink-0">
+                  {fundUser.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-extrabold text-sm text-[#111] dark:text-white truncate">{fundUser.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate">{fundUser.email}</p>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Current Balance</span>
+                <span className="font-black text-sm sm:text-base text-emerald-600 dark:text-emerald-400">₦{(fundUser.walletBalance || 0).toLocaleString()}</span>
               </div>
             </div>
+
+            {/* Credit / Debit Pill Toggle */}
             <div>
-              <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Bike / Vehicle Number</label>
-              <input value={form.bikeNumber} onChange={e => setForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204"
-                className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+              <label className="block text-[11px] font-extrabold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">Adjustment Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFundAction("credit")}
+                  className={`h-11 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer border ${
+                    fundAction === "credit"
+                      ? "bg-emerald-600 text-white border-emerald-500 shadow-sm"
+                      : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]"
+                  }`}
+                >
+                  <Plus className="w-4 h-4" /> Credit Account (Top-Up)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFundAction("debit")}
+                  className={`h-11 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer border ${
+                    fundAction === "debit"
+                      ? "bg-rose-600 text-white border-rose-500 shadow-sm"
+                      : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]"
+                  }`}
+                >
+                  <span className="font-black text-base leading-none">-</span> Debit Account (Deduct)
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button onClick={() => setEditUser(null)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Cancel</button>
-            <SaveBtn onClick={saveUser} label="Update User" />
+
+            {/* Quick Amount Increment Chips */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Quick Amount Chips</label>
+                {fundAmount && (
+                  <button type="button" onClick={() => setFundAmount("")} className="text-[10px] font-bold text-rose-500 hover:underline cursor-pointer">
+                    Clear Amount
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[1000, 2000, 5000, 10000, 25000, 50000, 100000].map(amt => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => {
+                      const curr = parseFloat(fundAmount) || 0;
+                      setFundAmount((curr + amt).toString());
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#222] dark:hover:bg-[#333] border border-gray-200 dark:border-white/10 text-xs font-bold text-[#111] dark:text-white transition-all cursor-pointer active:scale-95"
+                  >
+                    +₦{amt >= 1000 ? `${amt / 1000}k` : amt.toLocaleString()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Amount Input */}
+            <div>
+              <label className="block text-[11px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Amount (₦) *</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-sm text-[#FFB800]">₦</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={fundAmount}
+                  onChange={e => setFundAmount(e.target.value)}
+                  placeholder="e.g. 5,000"
+                  className="w-full h-12 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-2xl pl-10 pr-4 text-base font-black text-[#111] dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Live Calculation Card */}
+            {(() => {
+              const entered = parseFloat(fundAmount) || 0;
+              const currentBal = fundUser.walletBalance || 0;
+              const delta = fundAction === "credit" ? entered : -entered;
+              const projectedBal = Math.max(0, currentBal + delta);
+              return (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400 font-semibold block">Projected Balance:</span>
+                    <span className="font-extrabold text-xs text-gray-700 dark:text-gray-300">
+                      ₦{currentBal.toLocaleString()} {fundAction === "credit" ? "+" : "-"} ₦{entered.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm sm:text-base font-black text-[#111] dark:text-[#FFB800]">
+                      = ₦{projectedBal.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Narration Presets & Input */}
+            <div>
+              <label className="block text-[11px] font-extrabold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wider">Reason / Narration</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {[
+                  "Customer Promo Credit",
+                  "Order Refund",
+                  "Manual Deposit",
+                  "Correction / Reversal",
+                  "Driver Performance Bonus",
+                  "Account Settlement"
+                ].map(reason => (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => setFundReason(reason)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                      fundReason === reason
+                        ? "bg-[#FFB800] text-[#111] border-[#FFB800]"
+                        : "bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-[#333]"
+                    }`}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={fundReason}
+                onChange={e => setFundReason(e.target.value)}
+                placeholder="Or type custom narration..."
+                className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-[#111] dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-medium"
+              />
+            </div>
+
+            {/* Footer buttons */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100 dark:border-white/10">
+              <button
+                type="button"
+                onClick={() => setFundUser(null)}
+                className="h-11 px-5 bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/15 text-[#111] dark:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleFundWallet}
+                disabled={fundingWallet || !fundAmount || parseFloat(fundAmount) <= 0}
+                className={`h-11 px-6 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
+                  fundAction === "credit"
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
+                    : "bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50"
+                }`}
+              >
+                {fundingWallet ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Processing...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" /> Confirm {fundAction === "credit" ? "Credit" : "Debit"} (₦{(parseFloat(fundAmount) || 0).toLocaleString()})
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
-      </div>}
-    </div>;
-  }
+      )}
+
+      {/* Edit User Modal */}
+      {editUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setEditUser(null)}>
+          <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-[#FFB800]" /> Edit Account Details
+              </h3>
+              <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">{editUser.email}</span>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Full Name</label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Phone Number</label>
+                <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Role</label>
+                  <Select value={form.role || editUser.role} onChange={v => setForm(f => ({ ...f, role: v }))} 
+                    options={[
+                      { value: "customer", label: "Customer" },
+                      { value: "rider", label: "Rider / Courier" },
+                      { value: "vendor", label: "Vendor" },
+                      { value: "admin", label: "Admin" },
+                      { value: "dispatcher", label: "Dispatcher" }
+                    ]} />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Status</label>
+                  <Select value={form.status || editUser.status} onChange={v => setForm(f => ({ ...f, status: v }))}
+                    options={[
+                      { value: "active", label: "Active" },
+                      { value: "offline", label: "Offline" },
+                      { value: "suspended", label: "Suspended" },
+                      { value: "pending", label: "Pending Review" }
+                    ]} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Bike / Vehicle Number</label>
+                <input value={form.bikeNumber} onChange={e => setForm(f => ({ ...f, bikeNumber: e.target.value }))} placeholder="e.g. ES-BIKE-204"
+                  className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button onClick={() => setEditUser(null)} className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">Cancel</button>
+              <SaveBtn onClick={saveUser} label="Update User" />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, filterPrefill, setFilterPrefill }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string; db: any; addLog: any; addToast?: (type: Toast["type"], message: string) => void; filterPrefill?: { status?: string; category?: string; search?: string; selectedId?: string } | null; setFilterPrefill?: (v: any) => void }) {
     const [search, setSearch] = useState(() => filterPrefill?.search || "");
@@ -4065,7 +4599,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
-                                <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline !== false ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline !== false ? "Online" : "Offline"} />
+                                <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline === true ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline === true ? "Online" : "Offline"} />
                                 {rec.badge === "BEST_FIT" && (
                                   <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">★ BEST FIT ({rec.score})</span>
                                 )}
@@ -4171,7 +4705,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
-                                <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline !== false ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline !== false ? "Online" : "Offline"} />
+                                <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline === true ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline === true ? "Online" : "Offline"} />
                                 {rec.badge === "BEST_FIT" && (
                                   <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">★ BEST FIT ({rec.score})</span>
                                 )}
@@ -4271,7 +4805,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
-                              <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline !== false ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline !== false ? "Online" : "Offline"} />
+                              <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline === true ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline === true ? "Online" : "Offline"} />
                             </div>
                             <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium truncate">
                               {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
@@ -4383,33 +4917,338 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
     );
 }
 
-function ReferralsTab({ referrals, completedReferrals, searchQuery }: ReferralsTabProps) {
+function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: ReferralsTabProps & { addToast?: (type: Toast["type"], message: string) => void }) {
   const [search, setSearch] = useState("");
-  const filtered = referrals.filter(r => { const q = (searchQuery || search).toLowerCase(); return r.referrerName.toLowerCase().includes(q) || r.refereeName.toLowerCase().includes(q); });
-  return <div className="tab-content space-y-6">
-    <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Gift className="w-5 h-5 text-[#FFB800]" /> Referrals</h1>
-        <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">{referrals.length} total | {completedReferrals.length} completed | {fmt(referrals.reduce((s, r) => s + r.rewardAmount, 0))} total rewards</p></div>
-      <SearchInput value={search} onChange={setSearch} placeholder="Search referrals..." />
-    </div>
-    <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl shadow-xs overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs"><thead className="bg-gray-50 dark:bg-[#222]">
-          <tr><th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-3 border-b border-gray-200 dark:border-white/10">Referrer</th>
-            <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-3 border-b border-gray-200 dark:border-white/10 hidden md:table-cell">Referee</th>
-            <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-3 border-b border-gray-200 dark:border-white/10 hidden lg:table-cell">Reward</th>
-            <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-3 border-b border-gray-200 dark:border-white/10">Status</th></tr>
-        </thead><tbody className="divide-y divide-gray-100 dark:divide-white/10">
-          {filtered.map(r => <tr key={r.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-            <td className="p-3"><p className="font-bold text-[#111] dark:text-white">{r.referrerName}</p><span className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">{r.referrerEmail}</span></td>
-            <td className="p-3 hidden md:table-cell"><p className="font-bold text-[#111] dark:text-white">{r.refereeName}</p><span className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">{r.refereeEmail}</span></td>
-            <td className="p-3 hidden lg:table-cell"><span className="font-bold text-[#111] dark:text-white">{fmt(r.rewardAmount)}</span></td>
-            <td className="p-3"><span className={"text-[10px] font-bold px-2 py-0.5 rounded-full border " + (r.status === "completed" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-500/20")}>{r.status.toUpperCase()}</span></td>
-          </tr>)}
-        </tbody></table>
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [rPage, setRPage] = useState(0);
+  const rPerPage = 10;
+
+  const totalReferrals = referrals.length;
+  const completedCount = completedReferrals.length;
+  const pendingCount = referrals.filter(r => r.status?.toLowerCase() !== "completed").length;
+  const totalRewardsPool = referrals.reduce((s, r) => s + (r.rewardAmount || 0), 0);
+  const totalPaidOut = completedReferrals.reduce((s, r) => s + (r.rewardAmount || 0), 0);
+
+  const filtered = useMemo(() => {
+    const q = (searchQuery || search).toLowerCase().trim();
+    return referrals.filter(r => {
+      // Status filter
+      if (statusFilter === "COMPLETED" && r.status?.toLowerCase() !== "completed") return false;
+      if (statusFilter === "PENDING" && r.status?.toLowerCase() === "completed") return false;
+
+      // Search query
+      if (!q) return true;
+      return (
+        (r.referrerName && r.referrerName.toLowerCase().includes(q)) ||
+        (r.referrerEmail && r.referrerEmail.toLowerCase().includes(q)) ||
+        (r.refereeName && r.refereeName.toLowerCase().includes(q)) ||
+        (r.refereeEmail && r.refereeEmail.toLowerCase().includes(q)) ||
+        (r.id && r.id.toLowerCase().includes(q))
+      );
+    });
+  }, [referrals, searchQuery, search, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / rPerPage));
+  const pagedReferrals = filtered.slice(rPage * rPerPage, (rPage + 1) * rPerPage);
+
+  useEffect(() => {
+    setRPage(0);
+  }, [search, searchQuery, statusFilter]);
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    if (addToast) addToast("success", "Referral ID copied to clipboard");
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const getInitials = (name?: string) => {
+    if (!name) return "U";
+    const parts = name.trim().split(" ");
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  };
+
+  return (
+    <div className="tab-content space-y-6">
+      {/* Top Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-[#FFB800]/15 flex items-center justify-center border border-[#FFB800]/30 text-[#FFB800]">
+              <Gift className="w-4 h-4" />
+            </div>
+            Referrals & Growth Rewards
+          </h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">
+            Track user invitations, referee conversion funnels, and automated wallet incentives.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search referrer or referee..." />
+        </div>
+      </div>
+
+      {/* 4 Spacious Executive Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Total Referrals */}
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group hover:border-[#FFB800]/40 transition-all">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Referrals</span>
+            <div className="w-9 h-9 rounded-xl bg-[#FFB800]/10 border border-[#FFB800]/20 flex items-center justify-center text-[#FFB800]">
+              <Gift className="w-4 h-4" />
+            </div>
+          </div>
+          <p className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">{totalReferrals}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-1">
+            Total tracked invite events
+          </p>
+        </div>
+
+        {/* Card 2: Completed & Rewarded */}
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group hover:border-emerald-500/40 transition-all">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">Completed & Paid</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+          </div>
+          <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">{completedCount}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-1">
+            First order completed & verified
+          </p>
+        </div>
+
+        {/* Card 3: Pending Conversions */}
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group hover:border-amber-500/40 transition-all">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">Pending Conversions</span>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+              <Clock className="w-4 h-4" />
+            </div>
+          </div>
+          <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">{pendingCount}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-1">
+            Invited, awaiting first booking
+          </p>
+        </div>
+
+        {/* Card 4: Total Rewards Disbursed */}
+        <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group hover:border-[#FFB800]/40 transition-all">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">Rewards Disbursed</span>
+            <div className="w-9 h-9 rounded-xl bg-[#FFB800]/10 border border-[#FFB800]/20 flex items-center justify-center text-[#FFB800]">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+          </div>
+          <p className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">{fmt(totalPaidOut)}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-1">
+            Pool: {fmt(totalRewardsPool)} committed
+          </p>
+        </div>
+      </div>
+
+      {/* Filter Tabs & Count Toolbar */}
+      <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
+          {[
+            { id: "ALL", label: "All Referrals", count: totalReferrals },
+            { id: "COMPLETED", label: "Completed & Paid", count: completedCount },
+            { id: "PENDING", label: "Pending", count: pendingCount }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setStatusFilter(tab.id)}
+              className={`h-9 px-3.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                statusFilter === tab.id
+                  ? "bg-[#FFB800] text-[#111] shadow-xs font-black"
+                  : "bg-white dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20"
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                  statusFilter === tab.id
+                    ? "bg-black/20 text-[#111] font-black"
+                    : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+          Showing <span className="font-bold text-gray-900 dark:text-white">{filtered.length}</span> results
+        </div>
+      </div>
+
+      {/* Table Container */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl shadow-xs overflow-hidden">
+        {filtered.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-[#FFB800]/10 border border-[#FFB800]/20 flex items-center justify-center text-[#FFB800] mx-auto mb-3">
+              <Gift className="w-7 h-7" />
+            </div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-1">No referrals match your filter</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mx-auto mb-4">
+              Try adjusting your search terms or status filter to view other tracked invitations.
+            </p>
+            <button
+              onClick={() => { setSearch(""); setStatusFilter("ALL"); }}
+              className="px-4 py-2 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+            >
+              Reset Filters
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10">
+                    Referrer (Inviter)
+                  </th>
+                  <th className="text-center font-extrabold text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10 hidden sm:table-cell w-12">
+                    Flow
+                  </th>
+                  <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10">
+                    Referee (Invited User)
+                  </th>
+                  <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10 hidden md:table-cell">
+                    Reward Incentive
+                  </th>
+                  <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10">
+                    Status
+                  </th>
+                  <th className="text-right font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10 w-24">
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-white/10">
+                {pagedReferrals.map((r) => {
+                  const isDone = r.status?.toLowerCase() === "completed";
+                  return (
+                    <tr key={r.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                      {/* Referrer Column */}
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/30 flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+                            {getInitials(r.referrerName)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-black text-xs text-[#111] dark:text-white truncate">{r.referrerName || "Unnamed User"}</p>
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400">
+                                Referrer
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium truncate mt-0.5">{r.referrerEmail || "No email"}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Direction Flow */}
+                      <td className="p-4 text-center hidden sm:table-cell">
+                        <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center mx-auto text-gray-400">
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </div>
+                      </td>
+
+                      {/* Referee Column */}
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-[#252525] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 flex items-center justify-center font-bold text-xs shrink-0">
+                            {getInitials(r.refereeName)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-black text-xs text-[#111] dark:text-white truncate">{r.refereeName || "New Customer"}</p>
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#FFB800]/10 text-[#FFB800]">
+                                New Joiner
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium truncate mt-0.5">{r.refereeEmail || "No email"}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Reward Amount */}
+                      <td className="p-4 hidden md:table-cell">
+                        <div className="flex flex-col">
+                          <span className="font-black text-xs text-gray-900 dark:text-white flex items-center gap-1.5">
+                            <span className="text-[#FFB800]">₦</span>
+                            {Number(r.rewardAmount || 0).toLocaleString("en-US")}
+                          </span>
+                          <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
+                            {isDone ? "Settled to wallet" : "Pending qualification"}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Status Pill */}
+                      <td className="p-4">
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${
+                            isDone
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                              : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
+                          }`}
+                        >
+                          {isDone ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                          {isDone ? "COMPLETED" : "PENDING ORDER"}
+                        </span>
+                      </td>
+
+                      {/* Copy Action */}
+                      <td className="p-4 text-right">
+                        <button
+                          onClick={() => copyToClipboard(r.id, r.id)}
+                          title="Copy Referral ID"
+                          className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-700 dark:text-gray-300 flex items-center justify-center transition-colors cursor-pointer ml-auto"
+                        >
+                          {copiedId === r.id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination Footer */}
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-gray-100 dark:border-white/10 flex items-center justify-between flex-wrap gap-3">
+            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+              Page <span className="font-bold text-gray-900 dark:text-white">{rPage + 1}</span> of{" "}
+              <span className="font-bold text-gray-900 dark:text-white">{totalPages}</span> ({filtered.length} referrals)
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setRPage((p) => Math.max(0, p - 1))}
+                disabled={rPage === 0}
+                className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-white/10 text-xs font-bold text-gray-700 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setRPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={rPage >= totalPages - 1}
+                className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-white/10 text-xs font-bold text-gray-700 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
-  </div>;
+  );
 }
 
 function PromotionsTab({ promotions, db, addLog, addToast }: PromotionsTabProps) {
@@ -6385,7 +7224,7 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
         {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
         {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
-        {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} />}
+        {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} addToast={addToast} />}
         {tab === "promotions" && <PromotionsTab promotions={promotions} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "appcards" && <AppCardsTab appContent={appContent} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "settings" && <SettingsTab db={db} addLog={addLog} />}

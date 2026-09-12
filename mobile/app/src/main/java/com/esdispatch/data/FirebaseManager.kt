@@ -297,9 +297,9 @@ object FirebaseManager {
             "bikeNumber" to bikeNumber,
             "updatedAt" to System.currentTimeMillis()
         )
+        userMap["isOnline"] = false
+        userMap["status"] = "offline"
         if (role == "rider") {
-            userMap["isOnline"] = true
-            userMap["status"] = "active"
             userMap["latitude"] = 6.3350
             userMap["longitude"] = 5.6037
             userMap["rating"] = 5.0
@@ -319,6 +319,24 @@ object FirebaseManager {
     }
 
     /**
+     * Update any user's online presence and lastSeen timestamp in Firestore
+     */
+    fun updateUserPresence(userId: String, isOnline: Boolean) {
+        val db = firestore ?: return
+        val presenceMap = hashMapOf(
+            "isOnline" to isOnline,
+            "status" to (if (isOnline) "online" else "offline"),
+            "lastSeen" to System.currentTimeMillis(),
+            "updatedAt" to System.currentTimeMillis()
+        )
+        db.collection("users").document(userId)
+            .set(presenceMap, com.google.firebase.firestore.SetOptions.merge())
+            .addOnFailureListener { e ->
+                Log.w(TAG, "Failed to update user presence: ${e.message}")
+            }
+    }
+
+    /**
      * Update a rider's active online availability and status in Firestore
      */
     fun updateRiderOnlineStatus(userId: String, isOnline: Boolean) {
@@ -328,6 +346,7 @@ object FirebaseManager {
             "is_active" to isOnline,
             "isActive" to isOnline,
             "status" to (if (isOnline) "active" else "offline"),
+            "lastSeen" to System.currentTimeMillis(),
             "updatedAt" to System.currentTimeMillis()
         )
         db.collection("users").document(userId)

@@ -2232,6 +2232,9 @@ class DeliveryViewModel : WalletViewModel() {
                                 }
                                 syncUserParcelHistoryFromFirebase(currentUser.uid)
                                 startShipmentsTriggerListener(currentUser.uid)
+                                if (role != "rider") {
+                                    com.esdispatch.data.FirebaseManager.updateUserPresence(currentUser.uid, true)
+                                }
                                 if (role == "rider") {
                                     startRiderListeners(currentUser.uid)
                                 }
@@ -3338,6 +3341,9 @@ class DeliveryViewModel : WalletViewModel() {
                                         updateProfile(name, email, phone)
                                         setUserPin(pin)
                                         setLoginMode("pin")
+                                        if (role != "rider") {
+                                            com.esdispatch.data.FirebaseManager.updateUserPresence(uid, true)
+                                        }
 
                                         appContext?.let { ctx ->
                                             val prefs = ctx.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
@@ -3386,6 +3392,10 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun logoutFirebase() {
+        val retiringUid = _firebaseUserId.value
+        if (retiringUid != null && !retiringUid.startsWith("local_user_")) {
+            com.esdispatch.data.FirebaseManager.updateUserPresence(retiringUid, false)
+        }
         try {
             com.esdispatch.data.FirebaseManager.auth?.signOut()
             val ctx = appContext
@@ -3679,6 +3689,10 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun logout() {
+        val retiringUid = _firebaseUserId.value
+        if (retiringUid != null && !retiringUid.startsWith("local_user_")) {
+            com.esdispatch.data.FirebaseManager.updateUserPresence(retiringUid, false)
+        }
         _userName.value = ""
         _userEmail.value = ""
         _userPhone.value = ""
