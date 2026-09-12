@@ -1477,13 +1477,13 @@ function Header({
           </button>
 
           {showNotifs && (
-            <div className="absolute right-0 top-full mt-2 w-88 sm:w-96 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-2xl shadow-2xl overflow-hidden z-50 animate-scale-in">
+            <div className="absolute right-0 top-full mt-2 w-[310px] sm:w-[320px] max-w-[calc(100vw-1rem)] bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-2xl shadow-xl overflow-hidden z-50 flex flex-col">
               {/* Compact Header */}
-              <div className="px-4 py-3 border-b border-gray-100 dark:border-white/10 flex items-center justify-between bg-gray-50/70 dark:bg-white/5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-wider">Notifications</span>
+              <div className="px-3 py-2 border-b border-gray-100 dark:border-white/10 flex items-center justify-between bg-gray-50 dark:bg-white/5 shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-wider">Notifications</span>
                   {unreadCount > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-[#FFB800] text-[#111]">
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-[#FFB800] text-[#111]">
                       {unreadCount} new
                     </span>
                   )}
@@ -1491,20 +1491,20 @@ function Header({
                 {unreadCount > 0 && onMarkAllNotifsRead && (
                   <button 
                     onClick={(e) => { e.stopPropagation(); onMarkAllNotifsRead(); }} 
-                    className="text-[11px] font-bold text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer"
+                    className="text-[10px] font-bold text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer"
                   >
                     Mark all read
                   </button>
                 )}
               </div>
 
-              {/* High-Density Compact List */}
-              <div className="max-h-84 overflow-y-auto divide-y divide-gray-100 dark:divide-white/5">
+              {/* High-Density Ultra-Compact List */}
+              <div className="max-h-[250px] overflow-y-auto divide-y divide-gray-100 dark:divide-white/5">
                 {notifications.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <Bell className="w-7 h-7 text-gray-300 dark:text-gray-600 mx-auto mb-2 opacity-60" />
-                    <p className="text-xs text-gray-600 dark:text-gray-400 font-bold">No notifications yet</p>
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Alerts, dispatch updates, and orders appear here.</p>
+                  <div className="py-6 px-4 text-center">
+                    <Bell className="w-5 h-5 text-gray-300 dark:text-gray-600 mx-auto mb-1.5 opacity-60" />
+                    <p className="text-[11px] text-gray-600 dark:text-gray-400 font-bold">No notifications</p>
+                    <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5">Alerts appear here in real-time.</p>
                   </div>
                 ) : (
                   notifications.map((n: any) => {
@@ -1515,27 +1515,27 @@ function Header({
                       <div 
                         key={n.id} 
                         onClick={() => markNotifRead(n.id)} 
-                        className={"py-2.5 px-3.5 flex items-start gap-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer " + (n.read ? "" : "bg-[#FFB800]/5")}
+                        className={"py-2 px-3 flex items-start gap-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer " + (n.read ? "opacity-75" : "bg-[#FFB800]/5")}
                       >
-                        <div className={"w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 " + (
+                        <div className={"w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 " + (
                           n.read 
-                            ? "bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400" 
+                            ? "bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-gray-500" 
                             : isOrder 
                               ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
                               : isWallet 
                                 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
                                 : "bg-[#FFB800]/20 text-amber-900 dark:text-[#FFB800] border border-[#FFB800]/30"
                         )}>
-                          {isOrder ? <Package size={13} /> : isWallet ? <DollarSign size={13} /> : isUser ? <User size={13} /> : <Bell size={13} />}
+                          {isOrder ? <Package size={12} /> : isWallet ? <DollarSign size={12} /> : isUser ? <User size={12} /> : <Bell size={12} />}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{n.title}</p>
-                            {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-[#FFB800] shrink-0" />}
+                          <div className="flex items-center justify-between gap-1.5">
+                            <p className="text-[11px] font-bold text-gray-900 dark:text-white truncate">{n.title}</p>
+                            <span className="text-[9px] text-gray-400 dark:text-gray-500 shrink-0 font-medium">{n.time || "Just now"}</span>
                           </div>
-                          <p className="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-2 leading-tight mt-0.5">{n.description}</p>
-                          <p className="text-[10px] text-gray-400 dark:text-gray-500 font-medium mt-1">{n.time || "Just now"}</p>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5 leading-snug">{n.description}</p>
                         </div>
+                        {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-[#FFB800] shrink-0 mt-1.5" />}
                       </div>
                     );
                   })
@@ -1543,8 +1543,8 @@ function Header({
               </div>
 
               {/* Compact Footer */}
-              <div className="py-2 px-4 bg-gray-50/70 dark:bg-white/5 border-t border-gray-100 dark:border-white/10 flex items-center justify-between text-[11px]">
-                <span className="text-gray-500 dark:text-gray-400 font-medium">{notifications.length} total alerts</span>
+              <div className="py-1.5 px-3 bg-gray-50 dark:bg-white/5 border-t border-gray-100 dark:border-white/10 flex items-center justify-between text-[10px] shrink-0">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">{notifications.length} alerts</span>
                 {notifications.length > 0 && onClearAllNotifs && (
                   <button onClick={(e) => { e.stopPropagation(); onClearAllNotifs(); }} className="text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 font-bold transition-colors cursor-pointer">
                     Clear all
