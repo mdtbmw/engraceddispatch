@@ -5,7 +5,7 @@ import androidx.room.PrimaryKey
 import java.util.UUID
 
 enum class ParcelStatus {
-    PENDING, QUEUED, RESERVED_NEXT, ASSIGNED, PICKED_UP, ARRIVED, OUT_FOR_DELIVERY, TRANSIT, HANDOVER_VERIFIED, DELIVERED, CANCELLED
+    PENDING, QUEUED, OFFERED, RESERVED_NEXT, ASSIGNED, ARRIVED_PICKUP, PICKED_UP, ARRIVED, OUT_FOR_DELIVERY, TRANSIT, HANDOVER_VERIFIED, DELIVERED, CANCELLED, RECIPIENT_UNAVAILABLE, FAILED_DELIVERY, RETURN_TO_SENDER, RETURNED, DISPUTED, EMERGENCY
 }
 
 @Entity(tableName = "parcels")
@@ -56,7 +56,14 @@ data class Parcel(
     val pickupLat: Double? = null,
     val pickupLng: Double? = null,
     val deliveryLat: Double? = null,
-    val deliveryLng: Double? = null
+    val deliveryLng: Double? = null,
+    val pickupWaitingTime: Long = 0L,
+    val deliveryWaitingTime: Long = 0L,
+    val estimatedArrivalAt: Long = 0L,
+    val estimatedDurationMinutes: Int = 0,
+    val deliveryGuardianAlert: String = "",
+    val idempotencyKey: String = "",
+    val podType: String = ""
 )
 
 @Entity(tableName = "transactions")

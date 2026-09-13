@@ -1865,6 +1865,7 @@ function AdminDashboardPage() {
     pointsSystemEnabled: true, tipSystemEnabled: true, pricingModeDynamic: false,
     referralEnabled: true, referralReward: 500, minDeliveryForPayout: 1,
     baseFare: 4500, perKgRate: 250, expressSurcharge: 1500, surgeMultiplier: 1.25,
+    dailyRiderTargetRides: 5, dailyRiderTargetPoints: 50, pointNairaValue: 10,
     dashboardSections: {} as Record<string, boolean>, appContent: {} as Record<string, any>,
     appName: "ESDISPATCH", appSlogan: "PREMIUM LOGISTICS & DISPATCH", fcmServerKey: "",
   });
@@ -6938,6 +6939,25 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Referral Reward (₦)</label>
           <input type="number" value={sForm.referralReward ?? 500} onChange={e => upd("referralReward", parseFloat(e.target.value) || 0)}
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
+      </div>
+
+      <div className="text-xs font-bold text-[#111] dark:text-white pt-3 border-t border-gray-100 dark:border-white/10">Rider Mission Targets & Fleet Incentives</div>
+      <div className="grid sm:grid-cols-3 gap-4">
+        <div>
+          <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Daily Target Trips (per rider)</label>
+          <input type="number" min="1" value={sForm.dailyRiderTargetRides ?? 5} onChange={e => upd("dailyRiderTargetRides", parseInt(e.target.value) || 5)}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Target Bonus Points</label>
+          <input type="number" min="0" value={sForm.dailyRiderTargetPoints ?? 50} onChange={e => upd("dailyRiderTargetPoints", parseInt(e.target.value) || 50)}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Point Naira Value (₦ per pt)</label>
+          <input type="number" min="1" value={sForm.pointNairaValue ?? 10} onChange={e => upd("pointNairaValue", parseInt(e.target.value) || 10)}
+            className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" />
+        </div>
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Points & Rewards")} loading={saving} /></div>
     </div>

@@ -158,6 +158,13 @@ data class DeliveryStatusDisplay(
                     tone = StatusTone.RED,
                     description = "Delivery cancelled"
                 )
+                else -> DeliveryStatusDisplay(
+                    statusKey = status.name.lowercase(),
+                    customerLabel = status.name.replace('_', ' '),
+                    adminLabel = status.name.replace('_', ' '),
+                    tone = StatusTone.NEUTRAL,
+                    description = "Dispatch status: ${status.name.replace('_', ' ')}"
+                )
             }
         }
 

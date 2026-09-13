@@ -1521,11 +1521,8 @@ object FirebaseManager {
     }
 
     /**
-     * Accept a pending parcel and assign to rider in Firestore.
+     * Accept a pending parcel and assign to rider in Firestore atomically with reservation checks.
      */
-    // Accept a pending parcel and assign to rider in Firestore.
-    // requireOnline=true for rider self-claims (they must be online); dispatcher/admin
-    // assignment passes requireOnline=false so offline employees can be assigned directly.
     fun acceptParcelByRider(parcelId: String, riderId: String, riderName: String, riderPhone: String, riderBikeNumber: String, requireOnline: Boolean = true, onComplete: (Boolean, String?) -> Unit) {
         val db = firestore
         if (db == null) {
@@ -1539,29 +1536,49 @@ object FirebaseManager {
                 val riderSnap = transaction.get(db.collection("users").document(riderId))
                 val isOnline = riderSnap.getBoolean("isOnline") ?: false
                 if (!isOnline) {
-                    throw Exception("You are offline. Go online to accept new deliveries.")
+                    throw Exception("You are offline. Go on duty to accept new dispatches.")
                 }
             }
+
             val snapshot = transaction.get(docRef)
+            if (!snapshot.exists()) {
+                throw Exception("Parcel not found.")
+            }
             val currentStatus = snapshot.getString("status") ?: "PENDING"
-            if (currentStatus != "PENDING") {
-                throw Exception("Parcel is no longer pending (already accepted or cancelled).")
+            val existingRider = snapshot.getString("riderId") ?: ""
+
+            // Strict atomic acceptance: must be unassigned and in open booking stage
+            if (existingRider.isNotBlank() || currentStatus !in listOf("PENDING", "QUEUED", "OFFERED")) {
+                throw Exception("Trip no longer available. Accepted by another courier.")
             }
             
-            // Set rider fields
+            val now = System.currentTimeMillis()
+
+            // Atomically lock and assign rider
             transaction.update(docRef, "status", "ASSIGNED")
             transaction.update(docRef, "riderId", riderId)
             transaction.update(docRef, "courierName", riderName)
             transaction.update(docRef, "courierPhone", riderPhone)
             transaction.update(docRef, "riderBikeNumber", riderBikeNumber)
             transaction.update(docRef, "progress", 0.15f)
-            transaction.update(docRef, "lastUpdated", System.currentTimeMillis())
+            transaction.update(docRef, "acceptedAt", now)
+            transaction.update(docRef, "lastUpdated", now)
             
-            // Get user ID of parcel owner to sync to their subcollection
-            val parcelUserId = snapshot.getString("userId") ?: ""
-            parcelUserId
+            // Log to timeline subcollection
+            val timelineRef = docRef.collection("timeline").document()
+            transaction.set(timelineRef, mapOf(
+                "eventId" to timelineRef.id,
+                "event" to "MISSION_ACCEPTED",
+                "fromStatus" to currentStatus,
+                "toStatus" to "ASSIGNED",
+                "actorId" to riderId,
+                "actorRole" to "rider",
+                "timestamp" to now,
+                "note" to "Courier accepted mission"
+            ))
+
+            snapshot.getString("userId") ?: ""
         }.addOnSuccessListener { parcelUserId ->
-            // Also sync to user's deliveries subcollection if available
             if (parcelUserId.isNotEmpty()) {
                 val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
                 userDocRef.update(
@@ -1577,31 +1594,66 @@ object FirebaseManager {
                 ).addOnFailureListener { e ->
                     Log.e(TAG, "Failed to update subcollection: ${e.message}")
                 }
-                // Send push notification to customer
                 sendNotificationToUser(
                     userId = parcelUserId,
-                    title = "Parcel Assigned",
-                    message = "Your parcel #$parcelId has been assigned to driver $riderName ($riderBikeNumber).",
+                    title = "Courier Assigned",
+                    message = "Your delivery #$parcelId has been accepted by courier $riderName ($riderBikeNumber).",
                     parcelId = parcelId
                 )
             }
-            // Send push notification to rider
             if (riderId.isNotEmpty()) {
                 sendNotificationToUser(
                     userId = riderId,
-                    title = "New Delivery Assignment",
-                    message = "You have been assigned to delivery #$parcelId. Tap to view route.",
+                    title = "Mission Confirmed",
+                    message = "You have successfully accepted mission #$parcelId. Follow GPS to pickup.",
                     parcelId = parcelId
                 )
             }
             onComplete(true, null)
         }.addOnFailureListener { e ->
-            onComplete(false, e.message ?: "Failed to accept parcel.")
+            onComplete(false, e.message ?: "Trip no longer available.")
         }
     }
 
     /**
-     * Update parcel status (ASSIGNED -> PICKED_UP -> OUT_FOR_DELIVERY -> DELIVERED)
+     * Legal State Machine Transition Validation
+     */
+    private fun isLegalTransition(from: ParcelStatus, to: ParcelStatus): Boolean {
+        if (from == to) return true
+        return when (from) {
+            ParcelStatus.PENDING, ParcelStatus.QUEUED, ParcelStatus.OFFERED -> 
+                to in listOf(ParcelStatus.OFFERED, ParcelStatus.ASSIGNED, ParcelStatus.CANCELLED)
+            ParcelStatus.RESERVED_NEXT ->
+                to in listOf(ParcelStatus.ASSIGNED, ParcelStatus.CANCELLED)
+            ParcelStatus.ASSIGNED -> 
+                to in listOf(ParcelStatus.ARRIVED_PICKUP, ParcelStatus.PICKED_UP, ParcelStatus.CANCELLED, ParcelStatus.EMERGENCY)
+            ParcelStatus.ARRIVED_PICKUP ->
+                to in listOf(ParcelStatus.PICKED_UP, ParcelStatus.CANCELLED, ParcelStatus.EMERGENCY)
+            ParcelStatus.PICKED_UP -> 
+                to in listOf(ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.RETURN_TO_SENDER, ParcelStatus.EMERGENCY, ParcelStatus.DISPUTED)
+            ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> 
+                to in listOf(ParcelStatus.ARRIVED, ParcelStatus.RECIPIENT_UNAVAILABLE, ParcelStatus.RETURN_TO_SENDER, ParcelStatus.EMERGENCY, ParcelStatus.DISPUTED)
+            ParcelStatus.ARRIVED -> 
+                to in listOf(ParcelStatus.HANDOVER_VERIFIED, ParcelStatus.DELIVERED, ParcelStatus.RECIPIENT_UNAVAILABLE, ParcelStatus.FAILED_DELIVERY, ParcelStatus.RETURN_TO_SENDER, ParcelStatus.DISPUTED)
+            ParcelStatus.HANDOVER_VERIFIED -> 
+                to in listOf(ParcelStatus.DELIVERED, ParcelStatus.DISPUTED)
+            ParcelStatus.RECIPIENT_UNAVAILABLE -> 
+                to in listOf(ParcelStatus.RETURN_TO_SENDER, ParcelStatus.ARRIVED, ParcelStatus.FAILED_DELIVERY, ParcelStatus.DISPUTED)
+            ParcelStatus.RETURN_TO_SENDER -> 
+                to in listOf(ParcelStatus.RETURNED, ParcelStatus.DISPUTED)
+            ParcelStatus.FAILED_DELIVERY -> 
+                to in listOf(ParcelStatus.RETURN_TO_SENDER, ParcelStatus.DISPUTED)
+            ParcelStatus.EMERGENCY -> 
+                to in listOf(ParcelStatus.ASSIGNED, ParcelStatus.RETURN_TO_SENDER, ParcelStatus.CANCELLED, ParcelStatus.DISPUTED)
+            ParcelStatus.DELIVERED, ParcelStatus.CANCELLED, ParcelStatus.RETURNED -> 
+                to == ParcelStatus.DISPUTED
+            ParcelStatus.DISPUTED -> 
+                to in listOf(ParcelStatus.DELIVERED, ParcelStatus.RETURNED, ParcelStatus.CANCELLED)
+        }
+    }
+
+    /**
+     * Update parcel status (Enforced by strict state machine & chain of custody timeline)
      */
     fun updateParcelStatusByRider(parcelId: String, nextStatus: ParcelStatus, progress: Float, onComplete: (Boolean, String?) -> Unit) {
         val db = firestore
@@ -1613,12 +1665,40 @@ object FirebaseManager {
         val docRef = db.collection("deliveries").document(parcelId)
         docRef.get().addOnSuccessListener { snapshot ->
             if (snapshot.exists()) {
+                val currentStatusStr = snapshot.getString("status") ?: "PENDING"
+                val currentStatus = try {
+                    ParcelStatus.valueOf(currentStatusStr)
+                } catch (e: Exception) {
+                    ParcelStatus.PENDING
+                }
+
+                if (!isLegalTransition(currentStatus, nextStatus)) {
+                    val errMsg = "Illegal state transition from ${currentStatus.name} to ${nextStatus.name}"
+                    Log.e(TAG, errMsg)
+                    onComplete(false, errMsg)
+                    return@addOnSuccessListener
+                }
+
                 val parcelUserId = snapshot.getString("userId") ?: ""
+                val riderId = snapshot.getString("riderId") ?: ""
+                val now = System.currentTimeMillis()
                 
                 db.runTransaction { transaction ->
                     transaction.update(docRef, "status", nextStatus.name)
                     transaction.update(docRef, "progress", progress)
-                    transaction.update(docRef, "lastUpdated", System.currentTimeMillis())
+                    transaction.update(docRef, "lastUpdated", now)
+
+                    // Append immutable chain-of-custody event
+                    val timelineRef = docRef.collection("timeline").document()
+                    transaction.set(timelineRef, mapOf(
+                        "eventId" to timelineRef.id,
+                        "event" to "STATUS_CHANGE",
+                        "fromStatus" to currentStatus.name,
+                        "toStatus" to nextStatus.name,
+                        "actorId" to riderId,
+                        "actorRole" to "rider",
+                        "timestamp" to now
+                    ))
                 }.addOnSuccessListener {
                     // Update user personal delivery subcollection
                     if (parcelUserId.isNotEmpty()) {
@@ -1627,21 +1707,24 @@ object FirebaseManager {
                             mapOf(
                                 "status" to nextStatus.name,
                                 "progress" to progress,
-                                "lastUpdated" to System.currentTimeMillis()
+                                "lastUpdated" to now
                             )
                         )
                         val statusTitle = when(nextStatus) {
-                            ParcelStatus.TRANSIT -> "Parcel Out for Delivery"
+                            ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> "Parcel Out for Delivery"
                             ParcelStatus.DELIVERED -> "Parcel Delivered Successfully"
                             ParcelStatus.ASSIGNED -> "Parcel Assigned"
                             ParcelStatus.PICKED_UP -> "Parcel Picked Up"
-                            ParcelStatus.ARRIVED -> "Rider Arrived"
+                            ParcelStatus.ARRIVED -> "Rider Arrived at Destination"
+                            ParcelStatus.RECIPIENT_UNAVAILABLE -> "Delivery Notice: Recipient Unavailable"
+                            ParcelStatus.RETURN_TO_SENDER -> "Delivery Returning to Sender"
+                            ParcelStatus.RETURNED -> "Parcel Returned to Sender"
                             else -> "Parcel Status Update"
                         }
                         sendNotificationToUser(
                             userId = parcelUserId,
                             title = statusTitle,
-                            message = "Your parcel #$parcelId status is now ${nextStatus.name}.",
+                            message = "Your parcel #$parcelId status is now ${nextStatus.name.replace('_', ' ')}.",
                             parcelId = parcelId
                         )
                     }

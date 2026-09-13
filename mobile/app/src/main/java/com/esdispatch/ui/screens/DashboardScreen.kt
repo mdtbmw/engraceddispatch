@@ -2406,6 +2406,7 @@ fun ParcelCard(
                         ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> if (isDark) Color(0x2806B6D4) to Color(0xFF22D3EE) else Color(0xFFCFFAFE) to Color(0xFF0E7490)
                         ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED, ParcelStatus.DELIVERED -> if (isDark) Color(0x2810B981) to Color(0xFF34D399) else Color(0xFFD1FAE5) to Color(0xFF065F46)
                         ParcelStatus.CANCELLED -> if (isDark) Color(0x28EF4444) to Color(0xFFF87171) else Color(0xFFFEE2E2) to Color(0xFF991B1B)
+                        else -> if (isDark) Color(0x28FFB800) to Gold else Color(0xFFFFF3CD) to Color(0xFF856404)
                     }
 
                     Surface(

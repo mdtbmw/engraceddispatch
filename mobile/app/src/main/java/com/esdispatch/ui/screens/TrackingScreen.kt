@@ -371,6 +371,7 @@ fun ActiveTrackingScreen(
             ParcelStatus.OUT_FOR_DELIVERY -> "Out for delivery now!"
             ParcelStatus.DELIVERED -> "Delivered safely!"
             ParcelStatus.CANCELLED -> "Cancelled"
+            else -> "Active Dispatch"
         }
         TrackingAppWidget.updateWidgetData(
             context = context,
@@ -409,9 +410,15 @@ fun ActiveTrackingScreen(
     }
 
     if (showChatSheet) {
+        val activeContactPhone = if (isRider) {
+            if (parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT, ParcelStatus.ARRIVED_PICKUP)) parcel.senderPhone else parcel.receiverPhone
+        } else {
+            if (parcel.courierPhone.isNotBlank()) parcel.courierPhone else "+234 803 777 8888"
+        }
         ParcelChatDialog(
             parcelId = parcel.id,
-            senderRole = "customer",
+            senderRole = if (isRider) "rider" else "customer",
+            recipientPhone = activeContactPhone,
             viewModel = viewModel,
             onDismiss = { showChatSheet = false }
         )
@@ -540,12 +547,13 @@ fun ActiveTrackingScreen(
         }
     }
 
-    // 1-Mile Proximity Notification (Distance-Based Real-Time Alert)
+    // 1-Mile Proximity Notification (Distance-Based Real-Time Alert) & 50m Rider Proximity Arrival Trigger
     var hasNotifiedWithinOneMile by remember { mutableStateOf(false) }
     var showInAppNotificationBanner by remember { mutableStateOf(false) }
+    var consecutiveArrivalPings by remember(parcel.id) { mutableStateOf(0) }
     val geocoder = remember { android.location.Geocoder(context, java.util.Locale.getDefault()) }
 
-    LaunchedEffect(parcel.courierLatitude, parcel.courierLongitude, parcel.progress, parcel.deliveryAddress) {
+    LaunchedEffect(parcel.courierLatitude, parcel.courierLongitude, parcel.progress, parcel.deliveryAddress, isRider, parcel.status) {
         // Calculate real distance if GPS coordinates are available
         if (parcel.courierLatitude != null && parcel.courierLongitude != null && parcel.deliveryAddress.isNotEmpty()) {
             try {
@@ -566,6 +574,20 @@ fun ActiveTrackingScreen(
                     val distKm = distanceMeters / 1000f
                     realDistanceKm = distKm
                     tickingSeconds = calculateEta(parcel.progress, currentWeather, isAiEtaActive, distKm)
+
+                    // 50-Meter Proximity Arrival Trigger for Riders (2-ping safeguard)
+                    if (isRider && (parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.OUT_FOR_DELIVERY)) {
+                        if (distanceMeters <= 50f) {
+                            consecutiveArrivalPings++
+                            if (consecutiveArrivalPings >= 2) {
+                                viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED, 0.95f) { _, _ -> }
+                                com.esdispatch.util.CustomToastBridge.show("Destination reached (within 50m). Status set to Arrived.", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                            }
+                        } else if (distanceMeters > 70f) {
+                            consecutiveArrivalPings = 0
+                        }
+                    }
+
                     if (distanceMeters <= 1609.34f && !hasNotifiedWithinOneMile) { // 1 mile = 1609.34 meters
                         hasNotifiedWithinOneMile = true
                         showInAppNotificationBanner = true
@@ -647,8 +669,8 @@ fun ActiveTrackingScreen(
                 }
             )
 
-            // Multi-delivery Switcher Carousel
-            if (activeParcels.size > 1) {
+            // Multi-delivery Switcher Carousel (Customer Only)
+            if (activeParcels.size > 1 && !isRider) {
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -734,7 +756,9 @@ fun ActiveTrackingScreen(
                     userAvatar = userAvatar,
                     hasNoBooking = hasNoBooking,
                     followUser = followUser,
-                    userCoords = userCoords
+                    userCoords = userCoords,
+                    isRider = isRider,
+                    parcelStatus = parcel.status
                 )
             }
 
@@ -1188,12 +1212,26 @@ fun ActiveTrackingScreen(
                                                 }
                                             }
 
-                                            // PIN indicator and expand action
+                                            // PIN / ETA indicator and expand action
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                if (parcel.otpCode.isNotBlank()) {
+                                                if (isRider) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = Gold.copy(alpha = 0.15f),
+                                                        border = BorderStroke(1.dp, Gold)
+                                                    ) {
+                                                        Text(
+                                                            text = "${(tickingSeconds / 60).coerceAtLeast(1)}m ETA",
+                                                            color = Gold,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                        )
+                                                    }
+                                                } else if (parcel.otpCode.isNotBlank()) {
                                                     Surface(
                                                         shape = RoundedCornerShape(8.dp),
                                                         color = Gold.copy(alpha = 0.15f),
@@ -1553,8 +1591,8 @@ fun ActiveTrackingScreen(
 
                                                 HorizontalDivider(color = if (isDark) BorderDark else BorderLight)
 
-                                                // Prominent 4-Digit Handover PIN Card
-                                                if (parcel.otpCode.isNotBlank() || parcel.status !in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED)) {
+                                                // Prominent 4-Digit Handover PIN Card (Customer Only)
+                                                if (!isRider && (parcel.otpCode.isNotBlank() || parcel.status !in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED))) {
                                                     if (parcel.otpCode.isBlank()) {
                                                         LaunchedEffect(parcel.id) {
                                                             viewModel.ensureDeliveryOtp(parcel.id)
@@ -1645,8 +1683,8 @@ fun ActiveTrackingScreen(
                                                     HorizontalDivider(color = if (isDark) BorderDark else BorderLight)
                                                 }
 
-                                                // Optional QR Code Handover (only shown if admin enabled enableQrCodeHandover)
-                                                if (enableQrCodeHandover) {
+                                                // Optional QR Code Handover (only shown to customers if admin enabled enableQrCodeHandover)
+                                                if (!isRider && enableQrCodeHandover) {
                                                     Column(
                                                         horizontalAlignment = Alignment.CenterHorizontally,
                                                         modifier = Modifier
@@ -2040,144 +2078,114 @@ fun ActiveTrackingScreen(
                                             }
                                         }
 
-                                        // 3.5. Search / Track Another Shipment Section
-                                        Card(
-                                             colors = CardDefaults.cardColors(containerColor = if (isDark) Charcoal.copy(alpha = 0.5f) else Color(0xFFF9FAFB)),
-                                             shape = RoundedCornerShape(16.dp),
-                                             border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.15f) else Color.Transparent),
-                                             modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                             Column(
-                                                 modifier = Modifier.padding(16.dp),
-                                                 verticalArrangement = Arrangement.spacedBy(12.dp)
-                                             ) {
-                                                 Text(
-                                                     text = "Track Another Shipment",
-                                                     fontWeight = FontWeight.Bold,
-                                                     fontSize = 14.sp,
-                                                     color = AppOnSurface
-                                                 )
-
-                                                 var inlineSearchQuery by remember { mutableStateOf("") }
-                                                 var inlineSearchQueryError by remember { mutableStateOf<String?>(null) }
-                                                 OutlinedTextField(
-                                                     value = inlineSearchQuery,
-                                                     onValueChange = {
-                                                         inlineSearchQuery = FormatUtils.formatTrackingId(it)
-                                                         inlineSearchQueryError = null
-                                                     },
-                                                     placeholder = { Text("Enter Tracking Number", fontSize = 12.sp) },
-                                                      shape = RoundedCornerShape(16.dp),
-                                                     isError = inlineSearchQueryError != null,
-                                                     supportingText = inlineSearchQueryError?.let { { Text(it, color = androidx.compose.ui.graphics.Color.Red, fontSize = 10.sp) } },
-                                                     modifier = Modifier
-                                                         .fillMaxWidth()
-                                                         .testTag("track_parcel_inline_input"),
-                                                     singleLine = true,
-                                                     colors = OutlinedTextFieldDefaults.colors(
-                                                         focusedBorderColor = if (isDark) Gold else Obsidian,
-                                                         focusedLabelColor = if (isDark) Gold else Obsidian
-                                                     )
-                                                 )
-
-                                                 Button(
-                                                     onClick = {
-                                                         val validationResult = Zod.string(inlineSearchQuery)
-                                                             .min(4, "Tracking ID must be at least 4 characters.")
-                                                             .max(36, "Tracking ID must not exceed 36 characters.")
-                                                             .regex("^[a-zA-Z0-9\\s-]+$", "Only letters, numbers, and hyphens allowed.")
-                                                             .safeParse()
-
-                                                         when (validationResult) {
-is ZodResult.Error -> {
-                                                                  inlineSearchQueryError = validationResult.message
-                                                              }
-                                                              is ZodResult.Success -> {
-                                                                 inlineSearchQueryError = null
-                                                                 viewModel.searchAndTrackParcel(
-                                                                     context = context,
-                                                                     trackingNumber = inlineSearchQuery,
-                                                                     onSuccess = {
-                                                                         inlineSearchQuery = ""
-                                                                     },
-                                                                     onError = { msg ->
-                                                                         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                                                                     }
-                                                                 )
-                                                             }
-                                                         }
-                                                     },
-                                                     modifier = Modifier
-                                                         .fillMaxWidth()
-                                                         .height(44.dp)
-                                                         .testTag("track_parcel_inline_button"),
-                                                      colors = ButtonDefaults.buttonColors(
-                                                          containerColor = Gold,
-                                                          contentColor = Obsidian
-                                                      ),
-                                                      shape = RoundedCornerShape(12.dp)
+                                        // 3.5. Search / Track Another Shipment Section (Customer Only)
+                                        if (!isRider) {
+                                            Card(
+                                                 colors = CardDefaults.cardColors(containerColor = if (isDark) Charcoal.copy(alpha = 0.5f) else Color(0xFFF9FAFB)),
+                                                 shape = RoundedCornerShape(16.dp),
+                                                 border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.15f) else Color.Transparent),
+                                                 modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                 Column(
+                                                     modifier = Modifier.padding(16.dp),
+                                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                                  ) {
-                                                     Text("Search ID", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                                 }
+                                                     Text(
+                                                         text = "Track Another Shipment",
+                                                         fontWeight = FontWeight.Bold,
+                                                         fontSize = 14.sp,
+                                                         color = AppOnSurface
+                                                     )
 
-                                                 // Recent Searches
-                                                 if (recentSearches.isNotEmpty()) {
-                                                     Row(
-                                                         modifier = Modifier.fillMaxWidth(),
-                                                         horizontalArrangement = Arrangement.SpaceBetween,
-                                                         verticalAlignment = Alignment.CenterVertically
-                                                     ) {
-                                                         Text(
-                                                             text = "Recent Searches",
-                                                             fontWeight = FontWeight.Bold,
-                                                             fontSize = 11.sp,
-                                                             color = TextGray
+                                                     var inlineSearchQuery by remember { mutableStateOf("") }
+                                                     var inlineSearchQueryError by remember { mutableStateOf<String?>(null) }
+                                                     OutlinedTextField(
+                                                         value = inlineSearchQuery,
+                                                         onValueChange = {
+                                                             inlineSearchQuery = FormatUtils.formatTrackingId(it)
+                                                             inlineSearchQueryError = null
+                                                         },
+                                                         placeholder = { Text("Enter Tracking Number", fontSize = 12.sp) },
+                                                          shape = RoundedCornerShape(16.dp),
+                                                         isError = inlineSearchQueryError != null,
+                                                         supportingText = inlineSearchQueryError?.let { { Text(it, color = androidx.compose.ui.graphics.Color.Red, fontSize = 10.sp) } },
+                                                         modifier = Modifier
+                                                             .fillMaxWidth()
+                                                             .testTag("track_parcel_inline_input"),
+                                                         singleLine = true,
+                                                         colors = OutlinedTextFieldDefaults.colors(
+                                                             focusedBorderColor = if (isDark) Gold else Obsidian,
+                                                             focusedLabelColor = if (isDark) Gold else Obsidian
                                                          )
-                                                         androidx.compose.material3.TextButton(
-                                                             onClick = { viewModel.clearSearchHistory(context) },
-                                                             modifier = Modifier.height(24.dp).testTag("clear_history_inline_button"),
-                                                             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                                                             colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                                                                 contentColor = if (isDark) Gold else Obsidian
-                                                             )
-                                                         ) {
-                                                             Text("Clear", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                         }
-                                                     }
-                                                     recentSearches.take(3).forEach { searchId ->
-                                                         Row(
-                                                             modifier = Modifier
-                                                                 .fillMaxWidth()
-                                                                 .clickable {
+                                                     )
+
+                                                     Button(
+                                                         onClick = {
+                                                             val validationResult = Zod.string(inlineSearchQuery)
+                                                                 .min(4, "Tracking ID must be at least 4 characters.")
+                                                                 .max(36, "Tracking ID must not exceed 36 characters.")
+                                                                 .regex("^[a-zA-Z0-9\\s-]+$", "Only letters, numbers, and hyphens allowed.")
+                                                                 .safeParse()
+
+                                                             when (validationResult) {
+                                                                 is ZodResult.Error -> {
+                                                                     inlineSearchQueryError = validationResult.message
+                                                                 }
+                                                                 is ZodResult.Success -> {
+                                                                     inlineSearchQueryError = null
                                                                      viewModel.searchAndTrackParcel(
                                                                          context = context,
-                                                                         trackingNumber = searchId,
-                                                                         onSuccess = {},
-                                                                         onError = { msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
+                                                                         trackingNumber = inlineSearchQuery,
+                                                                         onSuccess = {
+                                                                             inlineSearchQuery = ""
+                                                                         },
+                                                                         onError = { msg ->
+                                                                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                                                         }
                                                                      )
                                                                  }
-                                                                 .padding(vertical = 4.dp),
-                                                             verticalAlignment = Alignment.CenterVertically,
-                                                             horizontalArrangement = Arrangement.SpaceBetween
+                                                             }
+                                                         },
+                                                         modifier = Modifier
+                                                             .fillMaxWidth()
+                                                             .height(44.dp)
+                                                             .testTag("track_parcel_inline_button"),
+                                                          colors = ButtonDefaults.buttonColors(
+                                                              containerColor = Gold,
+                                                              contentColor = Obsidian
+                                                          ),
+                                                          shape = RoundedCornerShape(12.dp)
+                                                     ) {
+                                                         Text("Search ID", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                     }
+
+                                                     // Recent Searches
+                                                     if (recentSearches.isNotEmpty()) {
+                                                         Row(
+                                                             modifier = Modifier.fillMaxWidth(),
+                                                             horizontalArrangement = Arrangement.SpaceBetween,
+                                                             verticalAlignment = Alignment.CenterVertically
                                                          ) {
-                                                             Row(
-                                                                 verticalAlignment = Alignment.CenterVertically,
-                                                                 modifier = Modifier.weight(1f)
-                                                             ) {
-                                                                 Icon(
-                                                                     imageVector = Icons.Default.History,
-                                                                     contentDescription = null,
-                                                                     tint = if (isDark) Gold else Obsidian,
-                                                                     modifier = Modifier.size(14.dp)
-                                                                 )
-                                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                                 Text(
-                                                                     text = searchId,
-                                                                     fontSize = 12.sp,
-                                                                     color = AppOnSurface,
-                                                                     fontWeight = FontWeight.Medium
-                                                                 )
-                                                                 
+                                                             Text(
+                                                                 text = "RECENT SEARCHES",
+                                                                 fontSize = 11.sp,
+                                                                 fontFamily = SpaceGrotesk,
+                                                                 fontWeight = FontWeight.Black,
+                                                                 letterSpacing = 0.5.sp,
+                                                                 color = if (isDark) GoldLight else Obsidian
+                                                             )
+                                                             Text(
+                                                                 text = "CLEAR ALL",
+                                                                 fontSize = 10.sp,
+                                                                 fontWeight = FontWeight.Bold,
+                                                                 color = TextGray,
+                                                                 modifier = Modifier.clickable {
+                                                                     viewModel.clearSearchHistory(context)
+                                                                 }
+                                                             )
+                                                         }
+                                                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                             recentSearches.take(5).forEach { searchId ->
                                                                  val parcelForId = viewModel.parcels.collectAsState().value.find { it.id.equals(searchId, ignoreCase = true) }
                                                                  if (parcelForId != null) {
                                                                      val badgeText = when (parcelForId.status) {
@@ -2192,6 +2200,7 @@ is ZodResult.Error -> {
                                                                          ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
                                                                          ParcelStatus.DELIVERED -> "Delivered"
                                                                          ParcelStatus.CANCELLED -> "Cancelled"
+                                                                         else -> "Active"
                                                                      }
                                                                      val badgeBgColor = when (parcelForId.status) {
                                                                          ParcelStatus.PENDING -> Color(0x202196F3)
@@ -2205,6 +2214,7 @@ is ZodResult.Error -> {
                                                                          ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
                                                                          ParcelStatus.CANCELLED -> Color(0x20F44336)
                                                                          ParcelStatus.TRANSIT -> if (isDark) Gold.copy(alpha = 0.15f) else Color(0x100E0E10)
+                                                                         else -> Gold.copy(alpha = 0.15f)
                                                                      }
                                                                      val badgeTextColor = when (parcelForId.status) {
                                                                          ParcelStatus.PENDING -> Color(0xFF2196F3)
@@ -2218,31 +2228,104 @@ is ZodResult.Error -> {
                                                                          ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
                                                                          ParcelStatus.CANCELLED -> Color(0xFFF44336)
                                                                          ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
+                                                                         else -> Gold
                                                                      }
-                                                                     Surface(
-                                                                         color = badgeBgColor,
-                                                                         shape = RoundedCornerShape(6.dp),
-                                                                         modifier = Modifier.padding(start = 6.dp)
-                                                                     ) {
-                                                                         Text(
-                                                                             text = badgeText,
-                                                                             fontSize = 9.sp,
-                                                                             fontWeight = FontWeight.Bold,
-                                                                             color = badgeTextColor,
-                                                                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                                         )
-                                                                     }
-                                                                 }
-                                                             }
-                                                             Icon(
-                                                                 imageVector = Icons.Default.ArrowForward,
-                                                                 contentDescription = null,
-                                                                 tint = TextGray,
-                                                                 modifier = Modifier.size(12.dp)
-                                                             )
+
+                                                                      Surface(
+                                                                          onClick = { viewModel.selectParcel(parcelForId) },
+                                                                          shape = RoundedCornerShape(12.dp),
+                                                                          color = if (isDark) LuxuryBlack else Color.White,
+                                                                          border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.1f) else Color(0xFFE5E7EB)),
+                                                                          modifier = Modifier.fillMaxWidth()
+                                                                      ) {
+                                                                          Row(
+                                                                              modifier = Modifier.padding(10.dp),
+                                                                              horizontalArrangement = Arrangement.SpaceBetween,
+                                                                              verticalAlignment = Alignment.CenterVertically
+                                                                          ) {
+                                                                              Row(
+                                                                                  verticalAlignment = Alignment.CenterVertically,
+                                                                                  horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                                              ) {
+                                                                                  Icon(
+                                                                                      Icons.Filled.History,
+                                                                                      contentDescription = null,
+                                                                                      tint = Gold,
+                                                                                      modifier = Modifier.size(14.dp)
+                                                                                  )
+                                                                                  Column {
+                                                                                      Text(
+                                                                                          text = parcelForId.itemName.ifBlank { "Shipment" },
+                                                                                          fontWeight = FontWeight.Bold,
+                                                                                          fontSize = 11.sp,
+                                                                                          color = AppOnSurface
+                                                                                      )
+                                                                                      Text(
+                                                                                          text = "#$searchId",
+                                                                                          fontSize = 9.sp,
+                                                                                          color = TextGray
+                                                                                      )
+                                                                                  }
+                                                                              }
+                                                                              Surface(
+                                                                                  shape = RoundedCornerShape(6.dp),
+                                                                                  color = badgeBgColor
+                                                                              ) {
+                                                                                  Text(
+                                                                                      text = badgeText,
+                                                                                      fontSize = 9.sp,
+                                                                                      fontWeight = FontWeight.Bold,
+                                                                                      color = badgeTextColor,
+                                                                                      modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                                                  )
+                                                                              }
+                                                                          }
+                                                                      }
+                                                                  } else {
+                                                                      Row(
+                                                                          modifier = Modifier
+                                                                              .fillMaxWidth()
+                                                                              .clickable {
+                                                                                  viewModel.searchAndTrackParcel(
+                                                                                      context = context,
+                                                                                      trackingNumber = searchId,
+                                                                                      onSuccess = {},
+                                                                                      onError = { msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
+                                                                                  )
+                                                                              }
+                                                                              .padding(vertical = 4.dp),
+                                                                          verticalAlignment = Alignment.CenterVertically,
+                                                                          horizontalArrangement = Arrangement.SpaceBetween
+                                                                      ) {
+                                                                          Row(
+                                                                              verticalAlignment = Alignment.CenterVertically,
+                                                                              modifier = Modifier.weight(1f)
+                                                                          ) {
+                                                                              Icon(
+                                                                                  imageVector = Icons.Default.History,
+                                                                                  contentDescription = null,
+                                                                                  tint = if (isDark) Gold else Obsidian,
+                                                                                  modifier = Modifier.size(14.dp)
+                                                                              )
+                                                                              Spacer(modifier = Modifier.width(8.dp))
+                                                                              Text(
+                                                                                  text = searchId,
+                                                                                  fontSize = 12.sp,
+                                                                                  color = AppOnSurface,
+                                                                                  fontWeight = FontWeight.Medium
+                                                                              )
+                                                                          }
+                                                                          Icon(
+                                                                              imageVector = Icons.Default.ArrowForward,
+                                                                              contentDescription = null,
+                                                                              tint = TextGray,
+                                                                              modifier = Modifier.size(12.dp)
+                                                                          )
+                                                                      }
+                                                                  }
+                                                              }
                                                          }
-                                                     }
-                                                 } else {
+                                                     } else {
                                                      Column(
                                                          modifier = Modifier
                                                              .fillMaxWidth()
@@ -2284,7 +2367,118 @@ is ZodResult.Error -> {
                                     Box(modifier = Modifier.fillMaxWidth()) {
                                         QuiltedBackground(modifier = Modifier.matchParentSize()) {}
 
-                                        if (isCourierAssigned) {
+                                        if (isRider) {
+                                            // RIDER VIEW: Show Customer / Recipient Contact Card
+                                            val isPickupPhase = parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT, ParcelStatus.ARRIVED_PICKUP)
+                                            val contactRole = if (isPickupPhase) "Sender" else "Recipient"
+                                            val contactName = (if (isPickupPhase) parcel.senderName else parcel.receiverName).ifBlank { if (isPickupPhase) "Customer / Sender" else "Recipient" }
+                                            val contactPhone = if (isPickupPhase) parcel.senderPhone else parcel.receiverPhone
+                                            val contactAddress = if (isPickupPhase) parcel.pickupAddress else parcel.deliveryAddress
+                                            val contactInitials = contactName.split(" ").mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString("").ifBlank { "C" }
+
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(14.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.weight(1f, fill = false)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(50.dp)
+                                                            .border(2.dp, Gold, CircleShape)
+                                                            .clip(CircleShape)
+                                                            .background(if (isDark) LuxuryBlack else Charcoal),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = contactInitials,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            fontSize = 18.sp,
+                                                            color = Gold
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.width(12.dp))
+                                                    Column {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Text(
+                                                                text = contactName,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                fontSize = 15.sp,
+                                                                color = Color.White,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Surface(
+                                                                shape = RoundedCornerShape(6.dp),
+                                                                color = Gold.copy(alpha = 0.2f),
+                                                                border = BorderStroke(0.5.dp, Gold)
+                                                            ) {
+                                                                Text(
+                                                                    text = contactRole,
+                                                                    fontSize = 9.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = Gold,
+                                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                        Text(
+                                                            text = contactAddress.ifBlank { "Delivery destination" },
+                                                            fontSize = 11.sp,
+                                                            color = TextGray,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                }
+
+                                                Spacer(modifier = Modifier.width(10.dp))
+
+                                                // High Contrast Contact Actions (NO White on Gold!)
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    // Call Trigger
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(44.dp)
+                                                            .clip(CircleShape)
+                                                            .background(GoldenWhiteLight)
+                                                            .clickable {
+                                                                if (contactPhone.isNotBlank()) {
+                                                                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$contactPhone"))
+                                                                    try {
+                                                                        context.startActivity(dialIntent)
+                                                                    } catch (e: Exception) {
+                                                                        Toast.makeText(context, "Call not supported on this device", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                } else {
+                                                                    Toast.makeText(context, "Phone number unavailable", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(Icons.Filled.Call, contentDescription = "Call $contactRole", tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                    }
+
+                                                    // Chat Trigger
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(44.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Gold)
+                                                            .clickable { showChatSheet = true },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(Icons.Filled.Chat, contentDescription = "Chat with $contactRole", tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                    }
+                                                }
+                                            }
+                                        } else if (isCourierAssigned) {
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -2473,8 +2667,9 @@ is ZodResult.Error -> {
                                     }
                                 }
                             }
-                        }
                     }
+                }
+            }
 
                         // Collapsible drawer arrow button overlapping the top center edge (only when not CLOSED)
                         if (drawerState != DrawerState.CLOSED) {
@@ -2543,7 +2738,6 @@ is ZodResult.Error -> {
             }
         }
     }
-
 /**
  * Floating Map Control buttons supporting custom zoom, traffic, or map mode triggers.
  */
@@ -2694,7 +2888,9 @@ fun LiveMapView(
     userAvatar: String = "",
     hasNoBooking: Boolean = false,
     followUser: Boolean = true,
-    userCoords: Pair<Double, Double>? = null
+    userCoords: Pair<Double, Double>? = null,
+    isRider: Boolean = false,
+    parcelStatus: ParcelStatus = ParcelStatus.PENDING
 ) {
     val context = LocalContext.current
     val pickupCoords = remember(pickupAddress, hasNoBooking, userCoords) {
@@ -2810,7 +3006,7 @@ fun LiveMapView(
      *    updateCourierProgress(progress) inside Leaflet automatically with fluid CSS animations.
      * ===================================================================================================
      */
-    val htmlContent = remember(pickupAddress, deliveryAddress, courierAvatar, routeColor, userAvatar, hasNoBooking) {
+    val htmlContent = remember(pickupAddress, deliveryAddress, courierAvatar, routeColor, userAvatar, hasNoBooking, isRider, parcelStatus) {
         """
         <!DOCTYPE html>
         <html>
@@ -3297,7 +3493,42 @@ fun LiveMapView(
                 }
 
                 function fetchOSRMRoute() {
-                    var dirUrl = 'https://router.project-osrm.org/route/v1/driving/' + pickupLoc[1] + ',' + pickupLoc[0] + ';' + deliveryLoc[1] + ',' + deliveryLoc[0] + '?geometries=geojson';
+                    var isRider = $isRider;
+                    var parcelStatus = '$parcelStatus';
+                    var hasCourierLoc = ${courierLatitude != null && courierLongitude != null};
+                    var courierLoc = [${courierLatitude ?: 0.0}, ${courierLongitude ?: 0.0}];
+
+                    var waypoints = [];
+                    if (isRider && hasCourierLoc && courierLoc[0] !== 0.0 && courierLoc[1] !== 0.0) {
+                        if (parcelStatus === 'ASSIGNED' || parcelStatus === 'RESERVED_NEXT' || parcelStatus === 'ARRIVED_PICKUP') {
+                            // Phase 1 (Assigned/Pickup): Rider -> Pickup -> Delivery (3-point routing)
+                            waypoints = [
+                                courierLoc[1] + ',' + courierLoc[0],
+                                pickupLoc[1] + ',' + pickupLoc[0],
+                                deliveryLoc[1] + ',' + deliveryLoc[0]
+                            ];
+                        } else if (parcelStatus === 'RETURN_TO_SENDER') {
+                            // Phase RTS: Rider -> Pickup (Sender return)
+                            waypoints = [
+                                courierLoc[1] + ',' + courierLoc[0],
+                                pickupLoc[1] + ',' + pickupLoc[0]
+                            ];
+                        } else {
+                            // Phase 2 (In Transit): Rider -> Delivery Destination
+                            waypoints = [
+                                courierLoc[1] + ',' + courierLoc[0],
+                                deliveryLoc[1] + ',' + deliveryLoc[0]
+                            ];
+                        }
+                    } else {
+                        // Customer View or default: Pickup -> Delivery
+                        waypoints = [
+                            pickupLoc[1] + ',' + pickupLoc[0],
+                            deliveryLoc[1] + ',' + deliveryLoc[0]
+                        ];
+                    }
+
+                    var dirUrl = 'https://router.project-osrm.org/route/v1/driving/' + waypoints.join(';') + '?geometries=geojson';
                     fetch(dirUrl)
                         .then(res => res.json())
                         .then(data => {
@@ -3308,28 +3539,36 @@ fun LiveMapView(
                                 });
 
                                 if (isMapboxActive) {
-                                    map.addSource('route', {
-                                        'type': 'geojson',
-                                        'data': {
+                                    if (map.getSource('route')) {
+                                        map.getSource('route').setData({
                                             'type': 'Feature',
                                             'properties': {},
                                             'geometry': geojson
-                                        }
-                                    });
-                                    map.addLayer({
-                                        'id': 'route',
-                                        'type': 'line',
-                                        'source': 'route',
-                                        'layout': {
-                                            'line-join': 'round',
-                                            'line-cap': 'round'
-                                        },
-                                        'paint': {
-                                            'line-color': '$routeColor',
-                                            'line-width': 6,
-                                            'line-opacity': 0.95
-                                        }
-                                    });
+                                        });
+                                    } else {
+                                        map.addSource('route', {
+                                            'type': 'geojson',
+                                            'data': {
+                                                'type': 'Feature',
+                                                'properties': {},
+                                                'geometry': geojson
+                                            }
+                                        });
+                                        map.addLayer({
+                                            'id': 'route',
+                                            'type': 'line',
+                                            'source': 'route',
+                                            'layout': {
+                                                'line-join': 'round',
+                                                'line-cap': 'round'
+                                            },
+                                            'paint': {
+                                                'line-color': '$routeColor',
+                                                'line-width': 6,
+                                                'line-opacity': 0.95
+                                            }
+                                        });
+                                    }
 
                                     var bounds = geojson.coordinates.reduce(function(bounds, coord) {
                                         return bounds.extend(coord);
@@ -3572,16 +3811,35 @@ fun LiveMapView(
                     return Math.sqrt(dx * dx + dy * dy);
                 }
 
+                var lastCourierCoords = null;
+                function calculateBearing(startLat, startLng, destLat, destLng) {
+                    var startLatRad = startLat * Math.PI / 180;
+                    var startLngRad = startLng * Math.PI / 180;
+                    var destLatRad = destLat * Math.PI / 180;
+                    var destLngRad = destLng * Math.PI / 180;
+                    var y = Math.sin(destLngRad - startLngRad) * Math.cos(destLatRad);
+                    var x = Math.cos(startLatRad) * Math.sin(destLatRad) -
+                            Math.sin(startLatRad) * Math.cos(destLatRad) * Math.cos(destLngRad - startLngRad);
+                    var brng = Math.atan2(y, x) * 180 / Math.PI;
+                    return (brng + 360) % 360;
+                }
+
                 function updateCourierProgress(progressVal) {
                     var lat, lng;
+                    var bearing = 0;
                     if (routeGeometryCoordinates && routeGeometryCoordinates.length > 0) {
                         var coord = getCoordinateAlongRoute(routeGeometryCoordinates, progressVal);
                         lat = coord[0];
                         lng = coord[1];
+                        var nextCoord = getCoordinateAlongRoute(routeGeometryCoordinates, Math.min(1.0, progressVal + 0.02));
+                        if (nextCoord) {
+                            bearing = calculateBearing(lat, lng, nextCoord[0], nextCoord[1]);
+                        }
                     } else {
                         // linear straight-line fallback
                         lat = pickupLoc[0] + (deliveryLoc[0] - pickupLoc[0]) * progressVal;
                         lng = pickupLoc[1] + (deliveryLoc[1] - pickupLoc[1]) * progressVal;
+                        bearing = calculateBearing(pickupLoc[0], pickupLoc[1], deliveryLoc[0], deliveryLoc[1]);
                     }
 
                     var hasRealCoords = ${courierLatitude != null && courierLongitude != null};
@@ -3593,8 +3851,15 @@ fun LiveMapView(
                     if (courierMarker) {
                         if (isMapboxActive) {
                             courierMarker.setLngLat([lng, lat]);
+                            if (typeof courierMarker.setRotation === 'function' && bearing !== 0) {
+                                courierMarker.setRotation(bearing);
+                            }
                         } else {
                             courierMarker.setLatLng([lat, lng]);
+                            var el = courierMarker.getElement ? courierMarker.getElement() : null;
+                            if (el && bearing !== 0) {
+                                el.style.transform = (el.style.transform || '').replace(/rotate\(.*?\)/, '') + ' rotate(' + bearing + 'deg)';
+                            }
                         }
                     }
                     if (map && followMode === 'courier' && !hasRealCoords) {
@@ -3610,12 +3875,24 @@ fun LiveMapView(
                 }
 
                 function updateCourierCoordinates(latVal, lngVal) {
+                    var bearing = 0;
+                    if (lastCourierCoords) {
+                        bearing = calculateBearing(lastCourierCoords[0], lastCourierCoords[1], latVal, lngVal);
+                    }
+                    lastCourierCoords = [latVal, lngVal];
                     if (courierMarker) {
                         if (isMapboxActive) {
                             courierMarker.setLngLat([lngVal, latVal]);
+                            if (typeof courierMarker.setRotation === 'function' && bearing !== 0) {
+                                courierMarker.setRotation(bearing);
+                            }
                             if (map && followMode === 'courier') map.panTo([lngVal, latVal]);
                         } else {
                             courierMarker.setLatLng([latVal, lngVal]);
+                            var el = courierMarker.getElement ? courierMarker.getElement() : null;
+                            if (el && bearing !== 0) {
+                                el.style.transform = (el.style.transform || '').replace(/rotate\(.*?\)/, '') + ' rotate(' + bearing + 'deg)';
+                            }
                             if (map && followMode === 'courier') map.panTo([latVal, lngVal]);
                         }
                         if (window.AndroidMap) {
@@ -3693,6 +3970,12 @@ fun LiveMapView(
         }
     }
 
+    LaunchedEffect(parcelStatus, courierLatitude, courierLongitude, isPageLoaded) {
+        if (isPageLoaded && isRider) {
+            webView.evaluateJavascript("if (typeof fetchOSRMRoute === 'function') { fetchOSRMRoute(); }", null)
+        }
+    }
+
     AndroidView(
         factory = { webView },
         modifier = modifier
@@ -3730,6 +4013,7 @@ fun DeliveryEstimationCard(
                 else -> "In Dispatch Queue"
             }
         }
+        else -> "Active Dispatch"
     }
 
     val windowText = when (status) {
@@ -3749,6 +4033,7 @@ fun DeliveryEstimationCard(
             val maxRange = remainingMins + 4
             "Estimated arrival in $minRange–$maxRange mins (Traffic adjusted)"
         }
+        else -> "Active delivery transit"
     }
 
     val confidenceScore = when (status) {
@@ -3763,6 +4048,7 @@ fun DeliveryEstimationCard(
         ParcelStatus.OUT_FOR_DELIVERY -> "Active"
         ParcelStatus.CANCELLED -> "Cancelled"
         ParcelStatus.TRANSIT -> "In Transit"
+        else -> status.name.replace('_', ' ')
     }
 
     Card(
@@ -3855,6 +4141,7 @@ fun AnimatedStatusBadge(
         ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
         ParcelStatus.CANCELLED -> Color(0x20F44336)
         ParcelStatus.TRANSIT -> if (isDark) Gold.copy(alpha = 0.15f) else Color(0x100E0E10)
+        else -> Gold.copy(alpha = 0.15f)
     }
     val targetTextColor = when (status) {
         ParcelStatus.PENDING -> Color(0xFF2196F3)
@@ -3868,6 +4155,7 @@ fun AnimatedStatusBadge(
         ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
         ParcelStatus.CANCELLED -> Color(0xFFF44336)
         ParcelStatus.TRANSIT -> if (isDark) Gold else Obsidian
+        else -> Gold
     }
     val badgeText = when (status) {
         ParcelStatus.PENDING -> "Pending Dispatch"
@@ -3881,6 +4169,7 @@ fun AnimatedStatusBadge(
         ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
         ParcelStatus.DELIVERED -> "Delivered"
         ParcelStatus.CANCELLED -> "Cancelled"
+        else -> status.name.replace('_', ' ')
     }
 
     val animatedBgColor by animateColorAsState(
@@ -3937,6 +4226,7 @@ fun ShippingJourneyProgressBar(
         ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED -> 2
         ParcelStatus.ASSIGNED, ParcelStatus.PICKED_UP -> 1
         ParcelStatus.PENDING, ParcelStatus.QUEUED, ParcelStatus.RESERVED_NEXT -> 0
+        else -> 1
     }
     
     // Progress line mapping (fraction of track that is filled)
@@ -4594,9 +4884,11 @@ fun DeliveryFeedbackDialog(
 fun ParcelChatDialog(
     parcelId: String,
     senderRole: String, // "customer" or "rider"
+    recipientPhone: String = "",
     viewModel: DeliveryViewModel,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val isDark = viewModel.darkModeEnabled.collectAsState().value
     val chatMessages by viewModel.activeParcelChats.collectAsState()
     val scope = rememberCoroutineScope()
@@ -4674,6 +4966,27 @@ fun ParcelChatDialog(
                             fontWeight = FontWeight.Bold,
                             color = if (isDark) Obsidian.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.7f)
                         )
+                    }
+
+                    if (recipientPhone.isNotBlank()) {
+                        IconButton(
+                            onClick = {
+                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$recipientPhone"))
+                                try {
+                                    context.startActivity(dialIntent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Call not supported on this device", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Call,
+                                contentDescription = "Call Contact",
+                                tint = headerContentColor
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
                     }
 
                     Box(

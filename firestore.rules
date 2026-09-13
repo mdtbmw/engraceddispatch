@@ -216,6 +216,11 @@ service cloud.firestore {
       allow update: if isDispatcher() || isAdmin()
         || (isAuth() && (resource.data.riderId == request.auth.uid || resource.data.driverId == request.auth.uid)
             && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['price', 'deliveryFee', 'payoutAmount', 'payoutCredited', 'userId']))
+        || (isAuth()
+            && (!('riderId' in resource.data) || resource.data.riderId == null || resource.data.riderId == '' || resource.data.riderId == 'unassigned')
+            && request.resource.data.riderId == request.auth.uid
+            && request.resource.data.status in ['ASSIGNED', 'QUEUED', 'RESERVED_NEXT']
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['price', 'deliveryFee', 'payoutAmount', 'payoutCredited', 'userId']))
         || (isAuth() && (resource.data.userId == request.auth.uid || !('userId' in resource.data) || resource.data.userId == '')
             && (
               (request.resource.data.status == 'CANCELLED' && resource.data.status in ['PENDING', 'RECEIVED', 'QUEUED', 'ASSIGNED', 'RESERVED_NEXT'])
@@ -225,6 +230,12 @@ service cloud.firestore {
 
       match /chats/{chatId} {
         allow read: if isAuth() && (isAdmin() || isDispatcher() || resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+        allow create: if isAuth() && isReasonableWrite();
+        allow update, delete: if isAdmin();
+      }
+
+      match /timeline/{eventId} {
+        allow read: if isAuth();
         allow create: if isAuth() && isReasonableWrite();
         allow update, delete: if isAdmin();
       }

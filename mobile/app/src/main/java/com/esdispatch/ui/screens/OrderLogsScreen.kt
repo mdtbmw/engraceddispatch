@@ -271,6 +271,7 @@ fun OrderHistoryItem(
                 ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
                 ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
                 ParcelStatus.CANCELLED -> Color(0xFFF44336)
+                else -> Gold
             }
             Box(
                 modifier = Modifier
@@ -344,6 +345,7 @@ fun OrderHistoryItem(
                         ParcelStatus.OUT_FOR_DELIVERY -> Color(0xFFFF9800)
                         ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
                         ParcelStatus.CANCELLED -> Color(0xFFF44336)
+                        else -> Gold
                     }
 
                     val tagBg = when (parcel.status) {
@@ -358,6 +360,7 @@ fun OrderHistoryItem(
                         ParcelStatus.OUT_FOR_DELIVERY -> Color(0x20FF9800)
                         ParcelStatus.DELIVERED -> Color(0x204CAF50)
                         ParcelStatus.CANCELLED -> Color(0x20F44336)
+                        else -> Gold.copy(alpha = 0.15f)
                     }
 
                     val tagText = when (parcel.status) {
@@ -372,6 +375,7 @@ fun OrderHistoryItem(
                         ParcelStatus.OUT_FOR_DELIVERY -> "OUT FOR DELIVERY"
                         ParcelStatus.DELIVERED -> "DELIVERED"
                         ParcelStatus.CANCELLED -> "CANCELLED"
+                        else -> parcel.status.name.replace('_', ' ')
                     }
 
                     Box(

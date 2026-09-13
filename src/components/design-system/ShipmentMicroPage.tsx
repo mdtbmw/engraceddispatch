@@ -1,4 +1,6 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import {
   ArrowLeft,
   Package,
@@ -56,6 +58,101 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
   const [showRiderPicker, setShowRiderPicker] = useState(false);
   const [riderSearch, setRiderSearch] = useState("");
   const [statusSuccessFlash, setStatusSuccessFlash] = useState(false);
+  const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(true);
+
+  useEffect(() => {
+    if (!delivery?.id) {
+      setTimelineEvents([]);
+      setLoadingTimeline(false);
+      return;
+    }
+    setLoadingTimeline(true);
+    try {
+      const q = query(
+        collection(db, "deliveries", delivery.id, "timeline"),
+        orderBy("timestamp", "desc")
+      );
+      const unsub = onSnapshot(
+        q,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const events = snapshot.docs.map((d) => ({
+              id: d.id,
+              ...d.data(),
+            }));
+            setTimelineEvents(events);
+          } else {
+            // Fallback to delivery.statusHistory if timeline subcollection is empty
+            if (Array.isArray(delivery.statusHistory) && delivery.statusHistory.length > 0) {
+              const hist = [...delivery.statusHistory].reverse().map((h: any, idx: number) => ({
+                id: `hist-${idx}`,
+                toStatus: h.status || h.state,
+                fromStatus: h.fromStatus || null,
+                timestamp: h.timestamp || h.time || h.date,
+                changedByRole: h.role || h.changedByRole || "System",
+                reason: h.reason || h.note || null,
+                note: h.note || null,
+                latitude: h.latitude || 0,
+                longitude: h.longitude || 0,
+              }));
+              setTimelineEvents(hist);
+            } else {
+              setTimelineEvents([]);
+            }
+          }
+          setLoadingTimeline(false);
+        },
+        (error) => {
+          console.warn("Timeline subscription error:", error);
+          if (Array.isArray(delivery.statusHistory) && delivery.statusHistory.length > 0) {
+            const hist = [...delivery.statusHistory].reverse().map((h: any, idx: number) => ({
+              id: `hist-${idx}`,
+              toStatus: h.status || h.state,
+              fromStatus: h.fromStatus || null,
+              timestamp: h.timestamp || h.time || h.date,
+              changedByRole: h.role || h.changedByRole || "System",
+              reason: h.reason || h.note || null,
+              note: h.note || null,
+              latitude: h.latitude || 0,
+              longitude: h.longitude || 0,
+            }));
+            setTimelineEvents(hist);
+          }
+          setLoadingTimeline(false);
+        }
+      );
+      return () => unsub();
+    } catch (err) {
+      console.warn("Failed to attach timeline listener:", err);
+      setLoadingTimeline(false);
+    }
+  }, [delivery?.id, delivery?.statusHistory]);
+
+  const formatTimelineDate = (ts: any) => {
+    if (!ts) return "—";
+    try {
+      let date: Date;
+      if (ts?.toDate && typeof ts.toDate === "function") {
+        date = ts.toDate();
+      } else if (ts?.seconds) {
+        date = new Date(ts.seconds * 1000);
+      } else if (typeof ts === "number") {
+        date = new Date(ts);
+      } else {
+        date = new Date(ts);
+      }
+      return isNaN(date.getTime()) ? String(ts) : date.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch {
+      return String(ts);
+    }
+  };
 
   if (!delivery) {
     return (
@@ -741,6 +838,94 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Chain of Custody & Event Audit Trail */}
+          <div className="bg-white dark:bg-[#1a1a1a] p-6 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-[#FFB800]" />
+                <h3 className="text-sm font-black text-[#111] dark:text-white uppercase tracking-wider">
+                  Chain of Custody & Event Audit Trail
+                </h3>
+              </div>
+              <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 px-2.5 py-1 rounded-full">
+                {timelineEvents.length} Recorded Events
+              </span>
+            </div>
+
+            {loadingTimeline ? (
+              <div className="py-6 flex items-center justify-center gap-2 text-xs text-gray-500">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#FFB800]" />
+                <span>Loading chain of custody audit log...</span>
+              </div>
+            ) : timelineEvents.length === 0 ? (
+              <div className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">
+                No intermediate chain-of-custody events recorded for this shipment yet.
+              </div>
+            ) : (
+              <div className="relative pl-6 space-y-4 before:content-[''] before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-gradient-to-b before:from-[#FFB800] before:via-amber-400/50 before:to-gray-200 dark:before:to-white/10">
+                {timelineEvents.map((evt, idx) => {
+                  const isLatest = idx === 0;
+                  const statusLabel = evt.toStatus || evt.status || "EVENT";
+                  return (
+                    <div key={evt.id || idx} className="relative group">
+                      {/* Timeline dot */}
+                      <div
+                        className={`absolute -left-[19px] top-1 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-[#1a1a1a] flex items-center justify-center ${
+                          isLatest
+                            ? "bg-[#FFB800] shadow-[0_0_8px_rgba(255,184,0,0.6)] ring-2 ring-[#FFB800]/30"
+                            : "bg-gray-400 dark:bg-gray-600"
+                        }`}
+                      />
+                      <div className="bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 rounded-2xl p-3.5 space-y-2 hover:border-[#FFB800]/40 transition-colors">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <StatusBadge status={statusLabel} />
+                            {evt.fromStatus && (
+                              <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
+                                from {evt.fromStatus}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[10px] font-mono text-gray-500 dark:text-gray-400">
+                            <Clock className="w-3 h-3" />
+                            {formatTimelineDate(evt.timestamp)}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1 border-t border-black/5 dark:border-white/5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-800 dark:text-[#FFB800]">
+                              {evt.changedByRole || "System"}
+                            </span>
+                            {evt.changedByUid && (
+                              <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate max-w-[120px]">
+                                {evt.changedByUid}
+                              </span>
+                            )}
+                          </div>
+
+                          {((evt.latitude && evt.latitude !== 0) || (evt.longitude && evt.longitude !== 0)) && (
+                            <div className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400 font-mono">
+                              <MapPin className="w-3 h-3 text-[#FFB800]" />
+                              {Number(evt.latitude).toFixed(4)}, {Number(evt.longitude).toFixed(4)}
+                            </div>
+                          )}
+                        </div>
+
+                        {(evt.reason || evt.note) && (
+                          <p className="text-[11px] text-gray-700 dark:text-gray-300 bg-white dark:bg-[#1a1a1a] p-2 rounded-xl border border-black/5 dark:border-white/5 mt-1">
+                            <span className="font-bold">Note: </span>
+                            {evt.reason || evt.note}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

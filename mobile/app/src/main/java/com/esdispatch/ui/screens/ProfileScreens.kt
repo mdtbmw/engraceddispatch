@@ -418,14 +418,14 @@ fun ProfileScreen(
                                     }
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = if (isOnline) Color(0xFF4CAF50).copy(alpha = 0.2f) else Color.Gray.copy(alpha = 0.2f)
+                                        color = if (isOnline) Gold.copy(alpha = 0.18f) else Color.Gray.copy(alpha = 0.15f)
                                     ) {
                                         Text(
                                             text = if (isOnline) "● ON DUTY" else "○ OFF DUTY",
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isOnline) Color(0xFF4CAF50) else TextGray
+                                            color = if (isOnline) Gold else TextGray
                                         )
                                     }
                                 }
@@ -456,14 +456,14 @@ fun ProfileScreen(
                                     val isOnline by viewModel.isOnline.collectAsState()
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = if (isOnline) Color(0xFF4CAF50).copy(alpha = 0.2f) else Color.Gray.copy(alpha = 0.2f)
+                                        color = if (isOnline) Gold.copy(alpha = 0.18f) else Color.Gray.copy(alpha = 0.15f)
                                     ) {
                                         Text(
                                             text = if (isOnline) "● ONLINE" else "○ OFFLINE",
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isOnline) Color(0xFF4CAF50) else TextGray
+                                            color = if (isOnline) Gold else TextGray
                                         )
                                     }
                                 }
@@ -492,6 +492,82 @@ fun ProfileScreen(
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                             Icon(Icons.Filled.Star, contentDescription = null, tint = Gold, modifier = Modifier.size(13.dp))
                                             Text(String.format("%.2f", userRating), fontSize = 15.sp, fontWeight = FontWeight.Black, color = AppTextColor)
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+                                HorizontalDivider(color = (if (isDark) BorderDark else Slate).copy(alpha = 0.5f), thickness = 1.dp)
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                val todayDeliveredCount by viewModel.todayDeliveredCount.collectAsState()
+                                val dailyTargetRides by viewModel.dailyRiderTargetRides.collectAsState()
+                                val fleetRank by viewModel.riderFleetRank.collectAsState()
+                                val dailyTargetPoints by viewModel.dailyRiderTargetPoints.collectAsState()
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text("DAILY MISSION TARGET", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Gold.copy(alpha = 0.15f)
+                                            ) {
+                                                Text(
+                                                    text = "+$dailyTargetPoints PTS",
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Gold
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "$todayDeliveredCount / $dailyTargetRides Trips Completed",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AppTextColor
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        val targetProgress = (todayDeliveredCount.toFloat() / dailyTargetRides.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+                                        LinearProgressIndicator(
+                                            progress = { targetProgress },
+                                            modifier = Modifier
+                                                .fillMaxWidth(0.9f)
+                                                .height(5.dp)
+                                                .clip(RoundedCornerShape(3.dp)),
+                                            color = Gold,
+                                            trackColor = if (isDark) Slate else Color.LightGray.copy(alpha = 0.5f)
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Gold.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Star,
+                                                contentDescription = null,
+                                                tint = Gold,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
+                                                text = fleetRank,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Gold
+                                            )
                                         }
                                     }
                                 }

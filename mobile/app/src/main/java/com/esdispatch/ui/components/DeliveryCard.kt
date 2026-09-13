@@ -184,6 +184,7 @@ fun DeliveryCard(
                 ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED -> 0.90f
                 ParcelStatus.DELIVERED -> 1.0f
                 ParcelStatus.CANCELLED -> 0.0f
+                else -> 0.50f
             }
             val animatedProgress by animateFloatAsState(
                 targetValue = progressTarget,

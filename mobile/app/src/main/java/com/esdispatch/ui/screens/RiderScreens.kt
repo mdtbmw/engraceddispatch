@@ -69,6 +69,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.zIndex
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -125,10 +126,20 @@ fun RiderDashboardScreen(
     }
 
     val activeCount = remember(riderAssignments) {
-        riderAssignments.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED }.size
+        riderAssignments.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.RETURNED }.size
     }
     val deliveredCount = remember(riderAssignments) {
         riderAssignments.filter { it.status == ParcelStatus.DELIVERED }.size
+    }
+
+    val todayDeliveredCount by viewModel.todayDeliveredCount.collectAsState()
+    val dailyTargetRides by viewModel.dailyRiderTargetRides.collectAsState()
+    val dailyTargetPoints by viewModel.dailyRiderTargetPoints.collectAsState()
+    val pointNairaVal by viewModel.pointNairaValue.collectAsState()
+    val fleetRank by viewModel.riderFleetRank.collectAsState()
+
+    val arrivedParcel = remember(riderAssignments) {
+        riderAssignments.firstOrNull { it.status == ParcelStatus.ARRIVED || it.status == ParcelStatus.HANDOVER_VERIFIED }
     }
 
     val density = LocalDensity.current
@@ -228,10 +239,16 @@ fun RiderDashboardScreen(
         }
     }
 
-    val baseAssignments = remember(riderAssignments, availableDeliveries, selectedFilter) {
+    val baseAssignments = remember(riderAssignments, availableDeliveries, selectedFilter, isOnlineState, activeCount) {
         when (selectedFilter) {
-            "Available" -> availableDeliveries
-            "Active" -> riderAssignments.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.PENDING && it.status != ParcelStatus.CANCELLED }
+            "Available" -> {
+                if (!isOnlineState || activeCount > 0) {
+                    emptyList()
+                } else {
+                    availableDeliveries
+                }
+            }
+            "Active" -> riderAssignments.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.PENDING && it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.RETURNED }
             "Delivered" -> riderAssignments.filter { it.status == ParcelStatus.DELIVERED }
             else -> riderAssignments
         }
@@ -265,6 +282,40 @@ fun RiderDashboardScreen(
                 .fillMaxSize()
                 .background(LuxuryBlack)
         ) {
+            // Pull-to-refresh tactile indicator
+            if (isRefreshing || scrollOffset < -10f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(top = 10.dp)
+                        .zIndex(50f),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Charcoal.copy(alpha = 0.95f))
+                            .border(BorderStroke(1.dp, Gold.copy(alpha = 0.6f)), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            color = Gold,
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            text = if (isRefreshing) "Syncing fleet dispatches..." else "Pull to refresh dispatches",
+                            color = Gold,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -320,6 +371,106 @@ fun RiderDashboardScreen(
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Daily Mission Target Progress Card
+                item {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Charcoal,
+                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = Gold,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "DAILY MISSION TARGET",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (isDark) Gold else Obsidian,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Gold.copy(alpha = 0.15f),
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                                ) {
+                                    Text(
+                                        text = "RANK: $fleetRank",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Gold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "$todayDeliveredCount / $dailyTargetRides Trips Completed",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = if (todayDeliveredCount >= dailyTargetRides) "Daily target achieved! Bonus unlocked." else "${(dailyTargetRides - todayDeliveredCount).coerceAtLeast(0)} more trips to unlock bonus",
+                                        fontSize = 11.sp,
+                                        color = TextGray
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Obsidian
+                                ) {
+                                    Text(
+                                        text = "+$dailyTargetPoints PTS (₦${dailyTargetPoints * pointNairaVal})",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Gold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            val targetProgress = (todayDeliveredCount.toFloat() / dailyTargetRides.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+                            LinearProgressIndicator(
+                                progress = { targetProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = Gold,
+                                trackColor = Obsidian
+                            )
                         }
                     }
                 }
@@ -401,33 +552,83 @@ fun RiderDashboardScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
+                                val emptyIcon = if (selectedFilter == "Available" && !isOnlineState) {
+                                    Icons.Filled.PowerSettingsNew
+                                } else if (selectedFilter == "Available" && activeCount > 0) {
+                                    Icons.Filled.Navigation
+                                } else {
+                                    Icons.Default.DirectionsBike
+                                }
+
                                 Icon(
-                                    imageVector = Icons.Default.DirectionsBike,
-                                    contentDescription = "Empty",
-                                    tint = TextGray,
+                                    imageVector = emptyIcon,
+                                    contentDescription = "Status",
+                                    tint = if (selectedFilter == "Available" && !isOnlineState) Gold else TextGray,
                                     modifier = Modifier.size(48.dp)
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
+
+                                val emptyTitle = when {
+                                    searchQuery.isNotBlank() -> "No Matching Shipments"
+                                    selectedFilter == "Available" && !isOnlineState -> "You Are Currently Off Duty"
+                                    selectedFilter == "Available" && activeCount > 0 -> "Active Mission In Progress"
+                                    selectedFilter == "Available" -> "No Dispatches Available"
+                                    selectedFilter == "Active" -> "No Active Deliveries"
+                                    selectedFilter == "Delivered" -> "No Completed Deliveries Yet"
+                                    else -> "No Shipments Found"
+                                }
+
+                                val emptySubtitle = when {
+                                    searchQuery.isNotBlank() -> "No parcels matched '$searchQuery'. Try checking the tracking ID or recipient phone number."
+                                    selectedFilter == "Available" && !isOnlineState -> "Switch your fleet status to On Duty to receive incoming customer orders and proximity match dispatches."
+                                    selectedFilter == "Available" && activeCount > 0 -> "Focus on your current delivery ($activeCount active stop). Complete this delivery before accepting new customer dispatches."
+                                    selectedFilter == "Available" -> "All nearby parcels are currently assigned. New customer booking dispatches will appear here in real-time."
+                                    selectedFilter == "Active" -> "Accept an available dispatch or wait for dispatcher assignment to begin a mission."
+                                    selectedFilter == "Delivered" -> "Completed delivery logs and proof-of-delivery records will be recorded here."
+                                    else -> "Wait for the admin dispatcher to assign logistics deliveries to your profile."
+                                }
+
                                 Text(
-                                    text = if (searchQuery.isNotBlank()) "No Matching Shipments" else if (selectedFilter == "Available") "No Dispatches Available" else "No Shipments Found",
+                                    text = emptyTitle,
                                     color = AppTextColor,
                                     fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = if (searchQuery.isNotBlank()) {
-                                        "No parcels matched '$searchQuery'. Try checking the tracking ID or recipient phone number."
-                                    } else if (selectedFilter == "Available") {
-                                        "No unassigned orders found in your area. Open the dispatch app to receive incoming customer parcels!"
-                                    } else {
-                                        "Wait for the admin dispatcher to assign logistics deliveries to your profile."
-                                    },
+                                    text = emptySubtitle,
                                     color = TextGray,
                                     fontSize = 12.sp,
                                     textAlign = TextAlign.Center,
                                     lineHeight = 18.sp
                                 )
+
+                                if (selectedFilter == "Available" && !isOnlineState) {
+                                    Spacer(modifier = Modifier.height(18.dp))
+                                    Button(
+                                        onClick = { viewModel.setRiderOnlineStatus(true) },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Gold,
+                                            contentColor = Obsidian
+                                        ),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Text("Go On Duty Now", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+                                } else if (selectedFilter == "Available" && activeCount > 0) {
+                                    Spacer(modifier = Modifier.height(18.dp))
+                                    Button(
+                                        onClick = { selectedFilter = "Active" },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Gold,
+                                            contentColor = Obsidian
+                                        ),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Text("View Active Mission", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+                                }
                             }
                         }
                     }
@@ -476,76 +677,40 @@ fun RiderDashboardScreen(
                             .padding(horizontal = 24.dp, vertical = 24.dp),
                         verticalArrangement = Arrangement.Top
                     ) {
-                        // Top Bar: Profile Pic, Active Count Pill, Duty Switch
+                        // Top Bar: Active Indicator (normal text + motorcycle icon + yellow pulsing beacon) & Duty Switch (ON DUTY in Gold #FFB800)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Profile Avatar
-                            Box(
+                            // Active Ride Indicator (Normal text with motorcycle icon and yellow pulsing dot)
+                            Row(
                                 modifier = Modifier
-                                    .size(56.dp)
-                                    .graphicsLayer { rotationZ = progress * 360f }
-                                    .drawBehind {
-                                        drawCircle(
-                                            color = Gold,
-                                            style = Stroke(width = 3.dp.toPx())
-                                        )
-                                        if (progress > 0f) {
-                                            drawArc(
-                                                color = Gold,
-                                                startAngle = -90f,
-                                                sweepAngle = progress * 360f,
-                                                useCenter = false,
-                                                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                                            )
-                                        }
-                                    }
-                                    .padding(3.dp)
-                                    .clip(CircleShape)
-                                    .clickable { onNavigate("Profile") }
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { selectedFilter = "Active" }
+                                    .padding(vertical = 4.dp, horizontal = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Image(
-                                    painter = rememberAsyncImagePainter(if (photoUrl.isNotEmpty()) photoUrl else "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop"),
-                                    contentDescription = "Profile Pic",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(if (activeCount > 0) Gold else TextGray)
+                                        .breathingPulse(active = activeCount > 0, minScale = 0.8f, maxScale = 1.4f, durationMs = 1500)
                                 )
-                            }
-
-                            // Active Dispatch Indicator Pill
-                            Surface(
-                                onClick = { selectedFilter = "Active" },
-                                shape = RoundedCornerShape(16.dp),
-                                color = Charcoal.copy(alpha = 0.9f),
-                                border = BorderStroke(1.dp, if (activeCount > 0) Gold.copy(alpha = 0.5f) else Slate)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(if (activeCount > 0) Gold else TextGray)
-                                            .breathingPulse(active = activeCount > 0, minScale = 0.8f, maxScale = 1.35f, durationMs = 1500)
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Default.DirectionsBike,
-                                        contentDescription = null,
-                                        tint = if (activeCount > 0) Gold else TextGray,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = "$activeCount Active",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (activeCount > 0) Color.White else TextGray
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.DirectionsBike,
+                                    contentDescription = null,
+                                    tint = if (activeCount > 0) Gold else TextGray,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = if (activeCount > 0) "$activeCount Active Dispatches" else "0 Active Dispatches",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (activeCount > 0) Color.White else TextGray
+                                )
                             }
 
                             // Duty Status Switch
@@ -558,7 +723,7 @@ fun RiderDashboardScreen(
                                         text = if (isOnlineState) "ON DUTY" else "OFF DUTY",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Black,
-                                        color = if (isOnlineState) Color(0xFF4CAF50) else TextGray,
+                                        color = if (isOnlineState) Gold else TextGray,
                                         letterSpacing = 0.5.sp
                                     )
                                     Text(
@@ -676,18 +841,28 @@ fun RiderDashboardScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
+                            val isPodActive = arrivedParcel != null
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF121212))
-                                    .clickable { onNavigate("Scanner") },
+                                    .background(if (isPodActive) Gold.copy(alpha = 0.15f) else Charcoal)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isPodActive) Gold else Slate,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable(enabled = isPodActive) {
+                                        arrivedParcel?.let {
+                                            onNavigate("ProofOfDelivery/${it.id}")
+                                        }
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.QrCodeScanner,
-                                    contentDescription = "Scan",
-                                    tint = Gold,
+                                    imageVector = Icons.Filled.DriveFileRenameOutline,
+                                    contentDescription = "Handover / POD",
+                                    tint = if (isPodActive) Gold else TextGray.copy(alpha = 0.35f),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -828,47 +1003,29 @@ fun RiderDashboardScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .graphicsLayer { rotationZ = progress * 360f }
-                                    .drawBehind {
-                                        drawCircle(
-                                            color = Gold,
-                                            style = Stroke(width = 2.dp.toPx())
-                                        )
-                                        if (progress > 0f) {
-                                            drawArc(
-                                                color = Gold,
-                                                startAngle = -90f,
-                                                sweepAngle = progress * 360f,
-                                                useCenter = false,
-                                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                                            )
-                                        }
-                                    }
-                                    .padding(2.dp)
+                                    .size(8.dp)
                                     .clip(CircleShape)
-                                    .clickable { onNavigate("Profile") }
-                            ) {
-                                Image(
-                                    painter = rememberAsyncImagePainter(if (photoUrl.isNotEmpty()) photoUrl else "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop"),
-                                    contentDescription = "Profile Pic",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-
+                                    .background(if (activeCount > 0) Gold else TextGray)
+                                    .breathingPulse(active = activeCount > 0, minScale = 0.8f, maxScale = 1.35f, durationMs = 1500)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.DirectionsBike,
+                                contentDescription = null,
+                                tint = if (activeCount > 0) Gold else TextGray,
+                                modifier = Modifier.size(16.dp)
+                            )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = "Hello $firstName! ",
-                                    fontSize = 18.sp,
+                                    fontSize = 17.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
-                                WavingHand(isAtTopOrActive = true, fontSize = 18.sp)
+                                WavingHand(isAtTopOrActive = true, fontSize = 17.sp)
                             }
                         }
 
@@ -881,7 +1038,7 @@ fun RiderDashboardScreen(
                                 text = if (isOnlineState) "ON" else "OFF",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
-                                color = if (isOnlineState) Color(0xFF4CAF50) else TextGray
+                                color = if (isOnlineState) Gold else TextGray
                             )
                             Switch(
                                 checked = isOnlineState,

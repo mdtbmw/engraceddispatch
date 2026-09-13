@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import java.util.UUID
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -310,6 +312,16 @@ class DeliveryViewModel : WalletViewModel() {
                             it.key.toString() to it.value.toString()
                         }
                         _adminCardSliderConfigs.value = safeCardSlider
+                    }
+
+                    (snap.get("dailyRiderTargetRides") as? Number)?.toInt()?.let {
+                        if (it > 0) dailyRiderTargetRides.value = it
+                    }
+                    (snap.get("dailyRiderTargetPoints") as? Number)?.toInt()?.let {
+                        if (it >= 0) dailyRiderTargetPoints.value = it
+                    }
+                    (snap.get("pointNairaValue") as? Number)?.toInt()?.let {
+                        if (it > 0) pointNairaValue.value = it
                     }
                 }
             }?.let { listenerRegistrations.add(it) }
@@ -860,44 +872,11 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun checkAndApplyWorkingDaysAutoOnline() {
-        try {
-            val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-            db.collection("system_config").document("global_settings").get()
-                .addOnSuccessListener { snap ->
-                    if (snap != null && snap.exists()) {
-                        val autoOnline = snap.getBoolean("autoOnlineOnWorkingDays") ?: true
-                        val workingDays = (snap.get("workingDays") as? List<*>)?.map { it.toString().lowercase() }
-                            ?: listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday")
-                        
-                        val currentDayName = java.text.SimpleDateFormat("EEEE", java.util.Locale.ENGLISH).format(java.util.Date()).lowercase()
-                        val isWorkingDay = workingDays.contains(currentDayName)
-                        
-                        if (autoOnline && isWorkingDay) {
-                            if (!_isOnline.value) {
-                                setRiderOnlineStatus(true)
-                            }
-                        }
-                    } else {
-                        val cal = java.util.Calendar.getInstance()
-                        val dayOfWeek = cal.get(java.util.Calendar.DAY_OF_WEEK)
-                        val isMonToSat = dayOfWeek != java.util.Calendar.SUNDAY
-                        if (isMonToSat && !_isOnline.value) {
-                            setRiderOnlineStatus(true)
-                        }
-                    }
-                }
-                .addOnFailureListener {
-                    val cal = java.util.Calendar.getInstance()
-                    val dayOfWeek = cal.get(java.util.Calendar.DAY_OF_WEEK)
-                    val isMonToSat = dayOfWeek != java.util.Calendar.SUNDAY
-                    if (isMonToSat && !_isOnline.value) {
-                        setRiderOnlineStatus(true)
-                    }
-                }
-        } catch (e: Exception) {
-            // Non-fatal
-        }
+        // Riders have full manual operational control and consciously toggle ON DUTY each morning.
+        // Auto-online is disabled per enterprise dispatch protocol.
     }
+
+
 
     // Rider specific state flows
     private val _availableDeliveries = MutableStateFlow<List<Parcel>>(emptyList())
@@ -1673,6 +1652,32 @@ class DeliveryViewModel : WalletViewModel() {
 
     private val _deliveryCount = MutableStateFlow(0)
     val deliveryCount: StateFlow<Int> = _deliveryCount.asStateFlow()
+
+    // Daily Rider Target & Fleet Performance Flows
+    val dailyRiderTargetRides = MutableStateFlow(5)
+    val dailyRiderTargetPoints = MutableStateFlow(50)
+    val pointNairaValue = MutableStateFlow(10)
+
+    val todayDeliveredCount: StateFlow<Int> = _riderAssignments.map { list ->
+        val calToday = java.util.Calendar.getInstance()
+        val todayYear = calToday.get(java.util.Calendar.YEAR)
+        val todayDay = calToday.get(java.util.Calendar.DAY_OF_YEAR)
+        list.count { p ->
+            if (p.status == ParcelStatus.DELIVERED) {
+                val calP = java.util.Calendar.getInstance().apply { timeInMillis = if (p.createdAt > 0) p.createdAt else System.currentTimeMillis() }
+                calP.get(java.util.Calendar.YEAR) == todayYear && calP.get(java.util.Calendar.DAY_OF_YEAR) == todayDay
+            } else false
+        }
+    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, 0)
+
+    val riderFleetRank: StateFlow<String> = _deliveryCount.map { count ->
+        when {
+            count >= 100 -> "Diamond Fleet"
+            count >= 50 -> "Gold Fleet"
+            count >= 25 -> "Silver Fleet"
+            else -> "Bronze Fleet"
+        }
+    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, "Bronze Fleet")
 
     private val _loyaltyPoints = MutableStateFlow(0)
     val loyaltyPoints: StateFlow<Int> = _loyaltyPoints.asStateFlow()
@@ -4115,6 +4120,7 @@ class DeliveryViewModel : WalletViewModel() {
                                         ParcelStatus.OUT_FOR_DELIVERY -> "Out for Delivery"
                                         ParcelStatus.DELIVERED -> "Delivered"
                                         ParcelStatus.CANCELLED -> "Cancelled"
+                                        else -> "Active Dispatch"
                                     }
                                     com.esdispatch.data.MyFirebaseMessagingService.showNotification(
                                         context = ctx,
