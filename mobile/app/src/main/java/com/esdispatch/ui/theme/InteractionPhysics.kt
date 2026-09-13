@@ -90,6 +90,7 @@ fun Modifier.tactilePress(
                     val upOrCancel = waitForUpOrCancellation()
                     isPressed = false
                     if (upOrCancel != null && onClick != null) {
+                        com.esdispatch.util.SoundManager.playClick()
                         onClick()
                     }
                 }

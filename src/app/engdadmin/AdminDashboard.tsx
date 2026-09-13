@@ -483,18 +483,19 @@ async function seedMarketplace(db: any, addLog: any, addToast: any, createNotifi
 }
 
 function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeliveries, delivered, totalRevenue, totalTips, referrals, activeDeliveriesData, fmt, setTab, setShipmentsFilterPrefill, marketplaceEnabled, toggleMarketplace, onOpenShipmentFullView, addToast }: any) {
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const isToday = (d: any) => {
-    if (!d.dateString) return true;
-    return d.dateString.startsWith("Today") || d.dateString.includes(todayStr) || d.dateString === "";
+  const getDeliveryTime = (x: any) => {
+    if (x.createdAt?.toMillis) return x.createdAt.toMillis();
+    if (x.createdAt) {
+      const t = new Date(x.createdAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    if (typeof x.timestamp === "number" && x.timestamp > 0) return x.timestamp;
+    if (typeof x.lastUpdated === "number" && x.lastUpdated > 0) return x.lastUpdated;
+    return 0;
   };
   const recentDeliveries = deliveries
-    .filter((d: any) => d.status !== "DELIVERED" && d.status !== "CANCELLED" && isToday(d))
-    .sort((a: any, b: any) => {
-      const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
-      const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
-      return tA - tB;
-    });
+    .filter((d: any) => d.status !== "DELIVERED" && d.status !== "CANCELLED")
+    .sort((a: any, b: any) => getDeliveryTime(b) - getDeliveryTime(a));
   const [filterCat, setFilterCat] = useState("all");
   const [inspectingCategory, setInspectingCategory] = useState<any | null>(null);
   const [modalStatusFilter, setModalStatusFilter] = useState<"PENDING" | "ASSIGNED" | "TRANSIT" | "ARRIVED" | "ALL">("PENDING");
@@ -509,6 +510,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
         courierName: rider.name,
         courierPhone: rider.phone || "",
         riderBikeNumber: rider.bikeNumber || "",
+        courierAvatar: rider.photoUrl || rider.avatar || "",
         status: "ASSIGNED",
         updatedAt: Timestamp.now()
       });
@@ -2073,7 +2075,7 @@ function AdminDashboardPage() {
         courierPhone: x.courierPhone || "", itemName: x.itemName || "Parcel",
         pickupAddress: x.pickupAddress || "", quantity: x.quantity || 1, weight: x.weight || 0,
         dateString: x.dateString || "", tipAmount: x.tipAmount || 0, userId: x.userId || "", otpCode: x.otpCode || "",
-        category: x.category || "",
+        category: x.category || "Standard",
         riderBikeNumber: x.riderBikeNumber || "",
         driverId: x.driverId || "",
         driverName: x.driverName || "",
@@ -3978,6 +3980,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
       await updateDoc(doc(db, "deliveries", deliveryId), {
         riderId: rider.id, driverId: rider.id, driverName: rider.name,
         courierName: rider.name, courierPhone: rider.phone, riderBikeNumber: rider.bikeNumber || "",
+        courierAvatar: rider.photoUrl || "",
         status: "ASSIGNED", updatedAt: Timestamp.now()
       });
       addLog("Assign Rider", `${rider.name} → ${idShort(deliveryId)}`);

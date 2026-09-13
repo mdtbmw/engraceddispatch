@@ -893,11 +893,18 @@ fun ExpressBookingScreen(
 
                         OutlinedTextField(
                             value = itemName,
-                            onValueChange = { itemName = it },
+                            onValueChange = { newName ->
+                                itemName = newName
+                                val inferred = com.esdispatch.util.CargoCategoryClassifier.inferCategory(newName)
+                                if (inferred != null && inferred != selectedCategory) {
+                                    selectedCategory = inferred
+                                    com.esdispatch.util.SoundManager.playClick()
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth(),
                             shape = RoundedCornerShape(20.dp),
-                            placeholder = { Text("Item Name (e.g., iPhone 15 Pro)", color = TextGray) },
+                            placeholder = { Text("Item Name (e.g., Bag of rice, iPhone 15 Pro, Nike sneakers)", color = TextGray) },
                             textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = accentColor,
@@ -913,13 +920,45 @@ fun ExpressBookingScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Text(
-                            text = "Category",
-                            fontSize = 12.sp,
-                            color = TextGray,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Category",
+                                fontSize = 12.sp,
+                                color = TextGray,
+                                fontWeight = FontWeight.Bold
+                            )
+                            val inferred = remember(itemName) { com.esdispatch.util.CargoCategoryClassifier.inferCategory(itemName) }
+                            if (inferred != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Gold.copy(alpha = 0.15f),
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.3f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Bolt,
+                                            contentDescription = null,
+                                            tint = Gold,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Text(
+                                            text = "Auto-detected: $inferred",
+                                            fontSize = 10.sp,
+                                            color = Gold,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
 
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),

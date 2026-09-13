@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
+import com.esdispatch.data.Parcel
 import com.esdispatch.data.ParcelStatus
 import com.esdispatch.ui.components.BottomNav
 import com.esdispatch.ui.components.ConfettiEffect
@@ -80,6 +81,7 @@ fun V2DashboardScreen(
     }
 
     var triggerConfetti by remember { mutableStateOf(false) }
+    var quickViewParcel by remember { mutableStateOf<Parcel?>(null) }
     val context = LocalContext.current
 
     Scaffold(
@@ -328,6 +330,7 @@ fun V2DashboardScreen(
                         val recentImageBgColor = if (isDark) Color(0xFF1D1D1D) else GoldenWhiteLight
                         val recentPriceTextColor = if (isDark) Gold else Obsidian
                         Surface(
+                            onClick = { quickViewParcel = parcel },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 24.dp, vertical = 6.dp),
@@ -389,6 +392,14 @@ fun V2DashboardScreen(
                         }
                     }
                 }
+            }
+
+            quickViewParcel?.let { parcel ->
+                com.esdispatch.ui.screens.ParcelDetailBottomSheet(
+                    parcel = parcel,
+                    isDark = isDark,
+                    onDismiss = { quickViewParcel = null }
+                )
             }
         }
     }

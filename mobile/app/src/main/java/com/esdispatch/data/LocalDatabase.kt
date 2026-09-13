@@ -2,6 +2,8 @@ package com.esdispatch.data
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.*
 
 // --- 1. Type Converters ---
@@ -89,6 +91,9 @@ interface NotificationDao {
 
     @Query("UPDATE notifications SET isRead = 1 WHERE id = :id")
     suspend fun markAsRead(id: String)
+
+    @Query("DELETE FROM notifications WHERE id = :id")
+    suspend fun deleteNotification(id: String)
 
     @Query("DELETE FROM notifications")
     suspend fun clearNotifications()
@@ -199,7 +204,7 @@ interface OfflineSyncQueueDao {
         ShiftRoster::class,
         OfflineSyncQueue::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(DatabaseConverters::class)
@@ -219,17 +224,63 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                fun addColumnIfNotExists(column: String, definition: String) {
+                    try {
+                        val cursor = db.query("PRAGMA table_info(parcels)")
+                        var exists = false
+                        while (cursor.moveToNext()) {
+                            val nameIndex = cursor.getColumnIndex("name")
+                            if (nameIndex >= 0 && cursor.getString(nameIndex) == column) {
+                                exists = true
+                                break
+                            }
+                        }
+                        cursor.close()
+                        if (!exists) {
+                            db.execSQL("ALTER TABLE parcels ADD COLUMN $column $definition")
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("AppDatabase", "Column $column migration check: ${e.message}")
+                    }
+                }
+                addColumnIfNotExists("category", "TEXT NOT NULL DEFAULT 'Standard'")
+                addColumnIfNotExists("pickupLat", "REAL DEFAULT NULL")
+                addColumnIfNotExists("pickupLng", "REAL DEFAULT NULL")
+                addColumnIfNotExists("deliveryLat", "REAL DEFAULT NULL")
+                addColumnIfNotExists("deliveryLng", "REAL DEFAULT NULL")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "gold_delivery_offline_db"
-                )
-                .fallbackToDestructiveMigration()
-                .build()
-                INSTANCE = instance
-                instance
+                try {
+                    val instance = Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java,
+                        "gold_delivery_offline_db"
+                    )
+                    .addMigrations(MIGRATION_9_10)
+                    .fallbackToDestructiveMigration()
+                    .build()
+                    INSTANCE = instance
+                    instance
+                } catch (e: Throwable) {
+                    android.util.Log.e("AppDatabase", "Database creation exception, resetting cache: ${e.message}")
+                    try {
+                        context.applicationContext.deleteDatabase("gold_delivery_offline_db")
+                    } catch (_: Throwable) {}
+                    val instance = Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java,
+                        "gold_delivery_offline_db"
+                    )
+                    .fallbackToDestructiveMigration()
+                    .build()
+                    INSTANCE = instance
+                    instance
+                }
             }
         }
     }
@@ -289,6 +340,14 @@ class DeliveryRepository(private val db: AppDatabase) {
 
     suspend fun markNotificationAsRead(id: String) {
         db.notificationDao().markAsRead(id)
+    }
+
+    suspend fun deleteNotification(id: String) {
+        db.notificationDao().deleteNotification(id)
+    }
+
+    suspend fun clearAllNotifications() {
+        db.notificationDao().clearNotifications()
     }
 
     suspend fun saveAIDispatchLog(log: AIDispatchDecisionLog) {

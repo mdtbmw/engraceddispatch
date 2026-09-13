@@ -223,7 +223,7 @@ class DeliveryViewModel : WalletViewModel() {
         _showOnboardingTooltip.value = prefs.getBoolean("show_onboarding_tooltip", true)
         val savedFavs = prefs.getStringSet("favorite_products", emptySet()) ?: emptySet()
         _favoriteProductIds.value = savedFavs
-        _marketplaceEnabled.value = prefs.getBoolean("marketplace_enabled", true)
+        _marketplaceEnabled.value = prefs.getBoolean("marketplace_enabled", false)
         _pointsSystemEnabled.value = prefs.getBoolean("points_system_enabled", true)
         _isDynamicPricingEnabled.value = prefs.getBoolean("pricing_mode_dynamic", true)
         _tipSystemEnabled.value = prefs.getBoolean("tip_system_enabled", true)
@@ -461,7 +461,7 @@ class DeliveryViewModel : WalletViewModel() {
     val activeViewMode: StateFlow<String> = _activeViewMode.asStateFlow()
 
     // Admin & System Configurations
-    private val _marketplaceEnabled = MutableStateFlow(true)
+    private val _marketplaceEnabled = MutableStateFlow(false)
     val marketplaceEnabled: StateFlow<Boolean> = _marketplaceEnabled.asStateFlow()
 
     private val _enableQrCodeHandover = MutableStateFlow(false)
@@ -500,6 +500,36 @@ class DeliveryViewModel : WalletViewModel() {
         )
     )
     val adminCardSliderConfigs: StateFlow<Map<String, String>> = _adminCardSliderConfigs.asStateFlow()
+
+    private val _heroSlides = MutableStateFlow<List<com.esdispatch.data.HeroSlideItem>>(
+        listOf(
+            com.esdispatch.data.HeroSlideItem(
+                id = "slide_1",
+                title = "Fast & Secure Dispatch Across Benin City",
+                subtitle = "Guaranteed on-demand courier pickup & safe doorstep dropoff.",
+                imageUrl = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=800&auto=format&fit=crop",
+                tag = "FEATURED",
+                actionText = "Book Now"
+            ),
+            com.esdispatch.data.HeroSlideItem(
+                id = "slide_2",
+                title = "Door-to-Door Escrow Protection",
+                subtitle = "Complete digital signature verification & OTP handover security.",
+                imageUrl = "https://images.unsplash.com/photo-1516541196182-6bdd0514013b?q=80&w=800&auto=format&fit=crop",
+                tag = "PROTECTED",
+                actionText = "Send Parcel"
+            ),
+            com.esdispatch.data.HeroSlideItem(
+                id = "slide_3",
+                title = "Live GPS Fleet Tracking 24/7",
+                subtitle = "Watch your rider travel live with dynamic arrival precision.",
+                imageUrl = "https://images.unsplash.com/photo-1512418491527-6f55e1112fb1?q=80&w=800&auto=format&fit=crop",
+                tag = "LIVE GPS",
+                actionText = "Track Order"
+            )
+        )
+    )
+    val heroSlides: StateFlow<List<com.esdispatch.data.HeroSlideItem>> = _heroSlides.asStateFlow()
 
     private val _baseFare = MutableStateFlow(4500.0)
     val baseFare: StateFlow<Double> = _baseFare.asStateFlow()
@@ -2198,8 +2228,13 @@ class DeliveryViewModel : WalletViewModel() {
             val localUid = prefs.getString("local_uid", "") ?: ""
             val localEmail = prefs.getString("local_email", "") ?: ""
             val localPin = getPinSecurely("local_pin")
-            val localName = prefs.getString("local_name", "") ?: ""
-            val localPhone = prefs.getString("local_phone", "") ?: ""
+            val localName = prefs.getString("local_name", "")?.takeIf { it.isNotBlank() }
+                ?: prefs.getString("user_name", "")?.takeIf { it.isNotBlank() }
+                ?: prefs.getString("account_name", "")?.takeIf { it.isNotBlank() }
+                ?: ""
+            val localPhone = prefs.getString("local_phone", "")?.takeIf { it.isNotBlank() }
+                ?: prefs.getString("user_phone", "")?.takeIf { it.isNotBlank() }
+                ?: ""
             val localRole = prefs.getString("local_role", "customer") ?: "customer"
             val localBike = prefs.getString("local_bike_number", "") ?: ""
             
@@ -2212,7 +2247,20 @@ class DeliveryViewModel : WalletViewModel() {
                     if (db != null) {
                         db.collection("users").document(currentUser.uid).get()
                             .addOnSuccessListener { doc ->
-                                val name = if (doc.exists()) doc.getString("name") ?: localName else localName
+                                val fsName = if (doc.exists()) doc.getString("name") ?: "" else ""
+                                val isFsNamePlaceholder = fsName.isBlank() || fsName.equals("Elite Member", ignoreCase = true) || fsName.equals("Engraced Member", ignoreCase = true) || fsName.equals("New Member", ignoreCase = true)
+                                val isLocalNameValid = localName.isNotBlank() && !localName.equals("Elite Member", ignoreCase = true) && !localName.equals("Engraced Member", ignoreCase = true) && !localName.equals("New Member", ignoreCase = true)
+
+                                val name = if (isLocalNameValid) {
+                                    if (isFsNamePlaceholder) {
+                                        com.esdispatch.data.FirebaseManager.saveUserProfileToFirestore(currentUser.uid, localName, localEmail, localPhone)
+                                    }
+                                    localName
+                                } else if (!isFsNamePlaceholder) {
+                                    fsName
+                                } else {
+                                    localName.ifBlank { fsName.ifBlank { "Member" } }
+                                }
                                 val email = if (doc.exists()) doc.getString("email") ?: currentUser.email ?: localEmail else localEmail
                                 val phone = if (doc.exists()) doc.getString("phone") ?: localPhone else localPhone
                                 val role = if (doc.exists()) doc.getString("role") ?: localRole else localRole
@@ -2356,13 +2404,30 @@ class DeliveryViewModel : WalletViewModel() {
         }
 
         if (repository == null) {
-            val db = AppDatabase.getDatabase(context)
+            val db = try {
+                AppDatabase.getDatabase(context)
+            } catch (e: Throwable) {
+                android.util.Log.e("DeliveryViewModel", "Failed to open AppDatabase, resetting: ${e.message}")
+                try {
+                    context.deleteDatabase("gold_delivery_offline_db")
+                } catch (_: Throwable) {}
+                AppDatabase.getDatabase(context)
+            }
             val repo = DeliveryRepository(db)
             repository = repo
 
+            val dbExceptionHandler = kotlinx.coroutines.CoroutineExceptionHandler { _, throwable ->
+                android.util.Log.e("DeliveryViewModel", "Database coroutine exception: ${throwable.message}", throwable)
+                if (throwable is IllegalStateException || throwable.message?.contains("Room") == true) {
+                    try {
+                        context.deleteDatabase("gold_delivery_offline_db")
+                    } catch (_: Throwable) {}
+                }
+            }
+
             // Listen to reactive database flows and sync them to view state reactively!
             _loadingParcels.value = true
-            viewModelScope.launch {
+            viewModelScope.launch(dbExceptionHandler) {
                 kotlinx.coroutines.flow.combine(repo.parcels, _firebaseUserId) { list, uid ->
                     val currentUid = uid ?: ""
                     if (currentUid.isEmpty()) {
@@ -2393,28 +2458,24 @@ class DeliveryViewModel : WalletViewModel() {
                         }
                     }
 
-                    // Keep selection in sync with active parcels (don't stick on DELIVERED)
+                    // Keep selection in sync with parcels (do not forcibly wipe DELIVERED so user can see completion)
                     val activeParcels = filtered.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED }
                     val currentSelected = _selectedParcel.value
                     if (currentSelected != null) {
                         val updatedSelected = filtered.find { it.id == currentSelected.id }
                         if (updatedSelected != null) {
-                            if (updatedSelected.status == ParcelStatus.DELIVERED || updatedSelected.status == ParcelStatus.CANCELLED) {
-                                _selectedParcel.value = activeParcels.firstOrNull()
-                            } else {
-                                _selectedParcel.value = updatedSelected
-                            }
+                            _selectedParcel.value = updatedSelected
                         } else {
-                            _selectedParcel.value = activeParcels.firstOrNull()
+                            _selectedParcel.value = activeParcels.firstOrNull() ?: filtered.firstOrNull()
                         }
                     } else {
-                        _selectedParcel.value = activeParcels.firstOrNull()
+                        _selectedParcel.value = activeParcels.firstOrNull() ?: filtered.firstOrNull()
                     }
                 }
             }
 
             _loadingTransactions.value = true
-            viewModelScope.launch {
+            viewModelScope.launch(dbExceptionHandler) {
                 kotlinx.coroutines.flow.combine(repo.transactions, _firebaseUserId) { list, uid ->
                     val currentUid = uid ?: ""
                     if (currentUid.isEmpty()) {
@@ -2428,20 +2489,28 @@ class DeliveryViewModel : WalletViewModel() {
                 }
             }
 
-            viewModelScope.launch {
+            viewModelScope.launch(dbExceptionHandler) {
                 repo.shiftAttendance.collect { _shiftAttendanceList.value = it }
             }
-            viewModelScope.launch {
+            viewModelScope.launch(dbExceptionHandler) {
                 repo.vehicleInspections.collect { _vehicleInspectionList.value = it }
             }
-            viewModelScope.launch {
+            viewModelScope.launch(dbExceptionHandler) {
                 repo.expenseClaims.collect { _expenseClaimList.value = it }
             }
-            viewModelScope.launch {
+            viewModelScope.launch(dbExceptionHandler) {
                 repo.shiftRosters.collect { _shiftRosterList.value = it }
             }
-            viewModelScope.launch {
+            viewModelScope.launch(dbExceptionHandler) {
                 repo.offlineSyncQueue.collect { _offlineSyncQueueList.value = it }
+            }
+
+            viewModelScope.launch {
+                com.esdispatch.data.FirebaseManager.listenToHeroBanners().collect { slides ->
+                    if (slides.isNotEmpty()) {
+                        _heroSlides.value = slides
+                    }
+                }
             }
 
             // Real-time Firestore transaction and wallet balance sync
@@ -2474,8 +2543,14 @@ class DeliveryViewModel : WalletViewModel() {
                                         
                                         val name = data["name"] as? String
                                         if (!name.isNullOrEmpty()) {
-                                            _userName.value = name
-                                            savePref("user_name", name)
+                                            val currentLocal = _userName.value
+                                            val isIncomingPlaceholder = name.equals("Elite Member", ignoreCase = true) || name.equals("Engraced Member", ignoreCase = true) || name.equals("New Member", ignoreCase = true)
+                                            val hasValidLocal = currentLocal.isNotBlank() && !currentLocal.equals("Elite Member", ignoreCase = true) && !currentLocal.equals("Engraced Member", ignoreCase = true) && !currentLocal.equals("New Member", ignoreCase = true)
+                                            if (!isIncomingPlaceholder || !hasValidLocal) {
+                                                _userName.value = name
+                                                savePref("user_name", name)
+                                                savePref("local_name", name)
+                                            }
                                         }
 
                                     val email = data["email"] as? String
@@ -2624,16 +2699,12 @@ class DeliveryViewModel : WalletViewModel() {
                                     if (curr != null) {
                                         val updatedCurr = parcelList.find { it.id == curr.id }
                                         if (updatedCurr != null) {
-                                            if (updatedCurr.status == ParcelStatus.DELIVERED || updatedCurr.status == ParcelStatus.CANCELLED) {
-                                                _selectedParcel.value = activeParcels.firstOrNull()
-                                            } else {
-                                                _selectedParcel.value = updatedCurr
-                                            }
+                                            _selectedParcel.value = updatedCurr
                                         } else {
-                                            _selectedParcel.value = activeParcels.firstOrNull()
+                                            _selectedParcel.value = activeParcels.firstOrNull() ?: parcelList.firstOrNull()
                                         }
                                     } else {
-                                        _selectedParcel.value = activeParcels.firstOrNull()
+                                        _selectedParcel.value = activeParcels.firstOrNull() ?: parcelList.firstOrNull()
                                     }
                                 }
                             }
@@ -2643,6 +2714,8 @@ class DeliveryViewModel : WalletViewModel() {
                             com.esdispatch.data.FirebaseManager.listenToUserNotifications(uid).collect { notifList ->
                                 if (notifList.isNotEmpty()) {
                                     repository?.saveNotifications(notifList)
+                                } else {
+                                    repository?.clearAllNotifications()
                                 }
                             }
                         }
@@ -2666,6 +2739,14 @@ class DeliveryViewModel : WalletViewModel() {
                                 }
                             }
                         }
+                        // 8. Listen to real-time Admin Hero Banners & Slides
+                        launch {
+                            com.esdispatch.data.FirebaseManager.listenToHeroBanners().collect { slides ->
+                                if (slides.isNotEmpty()) {
+                                    _heroSlides.value = slides
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2686,12 +2767,14 @@ class DeliveryViewModel : WalletViewModel() {
 
             _loadingNotifications.value = true
             viewModelScope.launch {
+                val notifPrefs = appContext?.getSharedPreferences("esdispatch_notifications", android.content.Context.MODE_PRIVATE)
                 kotlinx.coroutines.flow.combine(repo.notifications, _firebaseUserId) { list, uid ->
                     val currentUid = uid ?: ""
                     if (currentUid.isEmpty()) {
                         emptyList()
                     } else {
-                        list.filter { it.id != "NT-001" && it.id != "NT-002" }
+                        val dismissed = notifPrefs?.getStringSet("dismissed_notification_ids", emptySet()) ?: emptySet()
+                        list.filter { it.id !in dismissed && it.id != "NT-001" && it.id != "NT-002" }
                     }
                 }.collect { filtered ->
                     _notifications.value = filtered
@@ -2791,8 +2874,12 @@ class DeliveryViewModel : WalletViewModel() {
             _photoUrl.value = "https://api.dicebear.com/7.x/avataaars/png?seed=${if(seed.isNotEmpty()) seed else "brandon"}&backgroundColor=c0aede,d4d4d4,b6e3f4"
         }
         savePref("user_name", name)
+        savePref("local_name", name)
+        savePref("account_name", name)
         savePref("user_email", email)
+        savePref("local_email", email)
         savePref("user_phone", phone)
+        savePref("local_phone", phone)
         savePref("photo_url", _photoUrl.value)
 
         // Persist directly to Firestore 'users' collection if firebase is connected
@@ -2804,12 +2891,10 @@ class DeliveryViewModel : WalletViewModel() {
 
     fun syncParcel(parcel: Parcel) {
         val uid = _firebaseUserId.value
-        if (_firebaseConnected.value) {
-            if (uid != null) {
-                com.esdispatch.data.FirebaseManager.syncParcelToFirestore(parcel, uid)
-            } else {
-                com.esdispatch.data.FirebaseManager.syncParcelToFirestore(parcel)
-            }
+        if (uid != null) {
+            com.esdispatch.data.FirebaseManager.syncParcelToFirestore(parcel, uid)
+        } else {
+            com.esdispatch.data.FirebaseManager.syncParcelToFirestore(parcel)
         }
     }
 
@@ -4453,7 +4538,13 @@ class DeliveryViewModel : WalletViewModel() {
                 progress = 0.0f,
                 userId = _firebaseUserId.value ?: "",
                 additionalStops = draft.stops.filter { it.isNotBlank() }.joinToString("|"),
-                otpCode = (1000..9999).random().toString()
+                otpCode = (1000..9999).random().toString(),
+                category = draft.selectedCategory.ifBlank { draft.selectedService.ifBlank { "Standard" } },
+                createdAt = System.currentTimeMillis(),
+                pickupLat = draft.pickupLat,
+                pickupLng = draft.pickupLng,
+                deliveryLat = draft.deliveryLat,
+                deliveryLng = draft.deliveryLng
             )
 
             _parcels.value = listOf(newParcel) + _parcels.value
@@ -4529,9 +4620,18 @@ class DeliveryViewModel : WalletViewModel() {
                 onComplete?.invoke(false, "Insufficient wallet balance (₦${String.format("%,.0f", cost)} needed).")
                 return
             }
-            // Atomic debit; only when the server confirms do we create the booking.
+            // Atomic debit; only when the server confirms do we create the booking, with offline-first fallback
             com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, -cost) { success, newBalance ->
                 if (!success) {
+                    val currentBal = _walletBalance.value
+                    if (currentBal >= cost) {
+                        val fallbackBal = (currentBal - cost).coerceAtLeast(0.0)
+                        _walletBalance.value = fallbackBal
+                        savePref("wallet_balance", fallbackBal)
+                        createBooking()
+                        onComplete?.invoke(true, "Booking confirmed")
+                        return@updateUserWalletBalance
+                    }
                     com.esdispatch.util.SoundManager.playErrorBuzz()
                     onComplete?.invoke(false, "Wallet debit failed — booking was NOT created. Please retry.")
                     return@updateUserWalletBalance
@@ -4684,6 +4784,14 @@ class DeliveryViewModel : WalletViewModel() {
         if (uid != null) {
             com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, -totalCost) { success, newBal ->
                 if (!success) {
+                    val currentBal = _walletBalance.value
+                    if (currentBal >= totalCost) {
+                        val fallbackBal = (currentBal - totalCost).coerceAtLeast(0.0)
+                        _walletBalance.value = fallbackBal
+                        savePref("wallet_balance", fallbackBal)
+                        executeBatchCreation()
+                        return@updateUserWalletBalance
+                    }
                     com.esdispatch.util.SoundManager.playErrorBuzz()
                     onComplete?.invoke(false, "Wallet debit failed — batch booking was NOT created. Please retry.")
                     return@updateUserWalletBalance
@@ -4990,6 +5098,7 @@ class DeliveryViewModel : WalletViewModel() {
 
     fun showInAppNotification(title: String, message: String) {
         viewModelScope.launch {
+            com.esdispatch.util.SoundManager.playNotificationBeep()
             _activeInAppNotification.value = Pair(title, message)
             delay(5000)
             if (_activeInAppNotification.value?.first == title) {
@@ -4999,36 +5108,73 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     override fun addNotification(title: String, message: String, parcelId: String) {
+        // Deduplicate rapid identical triggers within 30 seconds
+        if (_notifications.value.any { it.title == title && it.message == message && (System.currentTimeMillis() - it.timestamp) < 30000 }) {
+            return
+        }
+        com.esdispatch.util.SoundManager.playNotificationBeep()
+        val notifId = "NT-${System.currentTimeMillis()}-${(100..999).random()}"
         val notif = NotificationItem(
-            id = "NT-${System.currentTimeMillis().toString().substring(8)}-${_notifications.value.size}",
+            id = notifId,
             title = title,
             message = message,
             time = "Just now",
-            parcelId = parcelId
+            parcelId = parcelId,
+            timestamp = System.currentTimeMillis()
         )
         _notifications.value = listOf(notif) + _notifications.value
         viewModelScope.launch {
             repository?.saveNotification(notif)
             val uid = _firebaseUserId.value
             if (uid != null) {
-                com.esdispatch.data.FirebaseManager.sendNotificationToUser(uid, title, message, parcelId.ifBlank { null })
+                com.esdispatch.data.FirebaseManager.sendNotificationToUser(
+                    userId = uid,
+                    title = title,
+                    message = message,
+                    parcelId = parcelId.ifBlank { null },
+                    customNotifId = notifId
+                )
             }
         }
     }
 
     fun clearAllNotifications() {
+        val allIds = _notifications.value.map { it.id }
         _notifications.value = emptyList()
+        val ctx = appContext
+        if (ctx != null) {
+            val notifPrefs = ctx.getSharedPreferences("esdispatch_notifications", android.content.Context.MODE_PRIVATE)
+            val dismissed = notifPrefs.getStringSet("dismissed_notification_ids", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+            dismissed.addAll(allIds)
+            notifPrefs.edit()
+                .putStringSet("dismissed_notification_ids", dismissed)
+                .putBoolean("notifications_cleared_by_user", true)
+                .apply()
+        }
         val uid = _firebaseUserId.value
-        if (uid != null) {
-            com.esdispatch.data.FirebaseManager.clearAllUserNotifications(uid)
+        viewModelScope.launch {
+            repository?.clearAllNotifications()
+            if (uid != null) {
+                com.esdispatch.data.FirebaseManager.clearAllUserNotifications(uid)
+            }
         }
     }
 
     fun deleteNotificationItem(notificationId: String) {
         _notifications.value = _notifications.value.filter { it.id != notificationId }
+        val ctx = appContext
+        if (ctx != null) {
+            val notifPrefs = ctx.getSharedPreferences("esdispatch_notifications", android.content.Context.MODE_PRIVATE)
+            val dismissed = notifPrefs.getStringSet("dismissed_notification_ids", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+            dismissed.add(notificationId)
+            notifPrefs.edit().putStringSet("dismissed_notification_ids", dismissed).apply()
+        }
         val uid = _firebaseUserId.value
-        if (uid != null) {
-            com.esdispatch.data.FirebaseManager.deleteUserNotification(uid, notificationId)
+        viewModelScope.launch {
+            repository?.deleteNotification(notificationId)
+            if (uid != null) {
+                com.esdispatch.data.FirebaseManager.deleteUserNotification(uid, notificationId)
+            }
         }
     }
 
@@ -5180,7 +5326,70 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     /**
-     * Cancels an active delivery and refunds the booking amount to the user's wallet.
+     * Calculates cancellation eligibility, refund amount, and mobilization call-out deduction.
+     * Returns Triple(refundAmount, deductedFee, isCancellable)
+     */
+    fun calculateCancellationRefund(parcel: Parcel): Triple<Double, Double, Boolean> {
+        val nonCancellable = listOf(
+            ParcelStatus.PICKED_UP,
+            ParcelStatus.TRANSIT,
+            ParcelStatus.ARRIVED,
+            ParcelStatus.OUT_FOR_DELIVERY,
+            ParcelStatus.HANDOVER_VERIFIED,
+            ParcelStatus.DELIVERED,
+            ParcelStatus.CANCELLED
+        )
+        if (parcel.status in nonCancellable) {
+            return Triple(0.0, 0.0, false)
+        }
+        return if (parcel.status == ParcelStatus.ASSIGNED || parcel.status == ParcelStatus.RESERVED_NEXT) {
+            val fee = minOf(500.0, parcel.price)
+            val refund = maxOf(0.0, parcel.price - fee)
+            Triple(refund, fee, true)
+        } else {
+            Triple(parcel.price, 0.0, true)
+        }
+    }
+
+    /**
+     * Rebooks an existing parcel by copying all route parameters to the active draft and navigating
+     * directly to the matching modern booking workflow.
+     */
+    fun rebookParcel(parcel: Parcel, onNavigate: (String) -> Unit) {
+        _parcelDraft.update {
+            it.copy(
+                pickupAddress = parcel.pickupAddress,
+                deliveryAddress = parcel.deliveryAddress,
+                senderName = parcel.senderName,
+                senderPhone = parcel.senderPhone,
+                receiverName = parcel.receiverName,
+                receiverPhone = parcel.receiverPhone,
+                itemName = parcel.itemName,
+                quantity = parcel.quantity,
+                weight = parcel.weight,
+                length = parcel.length,
+                width = parcel.width,
+                height = parcel.height,
+                price = parcel.price,
+                selectedService = if (parcel.category.contains("Economy", ignoreCase = true)) "Economy" else "Express",
+                selectedCategory = parcel.category.ifBlank { "Standard" },
+                pickupLat = parcel.pickupLat,
+                pickupLng = parcel.pickupLng,
+                deliveryLat = parcel.deliveryLat,
+                deliveryLng = parcel.deliveryLng
+            )
+        }
+        val targetRoute = when {
+            parcel.category.contains("Economy", ignoreCase = true) -> "EconomyBooking"
+            parcel.category.contains("Batch", ignoreCase = true) -> "BatchBooking"
+            parcel.category.contains("Multi", ignoreCase = true) -> "MultiBooking"
+            else -> "ExpressBooking"
+        }
+        onNavigate(targetRoute)
+    }
+
+    /**
+     * Cancels an active delivery and refunds the booking amount to the user's wallet with anti-abuse enforcement.
      */
     fun cancelDelivery(parcelId: String, reason: String = "Customer request", onComplete: ((Boolean) -> Unit)? = null) {
         val currentParcels = _parcels.value
@@ -5190,26 +5399,22 @@ class DeliveryViewModel : WalletViewModel() {
             return
         }
 
-        val cancellableStatuses = listOf(
-            ParcelStatus.PENDING,
-            ParcelStatus.QUEUED,
-            ParcelStatus.RESERVED_NEXT,
-            ParcelStatus.ASSIGNED
-        )
-        if (parcel.status !in cancellableStatuses) {
+        val (refundAmount, deductedFee, isCancellable) = calculateCancellationRefund(parcel)
+        if (!isCancellable) {
+            showInAppNotification("Cancellation Unavailable", "Shipment is already in transit or completed and cannot be cancelled.")
             onComplete?.invoke(false)
             return
         }
 
-        val refundAmount = parcel.price
         val newBalance = _walletBalance.value + refundAmount
         _walletBalance.value = newBalance
         savePref("wallet_balance", newBalance.toFloat())
 
         if (refundAmount > 0) {
+            val feeNote = if (deductedFee > 0) " (₦${String.format("%,.0f", deductedFee)} dispatch fee deducted)" else ""
             val refundTx = com.esdispatch.data.Transaction(
                 id = "TX-RF-${System.currentTimeMillis().toString().takeLast(6)}",
-                title = "Refund: ${parcel.itemName}",
+                title = "Refund: ${parcel.itemName}$feeNote",
                 amount = refundAmount,
                 isTopUp = true,
                 type = "CREDIT",
@@ -5220,36 +5425,61 @@ class DeliveryViewModel : WalletViewModel() {
             _transactions.value = listOf(refundTx) + _transactions.value
         }
 
+        val updatedParcel = parcel.copy(status = ParcelStatus.CANCELLED)
         val updatedList = currentParcels.map {
-            if (it.id == parcelId) it.copy(status = ParcelStatus.CANCELLED) else it
+            if (it.id == parcelId) updatedParcel else it
         }
         _parcels.value = updatedList
 
         if (_selectedParcel.value?.id == parcelId) {
-            _selectedParcel.value = _selectedParcel.value?.copy(status = ParcelStatus.CANCELLED)
+            _selectedParcel.value = updatedParcel
+        }
+
+        viewModelScope.launch {
+            repository?.saveParcel(updatedParcel)
+            if (refundAmount > 0) {
+                val feeNote = if (deductedFee > 0) " (₦${String.format("%,.0f", deductedFee)} dispatch fee deducted)" else ""
+                val refundTx = com.esdispatch.data.Transaction(
+                    id = "TX-RF-${System.currentTimeMillis().toString().takeLast(6)}",
+                    title = "Refund: ${parcel.itemName}$feeNote",
+                    amount = refundAmount,
+                    isTopUp = true,
+                    type = "CREDIT",
+                    status = "SUCCESS",
+                    reference = parcel.id,
+                    userId = _firebaseUserId.value ?: ""
+                )
+                repository?.saveTransaction(refundTx)
+            }
         }
 
         try {
             val db = com.esdispatch.data.FirebaseManager.firestore
             if (db != null) {
-                db.collection("deliveries").document(parcelId).update(
-                    mapOf(
-                        "status" to "CANCELLED",
-                        "cancellationReason" to reason,
-                        "cancelledAt" to System.currentTimeMillis(),
-                        "refundedAmount" to refundAmount
-                    )
-                ).addOnSuccessListener {
-                    logAdminActivity("Order Cancelled", "User cancelled order $parcelId with refund ₦$refundAmount")
-                }.addOnFailureListener { e ->
-                    android.util.Log.e("DeliveryViewModel", "Failed to update Firestore cancelled status: ${e.message}")
+                val updateData = mapOf(
+                    "status" to "CANCELLED",
+                    "cancellationReason" to reason,
+                    "cancelledAt" to System.currentTimeMillis(),
+                    "deductedFee" to deductedFee,
+                    "refundedAmount" to refundAmount
+                )
+                db.collection("deliveries").document(parcelId).update(updateData)
+                    .addOnSuccessListener {
+                        logAdminActivity("Order Cancelled", "User cancelled order $parcelId with refund ₦$refundAmount (deducted: ₦$deductedFee)")
+                    }.addOnFailureListener { e ->
+                        android.util.Log.e("DeliveryViewModel", "Failed to update Firestore cancelled status: ${e.message}")
+                    }
+                val uid = _firebaseUserId.value
+                if (uid != null) {
+                    db.collection("users").document(uid).collection("deliveries").document(parcelId).update(updateData)
                 }
             }
         } catch (e: Exception) {
             android.util.Log.e("DeliveryViewModel", "Error cancelling delivery: ${e.message}")
         }
 
-        val refundMsg = if (refundAmount > 0) "₦${String.format("%,.2f", refundAmount)} refunded to wallet." else "Order cancelled."
+        val feeStr = if (deductedFee > 0) " (₦${String.format("%,.0f", deductedFee)} dispatch mobilization deducted)" else ""
+        val refundMsg = if (refundAmount > 0) "₦${String.format("%,.2f", refundAmount)} refunded to wallet$feeStr." else "Order cancelled."
         showInAppNotification("Delivery Cancelled", "Shipment #${parcelId.take(8)} has been cancelled. $refundMsg")
         onComplete?.invoke(true)
     }
@@ -5295,6 +5525,11 @@ class DeliveryViewModel : WalletViewModel() {
 
     fun triggerWelcomeNotification(userName: String) {
         viewModelScope.launch {
+            val ctx = appContext ?: return@launch
+            val prefs = ctx.getSharedPreferences("esdispatch_notifications", android.content.Context.MODE_PRIVATE)
+            if (prefs.getBoolean("welcome_notifs_seeded", false) || prefs.getBoolean("notifications_cleared_by_user", false)) {
+                return@launch
+            }
             val list = _notifications.value
             if (list.isEmpty()) {
                 val firstName = userName.trim().split(" ").firstOrNull() ?: userName
@@ -5306,6 +5541,7 @@ class DeliveryViewModel : WalletViewModel() {
                     "Secure Authentication Active",
                     "Your personalized 4-digit security PIN has been safely registered for maximum account integrity."
                 )
+                prefs.edit().putBoolean("welcome_notifs_seeded", true).apply()
             }
         }
     }
@@ -7199,7 +7435,12 @@ data class ParcelDraft(
     val width: Int = 15,
     val height: Int = 10,
     val selectedService: String = "Express",
-    val price: Double = 0.0
+    val price: Double = 0.0,
+    val selectedCategory: String = "Standard",
+    val pickupLat: Double? = null,
+    val pickupLng: Double? = null,
+    val deliveryLat: Double? = null,
+    val deliveryLng: Double? = null
 )
 
 /** Discount coupon state resolved from the admin-managed `promotions` collection. */

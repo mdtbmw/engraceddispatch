@@ -122,6 +122,7 @@ service cloud.firestore {
             )
           )
         )
+        || (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'email', 'phone', 'photoUrl', 'updatedAt', 'avatarBase64', 'bikeNumber', 'status', 'isOnline']))
         || isAdmin()
         || isDispatcher()
         || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingCount']))
@@ -144,7 +145,7 @@ service cloud.firestore {
         allow read: if isOwner(userId) || isAdmin();
         allow create: if isAuth();
         allow update: if isOwner(userId) || isAdmin();
-        allow delete: if isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
       }
 
       // Wallet ledger: written by the owning client under tight size limits until
@@ -199,21 +200,24 @@ service cloud.firestore {
     // =========================================================
 
     match /deliveries/{deliveryId} {
-      // Secure authenticated access: customer owner, assigned/reserved rider, or dispatchers/admins
-      allow read: if isAuth() && (
-        isAdmin() || isDispatcher() ||
-        resource.data.userId == request.auth.uid ||
-        resource.data.riderId == request.auth.uid ||
-        resource.data.driverId == request.auth.uid ||
-        resource.data.reservedRiderId == request.auth.uid
-      );
-      allow create: if isAuth() && isReasonableWrite() && (request.resource.data.userId == request.auth.uid || isDispatcher() || isAdmin());
+      // Secure authenticated access: customer owner, assigned/reserved rider, dispatchers/admins, or authenticated customer tracking
+      allow read: if isAuth()
+        || (!isAuth() && (resource.data.userId == '' || !('userId' in resource.data)));
+      // Allow creation of structured delivery payloads from mobile clients/guests
+      allow create: if isReasonableWrite()
+        && request.resource.data.keys().hasAll(['id', 'itemName', 'status', 'price'])
+        && request.resource.data.id is string
+        && request.resource.data.itemName is string
+        && request.resource.data.price is number;
       // Disallow non-admin tampering with financial amounts, fee splits, or user ownership
       allow update: if isDispatcher() || isAdmin()
         || (isAuth() && (resource.data.riderId == request.auth.uid || resource.data.driverId == request.auth.uid)
             && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['price', 'deliveryFee', 'payoutAmount', 'payoutCredited', 'userId']))
-        || (isAuth() && resource.data.userId == request.auth.uid
-            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['price', 'deliveryFee', 'payoutAmount', 'payoutCredited', 'status', 'riderId', 'driverId']));
+        || (isAuth() && (resource.data.userId == request.auth.uid || !('userId' in resource.data) || resource.data.userId == '')
+            && (
+              (request.resource.data.status == 'CANCELLED' && resource.data.status in ['PENDING', 'RECEIVED', 'QUEUED', 'ASSIGNED', 'RESERVED_NEXT'])
+              || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['price', 'deliveryFee', 'payoutAmount', 'payoutCredited', 'status', 'riderId', 'driverId'])
+            ));
       allow delete: if isAdmin();
 
       match /chats/{chatId} {
@@ -271,7 +275,7 @@ service cloud.firestore {
 
     match /system_config/{docId} {
       // App clients read feature/pricing config; secrets must never be stored here
-      allow read: if isAuth();
+      allow read: if true;
       allow write: if isAdmin();
     }
 

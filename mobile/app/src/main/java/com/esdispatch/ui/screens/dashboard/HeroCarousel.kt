@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddShoppingCart
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.*
@@ -369,6 +371,369 @@ fun HeroCarousel(
                                                 text = "Add to Cart",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Black
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Gold),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = com.esdispatch.R.drawable.ic_logo),
+                                    contentDescription = "Inactive slide logo",
+                                    tint = Obsidian.copy(alpha = 0.15f),
+                                    modifier = Modifier.size(80.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Indicator dots placed cleanly below the card stack
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentWidth(Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            for (i in displayItems.indices.take(5)) {
+                val isSelected = i == currentHeroPage
+                val width = if (isSelected) 24.dp else 8.dp
+                Box(
+                    modifier = Modifier
+                        .size(width = width, height = 8.dp)
+                        .background(
+                            color = if (isSelected) Gold else Charcoal,
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun HeroBannerCarousel(
+    slides: List<com.esdispatch.data.HeroSlideItem> = emptyList(),
+    modifier: Modifier = Modifier,
+    onSlideClick: (com.esdispatch.data.HeroSlideItem) -> Unit = {}
+) {
+    val fallbackSlides = remember {
+        listOf(
+            com.esdispatch.data.HeroSlideItem(
+                id = "slide_1",
+                title = "Fast & Secure Dispatch Across Benin City",
+                subtitle = "Guaranteed on-demand courier pickup & safe doorstep dropoff.",
+                imageUrl = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=800&auto=format&fit=crop",
+                tag = "FEATURED",
+                actionText = "Book Now"
+            ),
+            com.esdispatch.data.HeroSlideItem(
+                id = "slide_2",
+                title = "Door-to-Door Escrow Protection",
+                subtitle = "Complete digital signature verification & OTP handover security.",
+                imageUrl = "https://images.unsplash.com/photo-1516541196182-6bdd0514013b?q=80&w=800&auto=format&fit=crop",
+                tag = "PROTECTED",
+                actionText = "Send Parcel"
+            ),
+            com.esdispatch.data.HeroSlideItem(
+                id = "slide_3",
+                title = "Live GPS Fleet Tracking 24/7",
+                subtitle = "Watch your rider travel live with dynamic arrival precision.",
+                imageUrl = "https://images.unsplash.com/photo-1512418491527-6f55e1112fb1?q=80&w=800&auto=format&fit=crop",
+                tag = "LIVE GPS",
+                actionText = "Track Order"
+            )
+        )
+    }
+
+    val displayItems = remember(slides) {
+        if (slides.size >= 3) {
+            slides.take(5)
+        } else if (slides.isNotEmpty()) {
+            (slides + fallbackSlides).distinctBy { it.id }.take(3)
+        } else {
+            fallbackSlides
+        }
+    }
+
+    var currentHeroPage by remember { mutableStateOf(0) }
+    var isHeroCarouselIdle by remember { mutableStateOf(true) }
+
+    LaunchedEffect(isHeroCarouselIdle, displayItems.size) {
+        if (!isHeroCarouselIdle) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(4500)
+            if (!isHeroCarouselIdle) break
+            currentHeroPage = (currentHeroPage + 1) % displayItems.size
+        }
+    }
+
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val animatedDragOffset by animateFloatAsState(
+        targetValue = dragOffset,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "dragOffsetAnimation"
+    )
+    val coroutineScope = rememberCoroutineScope()
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(256.dp)
+                .pointerInput(displayItems.size) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (dragOffset > 80f) {
+                                currentHeroPage = (currentHeroPage - 1 + displayItems.size) % displayItems.size
+                            } else if (dragOffset < -80f) {
+                                currentHeroPage = (currentHeroPage + 1) % displayItems.size
+                            }
+                            dragOffset = 0f
+                            coroutineScope.launch {
+                                kotlinx.coroutines.delay(5000)
+                                isHeroCarouselIdle = true
+                            }
+                        },
+                        onDragCancel = {
+                            dragOffset = 0f
+                            coroutineScope.launch {
+                                kotlinx.coroutines.delay(5000)
+                                isHeroCarouselIdle = true
+                            }
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            if (isHeroCarouselIdle) isHeroCarouselIdle = false
+                            dragOffset += dragAmount
+                        }
+                    )
+                },
+            contentAlignment = Alignment.TopCenter
+        ) {
+            val sortedIndices = displayItems.indices.toList().sortedByDescending { idx ->
+                (idx - currentHeroPage + displayItems.size) % displayItems.size
+            }
+
+            sortedIndices.forEach { index ->
+                val relativeIndex = (index - currentHeroPage + displayItems.size) % displayItems.size
+                val scaleFactor = when (relativeIndex) {
+                    0 -> 1.0f
+                    1 -> 0.92f
+                    else -> 0.84f
+                }
+                val yShift = when (relativeIndex) {
+                    0 -> 0.dp
+                    1 -> 18.dp
+                    else -> 36.dp
+                }
+                val zIndexVal = when (relativeIndex) {
+                    0 -> 3f
+                    1 -> 2f
+                    else -> 1f
+                }
+                val opacityVal = when (relativeIndex) {
+                    0 -> 1.0f
+                    1 -> 0.9f
+                    else -> 0.8f
+                }
+                val xShift = if (relativeIndex == 0) animatedDragOffset.dp else 0.dp
+                val animatedScale by animateFloatAsState(targetValue = scaleFactor, label = "scale_$index")
+                val animatedYShift by animateDpAsState(targetValue = yShift, label = "yShift_$index")
+                val animatedAlpha by animateFloatAsState(targetValue = opacityVal, label = "alpha_$index")
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .height(215.dp)
+                        .zIndex(zIndexVal)
+                        .graphicsLayer {
+                            scaleX = animatedScale
+                            scaleY = animatedScale
+                            translationX = xShift.toPx()
+                            translationY = animatedYShift.toPx()
+                            alpha = animatedAlpha
+                        },
+                    shape = RoundedCornerShape(26.dp),
+                    color = if (relativeIndex == 0) Obsidian else Gold,
+                    border = BorderStroke(
+                        width = 1.2.dp,
+                        color = if (relativeIndex == 0) BorderDark else Gold.copy(alpha = 0.5f)
+                    ),
+                    shadowElevation = 0.dp
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (relativeIndex == 0) {
+                            val slide = displayItems[index]
+                            Image(
+                                painter = rememberAsyncImagePainter(
+                                    model = slide.imageUrl.ifBlank { "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=800" }
+                                ),
+                                contentDescription = slide.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(26.dp))
+                                    .clickable { onSlideClick(slide) }
+                            )
+
+                            // Rich dark luxury vignette
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                Color.Black.copy(alpha = 0.35f),
+                                                Color.Black.copy(alpha = 0.88f)
+                                            )
+                                        )
+                                    )
+                            )
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(18.dp),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                // Top Row: Tag badge & Verified Dispatch badge
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Gold,
+                                        shadowElevation = 0.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.LocalShipping,
+                                                contentDescription = null,
+                                                tint = Obsidian,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = slide.tag.ifBlank { "FEATURED" }.uppercase(),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Obsidian,
+                                                letterSpacing = 0.5.sp
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color.Black.copy(alpha = 0.6f),
+                                        border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.4f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Star,
+                                                contentDescription = null,
+                                                tint = Gold,
+                                                modifier = Modifier.size(11.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "PREMIUM DISPATCH",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Bottom Section: Title, Subtitle & Action Button
+                                Column {
+                                    Text(
+                                        text = slide.title,
+                                        fontSize = 16.sp,
+                                        lineHeight = 20.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = slide.subtitle.ifBlank { "Reliable express courier service across Benin City." },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        color = TextGray.copy(alpha = 0.9f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "DISPATCH",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Gold,
+                                                letterSpacing = 0.8.sp
+                                            )
+                                            Text(
+                                                text = "BENIN CITY 24/7",
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.White
+                                            )
+                                        }
+
+                                        Button(
+                                            onClick = { onSlideClick(slide) },
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Gold,
+                                                contentColor = Obsidian
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                            modifier = Modifier.height(38.dp)
+                                        ) {
+                                            Text(
+                                                text = slide.actionText.ifBlank { "Book Now" },
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Black
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(
+                                                imageVector = Icons.Filled.ArrowForward,
+                                                contentDescription = null,
+                                                tint = Obsidian,
+                                                modifier = Modifier.size(14.dp)
                                             )
                                         }
                                     }

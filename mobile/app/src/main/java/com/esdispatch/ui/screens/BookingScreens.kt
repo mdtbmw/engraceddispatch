@@ -37,6 +37,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.esdispatch.ui.components.ConfettiEffect
+import com.esdispatch.util.SoundManager
 import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.components.RoundedSheet
 import com.esdispatch.ui.components.WalletCheckoutSheet
@@ -1571,6 +1573,7 @@ fun PaymentSuccessScreen(
     onNavigate: (String) -> Unit
 ) {
     val scale = remember { Animatable(0f) }
+    var triggerConfetti by remember { mutableStateOf(false) }
     val isLight = MaterialTheme.colorScheme.background == BackgroundLight
     val isDark = !isLight
     val context = LocalContext.current
@@ -1592,6 +1595,8 @@ fun PaymentSuccessScreen(
     val displayItem = latestParcel?.itemName?.ifBlank { null } ?: "Premium Package Dispatch"
 
     LaunchedEffect(Unit) {
+        SoundManager.playCelebrationFanfare()
+        triggerConfetti = true
         scale.animateTo(
             targetValue = 1f,
             animationSpec = spring(
@@ -1606,6 +1611,10 @@ fun PaymentSuccessScreen(
             .fillMaxSize()
             .background(LuxuryBlack)
     ) {
+        ConfettiEffect(
+            trigger = triggerConfetti,
+            onFinished = { triggerConfetti = false }
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()

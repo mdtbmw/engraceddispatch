@@ -51,7 +51,12 @@ data class Parcel(
     val exceptionType: String = "",
     val exceptionReason: String = "",
     val paymentStatus: String = "PAID",
-    val payoutCredited: Boolean = false
+    val payoutCredited: Boolean = false,
+    val category: String = "Standard",
+    val pickupLat: Double? = null,
+    val pickupLng: Double? = null,
+    val deliveryLat: Double? = null,
+    val deliveryLng: Double? = null
 )
 
 @Entity(tableName = "transactions")
@@ -101,6 +106,16 @@ data class PromoCode(
     val description: String = "",
     val code: String = "",
     val isLimited: Boolean = true
+)
+
+data class HeroSlideItem(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String = "",
+    val subtitle: String = "",
+    val imageUrl: String = "",
+    val active: Boolean = true,
+    val tag: String = "FEATURED",
+    val actionText: String = "Explore"
 )
 
 data class ParcelDraft(

@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.text.KeyboardOptions
@@ -1165,6 +1166,32 @@ fun WalletCheckoutSheet(
                             modifier = Modifier.weight(1f)
                         )
                     }
+                }
+            }
+
+            Surface(
+                color = if (isDark) Obsidian.copy(alpha = 0.5f) else GoldenWhiteSurface,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, if (isDark) Color(0x26FFFFFF) else Slate),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Policy",
+                        tint = Gold,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Cancellation Policy: Free cancellation while queued. ₦500 dispatch fee applies once a courier is assigned and en route. Orders in transit cannot be cancelled.",
+                        fontSize = 11.sp,
+                        color = TextGray,
+                        lineHeight = 15.sp
+                    )
                 }
             }
 

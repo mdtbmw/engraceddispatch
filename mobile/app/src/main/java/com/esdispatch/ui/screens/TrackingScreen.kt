@@ -324,12 +324,10 @@ fun ActiveTrackingScreen(
             it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED
         }
     }
-    val activeParcel = remember(selectedParcel, activeParcels) {
-        if (selectedParcel != null && selectedParcel?.status != ParcelStatus.DELIVERED && selectedParcel?.status != ParcelStatus.CANCELLED) {
-            selectedParcel
-        } else {
-            activeParcels.firstOrNull()
-        }
+    val activeParcel = remember(selectedParcel, activeParcels, userParcels) {
+        selectedParcel
+            ?: activeParcels.firstOrNull()
+            ?: userParcels.firstOrNull()
     }
 
     val previewParcel = remember {
@@ -491,7 +489,7 @@ fun ActiveTrackingScreen(
 
     val bottomCardHeight by animateDpAsState(
         targetValue = when (drawerState) {
-            DrawerState.CLOSED -> if (hasNoBooking) 40.dp else 120.dp
+            DrawerState.CLOSED -> if (hasNoBooking) 48.dp else 76.dp
             DrawerState.COLLAPSED -> if (hasNoBooking) 140.dp else dynamicCollapsedHeight
             DrawerState.EXPANDED -> if (hasNoBooking) 140.dp else dynamicExpandedHeight
         },
@@ -638,7 +636,7 @@ fun ActiveTrackingScreen(
     var showTraffic by remember { mutableStateOf(true) }
     var mapZoom by remember { mutableFloatStateOf(14.5f) }
     var dismissedTrafficAlert by remember { mutableStateOf(false) }
-    var followUser by remember { mutableStateOf(true) }
+    var followUser by remember(hasNoBooking) { mutableStateOf(hasNoBooking) }
 
     // Dynamic infinite animation for real-time courier path gliding
     val infiniteTransition = rememberInfiniteTransition(label = "tracking")
@@ -731,6 +729,11 @@ fun ActiveTrackingScreen(
             ) {
             val routeColor = if (aiTrafficCongested) "#FF3B30" else if (showTraffic) "#FF9500" else "#FFB800"
 
+            val matchedRider = riders.find { it.id == parcel.riderId || it.name.equals(parcel.courierName, ignoreCase = true) } ?: riders.firstOrNull()
+            val resolvedCourierAvatar = if (parcel.courierAvatar.isNotBlank()) parcel.courierAvatar else (matchedRider?.avatar ?: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&h=120&fit=crop")
+            val resolvedCourierName = if (parcel.courierName.isNotBlank()) parcel.courierName else (matchedRider?.name ?: "Verified Dispatch Courier")
+            val resolvedCourierPhone = if (parcel.courierPhone.isNotBlank()) parcel.courierPhone else (matchedRider?.phone ?: "+234 803 777 8888")
+
             // 1. FULL SCREEN MAP BACKGROUND (Uber-like experience)
             if (isLocalLoading) {
                 SkeletonBox(
@@ -747,7 +750,7 @@ fun ActiveTrackingScreen(
                     isSatellite = isSatelliteMode,
                     showTraffic = showTraffic,
                     zoom = mapZoom,
-                    courierAvatar = parcel.courierAvatar,
+                    courierAvatar = resolvedCourierAvatar,
                     routeColor = routeColor,
                     onMapTypeToggled = { isSat ->
                         isSatelliteMode = isSat
@@ -1077,18 +1080,27 @@ fun ActiveTrackingScreen(
                     // --------------------------------------------------------------------------------------------
                     // LOWER PORTION: COLLAPSIBLE DRWAVER (overlapping map, extremely pretty!)
                     // --------------------------------------------------------------------------------------------
+                    val isDrawerClosed = drawerState == DrawerState.CLOSED
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
+                            .navigationBarsPadding()
                             .height(bottomCardHeight)
+                            .padding(
+                                horizontal = if (isDrawerClosed) 16.dp else 0.dp,
+                                vertical = if (isDrawerClosed) 8.dp else 0.dp
+                            )
                             .zIndex(20f)
                     ) {
                         Card(
                             modifier = Modifier.fillMaxSize(),
-                            shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-                            colors = CardDefaults.cardColors(containerColor = if (isDark) Obsidian else GoldenWhiteLight),
-                            border = BorderStroke(1.5.dp, if (isDark) Gold else BorderLight)
+                            shape = if (isDrawerClosed) RoundedCornerShape(24.dp) else RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDrawerClosed) (if (isDark) Obsidian else Color(0xFF18181B)) else (if (isDark) Obsidian else GoldenWhiteLight)
+                            ),
+                            border = BorderStroke(1.5.dp, if (isDrawerClosed) Gold else (if (isDark) Gold else BorderLight)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = if (isDrawerClosed) 8.dp else 0.dp)
                         ) {
                             Box(modifier = Modifier.fillMaxSize()) {
                                 val overrideStyle = androidx.compose.ui.text.TextStyle(
@@ -1099,8 +1111,149 @@ fun ActiveTrackingScreen(
                                     androidx.compose.material3.LocalTextStyle provides overrideStyle,
                                     androidx.compose.material3.LocalContentColor provides (if (isDark) GoldLight else Obsidian)
                                 ) {
+                                if (drawerState == DrawerState.CLOSED) {
+                                    // SLEEK COMPACT BOTTOM BAR WHEN DRAWER IS MINIMIZED
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable { drawerState = DrawerState.COLLAPSED }
+                                            .padding(horizontal = 16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        if (hasNoBooking) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(36.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Gold),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(Icons.Filled.Send, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                }
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Text("Tap to Book Express Dispatch", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                            }
+                                            Icon(Icons.Filled.KeyboardArrowUp, null, tint = Gold, modifier = Modifier.size(20.dp))
+                                        } else {
+                                            val isCourierAssigned = parcel.courierName.isNotBlank() &&
+                                                !parcel.courierName.equals("unassigned", ignoreCase = true) &&
+                                                parcel.riderId.isNotBlank() &&
+                                                parcel.status != ParcelStatus.PENDING &&
+                                                parcel.status != ParcelStatus.QUEUED
+
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                if (isCourierAssigned) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(42.dp)
+                                                            .clip(CircleShape)
+                                                            .border(1.5.dp, Gold, CircleShape)
+                                                    ) {
+                                                        Image(
+                                                            painter = rememberAsyncImagePainter(resolvedCourierAvatar),
+                                                            contentDescription = "Courier",
+                                                            contentScale = ContentScale.Crop,
+                                                            modifier = Modifier.fillMaxSize()
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Column {
+                                                        Text(
+                                                            text = resolvedCourierName,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isDark) Color.White else Obsidian,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Text(
+                                                            text = when (parcel.status) {
+                                                                ParcelStatus.DELIVERED -> "Delivered Successfully"
+                                                                ParcelStatus.ARRIVED -> "Rider Arrived"
+                                                                else -> "In Transit • Tap for details"
+                                                            },
+                                                            fontSize = 11.sp,
+                                                            color = TextGray
+                                                        )
+                                                    }
+                                                } else {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(38.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Gold.copy(alpha = 0.2f))
+                                                            .border(1.dp, Gold, CircleShape),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Filled.DirectionsBike,
+                                                            null,
+                                                            tint = Gold,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Column {
+                                                        Text(
+                                                            text = "Request Queued",
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isDark) Color.White else Obsidian
+                                                        )
+                                                        Text(
+                                                            text = "Assigning verified rider…",
+                                                            fontSize = 11.sp,
+                                                            color = TextGray
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            // PIN indicator and expand action
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                if (parcel.otpCode.isNotBlank()) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = Gold.copy(alpha = 0.15f),
+                                                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                                                    ) {
+                                                        Text(
+                                                            text = "PIN: ${parcel.otpCode}",
+                                                            color = if (isDark) Gold else Obsidian,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Gold),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        Icons.Filled.KeyboardArrowUp,
+                                                        contentDescription = "Expand",
+                                                        tint = Obsidian,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
                                 // Upper Scrollable Content (only shown when not closed)
-                                if (drawerState != DrawerState.CLOSED) {
                                     if (hasNoBooking) {
                                         Box(
                                             modifier = Modifier
@@ -1982,10 +2135,96 @@ is ZodResult.Error -> {
                                     }
                                 }
 
+                                if (drawerState == DrawerState.CLOSED && !hasNoBooking) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable {
+                                                drawerState = DrawerState.COLLAPSED
+                                                isGoingUp = true
+                                            }
+                                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(42.dp)
+                                                    .border(2.dp, Gold, CircleShape)
+                                                    .clip(CircleShape)
+                                            ) {
+                                                Image(
+                                                    painter = rememberAsyncImagePainter(resolvedCourierAvatar),
+                                                    contentDescription = "Courier Profile",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column {
+                                                Text(
+                                                    text = resolvedCourierName,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp,
+                                                    color = if (isDark || drawerState == DrawerState.CLOSED) Color.White else Obsidian,
+                                                    maxLines = 1
+                                                )
+                                                Text(
+                                                    text = when (parcel.status) {
+                                                        ParcelStatus.ASSIGNED -> "Courier Assigned"
+                                                        ParcelStatus.PICKED_UP -> "Picked Up • On the way"
+                                                        ParcelStatus.TRANSIT -> "In Transit"
+                                                        ParcelStatus.ARRIVED -> "Courier Arrived"
+                                                        ParcelStatus.DELIVERED -> "Delivered"
+                                                        ParcelStatus.RESERVED_NEXT -> "Courier Reserved"
+                                                        ParcelStatus.QUEUED -> "Queued"
+                                                        else -> "Active Dispatch"
+                                                    },
+                                                    fontSize = 11.sp,
+                                                    color = Gold,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Gold,
+                                            onClick = {
+                                                drawerState = DrawerState.COLLAPSED
+                                                isGoingUp = true
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Details",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
+                                                    color = Obsidian
+                                                )
+                                                Icon(
+                                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                                    contentDescription = "Expand",
+                                                    tint = Obsidian,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
                                 }
 
                                 // 4. THE COURIER / DRIVER AGENT CARD (FIXED AT THE ABSOLUTE BOTTOM)
-                                if (!hasNoBooking) {
+                                if (!hasNoBooking && drawerState != DrawerState.CLOSED) {
                                     val isCourierAssigned = parcel.courierName.isNotBlank() &&
                                         !parcel.courierName.equals("unassigned", ignoreCase = true) &&
                                         parcel.riderId.isNotBlank() &&
@@ -2046,7 +2285,7 @@ is ZodResult.Error -> {
                                                                 .clip(CircleShape)
                                                         ) {
                                                             Image(
-                                                                painter = rememberAsyncImagePainter(parcel.courierAvatar),
+                                                                painter = rememberAsyncImagePainter(resolvedCourierAvatar),
                                                                 contentDescription = "Courier Profile",
                                                                 contentScale = ContentScale.Crop,
                                                                 modifier = Modifier.fillMaxSize()
@@ -2055,7 +2294,7 @@ is ZodResult.Error -> {
                                                         Spacer(modifier = Modifier.width(12.dp))
                                                         Column {
                                                             Text(
-                                                                text = parcel.courierName,
+                                                                text = resolvedCourierName,
                                                                 fontWeight = FontWeight.ExtraBold,
                                                                 fontSize = 16.sp,
                                                                 color = Color.White
@@ -2090,7 +2329,7 @@ is ZodResult.Error -> {
                                                             .clip(CircleShape)
                                                             .background(GoldenWhiteLight)
                                                             .clickable {
-                                                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${parcel.courierPhone}"))
+                                                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$resolvedCourierPhone"))
                                                                 try {
                                                                     context.startActivity(dialIntent)
                                                                 } catch (e: Exception) {
@@ -2215,8 +2454,13 @@ is ZodResult.Error -> {
                                             isGoingUp = true
                                         }
                                         DrawerState.COLLAPSED -> {
-                                            drawerState = DrawerState.EXPANDED
-                                            isGoingUp = true
+                                            if (isGoingUp) {
+                                                drawerState = DrawerState.EXPANDED
+                                                isGoingUp = false
+                                            } else {
+                                                drawerState = DrawerState.CLOSED
+                                                isGoingUp = true
+                                            }
                                         }
                                         DrawerState.EXPANDED -> {
                                             drawerState = DrawerState.COLLAPSED
@@ -2482,8 +2726,10 @@ fun LiveMapView(
                 LeafletJavascriptInterface(
                     context = context,
                     onMapClickCallback = { lat, lng ->
-                        reverseGeocodeAddress(context, lat, lng) { address ->
-                            com.esdispatch.util.CustomToastBridge.show("Location Selected: $address", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                        if (hasNoBooking) {
+                            reverseGeocodeAddress(context, lat, lng) { address ->
+                                com.esdispatch.util.CustomToastBridge.show("Location Selected: $address", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                            }
                         }
                     },
                     onMarkerPlacedCallback = { label, lat, lng ->
@@ -2971,14 +3217,33 @@ fun LiveMapView(
                         if (typeof map.resize === 'function') {
                             map.resize();
                         }
-                        var finalCenter = hasUserLoc ? [userLoc[1], userLoc[0]] : [pickupLoc[1], pickupLoc[0]];
-                        map.setCenter(finalCenter);
+                        if (hasNoBooking) {
+                            var finalCenter = hasUserLoc ? [userLoc[1], userLoc[0]] : [pickupLoc[1], pickupLoc[0]];
+                            map.setCenter(finalCenter);
+                        } else {
+                            try {
+                                var bounds = new mapboxgl.LngLatBounds();
+                                bounds.extend([pickupLoc[1], pickupLoc[0]]);
+                                bounds.extend([deliveryLoc[1], deliveryLoc[0]]);
+                                map.fitBounds(bounds, { padding: 60, maxZoom: 16 });
+                            } catch(e) {}
+                        }
                         
                         setTimeout(function() {
                             if (typeof map.resize === 'function') {
                                 map.resize();
                             }
-                            map.setCenter(finalCenter);
+                            if (hasNoBooking) {
+                                var finalCenter = hasUserLoc ? [userLoc[1], userLoc[0]] : [pickupLoc[1], pickupLoc[0]];
+                                map.setCenter(finalCenter);
+                            } else {
+                                try {
+                                    var bounds = new mapboxgl.LngLatBounds();
+                                    bounds.extend([pickupLoc[1], pickupLoc[0]]);
+                                    bounds.extend([deliveryLoc[1], deliveryLoc[0]]);
+                                    map.fitBounds(bounds, { padding: 60, maxZoom: 16 });
+                                } catch(e) {}
+                            }
                         }, 400);
 
                         if (!hasNoBooking) {
@@ -3148,6 +3413,11 @@ fun LiveMapView(
 
                         fetchOSRMRoute();
 
+                        try {
+                            var routeBounds = L.latLngBounds([pickupLoc, deliveryLoc]);
+                            map.fitBounds(routeBounds, { padding: [60, 60], maxZoom: 16 });
+                        } catch(e) {}
+
                         if (hasUserLoc) {
                             setUserLocation(userLoc[0], userLoc[1]);
                         }
@@ -3155,8 +3425,15 @@ fun LiveMapView(
 
                     setTimeout(function() {
                         map.invalidateSize();
-                        var finalCenter = hasUserLoc ? userLoc : pickupLoc;
-                        map.setView(finalCenter, 15);
+                        if (hasNoBooking) {
+                            var finalCenter = hasUserLoc ? userLoc : pickupLoc;
+                            map.setView(finalCenter, 15);
+                        } else {
+                            try {
+                                var routeBounds = L.latLngBounds([pickupLoc, deliveryLoc]);
+                                map.fitBounds(routeBounds, { padding: [60, 60], maxZoom: 16 });
+                            } catch(e) {}
+                        }
                     }, 400);
 
                     window.addEventListener('resize', function() {
@@ -3607,24 +3884,24 @@ fun ShippingJourneyProgressBar(
     val isLight = !isDark
     
     // Define steps
-    val steps = listOf("Ordered", "Shipped", "In Transit", "Delivered")
+    val steps = listOf("Queued", "Assigned", "In Transit", "Delivered")
     
-    // Determine active step index
-    val activeIndex = when {
-        status == ParcelStatus.CANCELLED -> -1
-        status == ParcelStatus.DELIVERED || progress >= 1.0f -> 3
-        status == ParcelStatus.OUT_FOR_DELIVERY || progress >= 0.7f -> 2
-        progress >= 0.35f -> 1
-        else -> 0
+    // Determine active step index directly mapped to ParcelStatus
+    val activeIndex = when (status) {
+        ParcelStatus.CANCELLED -> -1
+        ParcelStatus.DELIVERED -> 3
+        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED -> 2
+        ParcelStatus.ASSIGNED, ParcelStatus.PICKED_UP -> 1
+        ParcelStatus.PENDING, ParcelStatus.QUEUED, ParcelStatus.RESERVED_NEXT -> 0
     }
     
     // Progress line mapping (fraction of track that is filled)
     val targetProgressFraction = when {
         status == ParcelStatus.CANCELLED -> 0f
         activeIndex == 3 -> 1.0f
-        activeIndex == 2 -> 0.66f + ((progress - 0.7f).coerceAtLeast(0f) * 1.03f).coerceAtMost(0.34f)
-        activeIndex == 1 -> 0.33f + ((progress - 0.35f).coerceAtLeast(0f) * 0.94f).coerceAtMost(0.33f)
-        else -> 0.0f + (progress * 0.94f).coerceAtMost(0.33f)
+        activeIndex == 2 -> 0.66f + ((progress - 0.5f).coerceAtLeast(0f) * 0.68f).coerceAtMost(0.34f)
+        activeIndex == 1 -> 0.33f + ((progress - 0.2f).coerceAtLeast(0f) * 0.55f).coerceAtMost(0.33f)
+        else -> 0.08f
     }.coerceIn(0f, 1f)
     
     val animatedProgressFraction by animateFloatAsState(

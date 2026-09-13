@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import com.esdispatch.ui.components.MarketplaceProductCard
+import com.esdispatch.ui.screens.dashboard.HeroCarousel
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -260,7 +261,22 @@ fun MarketplaceScreen(
                         contentPadding = PaddingValues(bottom = 160.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                    // ── 1. Hero & Verified Stores (Scrolls Away Naturally) ──
+                    // ── 1. Hero Featured Carousel & Verified Stores (Scrolls Away Naturally) ──
+                    if (displayItems.isNotEmpty()) {
+                        item(key = "marketplace_hero_carousel") {
+                            HeroCarousel(
+                                products = displayItems,
+                                onAddToCart = { item ->
+                                    viewModel.addToCart(item)
+                                    com.esdispatch.util.CustomToastBridge.show("Added ${item.title} to cart", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                                },
+                                onProductClick = { item ->
+                                    showItemDetails = item
+                                }
+                            )
+                        }
+                    }
+
                     item(key = "vendor_hub_banner") {
                         Card(
                             onClick = { onNavigate("VendorPortal") },

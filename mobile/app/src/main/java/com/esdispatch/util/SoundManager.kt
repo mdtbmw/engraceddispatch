@@ -128,6 +128,70 @@ object SoundManager {
     }
 
     /**
+     * Joyous, triumphant celebration fanfare for bookings, big rewards, and payment success.
+     */
+    fun playCelebrationFanfare() {
+        triggerHaptic(HapticType.SUCCESS_DOUBLE)
+        if (!soundEnabled) return
+
+        scope.launch {
+            val noteDurationMs = 90
+            val notes = listOf(523.25, 783.99, 1046.50, 1318.51) // C5, G5, C6, E6
+            val samplesPerNote = (SAMPLE_RATE * noteDurationMs) / 1000
+            val finalSustainSamples = (SAMPLE_RATE * 220) / 1000
+            val totalSamples = (samplesPerNote * (notes.size - 1)) + finalSustainSamples
+            val pcm = ShortArray(totalSamples)
+
+            notes.forEachIndexed { noteIdx, freq ->
+                val isLast = noteIdx == notes.size - 1
+                val duration = if (isLast) finalSustainSamples else samplesPerNote
+                val offset = noteIdx * samplesPerNote
+
+                for (i in 0 until duration) {
+                    if (offset + i >= totalSamples) break
+                    val t = i.toDouble() / SAMPLE_RATE
+                    val progress = i.toDouble() / duration
+                    val env = if (isLast) exp(-progress * 2.2) else exp(-progress * 3.2)
+                    // Harmonic overtone for shimmering brass/bell effect
+                    val fundamental = sin(2.0 * PI * freq * t)
+                    val overtone = sin(2.0 * PI * (freq * 2) * t) * 0.3
+                    val sample = (fundamental + overtone) * env * 0.5
+                    pcm[offset + i] = (sample * Short.MAX_VALUE).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+                }
+            }
+            playPcm(pcm)
+        }
+    }
+
+    /**
+     * Crisp, friendly two-tone chime for incoming alerts and in-app notifications.
+     */
+    fun playNotificationBeep() {
+        triggerHaptic(HapticType.LIGHT_CLICK)
+        if (!soundEnabled) return
+
+        scope.launch {
+            val noteDurationMs = 60
+            val notes = listOf(1318.51, 1760.00) // E6, A6
+            val samplesPerNote = (SAMPLE_RATE * noteDurationMs) / 1000
+            val totalSamples = samplesPerNote * notes.size
+            val pcm = ShortArray(totalSamples)
+
+            notes.forEachIndexed { noteIdx, freq ->
+                val offset = noteIdx * samplesPerNote
+                for (i in 0 until samplesPerNote) {
+                    val t = i.toDouble() / SAMPLE_RATE
+                    val progress = i.toDouble() / samplesPerNote
+                    val env = exp(-progress * 4.5)
+                    val sample = sin(2.0 * PI * freq * t) * env * 0.4
+                    pcm[offset + i] = (sample * Short.MAX_VALUE).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+                }
+            }
+            playPcm(pcm)
+        }
+    }
+
+    /**
      * Soft low dual-tone buzz for validation failure or incorrect PIN.
      */
     fun playErrorBuzz() {
@@ -182,12 +246,11 @@ object SoundManager {
                 AudioFormat.CHANNEL_OUT_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
-            val pcmBytes = pcm.size * 2
-            val bufferSize = maxOf(pcmBytes, if (minBuf > 0) minBuf else pcmBytes)
+            val bufferSize = maxOf(if (minBuf > 0) minBuf else 4096, pcm.size * 2)
             track = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build()
                 )
@@ -199,12 +262,12 @@ object SoundManager {
                         .build()
                 )
                 .setBufferSizeInBytes(bufferSize)
-                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
-            track.write(pcm, 0, pcm.size)
             track.play()
-            val sleepMs = ((pcm.size.toDouble() / SAMPLE_RATE) * 1000).toLong() + 30
+            track.write(pcm, 0, pcm.size)
+            val sleepMs = ((pcm.size.toDouble() / SAMPLE_RATE) * 1000).toLong() + 35
             Thread.sleep(sleepMs)
         } catch (e: Exception) {
             Log.w(TAG, "AudioTrack playback error: ${e.message}")

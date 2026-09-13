@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Bolt
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.*
 import com.esdispatch.util.CargoFeasibilityValidator
@@ -673,11 +674,13 @@ fun EconomyBookingScreen(
 
                         OutlinedTextField(
                             value = itemName,
-                            onValueChange = { itemName = it },
+                            onValueChange = { newName ->
+                                itemName = newName
+                            },
                             modifier = Modifier
                                 .fillMaxWidth(),
                             shape = RoundedCornerShape(20.dp),
-                            placeholder = { Text("Item Name (e.g., Documents, Fashion, Food, Electronics)", color = TextGray) },
+                            placeholder = { Text("Item Name (e.g., Bag of rice, Clothes, Food, Electronics)", color = TextGray) },
                             textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = accentColor,
@@ -690,6 +693,35 @@ fun EconomyBookingScreen(
                                 unfocusedPlaceholderColor = TextGray
                             )
                         )
+
+                        val inferredCategory = remember(itemName) { com.esdispatch.util.CargoCategoryClassifier.inferCategory(itemName) }
+                        if (inferredCategory != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Gold.copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.3f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Bolt,
+                                        contentDescription = null,
+                                        tint = Gold,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = "Category: $inferredCategory",
+                                        fontSize = 11.sp,
+                                        color = Gold,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(16.dp))
 

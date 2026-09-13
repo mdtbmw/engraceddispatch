@@ -1,11 +1,19 @@
 package com.esdispatch.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.animation.*
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import com.esdispatch.ui.screens.dashboard.HeroCarousel
+import com.esdispatch.ui.screens.dashboard.HeroBannerCarousel
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -99,8 +107,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.DirectionsBike
 import coil.compose.rememberAsyncImagePainter
@@ -231,13 +237,21 @@ fun DashboardScreen(
     var showWelcomeGiftDialog by remember { mutableStateOf(false) }
     val showOnboardingTooltip by viewModel.showOnboardingTooltip.collectAsState()
     val promotions by viewModel.promotions.collectAsState()
+    val biometricEnabled by viewModel.biometricEnabled.collectAsState()
     val sections by viewModel.dashboardSectionsEnabled.collectAsState()
+    val heroSlides by viewModel.heroSlides.collectAsState()
     LaunchedEffect(welcomeGiftClaimed, isNewRegistration) {
         if (!welcomeGiftClaimed && isNewRegistration) {
             kotlinx.coroutines.delay(1200)
             showWelcomeGiftDialog = true
         }
     }
+
+    var parcelToCancel by remember { mutableStateOf<Parcel?>(null) }
+    var showCancelPinDialog by remember { mutableStateOf(false) }
+    var cancelPinInput by remember { mutableStateOf("") }
+    var cancelPinError by remember { mutableStateOf<String?>(null) }
+    var isCancelling by remember { mutableStateOf(false) }
 
     var triggerConfetti by remember { mutableStateOf(false) }
     var previousDeliveryCount by remember { mutableStateOf(-1) }
@@ -584,7 +598,304 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+
+            // ORDER CANCELLATION PIN & BIOMETRIC VERIFICATION MODAL
+            val targetParcel = parcelToCancel
+            if (showCancelPinDialog && targetParcel != null) {
+                val (refundAmount, deductionFee, isCancellable) = viewModel.calculateCancellationRefund(targetParcel)
+                val biometricAvailable = remember { com.esdispatch.util.BiometricHelper.isBiometricAvailable(context) }
+                val activity = context as? androidx.fragment.app.FragmentActivity
+
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = {
+                        if (!isCancelling) {
+                            showCancelPinDialog = false
+                            cancelPinInput = ""
+                            cancelPinError = null
+                            parcelToCancel = null
+                        }
+                    },
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.75f))
+                            .clickable {
+                                if (!isCancelling) {
+                                    showCancelPinDialog = false
+                                    cancelPinInput = ""
+                                    cancelPinError = null
+                                    parcelToCancel = null
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth(0.92f)
+                                .padding(16.dp)
+                                .clickable(enabled = false) {},
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(containerColor = Charcoal),
+                            border = BorderStroke(1.5.dp, Gold)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .background(Color(0xFFE53935).copy(alpha = 0.15f), CircleShape)
+                                        .border(1.5.dp, Color(0xFFE53935), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = "PIN Required",
+                                        tint = Color(0xFFE53935),
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Text(
+                                    text = "Cancel & Refund Order",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isDark) Color.White else Obsidian
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                if (!isCancellable) {
+                                    Surface(
+                                        color = Color(0xFFE53935).copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = "Shipment #${targetParcel.id.take(8)} is already with the courier and in transit. Orders in transit cannot be cancelled in-app. Please contact customer support.",
+                                            fontSize = 12.sp,
+                                            color = Color(0xFFE53935),
+                                            textAlign = TextAlign.Center,
+                                            lineHeight = 17.sp,
+                                            modifier = Modifier.padding(12.dp)
+                                        )
+                                    }
+                                } else {
+                                    // Refund breakdown summary
+                                    Surface(
+                                        color = if (isDark) LuxuryBlack.copy(alpha = 0.5f) else Color(0xFFF7F7F8),
+                                        shape = RoundedCornerShape(14.dp),
+                                        border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(14.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("Original Fare:", fontSize = 12.sp, color = TextGray)
+                                                Text("₦${String.format("%,.2f", targetParcel.price)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) Color.White else Obsidian)
+                                            }
+                                            if (deductionFee > 0.0) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("Dispatch Mobilization Fee:", fontSize = 12.sp, color = Color(0xFFE53935))
+                                                    Text("-₦${String.format("%,.2f", deductionFee)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE53935))
+                                                }
+                                                Text(
+                                                    text = "Deducted because rider was already dispatched & en route.",
+                                                    fontSize = 10.sp,
+                                                    color = TextGray
+                                                )
+                                            } else {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("Cancellation Fee:", fontSize = 12.sp, color = SuccessGreen)
+                                                    Text("₦0.00 (Free)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SuccessGreen)
+                                                }
+                                            }
+                                            Divider(color = if (isDark) BorderDark else BorderLight, thickness = 1.dp)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("Net Wallet Refund:", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isDark) Gold else Obsidian)
+                                                Text("₦${String.format("%,.2f", refundAmount)}", fontSize = 14.sp, fontWeight = FontWeight.Black, color = if (isDark) Gold else Obsidian)
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    // Biometric One-Touch Button if enabled and available
+                                    if (biometricEnabled && biometricAvailable && activity != null) {
+                                        Button(
+                                            onClick = {
+                                                com.esdispatch.util.BiometricHelper.authenticate(
+                                                    activity = activity,
+                                                    title = "Authorize Cancellation",
+                                                    subtitle = "Confirm cancellation of shipment #${targetParcel.id.take(8)}",
+                                                    onSuccess = {
+                                                        isCancelling = true
+                                                        viewModel.cancelDelivery(targetParcel.id, "Cancelled by user (Biometric)") { success ->
+                                                            isCancelling = false
+                                                            showCancelPinDialog = false
+                                                            cancelPinInput = ""
+                                                            cancelPinError = null
+                                                            parcelToCancel = null
+                                                            if (success) {
+                                                                val msg = if (deductionFee > 0.0) {
+                                                                    "Order cancelled • ₦${String.format("%,.2f", refundAmount)} refunded (₦500 dispatch fee applied)"
+                                                                } else {
+                                                                    "Order cancelled • ₦${String.format("%,.2f", refundAmount)} refunded"
+                                                                }
+                                                                com.esdispatch.util.CustomToastBridge.show(msg, com.esdispatch.viewmodel.ToastType.SUCCESS)
+                                                            }
+                                                        }
+                                                    },
+                                                    onError = { err ->
+                                                        cancelPinError = err
+                                                    }
+                                                )
+                                            },
+                                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
+                                        ) {
+                                            Icon(imageVector = Icons.Default.Fingerprint, contentDescription = null, tint = Obsidian, modifier = Modifier.size(20.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Authorize with Fingerprint", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Obsidian)
+                                        }
+
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text("— OR ENTER PIN —", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = TextGray)
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                    }
+
+                                    OutlinedTextField(
+                                        value = cancelPinInput,
+                                        onValueChange = {
+                                            if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                                cancelPinInput = it
+                                                cancelPinError = null
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(0.65f),
+                                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                        keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
+                                        singleLine = true,
+                                        textStyle = androidx.compose.ui.text.TextStyle(
+                                            color = if (isDark) Color.White else Obsidian,
+                                            fontSize = 22.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 8.sp,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        ),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Gold,
+                                            unfocusedBorderColor = Slate,
+                                            cursorColor = Gold,
+                                            focusedTextColor = if (isDark) Color.White else Obsidian,
+                                            unfocusedTextColor = if (isDark) Color.White else Obsidian
+                                        ),
+                                        shape = RoundedCornerShape(14.dp)
+                                    )
+
+                                    if (cancelPinError != null) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = cancelPinError ?: "",
+                                            color = Color(0xFFE53935),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(20.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            if (!isCancelling) {
+                                                showCancelPinDialog = false
+                                                cancelPinInput = ""
+                                                cancelPinError = null
+                                                parcelToCancel = null
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(14.dp),
+                                        border = BorderStroke(1.dp, Slate)
+                                    ) {
+                                        Text(if (isCancellable) "Keep Order" else "Close", color = TextGray, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    if (isCancellable) {
+                                        Button(
+                                            onClick = {
+                                                val storedPin = viewModel.userPin.value
+                                                val isValid = if (storedPin.isBlank()) true else com.esdispatch.viewmodel.SecurityUtils.verifyPin(cancelPinInput, storedPin)
+                                                if (isValid) {
+                                                    isCancelling = true
+                                                    viewModel.cancelDelivery(targetParcel.id, "Customer cancelled via swiped PIN") { success ->
+                                                        isCancelling = false
+                                                        showCancelPinDialog = false
+                                                        cancelPinInput = ""
+                                                        cancelPinError = null
+                                                        parcelToCancel = null
+                                                        if (success) {
+                                                            val msg = if (deductionFee > 0.0) {
+                                                                "Order cancelled • ₦${String.format("%,.2f", refundAmount)} refunded (₦500 dispatch fee applied)"
+                                                            } else {
+                                                                "Order cancelled • ₦${String.format("%,.2f", refundAmount)} refunded"
+                                                            }
+                                                            com.esdispatch.util.CustomToastBridge.show(msg, com.esdispatch.viewmodel.ToastType.SUCCESS)
+                                                        }
+                                                    }
+                                                } else {
+                                                    cancelPinError = "Incorrect PIN. Try again."
+                                                }
+                                            },
+                                            enabled = cancelPinInput.length == 4 && !isCancelling,
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFFE53935),
+                                                contentColor = Color.White
+                                            )
+                                        ) {
+                                            if (isCancelling) {
+                                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                            } else {
+                                                Text("Confirm Cancel", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+            }
 
             // Background glow unified without jarring fixed-height seam lines
             val isSandbox by viewModel.isSandboxEnvironment.collectAsState()
@@ -605,19 +916,15 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.height(325.dp * (1f - progress)))
                 }
 
-                // 1. HERO CAROUSEL CARD - SMART 3-STACK FEATURED PRODUCTS
+                // 1. HERO CAROUSEL CARD - LUXURY 3-STACK DYNAMIC HERO SLIDES
                 if (sections["promo_banner"] != false) {
                     item {
                         Spacer(modifier = Modifier.height(12.dp))
                         Box(modifier = Modifier.tourSpotlightTarget("hero_carousel")) {
-                            HeroCarousel(
-                                products = marketplaceProducts,
-                                onAddToCart = { item ->
-                                    viewModel.addToCart(item)
-                                    com.esdispatch.util.CustomToastBridge.show("Added ${item.title} to cart", com.esdispatch.viewmodel.ToastType.SUCCESS)
-                                },
-                                onProductClick = { item ->
-                                    onNavigate("Marketplace")
+                            HeroBannerCarousel(
+                                slides = heroSlides,
+                                onSlideClick = { _ ->
+                                    onNavigate("SendParcel")
                                 }
                             )
                         }
@@ -795,371 +1102,35 @@ fun DashboardScreen(
                 }
             }
 
-            // 3. SPECIAL OFFERS CAROUSEL (WHITE CARDS ONLY, CENTER SNAP)
-            if (userRole != "rider" && promotions.isNotEmpty()) {
+            // 3. SPECIAL OFFERS CAROUSEL (Rendered below only when Marketplace is ON, avoiding duplicate promo carousels)
+            if (marketplaceEnabled && userRole != "rider") {
                 item {
                     Spacer(modifier = Modifier.height(24.dp))
                     Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Special Offers",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = AppTextColor
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val promoMockups = promotions.map { p ->
-                    val discountStr = if (p.discountPercent >= 100) "₦2,500.00" else "${p.discountPercent}% OFF"
-                    val title = p.description.take(20).replace("Enjoy ", "").replace("Get ", "")
-                    PromoMock(title = title, code = p.code, discount = discountStr, desc = p.description)
-                }
-
-                var currentIndex by remember { mutableStateOf(0) }
-                val swipeOffsetAnim = remember { Animatable(0f) }
-                val coroutineScope = rememberCoroutineScope()
-
-                // Auto-slide trigger to prevent coroutine cancellation issues during slide transitions
-                var autoSlideTrigger by remember { mutableStateOf(0) }
-                LaunchedEffect(autoSlideTrigger) {
-                    if (autoSlideTrigger > 0) {
-                        // Slide out to the left
-                        swipeOffsetAnim.animateTo(-800f, animationSpec = tween(350))
-                        currentIndex = (currentIndex + 1) % promoMockups.size
-                        swipeOffsetAnim.snapTo(800f)
-                        swipeOffsetAnim.animateTo(0f, animationSpec = spring(dampingRatio = 0.82f, stiffness = 300f))
-                    }
-                }
-
-                LaunchedEffect(currentIndex) {
-                    delay(5000L) // auto-play every 5 seconds
-                    autoSlideTrigger++
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(215.dp) // Generous height for stacked offsets
-                        .padding(horizontal = 24.dp)
-                        .pointerInput(Unit) {
-                            detectHorizontalDragGestures(
-                                onHorizontalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    coroutineScope.launch {
-                                        swipeOffsetAnim.snapTo(swipeOffsetAnim.value + dragAmount)
-                                    }
-                                },
-                                onDragEnd = {
-                                    coroutineScope.launch {
-                                        val offset = swipeOffsetAnim.value
-                                        if (offset > 200f) {
-                                            // Swipe Right: animate out right and load previous card
-                                            swipeOffsetAnim.animateTo(800f, animationSpec = tween(250))
-                                            currentIndex = (currentIndex - 1 + promoMockups.size) % promoMockups.size
-                                            swipeOffsetAnim.snapTo(-800f)
-                                            swipeOffsetAnim.animateTo(0f, animationSpec = spring(dampingRatio = 0.82f, stiffness = 300f))
-                                        } else if (offset < -200f) {
-                                            // Swipe Left: animate out left and load next card
-                                            swipeOffsetAnim.animateTo(-800f, animationSpec = tween(250))
-                                            currentIndex = (currentIndex + 1) % promoMockups.size
-                                            swipeOffsetAnim.snapTo(800f)
-                                            swipeOffsetAnim.animateTo(0f, animationSpec = spring(dampingRatio = 0.82f, stiffness = 300f))
-                                        } else {
-                                            // Snap back to center
-                                            swipeOffsetAnim.animateTo(0f, animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f))
-                                        }
-                                    }
-                                }
-                            )
-                        },
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    // Draw in reverse order (back card first) by sorting indices based on relativeIndex
-                    val promoCount = promoMockups.size
-                    val sortedIndices = promoMockups.indices.toList().sortedByDescending { idx ->
-                        (idx - currentIndex + promoCount) % promoCount
-                    }
-
-                    sortedIndices.forEach { index ->
-                        val relativeIndex = (index - currentIndex + promoCount) % promoCount
-                        val promo = promoMockups[index]
-
-                        // Determine scale, translation Y, and background color based on depth layer (relative index) dynamically
-                        val swipeProgress = (kotlin.math.abs(swipeOffsetAnim.value) / 800f).coerceIn(0f, 1f)
-
-                        val scale = when (relativeIndex) {
-                            0 -> 1.0f
-                            1 -> 0.90f + 0.10f * swipeProgress
-                            else -> 0.80f + 0.10f * swipeProgress
-                        }
-
-                        val translationY = when (relativeIndex) {
-                            0 -> 0.dp
-                            1 -> (18f - 18f * swipeProgress).dp
-                            else -> (36f - 18f * swipeProgress).dp
-                        }
-
-                        val baseColor = Charcoal
-                        val cardBgColor = if (relativeIndex == 0) {
-                            baseColor
-                        } else if (relativeIndex == 1) {
-                            androidx.compose.ui.graphics.lerp(Gold, baseColor, swipeProgress)
-                        } else {
-                            Gold
-                        }
-
-                        val contentAlpha = if (relativeIndex == 0) {
-                            1.0f - swipeProgress
-                        } else if (relativeIndex == 1) {
-                            swipeProgress
-                        } else {
-                            0f
-                        }
-
-                        val zIndexVal = when (relativeIndex) {
-                            0 -> 3f
-                            1 -> 2f
-                            else -> 1f
-                        }
-
-                        val rotationZ = if (relativeIndex == 0) (swipeOffsetAnim.value / 40f) else 0f
-                        val translationX = if (relativeIndex == 0) swipeOffsetAnim.value else 0f
-
-                        Surface(
-                            shape = RoundedCornerShape(24.dp),
-                            color = cardBgColor,
-                            border = BorderStroke(1.dp, if (relativeIndex == 0) BorderLight else Color.Transparent),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(165.dp)
-                                .graphicsLayer {
-                                    this.scaleX = scale
-                                    this.scaleY = scale
-                                    this.translationY = translationY.toPx()
-                                    this.translationX = translationX
-                                    this.rotationZ = rotationZ
-                                }
-                                .zIndex(zIndexVal),
-                            shadowElevation = 0.dp
-                        ) {
-                            if (relativeIndex == 0) {
-                                // Front Card: rich visual layout, texts, and custom Canvas isometric graphics
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .alpha(contentAlpha)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(16.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // Left Details column
-                                        Column(
-                                            modifier = Modifier
-                                                .weight(1.2f)
-                                                .fillMaxHeight(),
-                                            verticalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = promo.title,
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Obsidian
-                                                )
-                                                Surface(
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = Obsidian
-                                                ) {
-                                                    Text(
-                                                        text = promo.discount,
-                                                        fontSize = 9.sp,
-                                                        fontWeight = FontWeight.Black,
-                                                        color = Gold,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            Text(
-                                                text = promo.desc,
-                                                fontSize = 11.sp,
-                                                color = AppTextColor,
-                                                fontWeight = FontWeight.Medium,
-                                                lineHeight = 14.sp,
-                                                modifier = Modifier.padding(vertical = 4.dp)
-                                            )
-
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .background(Obsidian, RoundedCornerShape(12.dp))
-                                                    .padding(8.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = "CODE: ${promo.code}",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.White
-                                                )
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                        .clickable {
-                                                            com.esdispatch.util.CustomToastBridge.show("Promo code ${promo.code} applied successfully!", com.esdispatch.viewmodel.ToastType.SUCCESS)
-                                                        }
-                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "Apply",
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Black,
-                                                        color = Gold
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // Right Vector Illustration
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(0.8f)
-                                                .fillMaxHeight(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Canvas(
-                                                modifier = Modifier.fillMaxSize()
-                                            ) {
-                                                val canvasWidth = size.width
-                                                val canvasHeight = size.height
-
-                                                // Glowing circle bg
-                                                drawCircle(
-                                                    color = Gold.copy(alpha = 0.12f),
-                                                    radius = canvasWidth * 0.42f,
-                                                    center = Offset(canvasWidth * 0.65f, canvasHeight * 0.5f)
-                                                )
-
-                                                // Speed trails
-                                                val speedY1 = canvasHeight * 0.35f
-                                                val speedY2 = canvasHeight * 0.52f
-                                                val speedY3 = canvasHeight * 0.68f
-
-                                                drawLine(
-                                                    color = Gold.copy(alpha = 0.3f),
-                                                    start = Offset(canvasWidth * 0.1f, speedY1),
-                                                    end = Offset(canvasWidth * 0.45f, speedY1),
-                                                    strokeWidth = 3f,
-                                                    cap = StrokeCap.Round
-                                                )
-                                                drawLine(
-                                                    color = Gold,
-                                                    start = Offset(canvasWidth * 0.2f, speedY2),
-                                                    end = Offset(canvasWidth * 0.55f, speedY2),
-                                                    strokeWidth = 4f,
-                                                    cap = StrokeCap.Round
-                                                )
-                                                drawLine(
-                                                    color = Gold.copy(alpha = 0.3f),
-                                                    start = Offset(canvasWidth * 0.15f, speedY3),
-                                                    end = Offset(canvasWidth * 0.42f, speedY3),
-                                                    strokeWidth = 3f,
-                                                    cap = StrokeCap.Round
-                                                )
-
-                                                // Isometric Box
-                                                val boxSize = canvasWidth * 0.28f
-                                                val boxX = canvasWidth * 0.42f
-                                                val boxY = canvasHeight * 0.28f
-
-                                                // Front Left
-                                                val pathFrontLeft = androidx.compose.ui.graphics.Path().apply {
-                                                    moveTo(boxX, boxY + boxSize * 0.35f)
-                                                    lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 0.65f)
-                                                    lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 1.25f)
-                                                    lineTo(boxX, boxY + boxSize * 0.95f)
-                                                    close()
-                                                }
-                                                drawPath(pathFrontLeft, color = Obsidian)
-
-                                                // Front Right
-                                                val pathFrontRight = androidx.compose.ui.graphics.Path().apply {
-                                                    moveTo(boxX + boxSize * 0.5f, boxY + boxSize * 0.65f)
-                                                    lineTo(boxX + boxSize, boxY + boxSize * 0.35f)
-                                                    lineTo(boxX + boxSize, boxY + boxSize * 0.95f)
-                                                    lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 1.25f)
-                                                    close()
-                                                }
-                                                drawPath(pathFrontRight, color = Obsidian.copy(alpha = 0.85f))
-
-                                                // Top Face
-                                                val pathTopFace = androidx.compose.ui.graphics.Path().apply {
-                                                    moveTo(boxX, boxY + boxSize * 0.35f)
-                                                    lineTo(boxX + boxSize * 0.5f, boxY)
-                                                    lineTo(boxX + boxSize, boxY + boxSize * 0.35f)
-                                                    lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 0.7f)
-                                                    close()
-                                                }
-                                                drawPath(pathTopFace, color = Gold)
-
-                                                // Box Tape Accent
-                                                val pathTapeAccent = androidx.compose.ui.graphics.Path().apply {
-                                                    moveTo(boxX + boxSize * 0.22f, boxY + boxSize * 0.48f)
-                                                    lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 0.62f)
-                                                    lineTo(boxX + boxSize * 0.78f, boxY + boxSize * 0.48f)
-                                                    lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 0.34f)
-                                                    close()
-                                                }
-                                                drawPath(pathTapeAccent, color = Color.White.copy(alpha = 0.65f))
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                Box(modifier = Modifier.fillMaxSize())
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .wrapContentWidth(Alignment.CenterHorizontally),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    for (i in promoMockups.indices.take(5)) {
-                        val isSelected = i == currentIndex
-                        val width = if (isSelected) 24.dp else 8.dp
-                        Box(
-                            modifier = Modifier
-                                .size(width = width, height = 8.dp)
-                                .background(
-                                    color = if (isSelected) Gold else (if (isDark) Color(0xFF333333) else Color(0xFFE0E0E0)),
-                                    shape = CircleShape
-                                )
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Special Offers",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = AppTextColor
                         )
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    SpecialOffersCarousel(
+                        promotions = promotions,
+                        onPromoClick = { code ->
+                            viewModel.applyPromoCode(code) { success, msg ->
+                                com.esdispatch.util.CustomToastBridge.show(msg, if (success) com.esdispatch.viewmodel.ToastType.SUCCESS else com.esdispatch.viewmodel.ToastType.ERROR)
+                            }
+                        }
+                    )
                 }
             }
-        }
 
             // 5. ACTIVE DELIVERIES SECTION
             if (sections["active_shipments"] != false) {
@@ -1377,24 +1348,52 @@ fun DashboardScreen(
                     }
                 }
 
-                // Parcels List cards with Swipe-to-Archive
+                // Parcels List cards with Swipe-to-Cancel (active) or Swipe-to-Archive (completed/cancelled)
                 items(filteredParcels, key = { it.id }) { parcel ->
-                    SwipeToArchiveBox(
-                        key = parcel.id,
-                        onArchive = {
-                            viewModel.archiveParcel(parcel.id)
-                            com.esdispatch.util.CustomToastBridge.show("Parcel ${parcel.id} archived", com.esdispatch.viewmodel.ToastType.INFO)
+                    val isCancellable = parcel.status in listOf(
+                        ParcelStatus.PENDING,
+                        ParcelStatus.QUEUED,
+                        ParcelStatus.RESERVED_NEXT,
+                        ParcelStatus.ASSIGNED
+                    )
+                    if (isCancellable) {
+                        SwipeToCancelBox(
+                            key = parcel.id,
+                            onCancelRequest = {
+                                parcelToCancel = parcel
+                                cancelPinInput = ""
+                                cancelPinError = null
+                                showCancelPinDialog = true
+                            }
+                        ) {
+                            DeliveryCard(
+                                parcel = parcel,
+                                onClick = {
+                                    viewModel.selectParcelForTracking(parcel.id)
+                                    onNavigate("ActiveTracking")
+                                },
+                                onQuickMap = { quickViewParcel = it },
+                                onCopyTrackingId = { id -> viewModel.showCustomToast("Tracking ID copied: $id") }
+                            )
                         }
-                    ) {
-                        DeliveryCard(
-                            parcel = parcel,
-                            onClick = {
-                                viewModel.selectParcelForTracking(parcel.id)
-                                onNavigate("ActiveTracking")
-                            },
-                            onQuickMap = { quickViewParcel = it },
-                            onCopyTrackingId = { id -> viewModel.showCustomToast("Tracking ID copied: $id") }
-                        )
+                    } else {
+                        SwipeToArchiveBox(
+                            key = parcel.id,
+                            onArchive = {
+                                viewModel.archiveParcel(parcel.id)
+                                com.esdispatch.util.CustomToastBridge.show("Parcel ${parcel.id} archived", com.esdispatch.viewmodel.ToastType.INFO)
+                            }
+                        ) {
+                            DeliveryCard(
+                                parcel = parcel,
+                                onClick = {
+                                    viewModel.selectParcelForTracking(parcel.id)
+                                    onNavigate("ActiveTracking")
+                                },
+                                onQuickMap = { quickViewParcel = it },
+                                onCopyTrackingId = { id -> viewModel.showCustomToast("Tracking ID copied: $id") }
+                            )
+                        }
                     }
                 }
             }
@@ -1416,10 +1415,10 @@ fun DashboardScreen(
                 }
                 items(recentParcels) { parcel ->
                     HistoryOrderCard(
+                        modifier = Modifier.padding(horizontal = 24.dp),
                         parcel = parcel,
                         onClick = {
-                            viewModel.selectParcelForTracking(parcel.id)
-                            onNavigate("ActiveTracking")
+                            quickViewParcel = parcel
                         },
                         onRebook = {
                             viewModel.populateDraftFromParcel(parcel)
@@ -1427,10 +1426,12 @@ fun DashboardScreen(
                             onNavigate("BookingForm")
                         },
                         onViewReceipt = {
-                            viewModel.selectParcelForTracking(parcel.id)
-                            onNavigate("ActiveTracking")
+                            quickViewParcel = parcel
                         }
                     )
+                }
+                item {
+                    Spacer(modifier = Modifier.height(120.dp))
                 }
             }
             }
@@ -2031,6 +2032,357 @@ data class PromoMock(
 )
 
 @Composable
+fun SpecialOffersCarousel(
+    promotions: List<com.esdispatch.data.PromoCode>,
+    modifier: Modifier = Modifier,
+    onPromoClick: (String) -> Unit = {}
+) {
+    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
+    val fallbackPromos = remember {
+        listOf(
+            com.esdispatch.data.PromoCode(discountPercent = 30, description = "Weekend Economy Save 30%", code = "WEEKEND30"),
+            com.esdispatch.data.PromoCode(discountPercent = 25, description = "Express VIP 25% OFF discount", code = "EID2026"),
+            com.esdispatch.data.PromoCode(discountPercent = 100, description = "₦2,500 credit on first parcel", code = "FIRSTFREE"),
+            com.esdispatch.data.PromoCode(discountPercent = 20, description = "Safe Parcel Escrow Transit", code = "SECURE20")
+        )
+    }
+
+    val activePromos = if (promotions.isNotEmpty()) promotions else fallbackPromos
+
+    val promoMockups = remember(activePromos) {
+        activePromos.map { p ->
+            val discountStr = if (p.discountPercent >= 100) "₦2,500.00" else "${p.discountPercent}% OFF"
+            val title = p.description.take(24).replace("Enjoy ", "").replace("Get ", "")
+            PromoMock(title = title, code = p.code, discount = discountStr, desc = p.description)
+        }
+    }
+
+    var currentIndex by remember { mutableStateOf(0) }
+    val swipeOffsetAnim = remember { Animatable(0f) }
+    val coroutineScope = rememberCoroutineScope()
+
+    var autoSlideTrigger by remember { mutableStateOf(0) }
+    LaunchedEffect(autoSlideTrigger) {
+        if (autoSlideTrigger > 0 && promoMockups.isNotEmpty()) {
+            swipeOffsetAnim.animateTo(-800f, animationSpec = tween(350))
+            currentIndex = (currentIndex + 1) % promoMockups.size
+            swipeOffsetAnim.snapTo(800f)
+            swipeOffsetAnim.animateTo(0f, animationSpec = spring(dampingRatio = 0.82f, stiffness = 300f))
+        }
+    }
+
+    LaunchedEffect(currentIndex, promoMockups.size) {
+        if (promoMockups.size > 1) {
+            delay(5000L)
+            autoSlideTrigger++
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(215.dp)
+                .padding(horizontal = 24.dp)
+                .pointerInput(promoMockups.size) {
+                    if (promoMockups.size > 1) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                coroutineScope.launch {
+                                    swipeOffsetAnim.snapTo(swipeOffsetAnim.value + dragAmount)
+                                }
+                            },
+                            onDragEnd = {
+                                coroutineScope.launch {
+                                    val offset = swipeOffsetAnim.value
+                                    if (offset > 200f) {
+                                        swipeOffsetAnim.animateTo(800f, animationSpec = tween(250))
+                                        currentIndex = (currentIndex - 1 + promoMockups.size) % promoMockups.size
+                                        swipeOffsetAnim.snapTo(-800f)
+                                        swipeOffsetAnim.animateTo(0f, animationSpec = spring(dampingRatio = 0.82f, stiffness = 300f))
+                                    } else if (offset < -200f) {
+                                        swipeOffsetAnim.animateTo(-800f, animationSpec = tween(250))
+                                        currentIndex = (currentIndex + 1) % promoMockups.size
+                                        swipeOffsetAnim.snapTo(800f)
+                                        swipeOffsetAnim.animateTo(0f, animationSpec = spring(dampingRatio = 0.82f, stiffness = 300f))
+                                    } else {
+                                        swipeOffsetAnim.animateTo(0f, animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f))
+                                    }
+                                }
+                            }
+                        )
+                    }
+                },
+            contentAlignment = Alignment.TopCenter
+        ) {
+            val promoCount = promoMockups.size
+            val sortedIndices = promoMockups.indices.toList().sortedByDescending { idx ->
+                (idx - currentIndex + promoCount) % promoCount
+            }
+
+            sortedIndices.forEach { index ->
+                val relativeIndex = (index - currentIndex + promoCount) % promoCount
+                val promo = promoMockups[index]
+                val swipeProgress = (kotlin.math.abs(swipeOffsetAnim.value) / 800f).coerceIn(0f, 1f)
+
+                val scale = when (relativeIndex) {
+                    0 -> 1.0f
+                    1 -> 0.90f + 0.10f * swipeProgress
+                    else -> 0.80f + 0.10f * swipeProgress
+                }
+
+                val translationY = when (relativeIndex) {
+                    0 -> 0.dp
+                    1 -> (18f - 18f * swipeProgress).dp
+                    else -> (36f - 18f * swipeProgress).dp
+                }
+
+                val baseColor = Charcoal
+                val cardBgColor = if (relativeIndex == 0) {
+                    baseColor
+                } else if (relativeIndex == 1) {
+                    androidx.compose.ui.graphics.lerp(Gold, baseColor, swipeProgress)
+                } else {
+                    Gold
+                }
+
+                val contentAlpha = if (relativeIndex == 0) {
+                    1.0f - swipeProgress
+                } else if (relativeIndex == 1) {
+                    swipeProgress
+                } else {
+                    0f
+                }
+
+                val zIndexVal = when (relativeIndex) {
+                    0 -> 3f
+                    1 -> 2f
+                    else -> 1f
+                }
+
+                val rotationZ = if (relativeIndex == 0) (swipeOffsetAnim.value / 40f) else 0f
+                val translationX = if (relativeIndex == 0) swipeOffsetAnim.value else 0f
+
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = cardBgColor,
+                    border = BorderStroke(1.dp, if (relativeIndex == 0) BorderLight else Color.Transparent),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(165.dp)
+                        .graphicsLayer {
+                            this.scaleX = scale
+                            this.scaleY = scale
+                            this.translationY = translationY.toPx()
+                            this.translationX = translationX
+                            this.rotationZ = rotationZ
+                        }
+                        .zIndex(zIndexVal),
+                    shadowElevation = 0.dp
+                ) {
+                    if (relativeIndex == 0) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .alpha(contentAlpha)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .fillMaxHeight(),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = promo.title,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDark) Color.White else Obsidian
+                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Obsidian
+                                        ) {
+                                            Text(
+                                                text = promo.discount,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Gold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = promo.desc,
+                                        fontSize = 11.sp,
+                                        color = AppTextColor,
+                                        fontWeight = FontWeight.Medium,
+                                        lineHeight = 14.sp,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Obsidian, RoundedCornerShape(12.dp))
+                                            .padding(8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "CODE: ${promo.code}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color.White
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .clickable {
+                                                    onPromoClick(promo.code)
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = "Apply",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Gold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(0.8f)
+                                        .fillMaxHeight(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                        val canvasWidth = size.width
+                                        val canvasHeight = size.height
+
+                                        drawCircle(
+                                            color = Gold.copy(alpha = 0.12f),
+                                            radius = canvasWidth * 0.42f,
+                                            center = Offset(canvasWidth * 0.65f, canvasHeight * 0.5f)
+                                        )
+
+                                        val speedY1 = canvasHeight * 0.35f
+                                        val speedY2 = canvasHeight * 0.52f
+                                        val speedY3 = canvasHeight * 0.68f
+
+                                        drawLine(
+                                            color = Gold.copy(alpha = 0.3f),
+                                            start = Offset(canvasWidth * 0.1f, speedY1),
+                                            end = Offset(canvasWidth * 0.45f, speedY1),
+                                            strokeWidth = 3f,
+                                            cap = StrokeCap.Round
+                                        )
+                                        drawLine(
+                                            color = Gold,
+                                            start = Offset(canvasWidth * 0.2f, speedY2),
+                                            end = Offset(canvasWidth * 0.55f, speedY2),
+                                            strokeWidth = 4f,
+                                            cap = StrokeCap.Round
+                                        )
+                                        drawLine(
+                                            color = Gold.copy(alpha = 0.3f),
+                                            start = Offset(canvasWidth * 0.15f, speedY3),
+                                            end = Offset(canvasWidth * 0.42f, speedY3),
+                                            strokeWidth = 3f,
+                                            cap = StrokeCap.Round
+                                        )
+
+                                        val boxSize = canvasWidth * 0.28f
+                                        val boxX = canvasWidth * 0.42f
+                                        val boxY = canvasHeight * 0.28f
+
+                                        val pathFrontLeft = androidx.compose.ui.graphics.Path().apply {
+                                            moveTo(boxX, boxY + boxSize * 0.35f)
+                                            lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 0.65f)
+                                            lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 1.25f)
+                                            lineTo(boxX, boxY + boxSize * 0.95f)
+                                            close()
+                                        }
+                                        drawPath(pathFrontLeft, color = Obsidian)
+
+                                        val pathFrontRight = androidx.compose.ui.graphics.Path().apply {
+                                            moveTo(boxX + boxSize * 0.5f, boxY + boxSize * 0.65f)
+                                            lineTo(boxX + boxSize, boxY + boxSize * 0.35f)
+                                            lineTo(boxX + boxSize, boxY + boxSize * 0.95f)
+                                            lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 1.25f)
+                                            close()
+                                        }
+                                        drawPath(pathFrontRight, color = Obsidian.copy(alpha = 0.85f))
+
+                                        val pathTopFace = androidx.compose.ui.graphics.Path().apply {
+                                            moveTo(boxX, boxY + boxSize * 0.35f)
+                                            lineTo(boxX + boxSize * 0.5f, boxY)
+                                            lineTo(boxX + boxSize, boxY + boxSize * 0.35f)
+                                            lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 0.7f)
+                                            close()
+                                        }
+                                        drawPath(pathTopFace, color = Gold)
+
+                                        val pathTapeAccent = androidx.compose.ui.graphics.Path().apply {
+                                            moveTo(boxX + boxSize * 0.22f, boxY + boxSize * 0.48f)
+                                            lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 0.62f)
+                                            lineTo(boxX + boxSize * 0.78f, boxY + boxSize * 0.48f)
+                                            lineTo(boxX + boxSize * 0.5f, boxY + boxSize * 0.34f)
+                                            close()
+                                        }
+                                        drawPath(pathTapeAccent, color = Color.White.copy(alpha = 0.65f))
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize())
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentWidth(Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            for (i in promoMockups.indices.take(5)) {
+                val isSelected = i == currentIndex
+                val width = if (isSelected) 24.dp else 8.dp
+                Box(
+                    modifier = Modifier
+                        .size(width = width, height = 8.dp)
+                        .background(
+                            color = if (isSelected) Gold else (if (isDark) Color(0xFF333333) else Color(0xFFE0E0E0)),
+                            shape = CircleShape
+                        )
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun DashboardActionBtn(
     title: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -2146,6 +2498,80 @@ fun SwipeToArchiveBox(
             ) {
                 content()
             }
+        }
+    }
+}
+
+@Composable
+fun SwipeToCancelBox(
+    key: Any,
+    onCancelRequest: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    var offsetX by remember(key) { mutableStateOf(0f) }
+    val animatedOffsetX by animateFloatAsState(
+        targetValue = offsetX,
+        label = "swipeCancelOffset",
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        )
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(32.dp))
+                .background(Color(0xFFE53935))
+                .padding(horizontal = 24.dp),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Cancel & Refund",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = "Cancel & Refund",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .offset { androidx.compose.ui.unit.IntOffset(animatedOffsetX.roundToInt(), 0) }
+                .pointerInput(key) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (offsetX < -130f) {
+                                offsetX = 0f
+                                onCancelRequest()
+                            } else {
+                                offsetX = 0f
+                            }
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            offsetX = (offsetX + dragAmount).coerceIn(-220f, 0f)
+                        }
+                    )
+                }
+        ) {
+            content()
         }
     }
 }
@@ -2952,6 +3378,218 @@ fun InteractivePlaceholderMap(
     }
 }
 
+@Composable
+fun WaybillInvoiceCard(
+    parcel: Parcel,
+    isDark: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val surfaceColor = if (isDark) Charcoal else GoldenWhiteLight
+    val borderColor = if (isDark) Gold.copy(alpha = 0.35f) else Slate
+    val textColor = if (isDark) Color.White else Obsidian
+    val waybillNumber = "WB-${parcel.id.take(8).uppercase()}"
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = surfaceColor,
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header: Official Consignment Badge & Barcode
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(Gold, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "OFFICIAL CONSIGNMENT WAYBILL",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Gold,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                    Text(
+                        text = waybillNumber,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = textColor,
+                        letterSpacing = 1.5.sp
+                    )
+                }
+
+                // Share Button
+                IconButton(
+                    onClick = {
+                        val shareText = """
+                            ESDISPATCH CONSIGNMENT RECEIPT
+                            Waybill: $waybillNumber
+                            Item: ${parcel.itemName}
+                            Status: ${parcel.status.name}
+                            Fare: ₦${String.format("%,.2f", parcel.price)}
+                            Pickup: ${parcel.pickupAddress}
+                            Delivery: ${parcel.deliveryAddress}
+                            Carrier: ESDispatch Fleet Verified
+                        """.trimIndent()
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                            type = "text/plain"
+                        }
+                        val shareIntent = Intent.createChooser(sendIntent, "Share Waybill Receipt")
+                        context.startActivity(shareIntent)
+                    },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(if (isDark) LuxuryBlack else Color.White, CircleShape)
+                        .border(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Share,
+                        contentDescription = "Share Waybill",
+                        tint = if (isDark) Gold else Obsidian,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            // Stylized Barcode
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(if (isDark) Color(0xFF141414) else Color(0xFFF2F2F2), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                val barColor = if (isDark) Color.White.copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.85f)
+                val totalWidth = size.width
+                val barCount = 44
+                val spacing = totalWidth / barCount
+                val seed = waybillNumber.hashCode()
+                for (i in 0 until barCount) {
+                    val isThick = ((seed shr (i % 16)) and 1) == 1 || i % 3 == 0
+                    val strokeW = if (isThick) 3.5f else 1.5f
+                    val x = i * spacing + spacing / 2
+                    drawLine(
+                        color = barColor,
+                        start = Offset(x, 0f),
+                        end = Offset(x, size.height),
+                        strokeWidth = strokeW
+                    )
+                }
+            }
+
+            HorizontalDivider(color = if (isDark) BorderDark else Slate, thickness = 0.8.dp)
+
+            // Consignment Details Grid
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("Package Type", fontSize = 11.sp, color = TextGray)
+                    Text(parcel.itemName.ifBlank { "Standard Parcel" }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = textColor)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    val isExpressService = parcel.itemName.contains("Express", ignoreCase = true) || parcel.price >= 2500.0
+                    Text("Service Class", fontSize = 11.sp, color = TextGray)
+                    Text(
+                        text = if (isExpressService) "Priority Express" else "Standard Courier",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isExpressService) Gold else textColor
+                    )
+                }
+            }
+
+            // Route Breakdown
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .background(Gold, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).background(Obsidian, CircleShape))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("PICKUP ORIGIN", fontSize = 9.sp, fontWeight = FontWeight.Black, color = TextGray)
+                        Text(
+                            text = parcel.pickupAddress.ifBlank { "Pending dispatcher assignment" },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = textColor,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.Top) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .background(if (isDark) Color.White else Obsidian, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).background(Gold, CircleShape))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("DESTINATION DROP-OFF", fontSize = 9.sp, fontWeight = FontWeight.Black, color = TextGray)
+                        Text(
+                            text = parcel.deliveryAddress.ifBlank { "Pending destination confirmation" },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = textColor,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(color = if (isDark) BorderDark else Slate, thickness = 0.8.dp)
+
+            // Financial Breakdown
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Payment Method", fontSize = 11.sp, color = TextGray)
+                    Text("ES Wallet (Settled)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textColor)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Total Amount Paid", fontSize = 11.sp, color = TextGray)
+                    Text(
+                        text = "₦${String.format("%,.2f", parcel.price)}",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Gold
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ParcelDetailBottomSheet(
@@ -3006,17 +3644,10 @@ fun ParcelDetailBottomSheet(
                 )
             }
 
-            // Interactive Styled Map
-            InteractivePlaceholderMap(
-                pickupAddress = parcel.pickupAddress,
-                deliveryAddress = parcel.deliveryAddress,
-                progress = parcel.progress,
-                isDark = isDark,
-                courierLatitude = parcel.courierLatitude,
-                courierLongitude = parcel.courierLongitude,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(240.dp)
+            // Realistic Waybill & Consignment Note
+            WaybillInvoiceCard(
+                parcel = parcel,
+                isDark = isDark
             )
 
             // Parcel Meta Details

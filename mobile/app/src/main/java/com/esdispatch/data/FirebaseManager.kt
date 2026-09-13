@@ -286,19 +286,21 @@ object FirebaseManager {
     /**
      * Real-time listener for user profile session details in Firestore
      */
-    fun saveUserProfileToFirestore(userId: String, name: String, email: String, phone: String, role: String = "customer", bikeNumber: String = "") {
+    fun saveUserProfileToFirestore(userId: String, name: String, email: String, phone: String, role: String? = null, bikeNumber: String = "") {
         val db = firestore ?: return
         val userMap = hashMapOf<String, Any>(
             "uid" to userId,
             "name" to name,
             "email" to email,
             "phone" to phone,
-            "role" to role,
-            "bikeNumber" to bikeNumber,
             "updatedAt" to System.currentTimeMillis()
         )
-        userMap["isOnline"] = false
-        userMap["status"] = "offline"
+        if (!role.isNullOrBlank()) {
+            userMap["role"] = role
+        }
+        if (bikeNumber.isNotBlank()) {
+            userMap["bikeNumber"] = bikeNumber
+        }
         if (role == "rider") {
             userMap["latitude"] = 6.3350
             userMap["longitude"] = 5.6037
@@ -316,6 +318,49 @@ object FirebaseManager {
             .addOnFailureListener { e ->
                 Log.e(TAG, "User profile sync failed: ${e.message}")
             }
+    }
+
+    /**
+     * Real-time listener for Admin Hero Banners & Slides from Firestore
+     */
+    fun listenToHeroBanners(): Flow<List<HeroSlideItem>> = callbackFlow {
+        val db = firestore
+        if (db == null) {
+            trySend(emptyList())
+            close()
+            return@callbackFlow
+        }
+
+        val registration = db.collection("banners")
+            .whereEqualTo("active", true)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) {
+                    Log.w(TAG, "Hero banners snapshot error: ${error?.message}")
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+
+                val slides = snapshot.documents.mapNotNull { doc ->
+                    val title = doc.getString("title") ?: ""
+                    val subtitle = doc.getString("subtitle") ?: ""
+                    val imageUrl = doc.getString("imageUrl") ?: ""
+                    val active = doc.getBoolean("active") ?: true
+                    if (title.isNotBlank() || imageUrl.isNotBlank()) {
+                        HeroSlideItem(
+                            id = doc.id,
+                            title = title,
+                            subtitle = subtitle,
+                            imageUrl = imageUrl,
+                            active = active,
+                            tag = "FEATURED",
+                            actionText = "Explore"
+                        )
+                    } else null
+                }
+                trySend(slides)
+            }
+
+        awaitClose { registration.remove() }
     }
 
     /**
@@ -362,10 +407,10 @@ object FirebaseManager {
     /**
      * Send real-time FCM notification and store in user notifications collection
      */
-    fun sendNotificationToUser(userId: String, title: String, message: String, parcelId: String? = null) {
+    fun sendNotificationToUser(userId: String, title: String, message: String, parcelId: String? = null, customNotifId: String? = null) {
         val db = firestore ?: return
         if (userId.isEmpty()) return
-        val notifId = "NOTIF-${System.currentTimeMillis()}"
+        val notifId = customNotifId ?: "NOTIF-${System.currentTimeMillis()}"
         val notifMap = hashMapOf(
             "id" to notifId,
             "title" to title,
@@ -395,18 +440,31 @@ object FirebaseManager {
             onComplete?.invoke(false)
             return
         }
-        if (userId.isBlank()) return
-        db.collection("users").document(userId)
+        val targetUid = auth?.currentUser?.uid ?: userId
+        if (targetUid.isBlank()) return
+        db.collection("users").document(targetUid)
             .collection("notifications")
             .get()
             .addOnSuccessListener { snapshot ->
-                val batch = db.batch()
-                snapshot.documents.forEach { doc ->
-                    batch.delete(doc.reference)
+                val docs = snapshot.documents
+                if (docs.isEmpty()) {
+                    onComplete?.invoke(true)
+                    return@addOnSuccessListener
                 }
-                batch.commit()
-                    .addOnSuccessListener { onComplete?.invoke(true) }
-                    .addOnFailureListener { onComplete?.invoke(false) }
+                val chunks = docs.chunked(400)
+                var remaining = chunks.size
+                var hadError = false
+                for (chunk in chunks) {
+                    val batch = db.batch()
+                    chunk.forEach { doc -> batch.delete(doc.reference) }
+                    batch.commit().addOnCompleteListener { task ->
+                        if (!task.isSuccessful) hadError = true
+                        remaining--
+                        if (remaining == 0) {
+                            onComplete?.invoke(!hadError)
+                        }
+                    }
+                }
             }
             .addOnFailureListener { onComplete?.invoke(false) }
     }
@@ -419,42 +477,47 @@ object FirebaseManager {
             onComplete?.invoke(false)
             return
         }
-        if (userId.isBlank() || notificationId.isBlank()) return
-        db.collection("users").document(userId)
+        val targetUid = auth?.currentUser?.uid ?: userId
+        if (targetUid.isBlank() || notificationId.isBlank()) return
+        val docRef = db.collection("users").document(targetUid)
             .collection("notifications").document(notificationId)
-            .delete()
+        docRef.delete()
             .addOnSuccessListener { onComplete?.invoke(true) }
-            .addOnFailureListener { onComplete?.invoke(false) }
+            .addOnFailureListener {
+                db.collection("users").document(targetUid)
+                    .collection("notifications")
+                    .whereEqualTo("id", notificationId)
+                    .get()
+                    .addOnSuccessListener { snap ->
+                        val b = db.batch()
+                        snap.documents.forEach { b.delete(it.reference) }
+                        b.commit().addOnCompleteListener { onComplete?.invoke(true) }
+                    }
+                    .addOnFailureListener { onComplete?.invoke(false) }
+            }
     }
 
     /**
      * Update User Wallet Balance using an Atomic Transaction to prevent race conditions.
      */
     fun updateUserWalletBalance(userId: String, amountDelta: Double, onComplete: (Boolean, Double) -> Unit) {
-        val db = firestore
-        if (db == null) {
+        val db = firestore ?: run {
             onComplete(false, 0.0)
             return
         }
-
         val userRef = db.collection("users").document(userId)
 
         db.runTransaction { transaction ->
             val snapshot = transaction.get(userRef)
             val currentBalance = snapshot.getDouble("walletBalance") ?: 0.0
             val newBalance = currentBalance + amountDelta
-
-            if (newBalance < 0) {
-                throw Exception("Insufficient funds")
-            }
-
             transaction.update(userRef, "walletBalance", newBalance)
             newBalance
         }.addOnSuccessListener { newBalance ->
-            Log.d(TAG, "Wallet updated atomically. New balance: $newBalance")
+            Log.d(TAG, "Wallet balance atomically updated to: $newBalance")
             onComplete(true, newBalance)
         }.addOnFailureListener { e ->
-            Log.e(TAG, "Atomic wallet update failed: ${e.message}")
+            Log.e(TAG, "Failed atomic wallet balance update: ${e.message}")
             onComplete(false, 0.0)
         }
     }
@@ -510,6 +573,8 @@ object FirebaseManager {
      */
     fun syncParcelToFirestore(parcel: Parcel, userId: String) {
         val db = firestore ?: return
+        val currentAuthUid = auth?.currentUser?.uid
+        val effectiveUserId = currentAuthUid ?: userId.ifBlank { parcel.userId }
         val parcelMap = hashMapOf(
             "id" to parcel.id,
             "itemName" to parcel.itemName,
@@ -532,7 +597,7 @@ object FirebaseManager {
             "courierAvatar" to parcel.courierAvatar,
             "progress" to parcel.progress,
             "dateString" to parcel.dateString,
-            "userId" to userId,
+            "userId" to effectiveUserId,
             "riderId" to parcel.riderId,
             "riderBikeNumber" to parcel.riderBikeNumber,
             "otpCode" to parcel.otpCode,
@@ -542,17 +607,29 @@ object FirebaseManager {
             "customerRating" to parcel.customerRating,
             "tipAmount" to parcel.tipAmount,
             "additionalStops" to parcel.additionalStops,
+            "category" to parcel.category.ifBlank { "Standard" },
+            "createdAt" to if (parcel.createdAt > 0L) parcel.createdAt else System.currentTimeMillis(),
+            "pickupLat" to parcel.pickupLat,
+            "pickupLng" to parcel.pickupLng,
+            "deliveryLat" to parcel.deliveryLat,
+            "deliveryLng" to parcel.deliveryLng,
             "lastUpdated" to System.currentTimeMillis()
         )
 
         db.collection("deliveries").document(parcel.id)
-            .set(parcelMap)
+            .set(parcelMap, com.google.firebase.firestore.SetOptions.merge())
             .addOnSuccessListener {
-                Log.d(TAG, "Parcel ${parcel.id} synced globally.")
+                Log.d(TAG, "Parcel ${parcel.id} synced globally to deliveries collection.")
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Failed to sync parcel globally: ${e.message}")
             }
+
+        if (effectiveUserId.isNotBlank()) {
+            db.collection("users").document(effectiveUserId)
+                .collection("deliveries").document(parcel.id)
+                .set(parcelMap, com.google.firebase.firestore.SetOptions.merge())
+        }
     }
 
     /**
@@ -717,41 +794,9 @@ object FirebaseManager {
      * Push or update delivery real-time status in Firestore
      */
     fun syncParcelToFirestore(parcel: Parcel) {
-        val db = firestore ?: return
-        val parcelMap = hashMapOf(
-            "id" to parcel.id,
-            "itemName" to parcel.itemName,
-            "imageUrl" to parcel.imageUrl,
-            "status" to parcel.status.name,
-            "pickupAddress" to parcel.pickupAddress,
-            "deliveryAddress" to parcel.deliveryAddress,
-            "senderName" to parcel.senderName,
-            "senderPhone" to parcel.senderPhone,
-            "receiverName" to parcel.receiverName,
-            "receiverPhone" to parcel.receiverPhone,
-            "quantity" to parcel.quantity,
-            "weight" to parcel.weight,
-            "length" to parcel.length,
-            "width" to parcel.width,
-            "height" to parcel.height,
-            "price" to parcel.price,
-            "courierName" to parcel.courierName,
-            "courierPhone" to parcel.courierPhone,
-            "courierAvatar" to parcel.courierAvatar,
-            "progress" to parcel.progress,
-            "dateString" to parcel.dateString,
-            "additionalStops" to parcel.additionalStops,
-            "lastUpdated" to System.currentTimeMillis()
-        )
-
-        db.collection("deliveries").document(parcel.id)
-            .set(parcelMap)
-            .addOnSuccessListener {
-                Log.d(TAG, "Parcel ${parcel.id} successfully synced with Firestore.")
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to sync parcel ${parcel.id} with Firestore: ${e.message}")
-            }
+        val currentAuthUid = auth?.currentUser?.uid
+        val effectiveUserId = currentAuthUid ?: parcel.userId
+        syncParcelToFirestore(parcel, effectiveUserId)
     }
 
     /**
@@ -1141,9 +1186,9 @@ object FirebaseManager {
                     val list = mutableListOf<NotificationItem>()
                     for (doc in snapshot.documents) {
                         try {
-                            val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
+                            val id = doc.id
                             val title = doc.getString("title") ?: ""
-                            val message = doc.getString("message") ?: ""
+                            val message = doc.getString("message") ?: doc.getString("description") ?: ""
                             val isRead = doc.getBoolean("isRead") ?: false
                             val parcelId = doc.getString("parcelId") ?: ""
                             val ts = when (val raw = doc.get("createdAt") ?: doc.get("timestamp")) {
@@ -2027,7 +2072,7 @@ object FirebaseManager {
                 val customerRef = db.collection("users").document(customerId)
                 val customerSnap = transaction.get(customerRef)
                 if (customerSnap.exists()) {
-                    val custBal = customerSnap.getDouble("walletBalance") ?: 0.0
+                    val custBal = (customerSnap.get("walletBalance") as? Number)?.toDouble() ?: 0.0
                     if (custBal >= tipAmount) {
                         transaction.update(customerRef, "walletBalance", custBal - tipAmount)
                     }
@@ -2039,7 +2084,7 @@ object FirebaseManager {
                 val riderRef = db.collection("users").document(riderId)
                 val riderSnap = transaction.get(riderRef)
                 if (riderSnap.exists()) {
-                    val currentRiderBal = riderSnap.getDouble("walletBalance") ?: 0.0
+                    val currentRiderBal = (riderSnap.get("walletBalance") as? Number)?.toDouble() ?: 0.0
                     transaction.update(riderRef, "walletBalance", currentRiderBal + tipAmount)
                     
                     val oldRating = riderSnap.getDouble("rating") ?: 4.8
