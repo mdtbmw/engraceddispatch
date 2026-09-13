@@ -317,13 +317,13 @@ fun BottomNav(
                         icon = {
                             AnimatedHugeIcon(
                                 icon = Hugeicons.Solid.Wallet,
-                                contentDescription = "Payroll",
+                                contentDescription = "Tips",
                                 tint = if (currentScreen == "Wallet") selectedColor else unselectedColor,
                                 selected = currentScreen == "Wallet",
                                 size = 22.dp
                             )
                         },
-                        label = "Payroll",
+                        label = "Tips",
                         isSelected = currentScreen == "Wallet",
                         modifier = Modifier.width(54.dp),
                         onClick = { onNavigate("Wallet") }
@@ -444,7 +444,7 @@ fun BottomNav(
                 .breathingPulse(active = true, minScale = 0.98f, maxScale = 1.02f, durationMs = 3200)
                 .tactilePress(scaleDown = 0.90f) { 
                     if (activeViewMode == "rider") {
-                        onNavigate("Scanner")
+                        onNavigate("ActiveTracking")
                     } else {
                         onNavigate("SendParcel")
                     }
@@ -452,8 +452,8 @@ fun BottomNav(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = if (activeViewMode == "rider") Icons.Filled.QrCode else Icons.Filled.Add,
-                contentDescription = if (activeViewMode == "rider") "Scan Parcel" else "Create Shipment",
+                imageVector = if (activeViewMode == "rider") Icons.Filled.DirectionsBike else Icons.Filled.Add,
+                contentDescription = if (activeViewMode == "rider") "Active Mission" else "Create Shipment",
                 tint = Obsidian, // STRICT LOCK: NO WHITE ON GOLD
                 modifier = Modifier.size(28.dp)
             )

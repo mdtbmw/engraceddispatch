@@ -30,7 +30,7 @@ function useOnlineStatus() {
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy } from "firebase/firestore";
-import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info } from "lucide-react";
+import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info, Bike } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
 import BroadcastNewsTab from "./BroadcastNewsTab";
@@ -6733,6 +6733,65 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         <Toggle label="QR Code Delivery Handover" desc="Display QR code alongside 4-digit PIN for parcel handover verification (disabled by default for direct PIN entry)" checked={!!sForm.enableQrCodeHandover} onChange={v => upd("enableQrCodeHandover", v)} />
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Feature Toggles")} loading={saving} /></div>
+    </div>
+
+    {/* Section 2b — Courier Fleet & Working Days Controls */}
+    <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10">
+        <Bike className="w-4 h-4 text-[#FFB800]" />
+        <span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Fleet Operations & Working Days</span>
+      </div>
+      <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">
+        Configure official company dispatch working days. Couriers are automatically placed online on active days to receive bookings and proximity match requests.
+      </p>
+
+      <div>
+        <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">
+          Active Courier Working Days (Default: Mon - Sat)
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => {
+            const currentDays: string[] = Array.isArray(sForm.workingDays) ? sForm.workingDays : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            const isSelected = currentDays.includes(day);
+            return (
+              <button
+                key={day}
+                type="button"
+                onClick={() => {
+                  const updated = isSelected ? currentDays.filter(d => d !== day) : [...currentDays, day];
+                  upd("workingDays", updated);
+                }}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  isSelected 
+                    ? "bg-[#FFB800] text-[#111] border-[#FFB800] shadow-xs" 
+                    : "bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10 hover:border-gray-300"
+                }`}
+              >
+                {day}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3 pt-1">
+        <Toggle 
+          label="Auto-Online on Working Days" 
+          desc="Couriers start their shift in Online / On-Duty status by default during active fleet working days" 
+          checked={sForm.autoOnlineOnWorkingDays !== false} 
+          onChange={v => upd("autoOnlineOnWorkingDays", v)} 
+        />
+        <Toggle 
+          label="Proximity Auto-Dispatch Assistant" 
+          desc="Intelligently calculate and recommend the closest available courier based on pickup GPS coordinates" 
+          checked={sForm.autoDispatchProximityEnabled !== false} 
+          onChange={v => upd("autoDispatchProximityEnabled", v)} 
+        />
+      </div>
+
+      <div className="flex justify-end pt-1">
+        <SaveBtn onClick={() => saveSettings("Fleet Operations & Working Days")} loading={saving} />
+      </div>
     </div>
 
     {/* Section 3 — Delivery Types */}

@@ -110,6 +110,9 @@ fun ProfileScreen(
     var showMarketplaceSheet by remember { mutableStateOf(false) }
     val activeViewMode by viewModel.activeViewMode.collectAsState()
     val bikeNumber by viewModel.bikeNumber.collectAsState()
+    val isRider = userRole == "rider" || activeViewMode == "rider"
+    val currentAttendanceStatus by viewModel.currentAttendanceStatus.collectAsState()
+    val shiftRosters by viewModel.shiftRosterList.collectAsState()
 
     var showEditSheet by remember { mutableStateOf(false) }
     var showPaymentMethodsSheet by remember { mutableStateOf(false) }
@@ -119,6 +122,10 @@ fun ProfileScreen(
     var showAvatarSheet by remember { mutableStateOf(false) }
     var showVerificationSheet by remember { mutableStateOf(false) }
     var showRiderInquirySheet by remember { mutableStateOf(false) }
+    var showInspectionDialog by remember { mutableStateOf(false) }
+    var showExpenseDialog by remember { mutableStateOf(false) }
+    var showRosterDialog by remember { mutableStateOf(false) }
+    var showMaintenanceDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -300,14 +307,14 @@ fun ProfileScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Filled.Star,
+                                                    imageVector = if (isRider) Icons.Filled.DirectionsBike else Icons.Filled.Star,
                                                     contentDescription = null,
                                                     tint = tierPillColor,
                                                     modifier = Modifier.size(12.dp)
                                                 )
                                                 Spacer(modifier = Modifier.width(3.dp))
                                                 Text(
-                                                    text = currentTier.uppercase(),
+                                                    text = if (isRider) (if (bikeNumber.isNotBlank()) "UNIT: $bikeNumber" else "FLEET COURIER") else currentTier.uppercase(),
                                                     fontSize = 9.sp,
                                                     fontWeight = FontWeight.Black,
                                                     color = tierPillColor
@@ -318,71 +325,111 @@ fun ProfileScreen(
                                 }
                             }
 
-                            // VIP PROGRESSION BAR
-                            Spacer(modifier = Modifier.height(16.dp))
-                            HorizontalDivider(color = if (isDark) BorderDark else BorderLight, thickness = 1.dp)
-                            Spacer(modifier = Modifier.height(12.dp))
+                            if (!isRider) {
+                                // VIP PROGRESSION BAR (Customers Only)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                HorizontalDivider(color = if (isDark) BorderDark else BorderLight, thickness = 1.dp)
+                                Spacer(modifier = Modifier.height(12.dp))
 
-                            val nextTierPoints = when {
-                                loyaltyPoints < 100 -> 100
-                                loyaltyPoints < 500 -> 500
-                                loyaltyPoints < 1000 -> 1000
-                                else -> 2000
-                            }
-                            val progressRatio = (loyaltyPoints.toFloat() / nextTierPoints).coerceIn(0f, 1f)
-                            val nextTierName = when {
-                                loyaltyPoints < 100 -> "Silver Tier"
-                                loyaltyPoints < 500 -> "Gold Elite"
-                                loyaltyPoints < 1000 -> "Platinum VIP"
-                                else -> "Maximum Level"
-                            }
+                                val nextTierPoints = when {
+                                    loyaltyPoints < 100 -> 100
+                                    loyaltyPoints < 500 -> 500
+                                    loyaltyPoints < 1000 -> 1000
+                                    else -> 2000
+                                }
+                                val progressRatio = (loyaltyPoints.toFloat() / nextTierPoints).coerceIn(0f, 1f)
+                                val nextTierName = when {
+                                    loyaltyPoints < 100 -> "Silver Tier"
+                                    loyaltyPoints < 500 -> "Gold Elite"
+                                    loyaltyPoints < 1000 -> "Platinum VIP"
+                                    else -> "Maximum Level"
+                                }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Filled.LocalActivity,
-                                        contentDescription = null,
-                                        tint = if (isDark) Gold else Obsidian,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "$loyaltyPoints Points Earned",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = primaryTextColor
-                                    )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.LocalActivity,
+                                            contentDescription = null,
+                                            tint = if (isDark) Gold else Obsidian,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "$loyaltyPoints Points Earned",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = primaryTextColor
+                                        )
+                                    }
+                                    if (loyaltyPoints < 1000) {
+                                        Text(
+                                            text = "Next: $nextTierName",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = secondaryTextColor
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "Top Level Member",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDark) Gold else Obsidian
+                                        )
+                                    }
                                 }
-                                if (loyaltyPoints < 1000) {
-                                    Text(
-                                        text = "Next: $nextTierName",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = secondaryTextColor
-                                    )
-                                } else {
-                                    Text(
-                                        text = "Top Level Member",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isDark) Gold else Obsidian
-                                    )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                LinearProgressIndicator(
+                                    progress = { progressRatio },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
+                                    color = if (isDark) Gold else Obsidian,
+                                    trackColor = if (isDark) BorderDark else BorderLight
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.height(14.dp))
+                                HorizontalDivider(color = if (isDark) BorderDark else BorderLight, thickness = 1.dp)
+                                Spacer(modifier = Modifier.height(10.dp))
+                                val isOnline by viewModel.isOnline.collectAsState()
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Badge,
+                                            contentDescription = null,
+                                            tint = if (isDark) Gold else Obsidian,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Operational Fleet Status",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = primaryTextColor
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isOnline) Color(0xFF4CAF50).copy(alpha = 0.2f) else Color.Gray.copy(alpha = 0.2f)
+                                    ) {
+                                        Text(
+                                            text = if (isOnline) "● ON DUTY" else "○ OFF DUTY",
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isOnline) Color(0xFF4CAF50) else TextGray
+                                        )
+                                    }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            LinearProgressIndicator(
-                                progress = { progressRatio },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp)),
-                                color = if (isDark) Gold else Obsidian,
-                                trackColor = if (isDark) BorderDark else BorderLight
-                            )
                         }
                     }
 
@@ -453,15 +500,182 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
-                    // Secondary Premium Stats Card (Customer-focused, not rider!)
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = Gold,
-                        border = BorderStroke(1.dp, BorderDark),
-                        shadowElevation = 0.dp
-                    ) {
+                    // Corporate Fleet Operations Hub Card (For Riders)
+                    if (isRider) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            color = Charcoal,
+                            border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
+                        ) {
+                            Column(modifier = Modifier.padding(18.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(
+                                            imageVector = Icons.Filled.DirectionsBike,
+                                            contentDescription = "Fleet Hub",
+                                            tint = Gold,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = "EMPLOYEE FLEET OPERATIONS",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = AppTextColor
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = when (currentAttendanceStatus) {
+                                            "ON_DUTY" -> Color(0xFF2E7D32).copy(alpha = 0.2f)
+                                            "ON_BREAK" -> Color(0xFFEF6C00).copy(alpha = 0.2f)
+                                            else -> Color(0xFFC62828).copy(alpha = 0.2f)
+                                        },
+                                        border = BorderStroke(1.dp, when (currentAttendanceStatus) {
+                                            "ON_DUTY" -> Color(0xFF4CAF50)
+                                            "ON_BREAK" -> Color(0xFFFF9800)
+                                            else -> Color(0xFFE57373)
+                                        })
+                                    ) {
+                                        Text(
+                                            text = currentAttendanceStatus.replace("_", " "),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when (currentAttendanceStatus) {
+                                                "ON_DUTY" -> Color(0xFF4CAF50)
+                                                "ON_BREAK" -> Color(0xFFFF9800)
+                                                else -> Color(0xFFE57373)
+                                            },
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                // Shift Attendance Buttons
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = { viewModel.clockInStatus("ON_DUTY") },
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (currentAttendanceStatus == "ON_DUTY") Gold else (if (isDark) BackgroundDark else GoldenWhiteLight),
+                                            contentColor = if (currentAttendanceStatus == "ON_DUTY") Obsidian else AppTextColor
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) {
+                                        Text("On Duty", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Button(
+                                        onClick = { viewModel.clockInStatus("ON_BREAK") },
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (currentAttendanceStatus == "ON_BREAK") Gold else (if (isDark) BackgroundDark else GoldenWhiteLight),
+                                            contentColor = if (currentAttendanceStatus == "ON_BREAK") Obsidian else AppTextColor
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) {
+                                        Text("On Break", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Button(
+                                        onClick = { viewModel.clockInStatus("OFF_DUTY") },
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (currentAttendanceStatus == "OFF_DUTY") Gold else (if (isDark) BackgroundDark else GoldenWhiteLight),
+                                            contentColor = if (currentAttendanceStatus == "OFF_DUTY") Obsidian else AppTextColor
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) {
+                                        Text("Off Duty", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                // Fleet Action Tools
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { showInspectionDialog = true },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.5f)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTextColor),
+                                        contentPadding = PaddingValues(4.dp)
+                                    ) {
+                                        Icon(Icons.Filled.CheckCircle, "Inspect", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Pre-Trip", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { showExpenseDialog = true },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.5f)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTextColor),
+                                        contentPadding = PaddingValues(4.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Receipt, "Expense", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Expenses", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { showRosterDialog = true },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.5f)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTextColor),
+                                        contentPadding = PaddingValues(4.dp)
+                                    ) {
+                                        Icon(Icons.Filled.CalendarMonth, "Roster", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Roster", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { showMaintenanceDialog = true },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.5f)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTextColor),
+                                        contentPadding = PaddingValues(4.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Build, "Service", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Service", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    if (!isRider) {
+                        // Secondary Premium Stats Card (Customer-focused, not rider!)
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(20.dp),
+                            color = Gold,
+                            border = BorderStroke(1.dp, BorderDark),
+                            shadowElevation = 0.dp
+                        ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -885,6 +1099,7 @@ fun ProfileScreen(
                             }
                         }
                     }
+                    }
 
                     Spacer(modifier = Modifier.height(24.dp))
                     Text(
@@ -900,49 +1115,58 @@ fun ProfileScreen(
                     ProfileMenuRow(
                         icon = Icons.Filled.Person,
                         title = "Edit Profile",
-                        subtitle = "Manage account & personal details",
-                        onClick = { showEditSheet = true }
+                        subtitle = if (isRider) "Manage photo & company credentials" else "Manage account & personal details",
+                        onClick = {
+                            if (isRider) showAvatarSheet = true else showEditSheet = true
+                        }
                     )
 
                     ProfileMenuRow(
                         icon = Icons.Filled.CreditCard,
-                        title = "Wallet & Payment",
-                        subtitle = "Manage wallet, top up & withdrawals",
+                        title = if (isRider) "Courier Tip Wallet" else "Wallet & Payment",
+                        subtitle = if (isRider) "View tips earned & request withdrawal" else "Manage wallet, top up & withdrawals",
                         onClick = { onNavigate("Wallet") }
                     )
 
-                    ProfileMenuRow(
-                        icon = Icons.Filled.Place,
-                        title = "Address Book",
-                        subtitle = "Manage delivery addresses",
-                        onClick = { onNavigate("AddressBook") }
-                    )
+                    if (!isRider) {
+                        ProfileMenuRow(
+                            icon = Icons.Filled.Place,
+                            title = "Address Book",
+                            subtitle = "Manage delivery addresses",
+                            onClick = { onNavigate("AddressBook") }
+                        )
+                    }
 
-                    ProfileMenuRow(
-                        icon = Icons.Filled.Store,
-                        title = "Logistics Marketplace",
-                        subtitle = "Shop packaging boxes, bags & rider uniforms",
-                        onClick = { onNavigate("Marketplace") }
-                    )
+                    if (marketplaceEnabled && !isRider) {
+                        ProfileMenuRow(
+                            icon = Icons.Filled.Store,
+                            title = "Logistics Marketplace",
+                            subtitle = "Shop packaging boxes, bags & supplies",
+                            onClick = { onNavigate("Marketplace") }
+                        )
+                    }
 
                     ProfileMenuRow(
                         icon = Icons.Filled.HeadsetMic,
-                        title = "Help & Support",
-                        subtitle = "FAQ & live support",
-                        onClick = { showHelpSupportSheet = true }
+                        title = if (isRider) "Fleet Dispatch Hotline" else "Help & Support",
+                        subtitle = if (isRider) "Direct emergency line to company dispatch controller" else "FAQ & live support",
+                        onClick = {
+                            if (isRider) {
+                                val dialIntent = Intent(Intent.ACTION_DIAL).apply {
+                                    data = Uri.parse("tel:08003734772824")
+                                }
+                                try {
+                                    context.startActivity(dialIntent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Dispatch Line: 0800-373-4772824", Toast.LENGTH_LONG).show()
+                                }
+                            } else {
+                                showHelpSupportSheet = true
+                            }
+                        }
                     )
 
-                    if (userRole == "rider") {
-                        ProfileMenuRow(
-                            icon = Icons.Filled.DirectionsBike,
-                            title = "Switch to Rider Dispatch",
-                            subtitle = "Manage active orders, pickups & drops (Bike: $bikeNumber)",
-                            onClick = {
-                                viewModel.setActiveViewMode("rider")
-                                onNavigate("Dashboard")
-                            }
-                        )
-                    } else {
+                    if (!isRider) {
                         ProfileMenuRow(
                             icon = Icons.Filled.DirectionsBike,
                             title = "Dispatch Careers & Fleet Inquiries",
@@ -1088,6 +1312,18 @@ fun ProfileScreen(
     if (showVerificationSheet) {
         VerificationSheet(viewModel) { showVerificationSheet = false }
     }
+    if (showInspectionDialog) {
+        VehicleInspectionDialog(viewModel = viewModel, onDismiss = { showInspectionDialog = false })
+    }
+    if (showExpenseDialog) {
+        ExpenseClaimDialog(viewModel = viewModel, onDismiss = { showExpenseDialog = false })
+    }
+    if (showRosterDialog) {
+        ShiftRosterDialog(viewModel = viewModel, shiftRosters = shiftRosters, onDismiss = { showRosterDialog = false })
+    }
+    if (showMaintenanceDialog) {
+        VehicleMaintenanceDialog(viewModel = viewModel, bikeNumber = bikeNumber, onDismiss = { showMaintenanceDialog = false })
+    }
 
 }
 
@@ -1141,6 +1377,9 @@ fun WalletScreen(
     val txs by viewModel.transactions.collectAsState()
     val loadingTransactions by viewModel.loadingTransactions.collectAsState()
     val isDark by viewModel.darkModeEnabled.collectAsState()
+    val activeViewMode by viewModel.activeViewMode.collectAsState()
+    val userRole by viewModel.userRole.collectAsState()
+    val isRider = userRole == "rider" || activeViewMode == "rider"
 
     val animatedBalance by animateFloatAsState(
         targetValue = balance.toFloat(),
@@ -1197,7 +1436,7 @@ fun WalletScreen(
                 .background(HeaderBgColor)
         ) {
             ScreenHeader(
-                title = "My Wallet",
+                title = if (isRider) "Courier Tip Wallet" else "My Wallet",
                 onBack = { onNavigate("Profile") }
             )
 
@@ -1226,41 +1465,68 @@ fun WalletScreen(
                                 QuiltedBackground(modifier = Modifier.matchParentSize()) {}
 
                                 Column(modifier = Modifier.padding(32.dp)) {
-                                    Text("Total Balance", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextGray)
+                                    Text(if (isRider) "Available Tip Balance" else "Total Balance", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextGray)
                                     Text("₦${String.format("%,.2f", animatedBalance.toDouble())}", fontSize = 48.sp, fontWeight = FontWeight.Black, color = Color.White)
 
                                     Spacer(modifier = Modifier.height(32.dp))
 
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                    ) {
-                                        Button(
-                                            onClick = {
-                                                sheetMode = "fund"
-                                                showFundWithdrawSheet = true
-                                            },
-                                            shape = RoundedCornerShape(20.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(52.dp)
-                                        ) {
-                                            Text("Top Up", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Obsidian)
-                                        }
-
+                                    if (isRider) {
                                         Button(
                                             onClick = {
                                                 sheetMode = "withdraw"
                                                 showFundWithdrawSheet = true
                                             },
                                             shape = RoundedCornerShape(20.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.15f)),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                                             modifier = Modifier
-                                                .weight(1f)
+                                                .fillMaxWidth()
                                                 .height(52.dp)
                                         ) {
-                                            Text("Withdraw", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color.White)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Filled.AccountBalance, contentDescription = null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text("Request Withdrawal", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Obsidian)
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Text(
+                                            text = "ℹ️ Courier earnings represent 100% customer tips credited per completed delivery and are withdrawable directly to your bank account.",
+                                            fontSize = 11.sp,
+                                            color = TextGray,
+                                            lineHeight = 15.sp
+                                        )
+                                    } else {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    sheetMode = "fund"
+                                                    showFundWithdrawSheet = true
+                                                },
+                                                shape = RoundedCornerShape(20.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(52.dp)
+                                            ) {
+                                                Text("Top Up", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Obsidian)
+                                            }
+
+                                            Button(
+                                                onClick = {
+                                                    sheetMode = "withdraw"
+                                                    showFundWithdrawSheet = true
+                                                },
+                                                shape = RoundedCornerShape(20.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.15f)),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(52.dp)
+                                            ) {
+                                                Text("Withdraw", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color.White)
+                                            }
                                         }
                                     }
                                 }
@@ -3645,6 +3911,9 @@ fun ProfileEditSheet(
     val currentName by viewModel.userName.collectAsState()
     val currentEmail by viewModel.userEmail.collectAsState()
     val currentPhone by viewModel.userPhone.collectAsState()
+    val userRole by viewModel.userRole.collectAsState()
+    val activeViewMode by viewModel.activeViewMode.collectAsState()
+    val isRider = userRole == "rider" || activeViewMode == "rider"
 
     var nameInput by remember { mutableStateOf(currentName) }
     var emailInput by remember { mutableStateOf(currentEmail) }
@@ -3675,12 +3944,41 @@ fun ProfileEditSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("Edit Profile Information", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
-            Text("Update your personal contact information associated with ESDispatch.", fontSize = 13.sp, color = TextGray)
+            Text(
+                text = if (isRider) "Courier personal credentials are administrator-verified." else "Update your personal contact information associated with ESDispatch.",
+                fontSize = 13.sp,
+                color = TextGray
+            )
+
+            if (isRider) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Gold.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.Lock, contentDescription = null, tint = Gold, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "Company-Managed Account: Full Name, Email, and Phone Number are centrally locked for corporate couriers. To request an update, contact central dispatch operations.",
+                            fontSize = 11.sp,
+                            color = AppOnSurface,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = nameInput,
-                onValueChange = { nameInput = it },
+                onValueChange = { if (!isRider) nameInput = it },
+                readOnly = isRider,
                 label = { Text("Full Name") },
+                trailingIcon = if (isRider) { { Icon(Icons.Filled.Lock, "Locked", tint = TextGray, modifier = Modifier.size(18.dp)) } } else null,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
@@ -3696,8 +3994,10 @@ fun ProfileEditSheet(
 
             OutlinedTextField(
                 value = emailInput,
-                onValueChange = { emailInput = it },
+                onValueChange = { if (!isRider) emailInput = it },
+                readOnly = isRider,
                 label = { Text("Email Address") },
+                trailingIcon = if (isRider) { { Icon(Icons.Filled.Lock, "Locked", tint = TextGray, modifier = Modifier.size(18.dp)) } } else null,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
@@ -3715,36 +4015,40 @@ fun ProfileEditSheet(
             OutlinedTextField(
                 value = phoneInput,
                 onValueChange = { input ->
-                    val cleanInput = buildString {
-                        input.forEachIndexed { index, char ->
-                            if (char == '+' && index == 0) {
-                                append(char)
-                            } else if (char.isDigit()) {
-                                append(char)
+                    if (!isRider) {
+                        val cleanInput = buildString {
+                            input.forEachIndexed { index, char ->
+                                if (char == '+' && index == 0) {
+                                    append(char)
+                                } else if (char.isDigit()) {
+                                    append(char)
+                                }
                             }
                         }
-                    }
-                    if (cleanInput.isEmpty()) {
-                        phoneInput = ""
-                    } else {
-                        var maxDigits = 15
-                        if (cleanInput.startsWith("0")) {
-                            maxDigits = 11
-                        } else if (cleanInput.startsWith("234")) {
-                            maxDigits = 13
-                        } else if (cleanInput.startsWith("+234")) {
-                            maxDigits = 14
-                        } else if (cleanInput.startsWith("+1")) {
-                            maxDigits = 12
-                        } else if (cleanInput.startsWith("+44")) {
-                            maxDigits = 13
+                        if (cleanInput.isEmpty()) {
+                            phoneInput = ""
+                        } else {
+                            var maxDigits = 15
+                            if (cleanInput.startsWith("0")) {
+                                maxDigits = 11
+                            } else if (cleanInput.startsWith("234")) {
+                                maxDigits = 13
+                            } else if (cleanInput.startsWith("+234")) {
+                                maxDigits = 14
+                            } else if (cleanInput.startsWith("+1")) {
+                                maxDigits = 12
+                            } else if (cleanInput.startsWith("+44")) {
+                                maxDigits = 13
+                            }
+                            phoneInput = cleanInput.take(maxDigits)
                         }
-                        phoneInput = cleanInput.take(maxDigits)
                     }
                 },
-                isError = !isPhoneWell && phoneInput.isNotEmpty(),
+                readOnly = isRider,
+                isError = !isRider && !isPhoneWell && phoneInput.isNotEmpty(),
                 visualTransformation = com.esdispatch.util.PhoneVisualTransformation(),
                 label = { Text("Phone Number") },
+                trailingIcon = if (isRider) { { Icon(Icons.Filled.Lock, "Locked", tint = TextGray, modifier = Modifier.size(18.dp)) } } else null,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
@@ -3758,7 +4062,7 @@ fun ProfileEditSheet(
                     errorBorderColor = Color(0xFFEA4335)
                 )
             )
-            if (!isPhoneWell && phoneInput.isNotEmpty()) {
+            if (!isRider && !isPhoneWell && phoneInput.isNotEmpty()) {
                 Text(
                     text = "Invalid prefix. Must start with local (07/08/09/01) or country code (234/+234)",
                     color = Color(0xFFEA4335),
@@ -3778,24 +4082,26 @@ fun ProfileEditSheet(
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AppOnSurface)
                 ) {
-                    Text("Cancel", fontWeight = FontWeight.Bold)
+                    Text(if (isRider) "Close" else "Cancel", fontWeight = FontWeight.Bold)
                 }
 
-                Button(
-                    onClick = {
-                        if (nameInput.isNotBlank() && emailInput.isNotBlank()) {
-                            viewModel.updateProfile(nameInput, emailInput, phoneInput)
-                            viewModel.showCustomToast("Profile details updated!")
-                            dismissWithAnim()
-                        } else {
-                            Toast.makeText(context, "Full Name and Email are required", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.weight(1f).height(50.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
-                ) {
-                    Text("Save Info", fontWeight = FontWeight.Bold)
+                if (!isRider) {
+                    Button(
+                        onClick = {
+                            if (nameInput.isNotBlank() && emailInput.isNotBlank()) {
+                                viewModel.updateProfile(nameInput, emailInput, phoneInput)
+                                viewModel.showCustomToast("Profile details updated!")
+                                dismissWithAnim()
+                            } else {
+                                Toast.makeText(context, "Full Name and Email are required", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1f).height(50.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
+                    ) {
+                        Text("Save Changes", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))

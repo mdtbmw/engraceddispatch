@@ -19,7 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Mail
@@ -227,9 +227,6 @@ fun ActiveTrackingScreen(
     val context = LocalContext.current
     val recentSearches by viewModel.recentSearches.collectAsState()
 
-    val activeViewMode by viewModel.activeViewMode.collectAsState()
-    val userRole by viewModel.userRole.collectAsState()
-
     var searchQuery by remember { mutableStateOf("") }
     var searchQueryError by remember { mutableStateOf<String?>(null) }
     var showGeminiSummary by remember { mutableStateOf(false) }
@@ -319,17 +316,23 @@ fun ActiveTrackingScreen(
     }
 
     val userParcels by viewModel.parcels.collectAsState()
+    val riderAssignments by viewModel.riderAssignments.collectAsState()
+    val userRole by viewModel.userRole.collectAsState()
+    val activeViewMode by viewModel.activeViewMode.collectAsState()
+    val isRider = userRole == "rider" || activeViewMode == "rider"
     val enableQrCodeHandover by viewModel.enableQrCodeHandover.collectAsState()
-    val activeParcels = remember(userParcels) {
-        userParcels.filter { 
+
+    val effectiveParcels = if (isRider) riderAssignments else userParcels
+    val activeParcels = remember(effectiveParcels) {
+        effectiveParcels.filter { 
             it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED
         }
     }
-    val activeParcel = remember(selectedParcel, activeParcels, userParcels) {
+    val activeParcel = remember(selectedParcel, activeParcels, effectiveParcels) {
         val nonCancelledSelected = selectedParcel?.takeIf { it.status != ParcelStatus.CANCELLED }
         nonCancelledSelected
             ?: activeParcels.firstOrNull()
-            ?: userParcels.firstOrNull { it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.DELIVERED }
+            ?: effectiveParcels.firstOrNull { it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.DELIVERED }
     }
 
     val previewParcel = remember {
@@ -1232,35 +1235,86 @@ fun ActiveTrackingScreen(
                                                 .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 24.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Button(
-                                                onClick = { onNavigate("SendParcel") },
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .fillMaxHeight()
-                                                    .testTag("book_new_dispatch_button"),
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = Gold,
-                                                    contentColor = Obsidian
-                                                ),
-                                                shape = RoundedCornerShape(16.dp)
-                                            ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.Center
+                                            if (isRider) {
+                                                Surface(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    shape = RoundedCornerShape(20.dp),
+                                                    color = if (isLight) GoldenWhiteLight else Charcoal,
+                                                    border = BorderStroke(1.dp, if (isLight) Slate else Gold.copy(alpha = 0.3f))
                                                 ) {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.LocalShipping,
-                                                        contentDescription = null,
-                                                        tint = Obsidian,
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Text(
-                                                        text = "BOOK A NEW DISPATCH",
-                                                        fontWeight = FontWeight.Black,
-                                                        fontSize = 16.sp,
-                                                        letterSpacing = 1.sp
-                                                    )
+                                                    Column(
+                                                        modifier = Modifier.padding(24.dp),
+                                                        horizontalAlignment = Alignment.CenterHorizontally
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(56.dp)
+                                                                .clip(CircleShape)
+                                                                .background(Gold.copy(alpha = 0.15f)),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.DirectionsBike,
+                                                                contentDescription = null,
+                                                                tint = Gold,
+                                                                modifier = Modifier.size(30.dp)
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.height(14.dp))
+                                                        Text(
+                                                            text = "No Active Mission Assigned",
+                                                            fontSize = 16.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = AppOnSurface
+                                                        )
+                                                        Text(
+                                                            text = "You currently have no active deliveries on your radar. Return to your manifest to view pending pickups.",
+                                                            fontSize = 12.sp,
+                                                            color = TextGray,
+                                                            textAlign = TextAlign.Center,
+                                                            modifier = Modifier.padding(top = 6.dp, bottom = 18.dp)
+                                                        )
+                                                        Button(
+                                                            onClick = { onNavigate("Dashboard") },
+                                                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                            shape = RoundedCornerShape(14.dp),
+                                                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                                                        ) {
+                                                            Text("VIEW DISPATCH MANIFEST", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                Button(
+                                                    onClick = { onNavigate("SendParcel") },
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .fillMaxHeight()
+                                                        .testTag("book_new_dispatch_button"),
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = Gold,
+                                                        contentColor = Obsidian
+                                                    ),
+                                                    shape = RoundedCornerShape(16.dp)
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.LocalShipping,
+                                                            contentDescription = null,
+                                                            tint = Obsidian,
+                                                            modifier = Modifier.size(24.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(12.dp))
+                                                        Text(
+                                                            text = "BOOK A NEW DISPATCH",
+                                                            fontWeight = FontWeight.Black,
+                                                            fontSize = 16.sp,
+                                                            letterSpacing = 1.sp
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -1631,76 +1685,206 @@ fun ActiveTrackingScreen(
                                                     HorizontalDivider(color = if (isDark) BorderDark else BorderLight)
                                                 }
 
-                                                // Share Live Tracking & Tip Rider Row
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                                ) {
-                                                    // Share Live Tracking Link
-                                                    Button(
-                                                        onClick = {
-                                                            val sendIntent: Intent = Intent().apply {
-                                                                action = Intent.ACTION_SEND
-                                                                putExtra(Intent.EXTRA_TEXT, "Track my ESDispatch package live: https://esdispatch.com/track/${parcel.id}")
-                                                                type = "text/plain"
-                                                            }
-                                                            val shareIntent = Intent.createChooser(sendIntent, "Share Tracking Link")
-                                                            context.startActivity(shareIntent)
-                                                        },
-                        modifier = Modifier.weight(1f).height(40.dp).tactilePress(scaleDown = 0.94f),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Obsidian else Gold),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Obsidian.copy(alpha = 0.3f))
-                    ) {
-                        Text("Share Link", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isDark) Gold else Obsidian)
-                                                    }
-
-                                                    // Feedback & Tip Rider After Delivery
-                                                    if (parcel.isRated) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .weight(1f)
-                                                                .height(40.dp)
-                                                                .background(
-                                                                    if (isDark) Charcoal else Color(0xFFEEEEEE),
-                                                                    RoundedCornerShape(12.dp)
-                                                                )
-                                                                .border(BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.2f) else Color.Transparent), RoundedCornerShape(12.dp)),
-                                                            contentAlignment = Alignment.Center
+                                                if (isRider) {
+                                                    // Rider Navigation & Client Contact Row
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        Button(
+                                                            onClick = {
+                                                                val dest = if (parcel.status == ParcelStatus.ASSIGNED) parcel.pickupAddress else parcel.deliveryAddress
+                                                                val uri = Uri.parse("google.navigation:q=" + Uri.encode(dest))
+                                                                val mapIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                                                                    setPackage("com.google.android.apps.maps")
+                                                                }
+                                                                try {
+                                                                    context.startActivity(mapIntent)
+                                                                } catch (e: Exception) {
+                                                                    val webUri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" + Uri.encode(dest))
+                                                                    context.startActivity(Intent(Intent.ACTION_VIEW, webUri))
+                                                                }
+                                                            },
+                                                            modifier = Modifier.weight(1f).height(44.dp).tactilePress(scaleDown = 0.94f),
+                                                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Obsidian else Gold),
+                                                            shape = RoundedCornerShape(12.dp),
+                                                            border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.3f))
                                                         ) {
-                                                            Row(
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.Center
-                                                            ) {
-                                                                Icon(
-                                                                    imageVector = Icons.Filled.Star,
-                                                                    contentDescription = null,
-                                                                    tint = if (isDark) Gold else Obsidian,
-                                                                    modifier = Modifier.size(14.dp)
-                                                                )
-                                                                Spacer(modifier = Modifier.width(4.dp))
-                                                                val tipFormatted = if (parcel.tipAmount > 0.0) " • ₦${String.format("%,.0f", parcel.tipAmount)}" else ""
-                                                                Text(
-                                                                    text = "${parcel.customerRating.toInt()}$tipFormatted",
-                                                                    fontSize = 11.sp,
-                                                                    fontWeight = FontWeight.Bold,
-                                                                    color = if (isDark) Gold else Obsidian
-                                                                )
+                                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                                                Icon(Icons.Filled.Navigation, "Navigate", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
+                                                                Spacer(modifier = Modifier.width(6.dp))
+                                                                Text("Directions", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) Gold else Obsidian)
                                                             }
                                                         }
-                                                    } else {
-                                                        Button(
-                                                            onClick = { showFeedbackDialog = true },
-                                                            modifier = Modifier.weight(1f).height(40.dp).tactilePress(scaleDown = 0.94f),
-                                                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
-                                                            shape = RoundedCornerShape(12.dp)
+
+                                                        OutlinedButton(
+                                                            onClick = {
+                                                                val phone = if (parcel.status == ParcelStatus.ASSIGNED) parcel.senderPhone else parcel.receiverPhone
+                                                                if (phone.isNotBlank()) {
+                                                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                                                                    context.startActivity(intent)
+                                                                } else {
+                                                                    Toast.makeText(context, "No contact phone available", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            },
+                                                            modifier = Modifier.weight(1f).height(44.dp).tactilePress(scaleDown = 0.94f),
+                                                            shape = RoundedCornerShape(12.dp),
+                                                            border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.3f)),
+                                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isDark) Gold else Obsidian)
                                                         ) {
-                                                            Text("Feedback & Tip", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Obsidian)
+                                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                                                Icon(Icons.Filled.Call, "Call", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
+                                                                Spacer(modifier = Modifier.width(6.dp))
+                                                                Text("Call Client", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Rider Milestone Progression Action Button
+                                                    Spacer(modifier = Modifier.height(10.dp))
+                                                    when (parcel.status) {
+                                                        ParcelStatus.ASSIGNED -> {
+                                                            Button(
+                                                                onClick = {
+                                                                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.PICKED_UP, 0.40f) { success, _ ->
+                                                                        if (success) Toast.makeText(context, "Pickup confirmed! Order is now picked up.", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                },
+                                                                modifier = Modifier.fillMaxWidth().height(48.dp).tactilePress(scaleDown = 0.96f),
+                                                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                                shape = RoundedCornerShape(14.dp)
+                                                            ) {
+                                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                                                    Icon(Icons.Filled.CheckCircle, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                                    Text("CONFIRM PICKUP", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                }
+                                                            }
+                                                        }
+                                                        ParcelStatus.PICKED_UP -> {
+                                                            Button(
+                                                                onClick = {
+                                                                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.TRANSIT, 0.60f) { success, _ ->
+                                                                        if (success) Toast.makeText(context, "In transit to destination! Customer notified.", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                },
+                                                                modifier = Modifier.fillMaxWidth().height(48.dp).tactilePress(scaleDown = 0.96f),
+                                                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                                shape = RoundedCornerShape(14.dp)
+                                                            ) {
+                                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                                                    Icon(Icons.Filled.DirectionsBike, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                                    Text("START TRANSIT", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                }
+                                                            }
+                                                        }
+                                                        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+                                                            Button(
+                                                                onClick = {
+                                                                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED, 0.90f) { success, _ ->
+                                                                        if (success) Toast.makeText(context, "Marked as arrived! Recipient notified.", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                },
+                                                                modifier = Modifier.fillMaxWidth().height(48.dp).tactilePress(scaleDown = 0.96f),
+                                                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                                shape = RoundedCornerShape(14.dp)
+                                                            ) {
+                                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                                    Icon(Icons.Filled.LocationOn, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                                    Text("MARK ARRIVED AT DESTINATION", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                }
+                                                            }
+                                                        }
+                                                        ParcelStatus.ARRIVED -> {
+                                                            Button(
+                                                                onClick = {
+                                                                    onNavigate("ProofOfDelivery/${parcel.id}")
+                                                                },
+                                                                modifier = Modifier.fillMaxWidth().height(48.dp).tactilePress(scaleDown = 0.96f),
+                                                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                                shape = RoundedCornerShape(14.dp)
+                                                            ) {
+                                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                                    Icon(Icons.Filled.VerifiedUser, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                                    Text("ENTER 4-DIGIT PIN & COMPLETE", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                }
+                                                            }
+                                                        }
+                                                        else -> {}
+                                                    }
+                                                } else {
+                                                    // Share Live Tracking & Tip Rider Row (Customers Only)
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                                    ) {
+                                                        // Share Live Tracking Link
+                                                        Button(
+                                                            onClick = {
+                                                                val sendIntent: Intent = Intent().apply {
+                                                                    action = Intent.ACTION_SEND
+                                                                    putExtra(Intent.EXTRA_TEXT, "Track my ESDispatch package live: https://esdispatch.com/track/${parcel.id}")
+                                                                    type = "text/plain"
+                                                                }
+                                                                val shareIntent = Intent.createChooser(sendIntent, "Share Tracking Link")
+                                                                context.startActivity(shareIntent)
+                                                            },
+                                                            modifier = Modifier.weight(1f).height(40.dp).tactilePress(scaleDown = 0.94f),
+                                                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Obsidian else Gold),
+                                                            shape = RoundedCornerShape(12.dp),
+                                                            border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Obsidian.copy(alpha = 0.3f))
+                                                        ) {
+                                                            Text("Share Link", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isDark) Gold else Obsidian)
+                                                        }
+
+                                                        // Feedback & Tip Rider After Delivery
+                                                        if (parcel.isRated) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .weight(1f)
+                                                                    .height(40.dp)
+                                                                    .background(
+                                                                        if (isDark) Charcoal else Color(0xFFEEEEEE),
+                                                                        RoundedCornerShape(12.dp)
+                                                                    )
+                                                                    .border(BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.2f) else Color.Transparent), RoundedCornerShape(12.dp)),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.Center
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Filled.Star,
+                                                                        contentDescription = null,
+                                                                        tint = if (isDark) Gold else Obsidian,
+                                                                        modifier = Modifier.size(14.dp)
+                                                                    )
+                                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                                    val tipFormatted = if (parcel.tipAmount > 0.0) " • ₦${String.format("%,.0f", parcel.tipAmount)}" else ""
+                                                                    Text(
+                                                                        text = "${parcel.customerRating.toInt()}$tipFormatted",
+                                                                        fontSize = 11.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = if (isDark) Gold else Obsidian
+                                                                    )
+                                                                }
+                                                            }
+                                                        } else {
+                                                            Button(
+                                                                onClick = { showFeedbackDialog = true },
+                                                                modifier = Modifier.weight(1f).height(40.dp).tactilePress(scaleDown = 0.94f),
+                                                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                                shape = RoundedCornerShape(12.dp)
+                                                            ) {
+                                                                Text("Feedback & Tip", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Obsidian)
+                                                            }
                                                         }
                                                     }
                                                 }
 
-                                                if (parcel.status in listOf(ParcelStatus.PENDING, ParcelStatus.QUEUED, ParcelStatus.RESERVED_NEXT, ParcelStatus.ASSIGNED)) {
+                                                if (!isRider && parcel.status in listOf(ParcelStatus.PENDING, ParcelStatus.QUEUED, ParcelStatus.RESERVED_NEXT, ParcelStatus.ASSIGNED)) {
                                                     OutlinedButton(
                                                         onClick = { showCancelDialog = true },
                                                         modifier = Modifier

@@ -50,6 +50,25 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.animation.core.animate
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.rememberAsyncImagePainter
+import com.esdispatch.ui.components.QuiltedBackground
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.graphics.SolidColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,7 +87,9 @@ fun RiderDashboardScreen(
     val totalEarned by viewModel.totalEarned.collectAsState()
     val totalTipsEarned by viewModel.totalTipsEarned.collectAsState()
     val userName by viewModel.userName.collectAsState()
-    val aiTrafficCongested by viewModel.aiTrafficCongested.collectAsState()
+    val photoUrl by viewModel.photoUrl.collectAsState()
+    val isOnlineState by viewModel.isOnline.collectAsState()
+    val userRole by viewModel.userRole.collectAsState()
 
     val firstName = remember(userName) { userName.trim().split(" ").firstOrNull() ?: userName }
 
@@ -103,554 +124,163 @@ fun RiderDashboardScreen(
         }
     }
 
-    // Filter calculations
-    val filteredAssignments = remember(riderAssignments, availableDeliveries, selectedFilter) {
-        when (selectedFilter) {
-            "Available" -> availableDeliveries
-            "Active" -> riderAssignments.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.PENDING }
-            "Delivered" -> riderAssignments.filter { it.status == ParcelStatus.DELIVERED }
-            else -> riderAssignments
-        }
-    }
-
     val activeCount = remember(riderAssignments) {
-        riderAssignments.filter { it.status != ParcelStatus.DELIVERED }.size
+        riderAssignments.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED }.size
     }
     val deliveredCount = remember(riderAssignments) {
         riderAssignments.filter { it.status == ParcelStatus.DELIVERED }.size
     }
 
+    val density = LocalDensity.current
+    val maxScrollDistancePx = with(density) { 235.dp.toPx() }
+    val maxOverscrollPx = 120f
+    val refreshThreshold = 80f
+
+    var scrollOffset by remember { mutableFloatStateOf(0f) }
+    var isRefreshing by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            viewModel.refreshAllData()
+            kotlinx.coroutines.delay(600)
+            isRefreshing = false
+        }
+    }
+
+    val listState = rememberLazyListState()
+
+    val isAtTop = remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
+
+    val progress by remember {
+        derivedStateOf { (scrollOffset / maxScrollDistancePx).coerceIn(0f, 1f) }
+    }
+
+    val headerHeightDp = remember(progress) {
+        val minHeight = 115.dp
+        val maxHeight = 440.dp
+        minHeight + (maxHeight - minHeight) * (1f - progress)
+    }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                return if (delta < 0) {
+                    if (scrollOffset < 0f) {
+                        val newOffset = (scrollOffset - delta).coerceAtMost(0f)
+                        val consumed = scrollOffset - newOffset
+                        scrollOffset = newOffset
+                        Offset(0f, consumed)
+                    } else if (scrollOffset < maxScrollDistancePx) {
+                        val newOffset = (scrollOffset - delta).coerceAtMost(maxScrollDistancePx)
+                        val consumed = scrollOffset - newOffset
+                        scrollOffset = newOffset
+                        Offset(0f, consumed)
+                    } else {
+                        Offset.Zero
+                    }
+                } else {
+                    Offset.Zero
+                }
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                val delta = available.y
+                if (delta > 0) {
+                    if (scrollOffset > 0f) {
+                        val newOffset = (scrollOffset - delta).coerceAtLeast(0f)
+                        val consumedOffset = scrollOffset - newOffset
+                        scrollOffset = newOffset
+                        return Offset(0f, consumedOffset)
+                    } else if (scrollOffset <= 0f && source == NestedScrollSource.UserInput) {
+                        val newOffset = (scrollOffset - delta).coerceAtLeast(-maxOverscrollPx)
+                        val consumedOffset = scrollOffset - newOffset
+                        scrollOffset = newOffset
+                        return Offset(0f, consumedOffset)
+                    }
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (scrollOffset <= -refreshThreshold) {
+                    if (!isRefreshing) {
+                        isRefreshing = true
+                        viewModel.refreshAllData()
+                    }
+                }
+                if (scrollOffset < 0f) {
+                    animate(scrollOffset, 0f) { value, _ ->
+                        scrollOffset = value
+                    }
+                }
+                return super.onPreFling(available)
+            }
+        }
+    }
+
+    val baseAssignments = remember(riderAssignments, availableDeliveries, selectedFilter) {
+        when (selectedFilter) {
+            "Available" -> availableDeliveries
+            "Active" -> riderAssignments.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.PENDING && it.status != ParcelStatus.CANCELLED }
+            "Delivered" -> riderAssignments.filter { it.status == ParcelStatus.DELIVERED }
+            else -> riderAssignments
+        }
+    }
+
+    val filteredAssignments = remember(baseAssignments, searchQuery) {
+        if (searchQuery.isBlank()) {
+            baseAssignments
+        } else {
+            val q = searchQuery.trim()
+            baseAssignments.filter {
+                it.id.contains(q, ignoreCase = true) ||
+                it.itemName.contains(q, ignoreCase = true) ||
+                it.receiverName.contains(q, ignoreCase = true) ||
+                it.receiverPhone.contains(q, ignoreCase = true) ||
+                it.deliveryAddress.contains(q, ignoreCase = true) ||
+                it.senderName.contains(q, ignoreCase = true)
+            }
+        }
+    }
+
     Scaffold(
-        containerColor = AppBackground,
-        bottomBar = { BottomNav(currentScreen = "Dashboard", onNavigate = onNavigate, activeViewMode = "rider") },
+        containerColor = LuxuryBlack,
+        bottomBar = { BottomNav(currentScreen = "Dashboard", onNavigate = onNavigate, activeViewMode = "rider", userRole = userRole) },
         floatingActionButton = {
             SupportButton(onClick = { showSupportDialog = true })
-        },
-        topBar = {
-            ScreenHeader(
-                title = "Rider Dispatch",
-                rightContent = {
-                    Button(
-                        onClick = { viewModel.setActiveViewMode("customer") },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isDark) Obsidian else Gold,
-                            contentColor = if (isDark) Gold else Obsidian
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.height(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SwapHoriz,
-                            contentDescription = "Switch to Customer",
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Customer Mode", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            )
         }
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .background(AppBackground)
+                .background(LuxuryBlack)
         ) {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .navigationBarsPadding(),
-                contentPadding = PaddingValues(bottom = 120.dp)
+                    .fillMaxSize()
+                    .background(Color.Transparent)
+                    .nestedScroll(nestedScrollConnection),
+                contentPadding = PaddingValues(top = 115.dp, bottom = 140.dp)
             ) {
-                // Greeting and Slogan Section
+                // Top spacer keeping content beneath collapsing header
                 item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 16.dp)
-                    ) {
-                        Text(
-                            text = "Good day, $firstName!",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Black,
-                            color = AppTextColor
-                        )
-                        Text(
-                            text = "PREMIUM LOGISTICS & DISPATCH",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) Gold else Obsidian,
-                            letterSpacing = 1.5.sp,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                }
-
-                // Balance & Dispatch Metrics Card
-                item {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        color = AppSurface,
-                        border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.linearGradient(listOf(Gold, Color(0xFFF59E0B)))),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.AccountBalanceWallet,
-                                            contentDescription = "Wallet",
-                                            tint = Obsidian,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            text = "FLEET SALARY & PERFORMANCE",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = if (isDark) Gold else Obsidian,
-                                            letterSpacing = 0.5.sp
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                            Column {
-                                                Text("Total Tips Earned", fontSize = 8.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                                                Text("₦${String.format("%,.2f", totalTipsEarned)}", fontSize = 15.sp, fontWeight = FontWeight.Black, color = AppTextColor)
-                                            }
-                                            Column {
-                                                Text("Total Earnings", fontSize = 8.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                                                Text("₦${String.format("%,.2f", totalEarned)}", fontSize = 15.sp, fontWeight = FontWeight.Black, color = AppTextColor)
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(3.dp))
-                                        Text(
-                                            text = "ℹ️ Drivers are employed internally by company. Tips are auto-credited per delivery to your wallet.",
-                                            fontSize = 8.sp,
-                                            color = TextGray,
-                                            lineHeight = 11.sp
-                                        )
-                                    }
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .background(Gold.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                                        .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        text = bikeNumber,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Gold
-                                    )
-                                }
-                            }
-
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 14.dp),
-                                color = if (isDark) BorderDark else Slate.copy(alpha = 0.5f),
-                                thickness = 1.dp
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val isOnlineState by viewModel.isOnline.collectAsState()
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isOnlineState) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color.Gray.copy(alpha = 0.15f))
-                                            .breathingPulse(active = isOnlineState, minScale = 0.95f, maxScale = 1.08f, durationMs = 1500),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isOnlineState) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                            contentDescription = "Status Indicator",
-                                            tint = if (isOnlineState) Color(0xFF4CAF50) else Color.Gray,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            text = "DUTY STATUS",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = TextGray,
-                                            letterSpacing = 0.5.sp
-                                        )
-                                        Text(
-                                            text = if (isOnlineState) "ONLINE & READY" else "OFFLINE",
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = if (isOnlineState) Color(0xFF4CAF50) else AppTextColor
-                                        )
-                                    }
-                                }
-
-                                Switch(
-                                    checked = isOnlineState,
-                                    onCheckedChange = { viewModel.setRiderOnlineStatus(it) },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Obsidian,
-                                        checkedTrackColor = Gold,
-                                        uncheckedThumbColor = TextGray,
-                                        uncheckedTrackColor = if (isDark) Charcoal else Slate
-                                    )
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                // Active assignments count
-                                Surface(
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (isDark) BackgroundDark else GoldenWhiteLight,
-                                    border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text("ACTIVE DISPATCH", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                        Text("$activeCount", fontSize = 18.sp, fontWeight = FontWeight.Black, color = AppTextColor)
-                                    }
-                                }
-
-                                // Completed deliveries count
-                                Surface(
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (isDark) BackgroundDark else GoldenWhiteLight,
-                                    border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text("COMPLETED", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                        Text("$deliveredCount", fontSize = 18.sp, fontWeight = FontWeight.Black, color = AppTextColor)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Live Dispatch & Weather Alert Watch Banner
-                item {
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        color = if (aiTrafficCongested) Color(0xFF2D1815) else Charcoal,
-                        border = BorderStroke(1.2.dp, if (aiTrafficCongested) Color(0xFFFF5252).copy(alpha = 0.5f) else Gold.copy(alpha = 0.3f))
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Notifications,
-                                        contentDescription = "Alert",
-                                        tint = if (aiTrafficCongested) Gold else (if (isDark) Gold else Obsidian),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Text(
-                                        text = "Dispatch & Weather Status",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (aiTrafficCongested) Color.White else AppTextColor
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .background(if (aiTrafficCongested) Color.Red else (if (isDark) Gold else Obsidian), CircleShape)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = if (aiTrafficCongested) {
-                                    "ALERT: Heavy traffic congestion reported. Smart motorcycle dispatch rerouting is highly recommended."
-                                } else {
-                                    "OPTIMAL: Clear skies. Normal traffic flow. Safe premium delivery zones are active. Deliveries are running ahead of schedule."
-                                },
-                                fontSize = 11.sp,
-                                color = if (aiTrafficCongested) Color.White else AppTextColor,
-                                fontWeight = FontWeight.Medium,
-                                lineHeight = 16.sp
-                            )
-                        }
-                    }
-                }
-
-                // Corporate Fleet Operations Hub Card
-                item {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        color = AppSurface,
-                        border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(
-                                        imageVector = Icons.Filled.DirectionsBike,
-                                        contentDescription = "Fleet Hub",
-                                        tint = Gold,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Text(
-                                        text = "EMPLOYEE FLEET OPERATIONS",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = AppTextColor
-                                    )
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = when (currentAttendanceStatus) {
-                                        "ON_DUTY" -> Color(0xFF2E7D32).copy(alpha = 0.2f)
-                                        "ON_BREAK" -> Color(0xFFEF6C00).copy(alpha = 0.2f)
-                                        else -> Color(0xFFC62828).copy(alpha = 0.2f)
-                                    },
-                                    border = BorderStroke(1.dp, when (currentAttendanceStatus) {
-                                        "ON_DUTY" -> Color(0xFF4CAF50)
-                                        "ON_BREAK" -> Color(0xFFFF9800)
-                                        else -> Color(0xFFE57373)
-                                    })
-                                ) {
-                                    Text(
-                                        text = currentAttendanceStatus.replace("_", " "),
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = when (currentAttendanceStatus) {
-                                            "ON_DUTY" -> Color(0xFF4CAF50)
-                                            "ON_BREAK" -> Color(0xFFFF9800)
-                                            else -> Color(0xFFE57373)
-                                        },
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            // Shift Attendance Toggle Buttons
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = { viewModel.clockInStatus("ON_DUTY") },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (currentAttendanceStatus == "ON_DUTY") Gold else Charcoal,
-                                        contentColor = if (currentAttendanceStatus == "ON_DUTY") Obsidian else AppTextColor
-                                    ),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(0.dp)
-                                ) {
-                                    Text("On Duty", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                Button(
-                                    onClick = { viewModel.clockInStatus("ON_BREAK") },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (currentAttendanceStatus == "ON_BREAK") Gold else Charcoal,
-                                        contentColor = if (currentAttendanceStatus == "ON_BREAK") Obsidian else AppTextColor
-                                    ),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(0.dp)
-                                ) {
-                                    Text("On Break", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                Button(
-                                    onClick = { viewModel.clockInStatus("OFF_DUTY") },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (currentAttendanceStatus == "OFF_DUTY") Gold else Charcoal,
-                                        contentColor = if (currentAttendanceStatus == "OFF_DUTY") Obsidian else AppTextColor
-                                    ),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(0.dp)
-                                ) {
-                                    Text("Off Duty", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            // 4 Feature Action Buttons (Pre-trip Inspection, Expense Claim, Shift Roster, Offline Sync)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { showInspectionDialog = true },
-                                    modifier = Modifier.weight(1f).height(40.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.5f)),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTextColor),
-                                    contentPadding = PaddingValues(4.dp)
-                                ) {
-                                    Icon(Icons.Filled.CheckCircle, "Inspect", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Pre-Trip", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                OutlinedButton(
-                                    onClick = { showExpenseDialog = true },
-                                    modifier = Modifier.weight(1f).height(40.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.5f)),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTextColor),
-                                    contentPadding = PaddingValues(4.dp)
-                                ) {
-                                    Icon(Icons.Filled.Receipt, "Expense", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Expenses", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                OutlinedButton(
-                                    onClick = { showRosterDialog = true },
-                                    modifier = Modifier.weight(1f).height(40.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.5f)),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTextColor),
-                                    contentPadding = PaddingValues(4.dp)
-                                ) {
-                                    Icon(Icons.Filled.CalendarMonth, "Roster", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Roster", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                OutlinedButton(
-                                    onClick = { showSyncDialog = true },
-                                    modifier = Modifier.weight(1f).height(40.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.5f)),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTextColor),
-                                    contentPadding = PaddingValues(4.dp)
-                                ) {
-                                    Icon(Icons.Filled.CloudSync, "Sync", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Sync(${offlineSyncQueue.filter{!it.synced}.size})", fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Second Row: Batch Route, Geofence, Incident, Bonus, Maintenance
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { showBatchRouteDialog = true },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, if (isDark) Gold else Obsidian),
-                                    contentPadding = PaddingValues(2.dp)
-                                ) {
-                                    Icon(Icons.Filled.Route, "Batch", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(12.dp))
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text("Batch AI", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                }
-
-                                OutlinedButton(
-                                    onClick = { showGeofenceDialog = true },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, if (isDark) Gold else Obsidian),
-                                    contentPadding = PaddingValues(2.dp)
-                                ) {
-                                    Icon(Icons.Filled.MyLocation, "Geo", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(12.dp))
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text("Geofence", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                }
-
-                                OutlinedButton(
-                                    onClick = { showIncidentDialog = true },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFEF5350)),
-                                    contentPadding = PaddingValues(2.dp)
-                                ) {
-                                    Icon(Icons.Filled.Warning, "Incident", tint = Color(0xFFEF5350), modifier = Modifier.size(12.dp))
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text("Incident", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                }
-
-                                OutlinedButton(
-                                    onClick = { showBonusDialog = true },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, if (isDark) Gold else Obsidian),
-                                    contentPadding = PaddingValues(2.dp)
-                                ) {
-                                    Icon(Icons.Filled.EmojiEvents, "Bonus", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(12.dp))
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text("Bonuses", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                }
-
-                                OutlinedButton(
-                                    onClick = { showMaintenanceDialog = true },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, if (isDark) Gold else Obsidian),
-                                    contentPadding = PaddingValues(2.dp)
-                                ) {
-                                    Icon(Icons.Filled.Build, "Maint", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(12.dp))
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text("Service", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                }
-                            }
-                        }
-                    }
+                    Spacer(modifier = Modifier.height(325.dp * (1f - progress)))
                 }
 
                 // Segmented Filters bar
                 item {
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -671,12 +301,24 @@ fun RiderDashboardScreen(
                                     .clickable { selectedFilter = tab },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = tab,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isSelected) Obsidian else TextGray
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = tab,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isSelected) Obsidian else TextGray
+                                    )
+                                    if (tab == "Active" && activeCount > 0) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isSelected) Obsidian else Gold)
+                                                .breathingPulse(active = true, minScale = 0.8f, maxScale = 1.3f, durationMs = 1200)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -685,6 +327,7 @@ fun RiderDashboardScreen(
                 // Multi-Stop Batch Trip Manifest Card (shown when 2+ active dispatches assigned)
                 if (filteredAssignments.size >= 2 && selectedFilter != "Delivered") {
                     item {
+                        Spacer(modifier = Modifier.height(12.dp))
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -739,7 +382,7 @@ fun RiderDashboardScreen(
                     }
                 }
 
-                // Assigned Deliveries List
+                // Deliveries List or Empty state
                 if (filteredAssignments.isEmpty()) {
                     item {
                         Spacer(modifier = Modifier.height(24.dp))
@@ -766,14 +409,16 @@ fun RiderDashboardScreen(
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text(
-                                    text = if (selectedFilter == "Available") "No Dispatches Available" else "No Shipments Found",
+                                    text = if (searchQuery.isNotBlank()) "No Matching Shipments" else if (selectedFilter == "Available") "No Dispatches Available" else "No Shipments Found",
                                     color = AppTextColor,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = if (selectedFilter == "Available") {
+                                    text = if (searchQuery.isNotBlank()) {
+                                        "No parcels matched '$searchQuery'. Try checking the tracking ID or recipient phone number."
+                                    } else if (selectedFilter == "Available") {
                                         "No unassigned orders found in your area. Open the dispatch app to receive incoming customer parcels!"
                                     } else {
                                         "Wait for the admin dispatcher to assign logistics deliveries to your profile."
@@ -798,6 +443,457 @@ fun RiderDashboardScreen(
                                 selectedParcelForWaybill = parcel
                             }
                         )
+                    }
+                }
+            }
+
+            // Fixed Collapsing Header Overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(headerHeightDp)
+                    .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
+                    .background(Obsidian)
+            ) {
+                QuiltedBackground(
+                    modifier = Modifier.matchParentSize(),
+                    lineColor = Color.White.copy(alpha = 0.04f)
+                ) {}
+
+                // 1. Expanded Header Content
+                val expandedAlpha = (1f - progress / 0.6f).coerceIn(0f, 1f)
+                if (expandedAlpha > 0f) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                alpha = expandedAlpha
+                                scaleX = 0.92f + 0.08f * expandedAlpha
+                                scaleY = 0.92f + 0.08f * expandedAlpha
+                                translationY = -scrollOffset * 0.5f
+                            }
+                            .statusBarsPadding()
+                            .padding(horizontal = 24.dp, vertical = 24.dp),
+                        verticalArrangement = Arrangement.Top
+                    ) {
+                        // Top Bar: Profile Pic, Active Count Pill, Duty Switch
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Profile Avatar
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .graphicsLayer { rotationZ = progress * 360f }
+                                    .drawBehind {
+                                        drawCircle(
+                                            color = Gold,
+                                            style = Stroke(width = 3.dp.toPx())
+                                        )
+                                        if (progress > 0f) {
+                                            drawArc(
+                                                color = Gold,
+                                                startAngle = -90f,
+                                                sweepAngle = progress * 360f,
+                                                useCenter = false,
+                                                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                                            )
+                                        }
+                                    }
+                                    .padding(3.dp)
+                                    .clip(CircleShape)
+                                    .clickable { onNavigate("Profile") }
+                            ) {
+                                Image(
+                                    painter = rememberAsyncImagePainter(if (photoUrl.isNotEmpty()) photoUrl else "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop"),
+                                    contentDescription = "Profile Pic",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
+                            // Active Dispatch Indicator Pill
+                            Surface(
+                                onClick = { selectedFilter = "Active" },
+                                shape = RoundedCornerShape(16.dp),
+                                color = Charcoal.copy(alpha = 0.9f),
+                                border = BorderStroke(1.dp, if (activeCount > 0) Gold.copy(alpha = 0.5f) else Slate)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(if (activeCount > 0) Gold else TextGray)
+                                            .breathingPulse(active = activeCount > 0, minScale = 0.8f, maxScale = 1.35f, durationMs = 1500)
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.DirectionsBike,
+                                        contentDescription = null,
+                                        tint = if (activeCount > 0) Gold else TextGray,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "$activeCount Active",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (activeCount > 0) Color.White else TextGray
+                                    )
+                                }
+                            }
+
+                            // Duty Status Switch
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = if (isOnlineState) "ON DUTY" else "OFF DUTY",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (isOnlineState) Color(0xFF4CAF50) else TextGray,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    Text(
+                                        text = if (isOnlineState) "Ready" else "Inactive",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextGray
+                                    )
+                                }
+                                Switch(
+                                    checked = isOnlineState,
+                                    onCheckedChange = { viewModel.setRiderOnlineStatus(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Obsidian,
+                                        checkedTrackColor = Gold,
+                                        uncheckedThumbColor = TextGray,
+                                        uncheckedTrackColor = Charcoal
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(36.dp))
+
+                        // Greeting Text
+                        Column {
+                            Text(
+                                text = "Good day,",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White.copy(alpha = 0.7f)
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "$firstName!",
+                                    fontSize = 38.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                WavingHand(isAtTopOrActive = isAtTop.value, fontSize = 30.sp)
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "PREMIUM LOGISTICS & DISPATCH",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Gold,
+                                letterSpacing = 2.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // Search Bar
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(60.dp)
+                                .background(Charcoal, shape = RoundedCornerShape(24.dp))
+                                .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Search,
+                                contentDescription = "Search",
+                                tint = Gold,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                keyboardOptions = KeyboardOptions(
+                                    imeAction = ImeAction.Search
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onSearch = {
+                                        if (filteredAssignments.isNotEmpty()) {
+                                            selectedParcelForUpdate = filteredAssignments.first()
+                                            showUpdateBottomSheet = true
+                                        }
+                                    }
+                                ),
+                                cursorBrush = SolidColor(Gold),
+                                modifier = Modifier.weight(1f),
+                                decorationBox = { innerTextField ->
+                                    Box(modifier = Modifier.fillMaxWidth()) {
+                                        if (searchQuery.isEmpty()) {
+                                            Text(
+                                                text = "Search manifest (ID, recipient, item)...",
+                                                color = TextGray,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                }
+                            )
+                            if (searchQuery.isNotEmpty()) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear",
+                                    tint = TextGray,
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clickable { searchQuery = "" }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF121212))
+                                    .clickable { onNavigate("Scanner") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.QrCodeScanner,
+                                    contentDescription = "Scan",
+                                    tint = Gold,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        // Dual Hero Action Cards: Left = Courier Tips, Right = Completed Deliveries
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Left: Courier Tips (navigates to Tip Wallet)
+                            Surface(
+                                onClick = { onNavigate("Wallet") },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(80.dp),
+                                shape = RoundedCornerShape(24.dp),
+                                color = Charcoal,
+                                shadowElevation = 0.dp,
+                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.3f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(Gold),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        AnimatedHugeIcon(
+                                            icon = Hugeicons.Solid.Wallet,
+                                            contentDescription = "Tips",
+                                            tint = Obsidian,
+                                            size = 18.dp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(verticalArrangement = Arrangement.Center) {
+                                        Text(
+                                            text = "Courier Tips",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextGray,
+                                            lineHeight = 13.sp,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = "₦${String.format("%,.2f", totalTipsEarned)}",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = AppTextColor,
+                                            lineHeight = 16.sp,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Right: Completed Deliveries (filters manifest to Completed)
+                            Surface(
+                                onClick = { selectedFilter = "Delivered" },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(80.dp),
+                                shape = RoundedCornerShape(24.dp),
+                                color = Charcoal,
+                                shadowElevation = 0.dp,
+                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.3f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(Gold),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.CheckCircle,
+                                            contentDescription = "Completed",
+                                            tint = Obsidian,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(verticalArrangement = Arrangement.Center) {
+                                        Text(
+                                            text = "Deliveries",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextGray,
+                                            lineHeight = 13.sp,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = "$deliveredCount Completed",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = AppTextColor,
+                                            lineHeight = 16.sp,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. Collapsed Content
+                val collapsedAlpha = ((progress - 0.4f) / 0.6f).coerceIn(0f, 1f)
+                if (collapsedAlpha > 0f) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                alpha = collapsedAlpha
+                                translationY = (1f - collapsedAlpha) * 12.dp.toPx()
+                            }
+                            .statusBarsPadding()
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .graphicsLayer { rotationZ = progress * 360f }
+                                    .drawBehind {
+                                        drawCircle(
+                                            color = Gold,
+                                            style = Stroke(width = 2.dp.toPx())
+                                        )
+                                        if (progress > 0f) {
+                                            drawArc(
+                                                color = Gold,
+                                                startAngle = -90f,
+                                                sweepAngle = progress * 360f,
+                                                useCenter = false,
+                                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                                            )
+                                        }
+                                    }
+                                    .padding(2.dp)
+                                    .clip(CircleShape)
+                                    .clickable { onNavigate("Profile") }
+                            ) {
+                                Image(
+                                    painter = rememberAsyncImagePainter(if (photoUrl.isNotEmpty()) photoUrl else "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop"),
+                                    contentDescription = "Profile Pic",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Hello $firstName! ",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                WavingHand(isAtTopOrActive = true, fontSize = 18.sp)
+                            }
+                        }
+
+                        // Duty Switch in Collapsed Header
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = if (isOnlineState) "ON" else "OFF",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (isOnlineState) Color(0xFF4CAF50) else TextGray
+                            )
+                            Switch(
+                                checked = isOnlineState,
+                                onCheckedChange = { viewModel.setRiderOnlineStatus(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Obsidian,
+                                    checkedTrackColor = Gold,
+                                    uncheckedThumbColor = TextGray,
+                                    uncheckedTrackColor = Charcoal
+                                )
+                            )
+                        }
                     }
                 }
             }

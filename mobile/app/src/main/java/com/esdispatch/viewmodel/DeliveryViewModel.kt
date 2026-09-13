@@ -823,9 +823,25 @@ class DeliveryViewModel : WalletViewModel() {
 
     fun setRiderOnlineStatus(online: Boolean) {
         _isOnline.value = online
+        _currentAttendanceStatus.value = if (online) "ON_DUTY" else "OFF_DUTY"
         val uid = _firebaseUserId.value
         if (uid != null && !uid.startsWith("local_user_")) {
             com.esdispatch.data.FirebaseManager.updateRiderOnlineStatus(uid, online)
+            try {
+                com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    .collection("drivers").document(uid)
+                    .set(
+                        mapOf(
+                            "isOnline" to online,
+                            "is_active" to online,
+                            "status" to (if (online) "available" else "offline"),
+                            "updatedAt" to System.currentTimeMillis()
+                        ),
+                        com.google.firebase.firestore.SetOptions.merge()
+                    )
+            } catch (e: Exception) {
+                Log.e("DeliveryViewModel", "Failed to update driver doc online status: ${e.message}")
+            }
         }
         
         // Start or stop the LocationService for live GPS tracking
@@ -840,6 +856,46 @@ class DeliveryViewModel : WalletViewModel() {
             } else {
                 ctx.stopService(intent)
             }
+        }
+    }
+
+    fun checkAndApplyWorkingDaysAutoOnline() {
+        try {
+            val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            db.collection("system_config").document("global_settings").get()
+                .addOnSuccessListener { snap ->
+                    if (snap != null && snap.exists()) {
+                        val autoOnline = snap.getBoolean("autoOnlineOnWorkingDays") ?: true
+                        val workingDays = (snap.get("workingDays") as? List<*>)?.map { it.toString().lowercase() }
+                            ?: listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday")
+                        
+                        val currentDayName = java.text.SimpleDateFormat("EEEE", java.util.Locale.ENGLISH).format(java.util.Date()).lowercase()
+                        val isWorkingDay = workingDays.contains(currentDayName)
+                        
+                        if (autoOnline && isWorkingDay) {
+                            if (!_isOnline.value) {
+                                setRiderOnlineStatus(true)
+                            }
+                        }
+                    } else {
+                        val cal = java.util.Calendar.getInstance()
+                        val dayOfWeek = cal.get(java.util.Calendar.DAY_OF_WEEK)
+                        val isMonToSat = dayOfWeek != java.util.Calendar.SUNDAY
+                        if (isMonToSat && !_isOnline.value) {
+                            setRiderOnlineStatus(true)
+                        }
+                    }
+                }
+                .addOnFailureListener {
+                    val cal = java.util.Calendar.getInstance()
+                    val dayOfWeek = cal.get(java.util.Calendar.DAY_OF_WEEK)
+                    val isMonToSat = dayOfWeek != java.util.Calendar.SUNDAY
+                    if (isMonToSat && !_isOnline.value) {
+                        setRiderOnlineStatus(true)
+                    }
+                }
+        } catch (e: Exception) {
+            // Non-fatal
         }
     }
 
@@ -881,6 +937,7 @@ class DeliveryViewModel : WalletViewModel() {
             )
             if (role == "rider") {
                 startRiderListeners(uid)
+                checkAndApplyWorkingDaysAutoOnline()
             } else {
                 stopRiderListeners()
             }
@@ -890,6 +947,9 @@ class DeliveryViewModel : WalletViewModel() {
     fun setActiveViewMode(mode: String) {
         _activeViewMode.value = mode
         savePref("active_view_mode", mode)
+        if (mode == "rider") {
+            checkAndApplyWorkingDaysAutoOnline()
+        }
     }
 
     fun setBikeNumber(number: String) {
