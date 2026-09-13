@@ -39,6 +39,7 @@ import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.components.RoundedSheet
 import com.esdispatch.ui.components.StaggeredItem
 import com.esdispatch.ui.components.HistoryOrderCard
+import com.esdispatch.ui.components.CancelDeliverySecurityDialog
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 
@@ -213,78 +214,20 @@ fun OrderLogsScreen(
     }
 
     if (parcelToCancel != null) {
-        val targetParcel = parcelToCancel!!
-        val (refundAmount, deductionFee, isCancellable) = viewModel.calculateCancellationRefund(targetParcel)
-        AlertDialog(
-            onDismissRequest = { parcelToCancel = null },
-            title = {
-                Text(
-                    text = "Cancel Delivery #${targetParcel.id.take(8)}?",
-                    fontFamily = SpaceGrotesk,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isDark) Color.White else Obsidian
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (!isCancellable) {
-                        Text(
-                            text = "Shipment #${targetParcel.id.take(8)} is already with the courier and in transit. Orders in transit cannot be cancelled in-app. Please contact customer support.",
-                            fontFamily = Poppins,
-                            fontSize = 13.sp,
-                            color = Color(0xFFE53935)
-                        )
-                    } else {
-                        val feeText = if (deductionFee > 0.0) {
-                            "A ₦${String.format("%,.0f", deductionFee)} dispatch mobilization fee will be deducted for courier dispatch. Net refund: ₦${String.format("%,.2f", refundAmount)} to your wallet balance."
-                        } else {
-                            "Free cancellation. The full fee of ₦${String.format("%,.2f", refundAmount)} will be refunded immediately to your wallet."
-                        }
-                        Text(
-                            text = feeText,
-                            fontFamily = Poppins,
-                            fontSize = 13.sp,
-                            color = TextGray
-                        )
-                    }
+        CancelDeliverySecurityDialog(
+            parcel = parcelToCancel!!,
+            viewModel = viewModel,
+            isDark = isDark,
+            onDismiss = { parcelToCancel = null },
+            onCancelled = { refundAmount, deductionFee ->
+                val toastMsg = if (deductionFee > 0.0) {
+                    "Delivery cancelled • ₦${String.format("%,.2f", refundAmount)} refunded (₦500 dispatch fee deducted)"
+                } else {
+                    "Delivery cancelled. Wallet refunded."
                 }
-            },
-            confirmButton = {
-                if (isCancellable) {
-                    Button(
-                        onClick = {
-                            val parcelId = targetParcel.id
-                            parcelToCancel = null
-                            viewModel.cancelDelivery(parcelId, reason = "Cancelled by user") { success ->
-                                if (success) {
-                                    val toastMsg = if (deductionFee > 0.0) {
-                                        "Delivery cancelled • ₦${String.format("%,.2f", refundAmount)} refunded (₦500 dispatch fee deducted)"
-                                    } else {
-                                        "Delivery cancelled. Wallet refunded."
-                                    }
-                                    android.widget.Toast.makeText(context, toastMsg, android.widget.Toast.LENGTH_SHORT).show()
-                                } else {
-                                    android.widget.Toast.makeText(context, "Unable to cancel delivery.", android.widget.Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFE53935),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Cancel Delivery & Refund", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { parcelToCancel = null }) {
-                    Text(if (isCancellable) "Keep Order" else "Close", color = TextGray, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                }
-            },
-            containerColor = if (isDark) Charcoal else Color.White,
-            shape = RoundedCornerShape(20.dp)
+                android.widget.Toast.makeText(context, toastMsg, android.widget.Toast.LENGTH_SHORT).show()
+                parcelToCancel = null
+            }
         )
     }
 

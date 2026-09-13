@@ -1056,23 +1056,7 @@ class DeliveryViewModel : WalletViewModel() {
                     uid, _loyaltyPoints.value, updatedCount
                 )
 
-                if (payout > 0) {
-                    com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, payout) { payoutSuccess, newBal ->
-                        if (payoutSuccess) {
-                            _walletBalance.value = newBal
-                            savePref("wallet_balance", newBal)
-                            com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
-                                userId = uid,
-                                amount = payout,
-                                title = "Payout: ${parcel?.itemName ?: parcelId}",
-                                isTopUp = true,
-                                reference = "PAYOUT-$parcelId"
-                            ) {}
-                        }
-                    }
-                }
-
-                // Update local list
+                // Local list update (escrow payout is settled authoritatively by backend trigger)
                 val updatedList = _parcels.value.map {
                     if (it.id == parcelId) it.copy(status = ParcelStatus.DELIVERED, progress = 1.0f) else it
                 }
@@ -1081,7 +1065,7 @@ class DeliveryViewModel : WalletViewModel() {
                 // Add Notification
                 addNotification(
                     title = "Parcel Delivered",
-                    message = "Parcel #$parcelId has been successfully delivered and proof of delivery captured. You earned ₦${String.format("%,.2f", payout)}",
+                    message = "Parcel #$parcelId has been successfully delivered and proof of delivery captured.",
                     parcelId = parcelId
                 )
             }
@@ -1234,6 +1218,44 @@ class DeliveryViewModel : WalletViewModel() {
             otpInput = otpInput,
             onComplete = onComplete
         )
+    }
+
+    fun ensureDeliveryOtp(parcelId: String, onComplete: ((String) -> Unit)? = null) {
+        val parcel = _parcels.value.find { it.id == parcelId } ?: _selectedParcel.value
+        if (parcel != null && parcel.otpCode.isNotBlank()) {
+            onComplete?.invoke(parcel.otpCode)
+            return
+        }
+        val db = com.esdispatch.data.FirebaseManager.firestore ?: return
+        val docRef = db.collection("deliveries").document(parcelId)
+        docRef.get().addOnSuccessListener { snapshot ->
+            val existingOtp = snapshot.getString("otpCode")
+            if (!existingOtp.isNullOrBlank()) {
+                updateLocalParcelOtp(parcelId, existingOtp)
+                onComplete?.invoke(existingOtp)
+            } else {
+                val newOtp = (1000..9999).random().toString()
+                docRef.update(
+                    mapOf(
+                        "otpCode" to newOtp,
+                        "otpExpiresAt" to (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
+                    )
+                ).addOnSuccessListener {
+                    updateLocalParcelOtp(parcelId, newOtp)
+                    onComplete?.invoke(newOtp)
+                }
+            }
+        }
+    }
+
+    private fun updateLocalParcelOtp(parcelId: String, otp: String) {
+        val updated = _parcels.value.map {
+            if (it.id == parcelId) it.copy(otpCode = otp) else it
+        }
+        _parcels.value = updated
+        if (_selectedParcel.value?.id == parcelId) {
+            _selectedParcel.value = _selectedParcel.value?.copy(otpCode = otp)
+        }
     }
 
     fun rateAndTipRider(
@@ -2902,10 +2924,9 @@ class DeliveryViewModel : WalletViewModel() {
         com.esdispatch.data.FirebaseManager.fetchUserParcelHistory(userId) { list ->
             if (list.isNotEmpty()) {
                 viewModelScope.launch {
-                    repository?.clearAllData()
                     repository?.saveParcels(list)
                     _parcels.value = list
-                    if (list.isNotEmpty()) {
+                    if (_selectedParcel.value == null && list.isNotEmpty()) {
                         _selectedParcel.value = list.first()
                     }
                 }
@@ -3869,9 +3890,9 @@ class DeliveryViewModel : WalletViewModel() {
     fun searchAndTrackParcel(context: Context, trackingNumber: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
         val trimmed = trackingNumber.trim()
         val validationResult = com.esdispatch.util.Zod.string(trimmed)
-            .min(7, "Tracking ID must be at least 7 characters.")
-            .max(12, "Tracking ID must not exceed 12 characters.")
-            .regex("^[a-zA-Z0-9\\s-]+$", "Only letters, numbers, and hyphens allowed.")
+            .min(6, "Tracking ID must be at least 6 characters.")
+            .max(40, "Tracking ID must not exceed 40 characters.")
+            .regex("^[a-zA-Z0-9\\s_-]+$", "Only letters, numbers, hyphens, and underscores allowed.")
             .safeParse()
 
         if (validationResult is com.esdispatch.util.ZodResult.Error) {

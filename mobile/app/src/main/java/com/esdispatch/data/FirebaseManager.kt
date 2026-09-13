@@ -635,6 +635,101 @@ object FirebaseManager {
     /**
      * Fetch user's parcel history from Firestore personal account
      */
+    fun parseParcelFromDoc(doc: DocumentSnapshot, fallbackUserId: String = ""): Parcel {
+        val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
+        val itemName = doc.getString("itemName")?.takeIf { it.isNotBlank() } ?: "Standard Package"
+        val imageUrl = doc.getString("imageUrl") ?: ""
+        val statusStr = doc.getString("status") ?: ParcelStatus.TRANSIT.name
+        val status = try { ParcelStatus.valueOf(statusStr) } catch(_: Exception) { ParcelStatus.TRANSIT }
+        val pickupAddress = doc.getString("pickupAddress") ?: ""
+        val deliveryAddress = doc.getString("deliveryAddress") ?: ""
+        val senderName = doc.getString("senderName") ?: ""
+        val senderPhone = doc.getString("senderPhone") ?: ""
+        val receiverName = doc.getString("receiverName") ?: ""
+        val receiverPhone = doc.getString("receiverPhone") ?: ""
+        val quantity = doc.getSafeInt("quantity", 1)
+        val weight = doc.getSafeDouble("weight", 1.0)
+        val length = doc.getSafeInt("length", 10)
+        val width = doc.getSafeInt("width", 10)
+        val height = doc.getSafeInt("height", 10)
+        val price = doc.getSafeDouble("price", 0.0)
+        val courierName = doc.getString("courierName") ?: ""
+        val courierPhone = doc.getString("courierPhone") ?: ""
+        val courierAvatar = doc.getString("courierAvatar") ?: ""
+        val progress = doc.getSafeDouble("progress", 0.0).toFloat()
+        val dateString = doc.getString("dateString") ?: "Today"
+        val courierLatitude = doc.getSafeDoubleNullable("courierLatitude")
+        val courierLongitude = doc.getSafeDoubleNullable("courierLongitude")
+        val riderId = doc.getString("riderId") ?: ""
+        val riderBikeNumber = doc.getString("riderBikeNumber") ?: ""
+        val otpCode = doc.getString("otpCode") ?: ""
+        val otpVerified = doc.getSafeBoolean("otpVerified", false)
+        val isRated = doc.getSafeBoolean("isRated", false)
+        val customerRating = doc.getSafeDouble("customerRating", 0.0)
+        val tipAmount = doc.getSafeDouble("tipAmount", 0.0)
+        val additionalStops = doc.getString("additionalStops") ?: ""
+        val reservedRiderId = doc.getString("reservedRiderId") ?: ""
+        val reservedCourierName = doc.getString("reservedCourierName") ?: ""
+        val reservedCourierPhone = doc.getString("reservedCourierPhone") ?: ""
+        val podUrl = doc.getString("podUrl") ?: ""
+        val podStatus = doc.getString("podStatus") ?: ""
+        val payoutCredited = doc.getSafeBoolean("payoutCredited", false)
+        val category = doc.getString("category")?.takeIf { it.isNotBlank() } ?: "Standard"
+        val pickupLat = doc.getSafeDoubleNullable("pickupLat")
+        val pickupLng = doc.getSafeDoubleNullable("pickupLng")
+        val deliveryLat = doc.getSafeDoubleNullable("deliveryLat")
+        val deliveryLng = doc.getSafeDoubleNullable("deliveryLng")
+        val createdAt = doc.getSafeLong("createdAt", 0L)
+        val userId = doc.getString("userId")?.takeIf { it.isNotBlank() } ?: fallbackUserId
+
+        return Parcel(
+            id = id,
+            itemName = itemName,
+            imageUrl = imageUrl,
+            status = status,
+            pickupAddress = pickupAddress,
+            deliveryAddress = deliveryAddress,
+            senderName = senderName,
+            senderPhone = senderPhone,
+            receiverName = receiverName,
+            receiverPhone = receiverPhone,
+            quantity = quantity,
+            weight = weight,
+            length = length,
+            width = width,
+            height = height,
+            price = price,
+            courierName = courierName,
+            courierPhone = courierPhone,
+            courierAvatar = courierAvatar,
+            progress = progress,
+            dateString = dateString,
+            userId = userId,
+            courierLatitude = courierLatitude,
+            courierLongitude = courierLongitude,
+            additionalStops = additionalStops,
+            riderId = riderId,
+            riderBikeNumber = riderBikeNumber,
+            otpCode = otpCode,
+            otpVerified = otpVerified,
+            isRated = isRated,
+            customerRating = customerRating,
+            tipAmount = tipAmount,
+            createdAt = createdAt,
+            reservedRiderId = reservedRiderId,
+            reservedCourierName = reservedCourierName,
+            reservedCourierPhone = reservedCourierPhone,
+            podUrl = podUrl,
+            podStatus = podStatus,
+            payoutCredited = payoutCredited,
+            category = category,
+            pickupLat = pickupLat,
+            pickupLng = pickupLng,
+            deliveryLat = deliveryLat,
+            deliveryLng = deliveryLng
+        )
+    }
+
     fun fetchUserParcelHistory(userId: String, onComplete: (List<Parcel>) -> Unit) {
         val db = firestore
         if (db == null) {
@@ -642,90 +737,60 @@ object FirebaseManager {
             return
         }
 
-        db.collection("users").document(userId)
-            .collection("deliveries")
+        // Primary source of truth: root deliveries collection
+        db.collection("deliveries")
+            .whereEqualTo("userId", userId)
             .get()
-            .addOnSuccessListener { querySnapshot ->
+            .addOnSuccessListener { rootSnapshot ->
                 val list = mutableListOf<Parcel>()
-                for (doc in querySnapshot.documents) {
+                val seenIds = mutableSetOf<String>()
+                for (doc in rootSnapshot.documents) {
                     try {
-                        val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
-                        val itemName = doc.getString("itemName") ?: ""
-                        val imageUrl = doc.getString("imageUrl") ?: ""
-                        val statusStr = doc.getString("status") ?: ParcelStatus.TRANSIT.name
-                        val status = try { ParcelStatus.valueOf(statusStr) } catch(e: Exception) { ParcelStatus.TRANSIT }
-                        val pickupAddress = doc.getString("pickupAddress") ?: ""
-                        val deliveryAddress = doc.getString("deliveryAddress") ?: ""
-                        val senderName = doc.getString("senderName") ?: ""
-                        val senderPhone = doc.getString("senderPhone") ?: ""
-                        val receiverName = doc.getString("receiverName") ?: ""
-                        val receiverPhone = doc.getString("receiverPhone") ?: ""
-                        val quantity = doc.getSafeInt("quantity", 1)
-                        val weight = doc.getSafeDouble("weight", 1.0)
-                        val length = doc.getSafeInt("length", 10)
-                        val width = doc.getSafeInt("width", 10)
-                        val height = doc.getSafeInt("height", 10)
-                        val price = doc.getSafeDouble("price", 0.0)
-                        val courierName = doc.getString("courierName") ?: ""
-                        val courierPhone = doc.getString("courierPhone") ?: ""
-                        val courierAvatar = doc.getString("courierAvatar") ?: ""
-                        val progress = doc.getSafeDouble("progress", 0.0).toFloat()
-                        val dateString = doc.getString("dateString") ?: "Today"
-                        val courierLatitude = doc.getSafeDoubleNullable("courierLatitude")
-                        val courierLongitude = doc.getSafeDoubleNullable("courierLongitude")
-                        val riderId = doc.getString("riderId") ?: ""
-                        val riderBikeNumber = doc.getString("riderBikeNumber") ?: ""
-                        val otpCode = doc.getString("otpCode") ?: ""
-                        val otpVerified = doc.getSafeBoolean("otpVerified", false)
-                        val isRated = doc.getSafeBoolean("isRated", false)
-                        val customerRating = doc.getSafeDouble("customerRating", 0.0)
-                        val tipAmount = doc.getSafeDouble("tipAmount", 0.0)
-                        val additionalStops = doc.getString("additionalStops") ?: ""
-
-                        val parcel = Parcel(
-                            id = id,
-                            itemName = itemName,
-                            imageUrl = imageUrl,
-                            status = status,
-                            pickupAddress = pickupAddress,
-                            deliveryAddress = deliveryAddress,
-                            senderName = senderName,
-                            senderPhone = senderPhone,
-                            receiverName = receiverName,
-                            receiverPhone = receiverPhone,
-                            quantity = quantity,
-                            weight = weight,
-                            length = length,
-                            width = width,
-                            height = height,
-                            price = price,
-                            courierName = courierName,
-                            courierPhone = courierPhone,
-                            courierAvatar = courierAvatar,
-                            progress = progress,
-                            dateString = dateString,
-                            userId = userId,
-                            courierLatitude = courierLatitude,
-                            courierLongitude = courierLongitude,
-                            riderId = riderId,
-                            riderBikeNumber = riderBikeNumber,
-                            otpCode = otpCode,
-                            otpVerified = otpVerified,
-                            isRated = isRated,
-                            customerRating = customerRating,
-                            tipAmount = tipAmount,
-                            additionalStops = additionalStops
-                        )
+                        val parcel = parseParcelFromDoc(doc, userId)
                         list.add(parcel)
+                        seenIds.add(parcel.id)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing user parcel document: ${e.message}")
+                        Log.e(TAG, "Error parsing root parcel document: ${e.message}")
                     }
                 }
-                onComplete(list)
+
+                // Check user subcollection for legacy deliveries not yet mirrored to root
+                db.collection("users").document(userId)
+                    .collection("deliveries")
+                    .get()
+                    .addOnSuccessListener { subSnapshot ->
+                        for (doc in subSnapshot.documents) {
+                            try {
+                                val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
+                                if (!seenIds.contains(id)) {
+                                    val parcel = parseParcelFromDoc(doc, userId)
+                                    list.add(parcel)
+                                    seenIds.add(parcel.id)
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error parsing subcollection parcel: ${e.message}")
+                            }
+                        }
+                        onComplete(list)
+                    }
+                    .addOnFailureListener {
+                        onComplete(list)
+                    }
             }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to fetch user parcel history: ${e.message}")
-                onComplete(emptyList())
+                Log.e(TAG, "Failed to fetch deliveries from root collection: ${e.message}")
+                db.collection("users").document(userId)
+                    .collection("deliveries")
+                    .get()
+                    .addOnSuccessListener { subSnapshot ->
+                        val list = subSnapshot.documents.mapNotNull { doc ->
+                            try { parseParcelFromDoc(doc, userId) } catch (_: Exception) { null }
+                        }
+                        onComplete(list)
+                    }
+                    .addOnFailureListener {
+                        onComplete(emptyList())
+                    }
             }
     }
 
@@ -820,77 +885,10 @@ object FirebaseManager {
 
             if (snapshot != null && snapshot.exists()) {
                 try {
-                    val id = snapshot.getString("id") ?: parcelId
-                    val itemName = snapshot.getString("itemName") ?: "Mac mini M2"
-                    val imageUrl = snapshot.getString("imageUrl") ?: ""
-                    val statusStr = snapshot.getString("status") ?: ParcelStatus.TRANSIT.name
-                    val status = try { ParcelStatus.valueOf(statusStr) } catch(e: Exception) { ParcelStatus.TRANSIT }
-                    val pickupAddress = snapshot.getString("pickupAddress") ?: ""
-                    val deliveryAddress = snapshot.getString("deliveryAddress") ?: ""
-                    val senderName = snapshot.getString("senderName") ?: ""
-                    val senderPhone = snapshot.getString("senderPhone") ?: ""
-                    val receiverName = snapshot.getString("receiverName") ?: ""
-                    val receiverPhone = snapshot.getString("receiverPhone") ?: ""
-                    val quantity = snapshot.getSafeInt("quantity", 1)
-                    val weight = snapshot.getSafeDouble("weight", 1.0)
-                    val length = snapshot.getSafeInt("length", 10)
-                    val width = snapshot.getSafeInt("width", 10)
-                    val height = snapshot.getSafeInt("height", 10)
-                    val price = snapshot.getSafeDouble("price", 0.0)
-                    val courierName = snapshot.getString("courierName") ?: ""
-                    val courierPhone = snapshot.getString("courierPhone") ?: ""
-                    val courierAvatar = snapshot.getString("courierAvatar") ?: ""
-                    val progress = snapshot.getSafeDouble("progress", 0.35).toFloat()
-                    val dateString = snapshot.getString("dateString") ?: "Today"
-                    val courierLatitude = snapshot.getSafeDoubleNullable("courierLatitude")
-                    val courierLongitude = snapshot.getSafeDoubleNullable("courierLongitude")
-                    val userId = snapshot.getString("userId") ?: ""
-                    val riderId = snapshot.getString("riderId") ?: ""
-                    val riderBikeNumber = snapshot.getString("riderBikeNumber") ?: ""
-                    val otpCode = snapshot.getString("otpCode") ?: ""
-                    val otpVerified = snapshot.getSafeBoolean("otpVerified", false)
-                    val isRated = snapshot.getSafeBoolean("isRated", false)
-                    val customerRating = snapshot.getSafeDouble("customerRating", 0.0)
-                    val tipAmount = snapshot.getSafeDouble("tipAmount", 0.0)
-                    val additionalStops = snapshot.getString("additionalStops") ?: ""
-
-                    val parcel = Parcel(
-                        id = id,
-                        itemName = itemName,
-                        imageUrl = imageUrl,
-                        status = status,
-                        pickupAddress = pickupAddress,
-                        deliveryAddress = deliveryAddress,
-                        senderName = senderName,
-                        senderPhone = senderPhone,
-                        receiverName = receiverName,
-                        receiverPhone = receiverPhone,
-                        quantity = quantity,
-                        weight = weight,
-                        length = length,
-                        width = width,
-                        height = height,
-                        price = price,
-                        courierName = courierName,
-                        courierPhone = courierPhone,
-                        courierAvatar = courierAvatar,
-                        progress = progress,
-                        dateString = dateString,
-                        userId = userId,
-                        courierLatitude = courierLatitude,
-                        courierLongitude = courierLongitude,
-                        riderId = riderId,
-                        riderBikeNumber = riderBikeNumber,
-                        otpCode = otpCode,
-                        otpVerified = otpVerified,
-                        isRated = isRated,
-                        customerRating = customerRating,
-                        tipAmount = tipAmount,
-                        additionalStops = additionalStops
-                    )
+                    val parcel = parseParcelFromDoc(snapshot)
                     trySend(parcel)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error mapping snapshot: ${e.message}")
+                    Log.e(TAG, "Error mapping tracking snapshot: ${e.message}")
                     trySend(null)
                 }
             } else {
@@ -1189,7 +1187,7 @@ object FirebaseManager {
                             val id = doc.id
                             val title = doc.getString("title") ?: ""
                             val message = doc.getString("message") ?: doc.getString("description") ?: ""
-                            val isRead = doc.getBoolean("isRead") ?: false
+                            val isRead = doc.getBoolean("isRead") ?: doc.getBoolean("read") ?: false
                             val parcelId = doc.getString("parcelId") ?: ""
                             val ts = when (val raw = doc.get("createdAt") ?: doc.get("timestamp")) {
                                 is com.google.firebase.Timestamp -> raw.toDate().time
@@ -1440,73 +1438,7 @@ object FirebaseManager {
                     val list = mutableListOf<Parcel>()
                     for (doc in snapshot.documents) {
                         try {
-                            val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
-                            val itemName = doc.getString("itemName") ?: ""
-                            val imageUrl = doc.getString("imageUrl") ?: ""
-                            val statusStr = doc.getString("status") ?: "PENDING"
-                            val status = try { ParcelStatus.valueOf(statusStr) } catch(e: Exception) { ParcelStatus.TRANSIT }
-                            val pickupAddress = doc.getString("pickupAddress") ?: ""
-                            val deliveryAddress = doc.getString("deliveryAddress") ?: ""
-                            val senderName = doc.getString("senderName") ?: ""
-                            val senderPhone = doc.getString("senderPhone") ?: ""
-                            val receiverName = doc.getString("receiverName") ?: ""
-                            val receiverPhone = doc.getString("receiverPhone") ?: ""
-                            val quantity = doc.getSafeInt("quantity", 1)
-                            val weight = doc.getSafeDouble("weight", 1.0)
-                            val length = doc.getSafeInt("length", 10)
-                            val width = doc.getSafeInt("width", 10)
-                            val height = doc.getSafeInt("height", 10)
-                            val price = doc.getSafeDouble("price", 0.0)
-                            val courierName = doc.getString("courierName") ?: ""
-                            val courierPhone = doc.getString("courierPhone") ?: ""
-                            val courierAvatar = doc.getString("courierAvatar") ?: ""
-                            val progress = doc.getSafeDouble("progress", 0.0).toFloat()
-                            val dateString = doc.getString("dateString") ?: "Today"
-                            val courierLatitude = doc.getSafeDoubleNullable("courierLatitude")
-                            val courierLongitude = doc.getSafeDoubleNullable("courierLongitude")
-                            val riderId = doc.getString("riderId") ?: ""
-                            val riderBikeNumber = doc.getString("riderBikeNumber") ?: ""
-                            val otpCode = doc.getString("otpCode") ?: ""
-                            val otpVerified = doc.getSafeBoolean("otpVerified", false)
-                            val isRated = doc.getSafeBoolean("isRated", false)
-                            val customerRating = doc.getSafeDouble("customerRating", 0.0)
-                            val tipAmount = doc.getSafeDouble("tipAmount", 0.0)
-
-                            val parcel = Parcel(
-                                id = id,
-                                itemName = itemName,
-                                imageUrl = imageUrl,
-                                status = status,
-                                pickupAddress = pickupAddress,
-                                deliveryAddress = deliveryAddress,
-                                senderName = senderName,
-                                senderPhone = senderPhone,
-                                receiverName = receiverName,
-                                receiverPhone = receiverPhone,
-                                quantity = quantity,
-                                weight = weight,
-                                length = length,
-                                width = width,
-                                height = height,
-                                price = price,
-                                courierName = courierName,
-                                courierPhone = courierPhone,
-                                courierAvatar = courierAvatar,
-                                progress = progress,
-                                dateString = dateString,
-                                userId = doc.getString("userId") ?: "",
-                                courierLatitude = courierLatitude,
-                                courierLongitude = courierLongitude,
-                                riderId = riderId,
-                                riderBikeNumber = riderBikeNumber,
-                                otpCode = otpCode,
-                                otpVerified = otpVerified,
-                                isRated = isRated,
-                                customerRating = customerRating,
-                                tipAmount = tipAmount,
-                                additionalStops = doc.getString("additionalStops") ?: ""
-                            )
-                            list.add(parcel)
+                            list.add(parseParcelFromDoc(doc))
                         } catch (e: Exception) {
                             Log.e(TAG, "Error parsing available delivery: ${e.message}")
                         }
@@ -1521,7 +1453,7 @@ object FirebaseManager {
     }
 
     /**
-     * Listen to assigned parcels for a specific rider in real time.
+     * Listen to assigned parcels for a specific rider in real time (both active and reserved).
      */
     fun listenToRiderAssignments(riderId: String): Flow<List<Parcel>> = callbackFlow {
         val db = firestore
@@ -1531,95 +1463,60 @@ object FirebaseManager {
             return@callbackFlow
         }
 
-        val listener = db.collection("deliveries")
+        val activeMap = java.util.concurrent.ConcurrentHashMap<String, Parcel>()
+        val reservedMap = java.util.concurrent.ConcurrentHashMap<String, Parcel>()
+
+        fun emitCombined() {
+            val combined = (activeMap.values + reservedMap.values).distinctBy { it.id }
+                .sortedByDescending { it.createdAt }
+            trySend(combined)
+        }
+
+        val activeListener = db.collection("deliveries")
             .whereEqualTo("riderId", riderId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    Log.e(TAG, "Error listening to rider assignments: ${error.message}")
+                    Log.e(TAG, "Error listening to active rider assignments: ${error.message}")
                     return@addSnapshotListener
                 }
-
                 if (snapshot != null) {
-                    val list = mutableListOf<Parcel>()
+                    activeMap.clear()
                     for (doc in snapshot.documents) {
                         try {
-                            val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
-                            val itemName = doc.getString("itemName") ?: ""
-                            val imageUrl = doc.getString("imageUrl") ?: ""
-                            val statusStr = doc.getString("status") ?: ParcelStatus.TRANSIT.name
-                            val status = try { ParcelStatus.valueOf(statusStr) } catch(e: Exception) { ParcelStatus.TRANSIT }
-                            val pickupAddress = doc.getString("pickupAddress") ?: ""
-                            val deliveryAddress = doc.getString("deliveryAddress") ?: ""
-                            val senderName = doc.getString("senderName") ?: ""
-                            val senderPhone = doc.getString("senderPhone") ?: ""
-                            val receiverName = doc.getString("receiverName") ?: ""
-                            val receiverPhone = doc.getString("receiverPhone") ?: ""
-                            val quantity = doc.getSafeInt("quantity", 1)
-                            val weight = doc.getSafeDouble("weight", 1.0)
-                            val length = doc.getSafeInt("length", 10)
-                            val width = doc.getSafeInt("width", 10)
-                            val height = doc.getSafeInt("height", 10)
-                            val price = doc.getSafeDouble("price", 0.0)
-                            val courierName = doc.getString("courierName") ?: ""
-                            val courierPhone = doc.getString("courierPhone") ?: ""
-                            val courierAvatar = doc.getString("courierAvatar") ?: ""
-                            val progress = doc.getSafeDouble("progress", 0.0).toFloat()
-                            val dateString = doc.getString("dateString") ?: "Today"
-                            val courierLatitude = doc.getSafeDoubleNullable("courierLatitude")
-                            val courierLongitude = doc.getSafeDoubleNullable("courierLongitude")
-                            val rId = doc.getString("riderId") ?: ""
-                            val riderBikeNumber = doc.getString("riderBikeNumber") ?: ""
-                            val otpCode = doc.getString("otpCode") ?: ""
-                            val otpVerified = doc.getSafeBoolean("otpVerified", false)
-                            val isRated = doc.getSafeBoolean("isRated", false)
-                            val customerRating = doc.getSafeDouble("customerRating", 0.0)
-                            val tipAmount = doc.getSafeDouble("tipAmount", 0.0)
-
-                            val parcel = Parcel(
-                                id = id,
-                                itemName = itemName,
-                                imageUrl = imageUrl,
-                                status = status,
-                                pickupAddress = pickupAddress,
-                                deliveryAddress = deliveryAddress,
-                                senderName = senderName,
-                                senderPhone = senderPhone,
-                                receiverName = receiverName,
-                                receiverPhone = receiverPhone,
-                                quantity = quantity,
-                                weight = weight,
-                                length = length,
-                                width = width,
-                                height = height,
-                                price = price,
-                                courierName = courierName,
-                                courierPhone = courierPhone,
-                                courierAvatar = courierAvatar,
-                                progress = progress,
-                                dateString = dateString,
-                                userId = doc.getString("userId") ?: "",
-                                courierLatitude = courierLatitude,
-                                courierLongitude = courierLongitude,
-                                riderId = rId,
-                                riderBikeNumber = riderBikeNumber,
-                                otpCode = otpCode,
-                                otpVerified = otpVerified,
-                                isRated = isRated,
-                                customerRating = customerRating,
-                                tipAmount = tipAmount,
-                                additionalStops = doc.getString("additionalStops") ?: ""
-                            )
-                            list.add(parcel)
+                            val p = parseParcelFromDoc(doc)
+                            activeMap[p.id] = p
                         } catch (e: Exception) {
                             Log.e(TAG, "Error parsing assigned delivery: ${e.message}")
                         }
                     }
-                    trySend(list)
+                    emitCombined()
+                }
+            }
+
+        val reservedListener = db.collection("deliveries")
+            .whereEqualTo("reservedRiderId", riderId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening to reserved rider assignments: ${error.message}")
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    reservedMap.clear()
+                    for (doc in snapshot.documents) {
+                        try {
+                            val p = parseParcelFromDoc(doc)
+                            reservedMap[p.id] = p
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing reserved delivery: ${e.message}")
+                        }
+                    }
+                    emitCombined()
                 }
             }
 
         awaitClose {
-            listener.remove()
+            activeListener.remove()
+            reservedListener.remove()
         }
     }
 

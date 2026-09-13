@@ -105,28 +105,44 @@ data class DeliveryStatusDisplay(
                     description = "Rider designated to route"
                 )
                 ParcelStatus.PICKED_UP -> DeliveryStatusDisplay(
-                    statusKey = "pickup",
-                    customerLabel = "Heading to pickup",
-                    adminLabel = "Pickup phase",
+                    statusKey = "picked_up",
+                    customerLabel = "Parcel Picked Up",
+                    adminLabel = "Picked Up",
                     tone = StatusTone.INDIGO,
                     isLive = true,
-                    description = "Rider moving to parcel origin"
+                    description = "Rider collected package from sender"
                 )
-                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> DeliveryStatusDisplay(
+                ParcelStatus.TRANSIT -> DeliveryStatusDisplay(
                     statusKey = "transit",
-                    customerLabel = "In transit",
-                    adminLabel = "In transit",
+                    customerLabel = "In Transit",
+                    adminLabel = "In Transit",
                     tone = StatusTone.CYAN,
                     isLive = true,
                     description = "Parcel on moving route"
                 )
-                ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED -> DeliveryStatusDisplay(
+                ParcelStatus.OUT_FOR_DELIVERY -> DeliveryStatusDisplay(
+                    statusKey = "out_for_delivery",
+                    customerLabel = "Out for Delivery",
+                    adminLabel = "Out for Delivery",
+                    tone = StatusTone.CYAN,
+                    isLive = true,
+                    description = "Courier arriving shortly at destination"
+                )
+                ParcelStatus.ARRIVED -> DeliveryStatusDisplay(
                     statusKey = "arrived",
-                    customerLabel = "Rider arrived",
+                    customerLabel = "Courier Arrived",
                     adminLabel = "Arrived",
                     tone = StatusTone.TEAL,
                     isLive = true,
                     description = "Rider within delivery proximity"
+                )
+                ParcelStatus.HANDOVER_VERIFIED -> DeliveryStatusDisplay(
+                    statusKey = "handover_verified",
+                    customerLabel = "Handover Verified",
+                    adminLabel = "Handover Verified",
+                    tone = StatusTone.TEAL,
+                    isLive = true,
+                    description = "PIN verified, capturing proof of delivery"
                 )
                 ParcelStatus.DELIVERED -> DeliveryStatusDisplay(
                     statusKey = "delivered",
@@ -151,16 +167,18 @@ data class DeliveryStatusDisplay(
                 fromParcelStatus(ParcelStatus.valueOf(normalized))
             } catch (_: Exception) {
                 when (normalized) {
-                    "RECEIVED" -> DeliveryStatusDisplay("received", "Received", "Received", StatusTone.NEUTRAL)
-                    "QUEUED", "WAITING" -> DeliveryStatusDisplay("queued", "Queued", "Waiting for rider", StatusTone.AMBER)
-                    "RESERVED", "RESERVED_NEXT" -> DeliveryStatusDisplay("reserved", "Rider reserved", "Reserved next", StatusTone.PURPLE)
-                    "ASSIGNED" -> DeliveryStatusDisplay("assigned", "Rider assigned", "Assigned", StatusTone.BLUE)
-                    "PICKED_UP", "PICKUP" -> DeliveryStatusDisplay("pickup", "Heading to pickup", "Pickup phase", StatusTone.INDIGO, isLive = true)
-                    "TRANSIT", "OUT_FOR_DELIVERY" -> DeliveryStatusDisplay("transit", "In transit", "In transit", StatusTone.CYAN, isLive = true)
-                    "ARRIVED", "HANDOVER_VERIFIED" -> DeliveryStatusDisplay("arrived", "Rider arrived", "Arrived", StatusTone.TEAL, isLive = true)
-                    "DELIVERED", "COMPLETED" -> DeliveryStatusDisplay("delivered", "Delivered", "Delivered", StatusTone.GREEN)
-                    "CANCELLED", "CANCELED" -> DeliveryStatusDisplay("cancelled", "Cancelled", "Cancelled", StatusTone.RED)
-                    "ISSUE", "NEEDS_ATTENTION" -> DeliveryStatusDisplay("issue", "Needs attention", "Issue", StatusTone.RED)
+                    "RECEIVED", "PENDING" -> DeliveryStatusDisplay("received", "Received", "Received", StatusTone.NEUTRAL, description = "Request received by dispatch")
+                    "QUEUED", "WAITING" -> DeliveryStatusDisplay("queued", "Queued", "Waiting for rider", StatusTone.AMBER, description = "Awaiting available rider")
+                    "RESERVED", "RESERVED_NEXT" -> DeliveryStatusDisplay("reserved", "Rider reserved", "Reserved next", StatusTone.PURPLE, description = "Rider queued after current run")
+                    "ASSIGNED" -> DeliveryStatusDisplay("assigned", "Rider assigned", "Assigned", StatusTone.BLUE, description = "Rider designated to route")
+                    "PICKED_UP", "PICKUP" -> DeliveryStatusDisplay("picked_up", "Parcel Picked Up", "Picked Up", StatusTone.INDIGO, isLive = true, description = "Rider collected package from sender")
+                    "TRANSIT" -> DeliveryStatusDisplay("transit", "In Transit", "In Transit", StatusTone.CYAN, isLive = true, description = "Parcel on moving route")
+                    "OUT_FOR_DELIVERY" -> DeliveryStatusDisplay("out_for_delivery", "Out for Delivery", "Out for Delivery", StatusTone.CYAN, isLive = true, description = "Courier arriving shortly at destination")
+                    "ARRIVED" -> DeliveryStatusDisplay("arrived", "Courier Arrived", "Arrived", StatusTone.TEAL, isLive = true, description = "Rider within delivery proximity")
+                    "HANDOVER_VERIFIED" -> DeliveryStatusDisplay("handover_verified", "Handover Verified", "Handover Verified", StatusTone.TEAL, isLive = true, description = "PIN verified, capturing proof of delivery")
+                    "DELIVERED", "COMPLETED" -> DeliveryStatusDisplay("delivered", "Delivered", "Delivered", StatusTone.GREEN, description = "Delivery completed and signed")
+                    "CANCELLED", "CANCELED" -> DeliveryStatusDisplay("cancelled", "Cancelled", "Cancelled", StatusTone.RED, description = "Delivery cancelled")
+                    "ISSUE", "NEEDS_ATTENTION" -> DeliveryStatusDisplay("issue", "Needs attention", "Issue", StatusTone.RED, description = "Operational exception")
                     else -> DeliveryStatusDisplay(statusStr.lowercase(), statusStr.replace('_', ' '), statusStr.replace('_', ' '), StatusTone.NEUTRAL)
                 }
             }

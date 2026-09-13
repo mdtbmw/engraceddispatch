@@ -102,6 +102,7 @@ import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.components.BottomNav
 import com.esdispatch.ui.components.SupportButton
 import com.esdispatch.ui.components.SupportDialog
+import com.esdispatch.ui.components.CancelDeliverySecurityDialog
 import com.esdispatch.ui.theme.*
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
@@ -413,52 +414,20 @@ fun ActiveTrackingScreen(
     }
 
     if (showCancelDialog) {
-        AlertDialog(
-            onDismissRequest = { showCancelDialog = false },
-            title = {
-                Text(
-                    text = "Cancel Delivery #${parcel.id}?",
-                    fontFamily = SpaceGrotesk,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isDark) Color.White else Obsidian
-                )
-            },
-            text = {
-                Text(
-                    text = "Are you sure you want to cancel this delivery order? Your payment of ₦${String.format("%,.0f", parcel.price)} will be immediately refunded to your wallet balance.",
-                    fontFamily = Poppins,
-                    fontSize = 13.sp,
-                    color = TextGray
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showCancelDialog = false
-                        viewModel.cancelDelivery(parcel.id, reason = "Cancelled by customer") { success ->
-                            if (success) {
-                                Toast.makeText(context, "Delivery cancelled and wallet refunded.", Toast.LENGTH_LONG).show()
-                            } else {
-                                Toast.makeText(context, "Unable to cancel delivery.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE53935),
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("Cancel Delivery & Refund", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        CancelDeliverySecurityDialog(
+            parcel = parcel,
+            viewModel = viewModel,
+            isDark = isDark,
+            onDismiss = { showCancelDialog = false },
+            onCancelled = { refundAmount, deductionFee ->
+                showCancelDialog = false
+                val toastMsg = if (deductionFee > 0.0) {
+                    "Delivery cancelled • ₦${String.format("%,.2f", refundAmount)} refunded (₦500 dispatch fee deducted)"
+                } else {
+                    "Delivery cancelled. Wallet refunded."
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCancelDialog = false }) {
-                    Text("Keep Order", color = TextGray, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                }
-            },
-            containerColor = if (isDark) Charcoal else Color.White,
-            shape = RoundedCornerShape(20.dp)
+                Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+            }
         )
     }
     LaunchedEffect(parcel.id) {
@@ -1530,7 +1499,12 @@ fun ActiveTrackingScreen(
 
                                                 // Prominent 4-Digit Handover PIN Card
                                                 if (parcel.otpCode.isNotBlank() || parcel.status !in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED)) {
-                                                    val displayOtp = parcel.otpCode.ifBlank { "8421" }
+                                                    if (parcel.otpCode.isBlank()) {
+                                                        LaunchedEffect(parcel.id) {
+                                                            viewModel.ensureDeliveryOtp(parcel.id)
+                                                        }
+                                                    }
+                                                    val displayOtp = parcel.otpCode.ifBlank { "••••" }
                                                     Column(
                                                         horizontalAlignment = Alignment.CenterHorizontally,
                                                         modifier = Modifier
@@ -1671,7 +1645,7 @@ fun ActiveTrackingScreen(
                                                             val shareIntent = Intent.createChooser(sendIntent, "Share Tracking Link")
                                                             context.startActivity(shareIntent)
                                                         },
-                        modifier = Modifier.weight(1f).height(40.dp),
+                        modifier = Modifier.weight(1f).height(40.dp).tactilePress(scaleDown = 0.94f),
                         colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Obsidian else Gold),
                         shape = RoundedCornerShape(12.dp),
                         border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Obsidian.copy(alpha = 0.3f))
@@ -1715,7 +1689,7 @@ fun ActiveTrackingScreen(
                                                     } else {
                                                         Button(
                                                             onClick = { showFeedbackDialog = true },
-                                                            modifier = Modifier.weight(1f).height(40.dp),
+                                                            modifier = Modifier.weight(1f).height(40.dp).tactilePress(scaleDown = 0.94f),
                                                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                                                             shape = RoundedCornerShape(12.dp)
                                                         ) {
@@ -1729,7 +1703,8 @@ fun ActiveTrackingScreen(
                                                         onClick = { showCancelDialog = true },
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .height(42.dp),
+                                                            .height(42.dp)
+                                                            .tactilePress(scaleDown = 0.96f),
                                                         shape = RoundedCornerShape(12.dp),
                                                         border = BorderStroke(1.2.dp, Color(0xFFE53935).copy(alpha = 0.6f)),
                                                         colors = ButtonDefaults.outlinedButtonColors(
@@ -1770,10 +1745,11 @@ fun ActiveTrackingScreen(
                                                 verticalArrangement = Arrangement.spacedBy(14.dp)
                                             ) {
                                                 val timelineSteps = listOf(
-                                                    Triple("Picked up", "Courier has collected your parcel.", parcel.progress >= 0.15f),
-                                                    Triple("In Transit", "Your package is on its way.", parcel.progress >= 0.45f),
-                                                    Triple("Out for Delivery", "Courier is arriving shortly.", parcel.progress >= 0.8f),
-                                                    Triple("Delivered", "Package safely received.", parcel.progress >= 1.0f)
+                                                    Triple("Booked", "Delivery order received and confirmed.", parcel.status != ParcelStatus.CANCELLED),
+                                                    Triple("Courier Assigned", "Courier assigned and en route to pickup.", parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED, ParcelStatus.DELIVERED) || parcel.progress >= 0.20f),
+                                                    Triple("In Transit", "Package collected and on the way.", parcel.status in listOf(ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED, ParcelStatus.DELIVERED) || parcel.progress >= 0.40f),
+                                                    Triple("Courier Arrived", "Courier has arrived at destination.", parcel.status in listOf(ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED, ParcelStatus.DELIVERED) || parcel.progress >= 0.90f),
+                                                    Triple("Delivered", "Package safely received.", parcel.status in listOf(ParcelStatus.HANDOVER_VERIFIED, ParcelStatus.DELIVERED) || parcel.progress >= 1.0f)
                                                 )
                                                 
                                                 timelineSteps.forEachIndexed { index, (title, desc, isCompleted) ->
@@ -1847,16 +1823,23 @@ fun ActiveTrackingScreen(
                                                          }
                                                          val timestampText = when (index) {
                                                              0 -> String.format(java.util.Locale.US, "%d:%02d AM", baseTime.first, baseTime.second)
-                                                             1 -> if (parcel.progress >= 0.25f || parcel.status != ParcelStatus.PENDING) {
-                                                                 String.format(java.util.Locale.US, "%d:%02d AM", baseTime.first, (baseTime.second + 15) % 60)
+                                                             1 -> if (timelineSteps[1].third) {
+                                                                 String.format(java.util.Locale.US, "%d:%02d AM", baseTime.first, (baseTime.second + 8) % 60)
                                                              } else "--:--"
-                                                             2 -> if (parcel.progress >= 0.6f || parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.DELIVERED) {
-                                                                 val transitHour = if (baseTime.second + 35 >= 60) (baseTime.first % 12) + 1 else baseTime.first
-                                                                 String.format(java.util.Locale.US, "%d:%02d PM", transitHour, (baseTime.second + 35) % 60)
+                                                             2 -> if (timelineSteps[2].third) {
+                                                                 val transitHour = if (baseTime.second + 25 >= 60) (baseTime.first % 12) + 1 else baseTime.first
+                                                                 val amPm = if (transitHour >= 12) "PM" else "AM"
+                                                                 String.format(java.util.Locale.US, "%d:%02d %s", transitHour, (baseTime.second + 25) % 60, amPm)
                                                              } else "--:--"
-                                                             3 -> if (parcel.progress >= 1.0f || parcel.status == ParcelStatus.DELIVERED) {
+                                                             3 -> if (timelineSteps[3].third) {
+                                                                 val arrHour = if (baseTime.second + 45 >= 60) (baseTime.first % 12) + 1 else baseTime.first
+                                                                 val amPm = if (arrHour >= 12) "PM" else "AM"
+                                                                 String.format(java.util.Locale.US, "%d:%02d %s", arrHour, (baseTime.second + 45) % 60, amPm)
+                                                             } else "--:--"
+                                                             4 -> if (timelineSteps[4].third) {
                                                                  val delivHour = if (baseTime.second + 55 >= 60) (baseTime.first % 12) + 1 else baseTime.first
-                                                                 String.format(java.util.Locale.US, "%d:%02d PM", delivHour, (baseTime.second + 55) % 60)
+                                                                 val amPm = if (delivHour >= 12) "PM" else "AM"
+                                                                 String.format(java.util.Locale.US, "%d:%02d %s", delivHour, (baseTime.second + 55) % 60, amPm)
                                                              } else "--:--"
                                                              else -> ""
                                                          }

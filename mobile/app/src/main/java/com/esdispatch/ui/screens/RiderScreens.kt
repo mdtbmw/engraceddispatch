@@ -1051,11 +1051,11 @@ fun RiderParcelCard(
                                     ParcelStatus.QUEUED -> Color(0xFF0288D1).copy(alpha = 0.15f)
                                     ParcelStatus.RESERVED_NEXT -> Color(0xFF7C4DFF).copy(alpha = 0.15f)
                                     ParcelStatus.ASSIGNED -> Gold.copy(alpha = 0.15f)
-                                    ParcelStatus.TRANSIT -> {
-                                        if (parcel.progress <= 0.35f) Gold.copy(alpha = 0.15f) else SuccessGreen.copy(alpha = 0.15f)
-                                    }
+                                    ParcelStatus.PICKED_UP -> Color(0xFF3F51B5).copy(alpha = 0.15f)
+                                    ParcelStatus.TRANSIT -> Color(0xFF00ACC1).copy(alpha = 0.15f)
                                     ParcelStatus.OUT_FOR_DELIVERY -> WarningOrange.copy(alpha = 0.15f)
                                     ParcelStatus.ARRIVED -> Color(0xFF00897B).copy(alpha = 0.15f)
+                                    ParcelStatus.HANDOVER_VERIFIED -> SuccessGreen.copy(alpha = 0.15f)
                                     ParcelStatus.DELIVERED -> SuccessGreen.copy(alpha = 0.15f)
                                     ParcelStatus.CANCELLED -> Color.Red.copy(alpha = 0.15f)
                                     else -> SuccessGreen.copy(alpha = 0.15f)
@@ -1069,11 +1069,11 @@ fun RiderParcelCard(
                                 ParcelStatus.QUEUED -> "QUEUED"
                                 ParcelStatus.RESERVED_NEXT -> "RESERVED NEXT"
                                 ParcelStatus.ASSIGNED -> "ASSIGNED"
-                                ParcelStatus.TRANSIT -> {
-                                    if (parcel.progress <= 0.35f) "PICKUP" else "PICKED UP"
-                                }
+                                ParcelStatus.PICKED_UP -> "PICKED UP"
+                                ParcelStatus.TRANSIT -> "IN TRANSIT"
                                 ParcelStatus.OUT_FOR_DELIVERY -> "OUT FOR DELIVERY"
                                 ParcelStatus.ARRIVED -> "ARRIVED"
+                                ParcelStatus.HANDOVER_VERIFIED -> "VERIFIED"
                                 ParcelStatus.DELIVERED -> "DELIVERED"
                                 ParcelStatus.CANCELLED -> "CANCELLED"
                                 else -> "UNKNOWN"
@@ -1083,11 +1083,11 @@ fun RiderParcelCard(
                                 ParcelStatus.QUEUED -> Color(0xFF29B6F6)
                                 ParcelStatus.RESERVED_NEXT -> Color(0xFFB388FF)
                                 ParcelStatus.ASSIGNED -> Gold
-                                ParcelStatus.TRANSIT -> {
-                                    if (parcel.progress <= 0.35f) Gold else SuccessGreen
-                                }
+                                ParcelStatus.PICKED_UP -> Color(0xFF7986CB)
+                                ParcelStatus.TRANSIT -> Color(0xFF26C6DA)
                                 ParcelStatus.OUT_FOR_DELIVERY -> WarningOrange
                                 ParcelStatus.ARRIVED -> Color(0xFF00897B)
+                                ParcelStatus.HANDOVER_VERIFIED -> SuccessGreen
                                 ParcelStatus.DELIVERED -> SuccessGreen
                                 ParcelStatus.CANCELLED -> Color.Red
                                 else -> TextGray
@@ -1186,10 +1186,10 @@ fun RiderParcelCard(
                             text = when (parcel.status) {
                                 ParcelStatus.PENDING -> "ACCEPT DISPATCH"
                                 ParcelStatus.ASSIGNED -> "CONFIRM PICKUP"
-                                ParcelStatus.TRANSIT -> {
-                                    if (parcel.progress <= 0.35f) "CONFIRM PICKUP" else "MARK OUT FOR DELIVERY"
-                                }
-                                else -> "ENTER OTP & COMPLETE"
+                                ParcelStatus.PICKED_UP -> "START TRANSIT"
+                                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> "MARK ARRIVED"
+                                ParcelStatus.ARRIVED -> "ENTER OTP & COMPLETE"
+                                else -> "VIEW DETAILS"
                             },
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black
@@ -1334,7 +1334,7 @@ fun RiderUpdateBottomSheetContent(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "REAL HARDWARE GPS TELEMETRY",
+                                text = "LIVE FLEET TELEMETRY",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Gold
@@ -1587,7 +1587,7 @@ fun RiderUpdateBottomSheetContent(
             }
         } else if (parcel.status == ParcelStatus.ASSIGNED) {
             Text(
-                text = "Confirm pickup of this package. Are you currently at the shipper's location and have verified the contents?",
+                text = "Confirm pickup of this package. Are you currently at the shipper's pickup location and have received the parcel?",
                 color = AppTextColor,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
@@ -1599,17 +1599,17 @@ fun RiderUpdateBottomSheetContent(
             Button(
                 onClick = {
                     isSubmitting = true
-                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.TRANSIT, 0.4f) { success, err ->
+                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.PICKED_UP, 0.40f) { success, err ->
                         isSubmitting = false
                         if (success) {
-                            Toast.makeText(context, "Marked as picked up!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Package collected! Status updated to Picked Up.", Toast.LENGTH_SHORT).show()
                             onDismiss()
                         } else {
                             Toast.makeText(context, err ?: "Failed to update status", Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().tactilePress(scaleDown = 0.96f),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                 shape = RoundedCornerShape(14.dp),
                 enabled = !isSubmitting
@@ -1620,9 +1620,9 @@ fun RiderUpdateBottomSheetContent(
                     Text("CONFIRM PICKUP", fontWeight = FontWeight.Bold)
                 }
             }
-        } else if (parcel.status == ParcelStatus.TRANSIT && parcel.progress <= 0.35f) {
+        } else if (parcel.status == ParcelStatus.PICKED_UP) {
             Text(
-                text = "Are you currently at the shipper's pickup location and have verified the contents of the package?",
+                text = "Package collected. Begin journey to destination and notify the recipient that their shipment is in transit.",
                 color = AppTextColor,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
@@ -1634,17 +1634,17 @@ fun RiderUpdateBottomSheetContent(
             Button(
                 onClick = {
                     isSubmitting = true
-                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.TRANSIT, 0.4f) { success, err ->
+                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.TRANSIT, 0.60f) { success, err ->
                         isSubmitting = false
                         if (success) {
-                            Toast.makeText(context, "Marked as picked up!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "In transit to destination! Recipient notified.", Toast.LENGTH_SHORT).show()
                             onDismiss()
                         } else {
                             Toast.makeText(context, err ?: "Failed to update status", Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().tactilePress(scaleDown = 0.96f),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                 shape = RoundedCornerShape(14.dp),
                 enabled = !isSubmitting
@@ -1652,47 +1652,12 @@ fun RiderUpdateBottomSheetContent(
                 if (isSubmitting) {
                     CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(20.dp))
                 } else {
-                    Text("CONFIRM PICKUP", fontWeight = FontWeight.Bold)
+                    Text("START TRANSIT", fontWeight = FontWeight.Bold)
                 }
             }
-        } else if (parcel.status == ParcelStatus.TRANSIT) {
+        } else if (parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.OUT_FOR_DELIVERY) {
             Text(
-                text = "Marking this shipment as 'Out for Delivery' sends an automated real-time notification with a secure 4-digit OTP to the recipient.",
-                color = AppTextColor,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 20.sp
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = {
-                    isSubmitting = true
-                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.OUT_FOR_DELIVERY, 0.75f) { success, err ->
-                        isSubmitting = false
-                        if (success) {
-                            Toast.makeText(context, "Recipient notified! Out for delivery.", Toast.LENGTH_SHORT).show()
-                            onDismiss()
-                        } else {
-                            Toast.makeText(context, err ?: "Failed to update status", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
-                shape = RoundedCornerShape(14.dp),
-                enabled = !isSubmitting
-            ) {
-                if (isSubmitting) {
-                    CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(20.dp))
-                } else {
-                    Text("MARK OUT FOR DELIVERY", fontWeight = FontWeight.Bold)
-                }
-            }
-        } else if (parcel.status == ParcelStatus.OUT_FOR_DELIVERY) {
-            Text(
-                text = "When you arrive at the recipient's delivery location, mark as arrived to notify the customer with their 4-digit handover PIN.",
+                text = "When you arrive at the recipient's delivery address, mark as arrived to prompt for the 4-digit handover PIN.",
                 color = AppTextColor,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
@@ -1707,13 +1672,14 @@ fun RiderUpdateBottomSheetContent(
                     viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED, 0.90f) { success, err ->
                         isSubmitting = false
                         if (success) {
-                            Toast.makeText(context, "Marked as arrived! Customer notified with PIN.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Marked as arrived! Customer notified.", Toast.LENGTH_SHORT).show()
+                            onDismiss()
                         } else {
                             Toast.makeText(context, err ?: "Failed to update status", Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().tactilePress(scaleDown = 0.96f),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                 shape = RoundedCornerShape(14.dp),
                 enabled = !isSubmitting

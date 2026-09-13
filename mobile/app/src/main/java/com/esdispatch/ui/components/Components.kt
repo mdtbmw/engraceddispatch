@@ -49,6 +49,8 @@ import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.platform.LocalContext
@@ -1568,6 +1570,292 @@ fun SupportDialog(
                 border = if (isDark) BorderStroke(1.dp, Gold) else null
             ) {
                 Text("Close", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
+@Composable
+fun CancelDeliverySecurityDialog(
+    parcel: com.esdispatch.data.Parcel,
+    viewModel: com.esdispatch.viewmodel.DeliveryViewModel,
+    isDark: Boolean = isDarkTheme,
+    onDismiss: () -> Unit,
+    onCancelled: ((refundAmount: Double, deductionFee: Double) -> Unit)? = null,
+    onSuccess: ((Double) -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val activity = context as? androidx.fragment.app.FragmentActivity
+        ?: (context as? android.content.ContextWrapper)?.baseContext as? androidx.fragment.app.FragmentActivity
+    val biometricEnabled by viewModel.biometricEnabled.collectAsState()
+    val biometricAvailable = remember { com.esdispatch.util.BiometricHelper.isBiometricAvailable(context) }
+    val storedPin by viewModel.userPin.collectAsState()
+
+    var cancelPinInput by remember { mutableStateOf("") }
+    var cancelPinError by remember { mutableStateOf<String?>(null) }
+    var isCancelling by remember { mutableStateOf(false) }
+
+    val isCancellable = parcel.status in listOf(
+        ParcelStatus.PENDING,
+        ParcelStatus.QUEUED,
+        ParcelStatus.RESERVED_NEXT,
+        ParcelStatus.ASSIGNED
+    )
+    val deductionFee = if (parcel.status == ParcelStatus.ASSIGNED) 500.0 else 0.0
+    val refundAmount = (parcel.price - deductionFee).coerceAtLeast(0.0)
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!isCancelling) onDismiss()
+        },
+        containerColor = if (isDark) Charcoal else Color.White,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(if (isCancellable) Color(0x1AE53935) else Color(0x1AFFB800), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isCancellable) Icons.Default.Lock else Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = if (isCancellable) Color(0xFFE53935) else Gold,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Column {
+                    Text(
+                        text = if (isCancellable) "Authorize Cancellation" else "Cannot Cancel Shipment",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = if (isDark) Color.White else Obsidian
+                    )
+                    Text(
+                        text = "Shipment #${parcel.id.take(8).uppercase()}",
+                        fontSize = 11.sp,
+                        color = TextGray
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (!isCancellable) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isDark) Color(0x1AFFB800) else Color(0xFFFFF9E6),
+                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.5f))
+                    ) {
+                        Text(
+                            text = "This shipment is currently '${parcel.status.name.replace('_', ' ')}' and in courier custody. Active dispatches cannot be self-cancelled. Please contact ESDispatch customer support.",
+                            fontSize = 12.sp,
+                            color = if (isDark) GoldLight else Color(0xFF92400E),
+                            modifier = Modifier.padding(14.dp),
+                            lineHeight = 18.sp
+                        )
+                    }
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isDark) Obsidian else Color(0xFFF9FAFB),
+                        border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Original Fare:", fontSize = 12.sp, color = TextGray)
+                                Text("₦${String.format("%,.2f", parcel.price)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) Color.White else Obsidian)
+                            }
+                            if (deductionFee > 0.0) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Dispatch Mobilization Fee:", fontSize = 12.sp, color = Color(0xFFE53935))
+                                    Text("-₦${String.format("%,.2f", deductionFee)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE53935))
+                                }
+                                Text(
+                                    text = "Deducted because rider was already dispatched & en route.",
+                                    fontSize = 10.sp,
+                                    color = TextGray
+                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Cancellation Fee:", fontSize = 12.sp, color = SuccessGreen)
+                                    Text("₦0.00 (Free)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SuccessGreen)
+                                }
+                            }
+                            HorizontalDivider(color = if (isDark) BorderDark else BorderLight, thickness = 1.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Net Wallet Refund:", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isDark) Gold else Obsidian)
+                                Text("₦${String.format("%,.2f", refundAmount)}", fontSize = 14.sp, fontWeight = FontWeight.Black, color = if (isDark) Gold else Obsidian)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Biometric One-Touch Button if enabled and available
+                    if (biometricEnabled && biometricAvailable && activity != null) {
+                        Button(
+                            onClick = {
+                                com.esdispatch.util.BiometricHelper.authenticate(
+                                    activity = activity,
+                                    title = "Authorize Cancellation",
+                                    subtitle = "Confirm cancellation of shipment #${parcel.id.take(8)}",
+                                    onSuccess = {
+                                        isCancelling = true
+                                        viewModel.cancelDelivery(parcel.id, "Cancelled by user (Biometric)") { success ->
+                                            isCancelling = false
+                                            if (success) {
+                                                val msg = if (deductionFee > 0.0) {
+                                                    "Order cancelled • ₦${String.format("%,.2f", refundAmount)} refunded (₦500 dispatch fee applied)"
+                                                } else {
+                                                    "Order cancelled • ₦${String.format("%,.2f", refundAmount)} refunded"
+                                                }
+                                                com.esdispatch.util.CustomToastBridge.show(msg, com.esdispatch.viewmodel.ToastType.SUCCESS)
+                                                onCancelled?.invoke(refundAmount, deductionFee)
+                                                onSuccess?.invoke(refundAmount)
+                                                onDismiss()
+                                            } else {
+                                                cancelPinError = "Unable to cancel delivery. Please retry."
+                                            }
+                                        }
+                                    },
+                                    onError = { err ->
+                                        cancelPinError = err
+                                    }
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
+                        ) {
+                            Icon(imageVector = Icons.Default.Fingerprint, contentDescription = null, tint = Obsidian, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Authorize with Fingerprint", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Obsidian)
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("— OR ENTER 4-DIGIT PIN —", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = TextGray)
+                        Spacer(modifier = Modifier.height(12.dp))
+                    } else {
+                        Text("Enter your 4-digit Account Security PIN to confirm cancellation:", fontSize = 12.sp, color = TextGray, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    OutlinedTextField(
+                        value = cancelPinInput,
+                        onValueChange = {
+                            if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                                cancelPinInput = it
+                                cancelPinError = null
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(0.65f),
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            color = if (isDark) Color.White else Obsidian,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 8.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Gold,
+                            unfocusedBorderColor = Slate,
+                            cursorColor = Gold,
+                            focusedTextColor = if (isDark) Color.White else Obsidian,
+                            unfocusedTextColor = if (isDark) Color.White else Obsidian
+                        ),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+
+                    if (cancelPinError != null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = cancelPinError ?: "",
+                            color = Color(0xFFE53935),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (isCancellable) {
+                Button(
+                    onClick = {
+                        val isValid = if (storedPin.isBlank()) true else com.esdispatch.viewmodel.SecurityUtils.verifyPin(cancelPinInput, storedPin)
+                        if (isValid) {
+                            isCancelling = true
+                            viewModel.cancelDelivery(parcel.id, "Customer cancelled via Security PIN") { success ->
+                                isCancelling = false
+                                if (success) {
+                                    val msg = if (deductionFee > 0.0) {
+                                        "Order cancelled • ₦${String.format("%,.2f", refundAmount)} refunded (₦500 dispatch fee applied)"
+                                    } else {
+                                        "Order cancelled • ₦${String.format("%,.2f", refundAmount)} refunded"
+                                    }
+                                    com.esdispatch.util.CustomToastBridge.show(msg, com.esdispatch.viewmodel.ToastType.SUCCESS)
+                                    onCancelled?.invoke(refundAmount, deductionFee)
+                                    onSuccess?.invoke(refundAmount)
+                                    onDismiss()
+                                } else {
+                                    cancelPinError = "Unable to cancel delivery. Please retry."
+                                }
+                            }
+                        } else {
+                            cancelPinError = "Incorrect security PIN"
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE53935),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    enabled = !isCancelling && (cancelPinInput.length == 4 || storedPin.isBlank())
+                ) {
+                    if (isCancelling) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Confirm Cancellation", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, if (isDark) BorderDark else BorderLight),
+                enabled = !isCancelling
+            ) {
+                Text(if (isCancellable) "Keep Order" else "Close", color = TextGray, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     )

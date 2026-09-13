@@ -2502,7 +2502,7 @@ function AdminDashboardPage() {
             addToast={addToast}
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
-        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
+        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} users={users} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
         {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
         {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
@@ -3672,7 +3672,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
   );
 }
 
-function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, filterPrefill, setFilterPrefill }: { deliveries: Delivery[]; drivers: UserProfile[]; searchQuery: string; db: any; addLog: any; addToast?: (type: Toast["type"], message: string) => void; filterPrefill?: { status?: string; category?: string; search?: string; selectedId?: string } | null; setFilterPrefill?: (v: any) => void }) {
+function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, addToast, filterPrefill, setFilterPrefill }: { deliveries: Delivery[]; drivers: UserProfile[]; users?: UserProfile[]; searchQuery: string; db: any; addLog: any; addToast?: (type: Toast["type"], message: string) => void; filterPrefill?: { status?: string; category?: string; search?: string; selectedId?: string } | null; setFilterPrefill?: (v: any) => void }) {
     const [search, setSearch] = useState(() => filterPrefill?.search || "");
     const [statusFilter, setStatusFilter] = useState(() => filterPrefill?.status || (filterPrefill?.selectedId ? "ALL" : "ACTION_NEEDED"));
     const [categoryFilter, setCategoryFilter] = useState(() => filterPrefill?.category || "ALL");
@@ -3691,7 +3691,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
     const [overrideReason, setOverrideReason] = useState("");
     const [riderSearch, setRiderSearch] = useState("");
     const [riderOnlineOnly, setRiderOnlineOnly] = useState(false);
-    const [newForm, setNewForm] = useState({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
+    const [newForm, setNewForm] = useState({ userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
     const [creating, setCreating] = useState(false);
     const [decisionDelivery, setDecisionDelivery] = useState<Delivery | null>(null);
     const perPage = 15;
@@ -3889,7 +3889,6 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
     useEffect(() => { setPage(0); }, [search, searchQuery, statusFilter, categoryFilter]);
 
     const isValidStatusTransition = (current: string, next: string): boolean => {
-      if (next === "CANCELLED") return true;
       const allowed: Record<string, string[]> = {
         PENDING: ["QUEUED", "RESERVED_NEXT", "ASSIGNED", "CANCELLED"],
         QUEUED: ["RESERVED_NEXT", "ASSIGNED", "CANCELLED"],
@@ -4038,14 +4037,19 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
     };
 
     const reassignRider = async (deliveryId: string, rider: UserProfile) => {
+      const del = reassignModal.delivery || deliveries.find(d => d.id === deliveryId);
+      const formerRiderId = del?.riderId || del?.driverId;
+
       await updateDoc(doc(db, "deliveries", deliveryId), {
         riderId: rider.id, driverId: rider.id, driverName: rider.name,
         courierName: rider.name, courierPhone: rider.phone, riderBikeNumber: rider.bikeNumber || "",
+        courierAvatar: rider.photoUrl || "",
         updatedAt: Timestamp.now()
       });
-      addLog("Reassign Rider", `${rider.name} → ${idShort(deliveryId)}`);
+      addLog("Reassign Rider", `${del?.courierName || "Previous"} → ${rider.name} for #${idShort(deliveryId)}`);
 
-      const targetUserId = reassignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
+      // Notify customer
+      const targetUserId = del?.userId;
       if (targetUserId) {
         try {
           const notifRef = doc(collection(db, "users", targetUserId, "notifications"));
@@ -4061,6 +4065,40 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
         } catch (err) {
           console.error("Failed to notify customer of reassigned rider:", err);
         }
+      }
+
+      // Notify former rider if distinct
+      if (formerRiderId && formerRiderId !== rider.id) {
+        try {
+          const notifRef = doc(collection(db, "users", formerRiderId, "notifications"));
+          await setDoc(notifRef, {
+            id: notifRef.id,
+            title: "Mission Reassigned",
+            message: `Delivery #${idShort(deliveryId)} has been reassigned to another courier. You are no longer assigned to this delivery.`,
+            time: "Just now",
+            isRead: false,
+            parcelId: deliveryId,
+            createdAt: Timestamp.now()
+          });
+        } catch (err) {
+          console.error("Failed to notify former rider:", err);
+        }
+      }
+
+      // Notify new rider
+      try {
+        const notifRef = doc(collection(db, "users", rider.id, "notifications"));
+        await setDoc(notifRef, {
+          id: notifRef.id,
+          title: "New Delivery Assigned!",
+          message: `You have been assigned to delivery #${idShort(deliveryId)}: ${del?.pickupAddress || "Pickup"} → ${del?.deliveryAddress || "Dropoff"}.`,
+          time: "Just now",
+          isRead: false,
+          parcelId: deliveryId,
+          createdAt: Timestamp.now()
+        });
+      } catch (err) {
+        console.error("Failed to notify new rider:", err);
       }
 
       setReassignModal({ delivery: null as any, show: false });
@@ -4179,7 +4217,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
           weight: Number(newForm.weight) || 1,
           price: Number(newForm.price) || 1500,
           tipAmount: 0,
-          userId: "",
+          userId: newForm.userId || "",
           courierName: selectedDriver ? selectedDriver.name : (newForm.driverName || "Unassigned"),
           courierPhone: selectedDriver ? (selectedDriver.phone || "") : "",
           riderBikeNumber: selectedDriver ? (selectedDriver.bikeNumber || "") : "",
@@ -4193,9 +4231,27 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
         });
         await updateDoc(ref, { id: ref.id });
         addLog("Create Delivery", ref.id + " — " + newForm.itemName);
+
+        if (newForm.userId) {
+          try {
+            const notifRef = doc(collection(db, "users", newForm.userId, "notifications"));
+            await setDoc(notifRef, {
+              id: notifRef.id,
+              title: "Shipment Booked",
+              message: `Your delivery #${idShort(ref.id)} (${newForm.itemName || "Parcel"}) has been successfully booked.`,
+              time: "Just now",
+              isRead: false,
+              parcelId: ref.id,
+              createdAt: Timestamp.now()
+            });
+          } catch (notifErr) {
+            console.error("Failed to notify user on delivery creation:", notifErr);
+          }
+        }
+
         if (addToast) addToast("success", `Created new shipment #${idShort(ref.id)} (${newForm.itemName || "Parcel"})`);
         setShowNew(false);
-        setNewForm({ receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
+        setNewForm({ userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
       } catch (e: any) { 
         addLog("Error", "Create delivery failed: " + (e?.message || "Unknown error"));
         if (addToast) addToast("error", "Failed to create delivery: " + (e?.message || "Unknown error"));
@@ -4520,7 +4576,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                             <div>
                               <p className="text-[11px] font-bold text-gray-900 dark:text-white truncate max-w-[110px]">{d.courierName || d.driverName || "Assigned"}</p>
                               {d.courierPhone && <p className="text-[9px] text-gray-500 dark:text-gray-400 font-mono">{d.courierPhone}</p>}
-                              {d.status !== "DELIVERED" && d.status !== "CANCELLED" && (
+                              {["PENDING", "QUEUED", "RESERVED_NEXT", "ASSIGNED"].includes(d.status) && (
                                 <button
                                   onClick={() => setSelectedShipmentId(d.id)}
                                   className="text-[9px] font-bold text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer"
@@ -4715,7 +4771,7 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                     >
                       Assign
                     </button>
-                  ) : (detailsModal.delivery.status !== "DELIVERED" && detailsModal.delivery.status !== "CANCELLED") ? (
+                  ) : ["QUEUED", "RESERVED_NEXT", "ASSIGNED"].includes(detailsModal.delivery.status) ? (
                     <button
                       onClick={() => { setDetailsModal({ delivery: null as any, show: false }); setReassignModal({ delivery: detailsModal.delivery, show: true }); }}
                       className="px-3 py-1.5 bg-[#FFB800] text-[#111] rounded-xl text-xs font-black cursor-pointer hover:bg-[#FFB800]/90"
@@ -4871,6 +4927,31 @@ function ShipmentsTab({ deliveries, drivers, searchQuery, db, addLog, addToast, 
                       className="w-full"
                     />
                   </div>
+                </div>
+
+                {/* Registered Customer Account Link */}
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Customer Account (Optional)</label>
+                  <Select
+                    value={newForm.userId || ""}
+                    onChange={v => {
+                      const selectedUser = users?.find(u => u.id === v);
+                      setNewForm({
+                        ...newForm,
+                        userId: v,
+                        senderName: selectedUser ? (selectedUser.name || (selectedUser as any).displayName || selectedUser.email) : newForm.senderName,
+                        senderPhone: selectedUser ? (selectedUser.phone || newForm.senderPhone) : newForm.senderPhone
+                      });
+                    }}
+                    options={[
+                      { value: "", label: "Walk-in / Unregistered Customer" },
+                      ...(users || []).filter(u => u.role !== "driver").map(u => ({
+                        value: u.id,
+                        label: `${u.name || u.email}${u.phone ? ` • ${u.phone}` : ""}`
+                      }))
+                    ]}
+                    className="w-full"
+                  />
                 </div>
 
                 {/* Shipper / Sender Details */}
