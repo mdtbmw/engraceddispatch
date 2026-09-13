@@ -125,7 +125,7 @@ service cloud.firestore {
         || (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'email', 'phone', 'photoUrl', 'updatedAt', 'avatarBase64', 'bikeNumber', 'status', 'isOnline']))
         || isAdmin()
         || isDispatcher()
-        || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingCount']))
+        || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingCount', 'walletBalance', 'tipsEarned']))
         || ('email' in request.auth.token && request.auth.token.email != null && (
           request.auth.token.email.matches('(?i).*admin.*') ||
           request.auth.token.email.matches('(?i).*@engraced\\.com') ||
@@ -158,22 +158,25 @@ service cloud.firestore {
 
       // Cart persistence: only ever owned by the user
       match /cart/{itemId} {
-        allow read, create, update, delete: if isOwner(userId) && isReasonableWrite();
+        allow read, create, update, delete: if (isOwner(userId) || isAdmin()) && isReasonableWrite();
       }
 
       // Verification OTP (owned by the user, time-limited)
       match /verification_otp/{docId} {
-        allow read, write: if isOwner(userId) && isReasonableWrite();
+        allow read, write: if (isOwner(userId) || isAdmin()) && isReasonableWrite();
+        allow delete: if isOwner(userId) || isAdmin();
       }
 
       // Tokenized payment cards (owned by user only)
       match /payment_cards/{cardId} {
-        allow read, write, delete: if isOwner(userId) && isReasonableWrite();
+        allow read, write, delete: if (isOwner(userId) || isAdmin()) && isReasonableWrite();
+        allow delete: if isOwner(userId) || isAdmin();
       }
 
       // User Saved Address Book (owned by user only)
       match /addresses/{addressId} {
-        allow read, write, delete: if isOwner(userId) && isReasonableWrite();
+        allow read, write, delete: if (isOwner(userId) || isAdmin()) && isReasonableWrite();
+        allow delete: if isOwner(userId) || isAdmin();
       }
 
       match /deliveries/{deliveryId} {
@@ -471,9 +474,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /drivers/{driverId} {
+      allow read: if isAuth();
+      allow create, update: if isAdmin() || isDispatcher() || (isAuth() && request.auth.uid == driverId);
+      allow delete: if isAdmin();
+    }
+
     match /riders/{riderId} {
       allow read: if isAuth();
-      allow write: if isAdmin() || isDispatcher();
+      allow create, update: if isAdmin() || isDispatcher() || (isAuth() && request.auth.uid == riderId);
+      allow delete: if isAdmin();
     }
 
     match /system_ledger/{docId} {

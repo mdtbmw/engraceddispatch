@@ -30,7 +30,7 @@ function useOnlineStatus() {
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy } from "firebase/firestore";
-import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles } from "lucide-react";
+import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
 import BroadcastNewsTab from "./BroadcastNewsTab";
@@ -42,7 +42,7 @@ import { DispatchDecisionDrawer } from "@/components/design-system/DispatchDecis
 import { NotificationLifecycleManager } from "@/components/design-system/NotificationLifecycle";
 import { ShipmentMicroPage } from "@/components/design-system/ShipmentMicroPage";
 type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "broadcast" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support";
-interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; }
+interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; createdAt?: any; vendorBalance?: number; pin?: string; userPin?: string; securityPin?: string; }
 interface Delivery {
   id: string;
   status: string;
@@ -2501,7 +2501,7 @@ function AdminDashboardPage() {
             }}
             addToast={addToast}
           />}
-        {tab === "users" && <UsersTab activeUsers={activeUsers} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
+        {tab === "users" && <UsersTab activeUsers={activeUsers} deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} users={users} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
         {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
         {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
@@ -2529,8 +2529,9 @@ function getDynamicPassword(email: string, pin: string): string {
   return `${pin}${pin}_${hashStr}`;
 }
 
-function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotification }: { 
+function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addToast, createNotification }: { 
   activeUsers: UserProfile[]; 
+  deliveries?: any[];
   searchQuery: string; 
   db: any; 
   addLog: any; 
@@ -2540,6 +2541,33 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [presenceFilter, setPresenceFilter] = useState<string>("ALL");
+
+  const riderStatsMap = useMemo(() => {
+    const map: Record<string, { totalRides: number; completedRides: number; totalTips: number; activeLoad: number }> = {};
+    (deliveries || []).forEach((d: any) => {
+      const rId = d.riderId || d.driverId;
+      if (!rId) return;
+      if (!map[rId]) {
+        map[rId] = { totalRides: 0, completedRides: 0, totalTips: 0, activeLoad: 0 };
+      }
+      map[rId].totalRides++;
+      if (d.status === "DELIVERED") {
+        map[rId].completedRides++;
+        map[rId].totalTips += (d.tipAmount || d.driverTip || 0);
+      } else if (["ASSIGNED", "PICKED_UP", "TRANSIT", "ARRIVED", "RESERVED_NEXT"].includes(d.status)) {
+        map[rId].activeLoad++;
+      }
+    });
+    return map;
+  }, [deliveries]);
+
+  const getDaysActive = (createdAt: any) => {
+    if (!createdAt) return 1;
+    const createdMs = createdAt.toMillis ? createdAt.toMillis() : (typeof createdAt === "number" ? createdAt : new Date(createdAt).getTime());
+    if (isNaN(createdMs)) return 1;
+    const diffDays = Math.max(1, Math.floor((Date.now() - createdMs) / (1000 * 60 * 60 * 24)));
+    return diffDays;
+  };
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editUser, setEditUser] = useState<UserProfile | null>(null);
   const [previewUser, setPreviewUser] = useState<UserProfile | null>(null);
@@ -2678,15 +2706,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         return;
       }
 
-      // 1. Optimistic removal: instantly vanishes from UI
-      setDeletedIds(prev => new Set([...Array.from(prev), ...ids]));
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        ids.forEach(id => next.delete(id));
-        return next;
-      });
-
-      // 2. Hard database deletion
+      // Hard database deletion
       const batch = writeBatch(db);
       const names: string[] = [];
 
@@ -2694,6 +2714,8 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         batch.delete(doc(db, "users", id));
         batch.delete(doc(db, "fleet_locations", id));
         batch.delete(doc(db, "drivers", id));
+        batch.delete(doc(db, "riders", id));
+        batch.delete(doc(db, "marketplace_stores", id));
         const match = visibleUsers.find(u => u.id === id);
         if (match) names.push(match.name);
 
@@ -2710,6 +2732,15 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       }
 
       await batch.commit();
+
+      // UI update occurs only after successful database purge
+      setDeletedIds(prev => new Set([...Array.from(prev), ...ids]));
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        ids.forEach(id => next.delete(id));
+        return next;
+      });
+
       addLog("Permanent Account Deletion", `Permanently purged ${ids.length} account(s) and subcollections from database: ${names.slice(0, 5).join(", ")}${names.length > 5 ? "..." : ""}`, "Users");
       addToast?.("success", `Permanently deleted ${ids.length} account(s) from database`);
     } catch (e: any) {
@@ -2729,14 +2760,20 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       addToast?.("error", "Valid email address is required");
       return;
     }
-    if (!newUserForm.password || newUserForm.password.length < 6) {
-      addToast?.("error", "Password must be at least 6 characters");
-      return;
+
+    const isMobileRole = newUserForm.role === "rider" || newUserForm.role === "customer";
+    if (isMobileRole) {
+      if (!newUserForm.pin || newUserForm.pin.length !== 4 || !/^\d{4}$/.test(newUserForm.pin)) {
+        addToast?.("error", "4-Digit Login PIN is required for " + (newUserForm.role === "rider" ? "couriers" : "customers"));
+        return;
+      }
+    } else {
+      if (!newUserForm.password || newUserForm.password.length < 6) {
+        addToast?.("error", "Password must be at least 6 characters for administrative accounts");
+        return;
+      }
     }
-    if (newUserForm.pin && (newUserForm.pin.length !== 4 || !/^\d{4}$/.test(newUserForm.pin))) {
-      addToast?.("error", "Security PIN must be exactly 4 digits");
-      return;
-    }
+
     if (newUserForm.role === "rider" && !newUserForm.bikeNumber.trim()) {
       addToast?.("error", "Bike / Vehicle Number is required for couriers");
       return;
@@ -2748,12 +2785,17 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
 
     setCreatingUser(true);
     try {
+      // Derive Auth password: For riders and customers, mobile uses getDynamicPassword(email, pin)
+      const authPassword = isMobileRole
+        ? getDynamicPassword(newUserForm.email.trim(), newUserForm.pin)
+        : newUserForm.password;
+
       // Create user in secondary auth without signing out the current logged-in admin
       const secondaryAuth = getSecondaryAuth();
       const userCredential = await createUserWithEmailAndPassword(
         secondaryAuth,
         newUserForm.email.trim(),
-        newUserForm.password
+        authPassword
       );
       const newUid = userCredential.user.uid;
       // Sign out from secondary app so session doesn't linger
@@ -2779,7 +2821,15 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       };
 
       if (newUserForm.pin) {
+        userDoc.pin = newUserForm.pin;
+        userDoc.userPin = newUserForm.pin;
         userDoc.securityPin = newUserForm.pin;
+        try {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(newUserForm.pin + "ENGRACED_DISPATCH_PRODUCTION_SALT_2026_SECURE");
+          const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+          userDoc.pinHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+        } catch {}
       }
       if (newUserForm.role === "rider") {
         userDoc.bikeNumber = newUserForm.bikeNumber.trim().toUpperCase();
@@ -2791,7 +2841,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
       await setDoc(doc(db, "users", newUid), userDoc);
 
       if (newUserForm.role === "rider") {
-        await setDoc(doc(db, "drivers", newUid), {
+        const driverDoc = {
           id: newUid,
           driverId: newUid,
           name: newUserForm.name.trim(),
@@ -2802,9 +2852,13 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
           isOnline: false,
           rating: 5.0,
           totalDeliveries: 0,
+          tipsEarned: 0,
+          pin: newUserForm.pin,
           createdAt: now,
           updatedAt: now,
-        });
+        };
+        await setDoc(doc(db, "drivers", newUid), driverDoc);
+        await setDoc(doc(db, "riders", newUid), driverDoc);
       } else if (newUserForm.role === "vendor") {
         await setDoc(doc(db, "marketplace_stores", newUid), {
           id: newUid,
@@ -3248,20 +3302,57 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
                       </span>
                     </td>
 
-                    {/* Financials & Deliveries */}
+                    {/* Financials & Deliveries / Role-specific Activity */}
                     <td className="p-3.5">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-black text-gray-900 dark:text-white text-xs">
-                          {fmt(u.walletBalance || 0)}
-                        </span>
-                        <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
-                          <span>{u.deliveryCount || 0} orders</span>
-                          <span>•</span>
-                          <span className="flex items-center gap-0.5 text-amber-800 dark:text-[#FFB800] font-bold">
-                            <Star className="w-2.5 h-2.5 fill-current" /> {u.rating ? u.rating.toFixed(1) : "5.0"}
+                      {u.role === "rider" ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-black text-blue-700 dark:text-blue-400 text-xs">
+                            {(riderStatsMap[u.id]?.completedRides ?? u.deliveryCount ?? 0)} completed
+                          </span>
+                          <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                              {fmt(riderStatsMap[u.id]?.totalTips ?? 0)} tips
+                            </span>
+                            <span>•</span>
+                            <span className="flex items-center gap-0.5 text-amber-800 dark:text-[#FFB800] font-bold">
+                              <Star className="w-2.5 h-2.5 fill-current" /> {u.rating ? u.rating.toFixed(1) : "5.0"}
+                            </span>
+                          </div>
+                        </div>
+                      ) : u.role === "vendor" ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-black text-purple-700 dark:text-purple-400 text-xs">
+                            {fmt(u.vendorBalance || 0)}
+                          </span>
+                          <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                            <span>{u.deliveryCount || 0} sales</span>
+                            <span>•</span>
+                            <span className="flex items-center gap-0.5 text-amber-800 dark:text-[#FFB800] font-bold">
+                              <Star className="w-2.5 h-2.5 fill-current" /> {u.rating ? u.rating.toFixed(1) : "5.0"}
+                            </span>
+                          </div>
+                        </div>
+                      ) : u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher" ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-black text-amber-800 dark:text-[#FFB800] text-xs">
+                            {u.staffId || "System Staff"}
+                          </span>
+                          <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                            {u.role === "dispatcher" ? "Fleet Dispatcher Desk" : "Platform Administrator"}
                           </span>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-black text-gray-900 dark:text-white text-xs">
+                            {fmt(u.walletBalance || 0)}
+                          </span>
+                          <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                            <span>{u.deliveryCount || 0} orders</span>
+                            <span>•</span>
+                            <span className="text-[#FFB800] font-bold">{u.loyaltyPoints || 0} pts</span>
+                          </div>
+                        </div>
+                      )}
                     </td>
 
                     {/* Status & Real Presence */}
@@ -3292,28 +3383,34 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
                       </div>
                     </td>
 
-                    {/* Right-aligned Actions Suite */}
+                    {/* Right-aligned Role-Specific Actions Suite */}
                     <td className="p-3.5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          title="View Full Profile"
+                          title={u.role === "rider" ? "View Courier Dossier" : "View Full Profile"}
                           onClick={() => setPreviewUser(u)}
                           className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-xl transition-all cursor-pointer"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button
-                          title="Fund / Adjust Wallet"
-                          onClick={() => {
-                            setFundUser(u);
-                            setFundAmount("");
-                            setFundReason("");
-                          }}
-                          className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-xl transition-all cursor-pointer"
-                        >
-                          <DollarSign className="w-4 h-4" />
-                        </button>
-                        {u.role !== "vendor" && u.role !== "admin" && u.role !== "super_admin" && (
+
+                        {/* Customer & Vendor Wallet / Balance Funding Only */}
+                        {(u.role === "customer" || !u.role || u.role === "vendor") && (
+                          <button
+                            title={u.role === "vendor" ? "Adjust Merchant Balance" : "Fund / Adjust Wallet"}
+                            onClick={() => {
+                              setFundUser(u);
+                              setFundAmount("");
+                              setFundReason("");
+                            }}
+                            className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-xl transition-all cursor-pointer"
+                          >
+                            <DollarSign className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        {/* Customer ONLY can be upgraded to Vendor */}
+                        {(u.role === "customer" || !u.role) && (
                           <button
                             title="Upgrade to Vendor Store"
                             onClick={() => promoteToVendor(u)}
@@ -3322,8 +3419,9 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
                             <Store className="w-4 h-4" />
                           </button>
                         )}
+
                         <button
-                          title="Edit User"
+                          title={u.role === "rider" ? "Edit Courier Details" : "Edit User"}
                           onClick={() => {
                             setEditUser(u);
                             setForm({
@@ -3451,26 +3549,50 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
         </div>
       )}
 
-      {/* User Inspector Modal */}
+      {/* Role-Specific User Inspector Modal */}
       {previewUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
           <div className="w-full max-w-lg bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/30 flex items-center justify-center font-black text-sm">
+                <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center font-black text-sm ${
+                  previewUser.role === "rider"
+                    ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30"
+                    : previewUser.role === "vendor"
+                    ? "bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30"
+                    : previewUser.role === "admin" || previewUser.role === "dispatcher" || previewUser.role === "super_admin"
+                    ? "bg-amber-500/15 text-amber-800 dark:text-[#FFB800] border-amber-500/30"
+                    : "bg-[#FFB800]/20 text-[#FFB800] border-[#FFB800]/30"
+                }`}>
                   {getInitials(previewUser.name)}
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                  <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
                     {previewUser.name}
-                    {previewUser.isOnline === true && (
-                      <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-black bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                    {previewUser.bikeNumber && (
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
+                        {previewUser.bikeNumber}
+                      </span>
+                    )}
+                    {previewUser.staffId && (
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-800 dark:text-[#FFB800] border border-amber-500/20">
+                        {previewUser.staffId}
+                      </span>
+                    )}
+                    {previewUser.isOnline === true ? (
+                      <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         Online
                       </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-bold bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400">
+                        Offline
+                      </span>
                     )}
                   </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5">{previewUser.id}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5">
+                    {previewUser.role === "rider" ? "Courier Manifest ID" : "Account UID"}: {previewUser.id}
+                  </p>
                 </div>
               </div>
               <button onClick={() => setPreviewUser(null)} className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
@@ -3478,22 +3600,117 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
               </button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/5">
-                <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Wallet Balance</span>
-                <span className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">{fmt(previewUser.walletBalance || 0)}</span>
+            {/* Dynamic Metric Stat Cards by Role */}
+            {previewUser.role === "rider" ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20">
+                  <span className="text-[10px] uppercase font-extrabold text-blue-700 dark:text-blue-400 block">Completed Rides</span>
+                  <span className="text-base font-black text-gray-900 dark:text-white block mt-0.5">
+                    {(riderStatsMap[previewUser.id]?.completedRides ?? previewUser.deliveryCount ?? 0)}
+                  </span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Safely delivered</span>
+                </div>
+                <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                  <span className="text-[10px] uppercase font-extrabold text-amber-800 dark:text-[#FFB800] block">In Transit</span>
+                  <span className="text-base font-black text-gray-900 dark:text-white block mt-0.5">
+                    {(riderStatsMap[previewUser.id]?.activeLoad ?? 0)}
+                  </span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Active jobs</span>
+                </div>
+                <div className="p-3 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
+                  <span className="text-[10px] uppercase font-extrabold text-emerald-700 dark:text-emerald-400 block">Tips Received</span>
+                  <span className="text-base font-black text-emerald-600 dark:text-emerald-400 block mt-0.5">
+                    {fmt(riderStatsMap[previewUser.id]?.totalTips ?? 0)}
+                  </span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Earned tips</span>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
+                  <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Rating</span>
+                  <span className="text-base font-black text-amber-800 dark:text-[#FFB800] flex items-center gap-1 mt-0.5">
+                    <Star className="w-3.5 h-3.5 fill-current" /> {previewUser.rating ? previewUser.rating.toFixed(1) : "5.0"}
+                  </span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Customer score</span>
+                </div>
               </div>
-              <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/5">
-                <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Reward Points</span>
-                <span className="text-sm font-black text-[#FFB800] block mt-0.5">{previewUser.loyaltyPoints || 0} pts</span>
+            ) : previewUser.role === "vendor" ? (
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="p-3 bg-purple-500/10 rounded-2xl border border-purple-500/20">
+                  <span className="text-[10px] uppercase font-extrabold text-purple-700 dark:text-purple-400 block">Merchant Balance</span>
+                  <span className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">{fmt(previewUser.vendorBalance || 0)}</span>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
+                  <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Store Rating</span>
+                  <span className="text-sm font-black text-amber-800 dark:text-[#FFB800] block mt-0.5">⭐ {previewUser.rating ? previewUser.rating.toFixed(1) : "5.0"}</span>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
+                  <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Sales Orders</span>
+                  <span className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">{previewUser.deliveryCount || 0}</span>
+                </div>
               </div>
-              <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/5">
-                <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Completed Orders</span>
-                <span className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">{previewUser.deliveryCount || 0}</span>
+            ) : previewUser.role === "admin" || previewUser.role === "super_admin" || previewUser.role === "dispatcher" ? (
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                  <span className="text-[10px] uppercase font-extrabold text-amber-800 dark:text-[#FFB800] block">Staff ID</span>
+                  <span className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">{previewUser.staffId || "ESD-STAFF"}</span>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
+                  <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Role Scope</span>
+                  <span className="text-sm font-black text-[#FFB800] block mt-0.5">{previewUser.role.toUpperCase()}</span>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
+                  <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Platform Tenure</span>
+                  <span className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">{getDaysActive(previewUser.createdAt)} days</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
+                  <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Wallet Balance</span>
+                  <span className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">{fmt(previewUser.walletBalance || 0)}</span>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
+                  <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Reward Points</span>
+                  <span className="text-sm font-black text-[#FFB800] block mt-0.5">{previewUser.loyaltyPoints || 0} pts</span>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
+                  <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Completed Orders</span>
+                  <span className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">{previewUser.deliveryCount || 0}</span>
+                </div>
+              </div>
+            )}
 
+            {/* Details Section */}
             <div className="space-y-2 text-xs border-t border-gray-100 dark:border-white/10 pt-3">
+              {previewUser.role === "rider" ? (
+                <>
+                  <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
+                    <span className="text-gray-500 dark:text-gray-400 font-medium">Assigned Vehicle / Bike</span>
+                    <span className="font-mono font-bold text-blue-700 dark:text-blue-300">
+                      {previewUser.bikeNumber || "No Vehicle Assigned"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
+                    <span className="text-gray-500 dark:text-gray-400 font-medium">Days on Fleet Duty</span>
+                    <span className="font-bold text-gray-900 dark:text-white">
+                      {getDaysActive(previewUser.createdAt)} days active
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
+                    <span className="text-gray-500 dark:text-gray-400 font-medium">Average Delivery Pace</span>
+                    <span className="font-bold text-gray-900 dark:text-white">
+                      {((riderStatsMap[previewUser.id]?.completedRides ?? previewUser.deliveryCount ?? 0) / getDaysActive(previewUser.createdAt)).toFixed(1)} rides / day
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
+                  <span className="text-gray-500 dark:text-gray-400 font-medium">Registered Tenure</span>
+                  <span className="font-bold text-gray-900 dark:text-white">
+                    {getDaysActive(previewUser.createdAt)} days
+                  </span>
+                </div>
+              )}
+
               <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
                 <span className="text-gray-500 dark:text-gray-400 font-medium">Email Address</span>
                 <span className="font-bold text-gray-900 dark:text-white">{previewUser.email || "None"}</span>
@@ -3503,27 +3720,15 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
                 <span className="font-bold text-gray-900 dark:text-white">{previewUser.phone || "None"}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
-                <span className="text-gray-500 dark:text-gray-400 font-medium">Assigned Role</span>
-                <span className="font-bold uppercase text-[#FFB800]">{previewUser.role || "Customer"}</span>
+                <span className="text-gray-500 dark:text-gray-400 font-medium">Account Status</span>
+                <span className="font-bold uppercase text-gray-900 dark:text-white">{previewUser.status || "Active"}</span>
               </div>
-              {previewUser.staffId && (
-                <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
-                  <span className="text-gray-500 dark:text-gray-400 font-medium">Official Staff ID</span>
-                  <span className="font-mono font-bold text-gray-900 dark:text-white">{previewUser.staffId}</span>
-                </div>
-              )}
-              {previewUser.bikeNumber && (
-                <div className="flex justify-between py-1 border-b border-gray-100 dark:border-white/5">
-                  <span className="text-gray-500 dark:text-gray-400 font-medium">Vehicle / Bike Number</span>
-                  <span className="font-mono font-bold text-gray-900 dark:text-white">{previewUser.bikeNumber}</span>
-                </div>
-              )}
               <div className="flex justify-between py-1">
-                <span className="text-gray-500 dark:text-gray-400 font-medium">Live Telemetry</span>
-                <span className="font-bold text-gray-900 dark:text-white">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">Live Telemetry & Presence</span>
+                <span className="font-bold">
                   {previewUser.isOnline === true ? (
                     <span className="text-emerald-500 font-black flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> ONLINE
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> ONLINE (Telemetry Active)
                     </span>
                   ) : (
                     <span className="text-gray-400">Offline</span>
@@ -3532,18 +3737,50 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-white/10">
+            {/* Role-Specific Footer Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-white/10 flex-wrap">
+              {/* Only Customer and Vendor get wallet adjustment */}
+              {(previewUser.role === "customer" || !previewUser.role || previewUser.role === "vendor") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const u = previewUser;
+                    setPreviewUser(null);
+                    setFundUser(u);
+                  }}
+                  className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <DollarSign className="w-3.5 h-3.5" /> {previewUser.role === "vendor" ? "Adjust Balance" : "Fund Wallet"}
+                </button>
+              )}
+
+              {/* Only Customer can be upgraded to vendor */}
+              {(previewUser.role === "customer" || !previewUser.role) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const u = previewUser;
+                    setPreviewUser(null);
+                    promoteToVendor(u);
+                  }}
+                  className="h-9 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Store className="w-3.5 h-3.5" /> Upgrade to Vendor
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
                   const u = previewUser;
                   setPreviewUser(null);
-                  setFundUser(u);
+                  setShowDeleteModal({ mode: "single", user: u });
                 }}
-                className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                className="h-9 px-4 rounded-xl border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
               >
-                <DollarSign className="w-3.5 h-3.5" /> Fund Wallet
+                <Trash2 className="w-3.5 h-3.5" /> Delete Account
               </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -3561,7 +3798,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
                 }}
                 className="h-9 px-4 rounded-xl bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
-                <Edit3 className="w-3.5 h-3.5" /> Edit Account
+                <Edit3 className="w-3.5 h-3.5" /> Edit Profile
               </button>
             </div>
           </div>
@@ -3867,77 +4104,160 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Assigned Role *</label>
-                  <Select 
-                    value={newUserForm.role} 
-                    onChange={v => setNewUserForm(f => ({ ...f, role: v }))} 
-                    options={[
-                      { value: "customer", label: "Customer" },
-                      { value: "rider", label: "Rider / Courier" },
-                      { value: "vendor", label: "Vendor Store Owner" },
-                      { value: "admin", label: "Administrator" },
-                      { value: "dispatcher", label: "Fleet Dispatcher" }
-                    ]} 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Account Password *</label>
-                  <input 
-                    type="password" 
-                    required 
-                    minLength={6}
-                    value={newUserForm.password} 
-                    onChange={e => setNewUserForm(f => ({ ...f, password: e.target.value }))}
-                    placeholder="Min. 6 characters"
-                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" 
-                  />
-                </div>
-              </div>
-
-              {newUserForm.role === "rider" && (
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Vehicle / Bike Number *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newUserForm.bikeNumber} 
-                    onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value.toUpperCase() }))}
-                    placeholder="e.g. ES-BIKE-204"
-                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono" 
-                  />
-                </div>
-              )}
-
-              {(newUserForm.role === "admin" || newUserForm.role === "dispatcher") && (
-                <div>
-                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Staff ID *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newUserForm.staffId} 
-                    onChange={e => setNewUserForm(f => ({ ...f, staffId: e.target.value.toUpperCase() }))}
-                    placeholder="e.g. ESD-STAFF-007"
-                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono" 
-                  />
-                </div>
-              )}
-
               <div>
-                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">4-Digit Security PIN (Optional)</label>
-                <input 
-                  type="password" 
-                  maxLength={4}
-                  value={newUserForm.pin} 
-                  onChange={e => {
-                    const val = e.target.value.replace(/\D/g, "");
-                    setNewUserForm(f => ({ ...f, pin: val }));
-                  }}
-                  placeholder="e.g. 1234"
-                  className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono text-center tracking-widest text-base" 
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Assigned Role *</label>
+                <Select 
+                  value={newUserForm.role} 
+                  onChange={v => setNewUserForm(f => ({ ...f, role: v }))} 
+                  options={[
+                    { value: "rider", label: "Rider / Courier (Field Fleet Courier)" },
+                    { value: "customer", label: "Customer (App Buyer & Sender)" },
+                    { value: "vendor", label: "Vendor Store Owner" },
+                    { value: "dispatcher", label: "Fleet Dispatcher (Desk Operations)" },
+                    { value: "admin", label: "System Administrator" }
+                  ]} 
                 />
               </div>
+
+              {/* Rider / Courier Dynamic Fields */}
+              {newUserForm.role === "rider" && (
+                <div className="space-y-3 p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 animate-fade-in">
+                  <div className="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-300">
+                    <Info className="w-4 h-4 text-blue-500 shrink-0" />
+                    <span>Couriers log into the mobile app using their Email and 4-digit PIN.</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Vehicle / Bike Number *</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={newUserForm.bikeNumber} 
+                        onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value.toUpperCase() }))}
+                        placeholder="e.g. ES-BIKE-204"
+                        className="w-full h-10 bg-white dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">4-Digit Mobile Login PIN *</label>
+                      <input 
+                        type="password" 
+                        required
+                        maxLength={4}
+                        value={newUserForm.pin} 
+                        onChange={e => {
+                          const val = e.target.value.replace(/\D/g, "");
+                          setNewUserForm(f => ({ ...f, pin: val }));
+                        }}
+                        placeholder="e.g. 1234"
+                        className="w-full h-10 bg-white dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono text-center tracking-widest text-base font-bold" 
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Customer Dynamic Fields */}
+              {newUserForm.role === "customer" && (
+                <div className="space-y-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 animate-fade-in">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-[#FFB800]">
+                    <Info className="w-4 h-4 text-[#FFB800] shrink-0" />
+                    <span>Customers authenticate into the mobile app using their Email and 4-digit PIN.</span>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">4-Digit Mobile Login PIN *</label>
+                    <input 
+                      type="password" 
+                      required
+                      maxLength={4}
+                      value={newUserForm.pin} 
+                      onChange={e => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        setNewUserForm(f => ({ ...f, pin: val }));
+                      }}
+                      placeholder="e.g. 1234"
+                      className="w-full h-10 bg-white dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono text-center tracking-widest text-base font-bold" 
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Administrative (Admin / Dispatcher) Dynamic Fields */}
+              {(newUserForm.role === "admin" || newUserForm.role === "dispatcher") && (
+                <div className="space-y-3 p-3.5 rounded-2xl bg-purple-500/10 border border-purple-500/20 animate-fade-in">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Official Staff ID *</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={newUserForm.staffId} 
+                        onChange={e => setNewUserForm(f => ({ ...f, staffId: e.target.value.toUpperCase() }))}
+                        placeholder={newUserForm.role === "dispatcher" ? "e.g. ESD-DISP-002" : "e.g. ESD-ADM-001"}
+                        className="w-full h-10 bg-white dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Web Portal Password *</label>
+                      <input 
+                        type="password" 
+                        required 
+                        minLength={6}
+                        value={newUserForm.password} 
+                        onChange={e => setNewUserForm(f => ({ ...f, password: e.target.value }))}
+                        placeholder="Min. 6 characters"
+                        className="w-full h-10 bg-white dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" 
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">4-Digit Security PIN (Optional)</label>
+                    <input 
+                      type="password" 
+                      maxLength={4}
+                      value={newUserForm.pin} 
+                      onChange={e => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        setNewUserForm(f => ({ ...f, pin: val }));
+                      }}
+                      placeholder="e.g. 1234"
+                      className="w-full h-10 bg-white dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono text-center tracking-widest text-base" 
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Vendor Dynamic Fields */}
+              {newUserForm.role === "vendor" && (
+                <div className="space-y-3 p-3.5 rounded-2xl bg-purple-500/10 border border-purple-500/20 animate-fade-in">
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Web Portal Password *</label>
+                    <input 
+                      type="password" 
+                      required 
+                      minLength={6}
+                      value={newUserForm.password} 
+                      onChange={e => setNewUserForm(f => ({ ...f, password: e.target.value }))}
+                      placeholder="Min. 6 characters"
+                      className="w-full h-10 bg-white dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">4-Digit Security PIN (Optional)</label>
+                    <input 
+                      type="password" 
+                      maxLength={4}
+                      value={newUserForm.pin} 
+                      onChange={e => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        setNewUserForm(f => ({ ...f, pin: val }));
+                      }}
+                      placeholder="e.g. 1234"
+                      className="w-full h-10 bg-white dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono text-center tracking-widest text-base" 
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100 dark:border-white/10">
                 <button 
