@@ -326,9 +326,10 @@ fun ActiveTrackingScreen(
         }
     }
     val activeParcel = remember(selectedParcel, activeParcels, userParcels) {
-        selectedParcel
+        val nonCancelledSelected = selectedParcel?.takeIf { it.status != ParcelStatus.CANCELLED }
+        nonCancelledSelected
             ?: activeParcels.firstOrNull()
-            ?: userParcels.firstOrNull()
+            ?: userParcels.firstOrNull { it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.DELIVERED }
     }
 
     val previewParcel = remember {
@@ -421,6 +422,7 @@ fun ActiveTrackingScreen(
             onDismiss = { showCancelDialog = false },
             onCancelled = { refundAmount, deductionFee ->
                 showCancelDialog = false
+                viewModel.selectParcel(null)
                 val toastMsg = if (deductionFee > 0.0) {
                     "Delivery cancelled • ₦${String.format("%,.2f", refundAmount)} refunded (₦500 dispatch fee deducted)"
                 } else {
@@ -1136,7 +1138,7 @@ fun ActiveTrackingScreen(
                                                             text = resolvedCourierName,
                                                             fontSize = 13.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = if (isDark) Color.White else Obsidian,
+                                                            color = Color.White,
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Ellipsis
                                                         )
@@ -1147,7 +1149,7 @@ fun ActiveTrackingScreen(
                                                                 else -> "In Transit • Tap for details"
                                                             },
                                                             fontSize = 11.sp,
-                                                            color = TextGray
+                                                            color = Color(0xFFD4D4D8)
                                                         )
                                                     }
                                                 } else {
@@ -1172,12 +1174,12 @@ fun ActiveTrackingScreen(
                                                             text = "Request Queued",
                                                             fontSize = 13.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = if (isDark) Color.White else Obsidian
+                                                            color = Color.White
                                                         )
                                                         Text(
                                                             text = "Assigning verified rider…",
                                                             fontSize = 11.sp,
-                                                            color = TextGray
+                                                            color = Color(0xFFD4D4D8)
                                                         )
                                                     }
                                                 }
@@ -1192,11 +1194,11 @@ fun ActiveTrackingScreen(
                                                     Surface(
                                                         shape = RoundedCornerShape(8.dp),
                                                         color = Gold.copy(alpha = 0.15f),
-                                                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                                                        border = BorderStroke(1.dp, Gold)
                                                     ) {
                                                         Text(
                                                             text = "PIN: ${parcel.otpCode}",
-                                                            color = if (isDark) Gold else Obsidian,
+                                                            color = Gold,
                                                             fontSize = 11.sp,
                                                             fontWeight = FontWeight.Bold,
                                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -2077,133 +2079,6 @@ is ZodResult.Error -> {
                                         }
                                     }
                                 }
-
-                                if (drawerState == DrawerState.CLOSED && hasNoBooking) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 16.dp, vertical = 16.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Button(
-                                            onClick = { onNavigate("SendParcel") },
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .fillMaxHeight()
-                                                .testTag("book_new_dispatch_button"),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = Gold,
-                                                contentColor = Obsidian
-                                            ),
-                                            shape = RoundedCornerShape(12.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.LocalShipping,
-                                                    contentDescription = null,
-                                                    tint = Obsidian,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Text(
-                                                    text = "Book a New Dispatch",
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 15.sp
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (drawerState == DrawerState.CLOSED && !hasNoBooking) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clickable {
-                                                drawerState = DrawerState.COLLAPSED
-                                                isGoingUp = true
-                                            }
-                                            .padding(horizontal = 18.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(42.dp)
-                                                    .border(2.dp, Gold, CircleShape)
-                                                    .clip(CircleShape)
-                                            ) {
-                                                Image(
-                                                    painter = rememberAsyncImagePainter(resolvedCourierAvatar),
-                                                    contentDescription = "Courier Profile",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.width(12.dp))
-                                            Column {
-                                                Text(
-                                                    text = resolvedCourierName,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 14.sp,
-                                                    color = if (isDark || drawerState == DrawerState.CLOSED) Color.White else Obsidian,
-                                                    maxLines = 1
-                                                )
-                                                Text(
-                                                    text = when (parcel.status) {
-                                                        ParcelStatus.ASSIGNED -> "Courier Assigned"
-                                                        ParcelStatus.PICKED_UP -> "Picked Up • On the way"
-                                                        ParcelStatus.TRANSIT -> "In Transit"
-                                                        ParcelStatus.ARRIVED -> "Courier Arrived"
-                                                        ParcelStatus.DELIVERED -> "Delivered"
-                                                        ParcelStatus.RESERVED_NEXT -> "Courier Reserved"
-                                                        ParcelStatus.QUEUED -> "Queued"
-                                                        else -> "Active Dispatch"
-                                                    },
-                                                    fontSize = 11.sp,
-                                                    color = Gold,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                        }
-
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = Gold,
-                                            onClick = {
-                                                drawerState = DrawerState.COLLAPSED
-                                                isGoingUp = true
-                                            }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Text(
-                                                    text = "Details",
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 12.sp,
-                                                    color = Obsidian
-                                                )
-                                                Icon(
-                                                    imageVector = Icons.Default.KeyboardArrowUp,
-                                                    contentDescription = "Expand",
-                                                    tint = Obsidian,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
                                 }
 
                                 // 4. THE COURIER / DRIVER AGENT CARD (FIXED AT THE ABSOLUTE BOTTOM)
@@ -2417,64 +2292,66 @@ is ZodResult.Error -> {
                         }
                     }
 
-                        // Collapsible drawer arrow button overlapping the top center edge
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = AppSurface,
-                            border = BorderStroke(1.dp, if (isLight) Slate else Gold.copy(alpha = 0.3f)),
-                            onClick = {
-                                if (hasNoBooking) {
-                                    // Only two states: CLOSED and COLLAPSED
-                                    drawerState = if (drawerState == DrawerState.CLOSED) {
-                                        DrawerState.COLLAPSED
-                                    } else {
-                                        DrawerState.CLOSED
-                                    }
-                                } else {
-                                    when (drawerState) {
-                                        DrawerState.CLOSED -> {
-                                            drawerState = DrawerState.COLLAPSED
-                                            isGoingUp = true
+                        // Collapsible drawer arrow button overlapping the top center edge (only when not CLOSED)
+                        if (drawerState != DrawerState.CLOSED) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = AppSurface,
+                                border = BorderStroke(1.dp, if (isLight) Slate else Gold.copy(alpha = 0.3f)),
+                                onClick = {
+                                    if (hasNoBooking) {
+                                        // Only two states: CLOSED and COLLAPSED
+                                        drawerState = if (drawerState == DrawerState.CLOSED) {
+                                            DrawerState.COLLAPSED
+                                        } else {
+                                            DrawerState.CLOSED
                                         }
-                                        DrawerState.COLLAPSED -> {
-                                            if (isGoingUp) {
-                                                drawerState = DrawerState.EXPANDED
-                                                isGoingUp = false
-                                            } else {
-                                                drawerState = DrawerState.CLOSED
-                                                isGoingUp = true
-                                            }
-                                        }
-                                        DrawerState.EXPANDED -> {
-                                            drawerState = DrawerState.COLLAPSED
-                                            isGoingUp = false
-                                        }
-                                    }
-                                }
-                            },
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .offset(y = (-18).dp)
-                                .zIndex(30f)
-                        ) {
-                            Box(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (hasNoBooking) {
-                                        if (drawerState == DrawerState.CLOSED) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown
                                     } else {
                                         when (drawerState) {
-                                            DrawerState.CLOSED -> Icons.Default.KeyboardArrowUp
-                                            DrawerState.COLLAPSED -> if (isGoingUp) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown
-                                            DrawerState.EXPANDED -> Icons.Default.KeyboardArrowDown
+                                            DrawerState.CLOSED -> {
+                                                drawerState = DrawerState.COLLAPSED
+                                                isGoingUp = true
+                                            }
+                                            DrawerState.COLLAPSED -> {
+                                                if (isGoingUp) {
+                                                    drawerState = DrawerState.EXPANDED
+                                                    isGoingUp = false
+                                                } else {
+                                                    drawerState = DrawerState.CLOSED
+                                                    isGoingUp = true
+                                                }
+                                            }
+                                            DrawerState.EXPANDED -> {
+                                                drawerState = DrawerState.COLLAPSED
+                                                isGoingUp = false
+                                            }
                                         }
-                                    },
-                                    contentDescription = "Toggle Drawer",
-                                    tint = if (isLight) Obsidian else Gold,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                    }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .offset(y = (-18).dp)
+                                    .zIndex(30f)
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (hasNoBooking) {
+                                            if (drawerState == DrawerState.CLOSED) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown
+                                        } else {
+                                            when (drawerState) {
+                                                DrawerState.CLOSED -> Icons.Default.KeyboardArrowUp
+                                                DrawerState.COLLAPSED -> if (isGoingUp) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown
+                                                DrawerState.EXPANDED -> Icons.Default.KeyboardArrowDown
+                                            }
+                                        },
+                                        contentDescription = "Toggle Drawer",
+                                        tint = if (isLight) Obsidian else Gold,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }

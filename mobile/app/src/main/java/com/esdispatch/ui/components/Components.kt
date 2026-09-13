@@ -1810,7 +1810,11 @@ fun CancelDeliverySecurityDialog(
             if (isCancellable) {
                 Button(
                     onClick = {
-                        val isValid = if (storedPin.isBlank()) true else com.esdispatch.viewmodel.SecurityUtils.verifyPin(cancelPinInput, storedPin)
+                        if (cancelPinInput.length < 4) {
+                            cancelPinError = "Enter your 4-digit Account Security PIN"
+                            return@Button
+                        }
+                        val isValid = viewModel.verifyUserPin(cancelPinInput)
                         if (isValid) {
                             isCancelling = true
                             viewModel.cancelDelivery(parcel.id, "Customer cancelled via Security PIN") { success ->
@@ -1838,7 +1842,7 @@ fun CancelDeliverySecurityDialog(
                         contentColor = Color.White
                     ),
                     shape = RoundedCornerShape(14.dp),
-                    enabled = !isCancelling && (cancelPinInput.length == 4 || storedPin.isBlank())
+                    enabled = !isCancelling && cancelPinInput.length == 4
                 ) {
                     if (isCancelling) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)

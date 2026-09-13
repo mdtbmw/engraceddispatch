@@ -3881,10 +3881,12 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
-    fun selectParcel(parcel: Parcel) {
+    fun selectParcel(parcel: Parcel?) {
         _selectedParcel.value = parcel
-        startRealTimeTrackingListener(parcel.id)
-        checkRouteTrafficViaMapbox(parcel.pickupAddress, parcel.deliveryAddress)
+        if (parcel != null) {
+            startRealTimeTrackingListener(parcel.id)
+            checkRouteTrafficViaMapbox(parcel.pickupAddress, parcel.deliveryAddress)
+        }
     }
 
     fun searchAndTrackParcel(context: Context, trackingNumber: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
@@ -5453,7 +5455,7 @@ class DeliveryViewModel : WalletViewModel() {
         _parcels.value = updatedList
 
         if (_selectedParcel.value?.id == parcelId) {
-            _selectedParcel.value = updatedParcel
+            _selectedParcel.value = null
         }
 
         viewModelScope.launch {

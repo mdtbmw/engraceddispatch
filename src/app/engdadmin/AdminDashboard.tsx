@@ -2308,7 +2308,7 @@ function AdminDashboardPage() {
 
   const activeUsers = users.filter(u => !u.isDeleted);
   const customers = activeUsers.filter(u => u.role === "customer" || u.role === "");
-  const drivers = activeUsers.filter(u => u.role === "rider");
+  const drivers = activeUsers.filter(u => u.role === "rider" || u.role === "driver" || u.role === "courier");
   const adminUsers = activeUsers.filter(u => u.role === "admin" || u.role === "super_admin");
   const pendingDeliveries = deliveries.filter(d => ["PENDING", "QUEUED", "RESERVED_NEXT"].includes(d.status));
   const inTransit = deliveries.filter(d => ["TRANSIT", "ASSIGNED", "PICKED_UP", "ARRIVED", "OUT_FOR_DELIVERY", "HANDOVER_VERIFIED"].includes(d.status));
@@ -2547,7 +2547,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
   const [deleting, setDeleting] = useState(false);
   const [showNewUser, setShowNewUser] = useState(false);
   const [newUserStep, setNewUserStep] = useState(1);
-  const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "", staffId: "" });
+  const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", password: "", pin: "", confirmPin: "", bikeNumber: "", staffId: "" });
   const [creatingUser, setCreatingUser] = useState(false);
   const [sweepingPresence, setSweepingPresence] = useState(false);
   const [fundUser, setFundUser] = useState<UserProfile | null>(null);
@@ -2719,6 +2719,143 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
     setShowDeleteModal(null);
   };
 
+  const handleCreateUser = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newUserForm.name.trim()) {
+      addToast?.("error", "Full Name is required");
+      return;
+    }
+    if (!newUserForm.email.trim() || !newUserForm.email.includes("@")) {
+      addToast?.("error", "Valid email address is required");
+      return;
+    }
+    if (!newUserForm.password || newUserForm.password.length < 6) {
+      addToast?.("error", "Password must be at least 6 characters");
+      return;
+    }
+    if (newUserForm.pin && (newUserForm.pin.length !== 4 || !/^\d{4}$/.test(newUserForm.pin))) {
+      addToast?.("error", "Security PIN must be exactly 4 digits");
+      return;
+    }
+    if (newUserForm.role === "rider" && !newUserForm.bikeNumber.trim()) {
+      addToast?.("error", "Bike / Vehicle Number is required for couriers");
+      return;
+    }
+    if ((newUserForm.role === "admin" || newUserForm.role === "dispatcher") && !newUserForm.staffId.trim()) {
+      addToast?.("error", "Staff ID is required for administrative accounts");
+      return;
+    }
+
+    setCreatingUser(true);
+    try {
+      // Create user in secondary auth without signing out the current logged-in admin
+      const secondaryAuth = getSecondaryAuth();
+      const userCredential = await createUserWithEmailAndPassword(
+        secondaryAuth,
+        newUserForm.email.trim(),
+        newUserForm.password
+      );
+      const newUid = userCredential.user.uid;
+      // Sign out from secondary app so session doesn't linger
+      await signOut(secondaryAuth);
+
+      const now = Timestamp.now();
+      const userDoc: any = {
+        id: newUid,
+        uid: newUid,
+        name: newUserForm.name.trim(),
+        email: newUserForm.email.trim().toLowerCase(),
+        phone: newUserForm.phone.trim(),
+        role: newUserForm.role,
+        status: "active",
+        isOnline: false,
+        deliveryCount: 0,
+        rating: 5.0,
+        walletBalance: 0,
+        loyaltyPoints: 0,
+        photoUrl: "",
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      if (newUserForm.pin) {
+        userDoc.securityPin = newUserForm.pin;
+      }
+      if (newUserForm.role === "rider") {
+        userDoc.bikeNumber = newUserForm.bikeNumber.trim().toUpperCase();
+      }
+      if (newUserForm.role === "admin" || newUserForm.role === "dispatcher") {
+        userDoc.staffId = newUserForm.staffId.trim().toUpperCase();
+      }
+
+      await setDoc(doc(db, "users", newUid), userDoc);
+
+      if (newUserForm.role === "rider") {
+        await setDoc(doc(db, "drivers", newUid), {
+          id: newUid,
+          driverId: newUid,
+          name: newUserForm.name.trim(),
+          email: newUserForm.email.trim().toLowerCase(),
+          phone: newUserForm.phone.trim(),
+          bikeNumber: newUserForm.bikeNumber.trim().toUpperCase(),
+          status: "offline",
+          isOnline: false,
+          rating: 5.0,
+          totalDeliveries: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } else if (newUserForm.role === "vendor") {
+        await setDoc(doc(db, "marketplace_stores", newUid), {
+          id: newUid,
+          ownerId: newUid,
+          storeName: `${newUserForm.name.trim()}'s Store`,
+          ownerName: newUserForm.name.trim(),
+          email: newUserForm.email.trim().toLowerCase(),
+          phone: newUserForm.phone.trim(),
+          category: "General Logistics & Goods",
+          status: "APPROVED",
+          isVerified: true,
+          dateEnlisted: new Date().toISOString().slice(0, 10),
+          storeRating: 5.0,
+          totalSales: 0,
+          vendorBalance: 0,
+          commissionRate: 10,
+          isFeatured: false,
+          isDeleted: false,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      addLog("Add User", `Created new ${newUserForm.role} account: ${newUserForm.name} (${newUserForm.email})`, "Users");
+      addToast?.("success", `User account created successfully for ${newUserForm.name}`);
+      setShowNewUser(false);
+      setNewUserForm({
+        name: "",
+        email: "",
+        phone: "",
+        role: "customer",
+        password: "",
+        pin: "",
+        confirmPin: "",
+        bikeNumber: "",
+        staffId: ""
+      });
+    } catch (err: any) {
+      console.error("Failed to create user account:", err);
+      let msg = err.message || "Failed to create user account";
+      if (err.code === "auth/email-already-in-use") {
+        msg = "This email is already registered in Authentication.";
+      } else if (err.code === "auth/weak-password") {
+        msg = "Password is too weak. Please use at least 6 characters.";
+      }
+      addToast?.("error", msg);
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
   const saveUser = async () => {
     if (!editUser) return;
     try {
@@ -2855,7 +2992,7 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
             type="button"
             onClick={() => {
               setNewUserStep(1);
-              setNewUserForm({ name: "", email: "", phone: "", role: "customer", pin: "", confirmPin: "", bikeNumber: "", staffId: "" });
+              setNewUserForm({ name: "", email: "", phone: "", role: "customer", password: "", pin: "", confirmPin: "", bikeNumber: "", staffId: "" });
               setShowNewUser(true);
             }}
             className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-xs hover:shadow-md transition-all flex items-center gap-2 cursor-pointer"
@@ -3668,6 +3805,162 @@ function UsersTab({ activeUsers, searchQuery, db, addLog, addToast, createNotifi
           </div>
         </div>
       )}
+
+      {/* Add User Modal */}
+      {showNewUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-lg bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/30 flex items-center justify-center font-black">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-gray-900 dark:text-white">Register New User Account</h3>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Securely create credentials and configure role permissions</p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setShowNewUser(false)} 
+                className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateUser} className="space-y-3.5">
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Full Name *</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={newUserForm.name} 
+                  onChange={e => setNewUserForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Osasere Imade"
+                  className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" 
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Email Address *</label>
+                  <input 
+                    type="email" 
+                    required 
+                    value={newUserForm.email} 
+                    onChange={e => setNewUserForm(f => ({ ...f, email: e.target.value }))}
+                    placeholder="user@esdispatch.com"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Phone Number *</label>
+                  <input 
+                    type="tel" 
+                    required 
+                    value={newUserForm.phone} 
+                    onChange={e => setNewUserForm(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="+234 800 000 0000"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" 
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Assigned Role *</label>
+                  <Select 
+                    value={newUserForm.role} 
+                    onChange={v => setNewUserForm(f => ({ ...f, role: v }))} 
+                    options={[
+                      { value: "customer", label: "Customer" },
+                      { value: "rider", label: "Rider / Courier" },
+                      { value: "vendor", label: "Vendor Store Owner" },
+                      { value: "admin", label: "Administrator" },
+                      { value: "dispatcher", label: "Fleet Dispatcher" }
+                    ]} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Account Password *</label>
+                  <input 
+                    type="password" 
+                    required 
+                    minLength={6}
+                    value={newUserForm.password} 
+                    onChange={e => setNewUserForm(f => ({ ...f, password: e.target.value }))}
+                    placeholder="Min. 6 characters"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" 
+                  />
+                </div>
+              </div>
+
+              {newUserForm.role === "rider" && (
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Vehicle / Bike Number *</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={newUserForm.bikeNumber} 
+                    onChange={e => setNewUserForm(f => ({ ...f, bikeNumber: e.target.value.toUpperCase() }))}
+                    placeholder="e.g. ES-BIKE-204"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono" 
+                  />
+                </div>
+              )}
+
+              {(newUserForm.role === "admin" || newUserForm.role === "dispatcher") && (
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Staff ID *</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={newUserForm.staffId} 
+                    onChange={e => setNewUserForm(f => ({ ...f, staffId: e.target.value.toUpperCase() }))}
+                    placeholder="e.g. ESD-STAFF-007"
+                    className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono" 
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">4-Digit Security PIN (Optional)</label>
+                <input 
+                  type="password" 
+                  maxLength={4}
+                  value={newUserForm.pin} 
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, "");
+                    setNewUserForm(f => ({ ...f, pin: val }));
+                  }}
+                  placeholder="e.g. 1234"
+                  className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono text-center tracking-widest text-base" 
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100 dark:border-white/10">
+                <button 
+                  type="button" 
+                  onClick={() => setShowNewUser(false)} 
+                  disabled={creatingUser}
+                  className="h-10 px-4 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={creatingUser}
+                  className="h-10 px-5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-xs hover:shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {creatingUser ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+                  <span>{creatingUser ? "Registering..." : "Create User Account"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3976,132 +4269,169 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
     };
 
     const assignRider = async (deliveryId: string, rider: UserProfile) => {
-      await updateDoc(doc(db, "deliveries", deliveryId), {
-        riderId: rider.id, driverId: rider.id, driverName: rider.name,
-        courierName: rider.name, courierPhone: rider.phone, riderBikeNumber: rider.bikeNumber || "",
-        courierAvatar: rider.photoUrl || "",
-        status: "ASSIGNED", updatedAt: Timestamp.now()
-      });
-      addLog("Assign Rider", `${rider.name} → ${idShort(deliveryId)}`);
+      try {
+        await updateDoc(doc(db, "deliveries", deliveryId), {
+          riderId: rider.id, driverId: rider.id, driverName: rider.name,
+          courierName: rider.name, courierPhone: rider.phone, riderBikeNumber: rider.bikeNumber || "",
+          courierAvatar: rider.photoUrl || "",
+          status: "ASSIGNED", updatedAt: Timestamp.now()
+        });
+        addLog("Assign Rider", `${rider.name} → ${idShort(deliveryId)}`);
 
-      const targetUserId = assignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
-      if (targetUserId) {
+        const targetUserId = assignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
+        if (targetUserId) {
+          try {
+            const notifRef = doc(collection(db, "users", targetUserId, "notifications"));
+            await setDoc(notifRef, {
+              id: notifRef.id,
+              title: "Rider Assigned!",
+              message: `${rider.name} (${rider.phone || "Active Courier"}) has been assigned to your shipment #${idShort(deliveryId)}.`,
+              time: "Just now",
+              isRead: false,
+              parcelId: deliveryId,
+              createdAt: Timestamp.now()
+            });
+          } catch (err) {
+            console.error("Failed to notify customer of assigned rider:", err);
+          }
+        }
+
+        // Notify rider
         try {
-          const notifRef = doc(collection(db, "users", targetUserId, "notifications"));
+          const notifRef = doc(collection(db, "users", rider.id, "notifications"));
           await setDoc(notifRef, {
             id: notifRef.id,
-            title: "Rider Assigned!",
-            message: `${rider.name} (${rider.phone || "Active Courier"}) has been assigned to your shipment #${idShort(deliveryId)}.`,
+            title: "New Delivery Assigned!",
+            message: `You have been assigned to delivery #${idShort(deliveryId)}. Tap to view route.`,
             time: "Just now",
             isRead: false,
             parcelId: deliveryId,
             createdAt: Timestamp.now()
           });
         } catch (err) {
-          console.error("Failed to notify customer of assigned rider:", err);
+          console.error("Failed to notify rider of assignment:", err);
         }
-      }
 
-      setAssignModal({ delivery: null as any, show: false });
+        addToast?.("success", `Rider ${rider.name} successfully assigned to shipment #${idShort(deliveryId)}`);
+      } catch (err: any) {
+        console.error("Failed to assign rider:", err);
+        addToast?.("error", `Could not assign rider: ${err?.message || err}`);
+      } finally {
+        setAssignModal({ delivery: null as any, show: false });
+      }
     };
 
     const reserveRider = async (deliveryId: string, rider: UserProfile) => {
-      await updateDoc(doc(db, "deliveries", deliveryId), {
-        reservedRiderId: rider.id,
-        reservedCourierName: rider.name,
-        reservedCourierPhone: rider.phone,
-        status: "RESERVED_NEXT",
-        updatedAt: Timestamp.now()
-      });
-      addLog("Reserve Rider", `${rider.name} (Next) → ${idShort(deliveryId)}`);
+      try {
+        await updateDoc(doc(db, "deliveries", deliveryId), {
+          reservedRiderId: rider.id,
+          reservedCourierName: rider.name,
+          reservedCourierPhone: rider.phone,
+          status: "RESERVED_NEXT",
+          updatedAt: Timestamp.now()
+        });
+        addLog("Reserve Rider", `${rider.name} (Next) → ${idShort(deliveryId)}`);
 
-      const targetUserId = assignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
-      if (targetUserId) {
-        try {
-          const notifRef = doc(collection(db, "users", targetUserId, "notifications"));
-          await setDoc(notifRef, {
-            id: notifRef.id,
-            title: "Rider Reserved",
-            message: `${rider.name} has been reserved for your shipment #${idShort(deliveryId)} and will be dispatched once their current drop is finished.`,
-            time: "Just now",
-            isRead: false,
-            parcelId: deliveryId,
-            createdAt: Timestamp.now()
-          });
-        } catch (err) {
-          console.error("Failed to notify customer of reserved rider:", err);
+        const targetUserId = assignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
+        if (targetUserId) {
+          try {
+            const notifRef = doc(collection(db, "users", targetUserId, "notifications"));
+            await setDoc(notifRef, {
+              id: notifRef.id,
+              title: "Rider Reserved",
+              message: `${rider.name} has been reserved for your shipment #${idShort(deliveryId)} and will be dispatched once their current drop is finished.`,
+              time: "Just now",
+              isRead: false,
+              parcelId: deliveryId,
+              createdAt: Timestamp.now()
+            });
+          } catch (err) {
+            console.error("Failed to notify customer of reserved rider:", err);
+          }
         }
-      }
 
-      setAssignModal({ delivery: null as any, show: false });
+        addToast?.("success", `Rider ${rider.name} reserved as next courier for shipment #${idShort(deliveryId)}`);
+      } catch (err: any) {
+        console.error("Failed to reserve rider:", err);
+        addToast?.("error", `Could not reserve rider: ${err?.message || err}`);
+      } finally {
+        setAssignModal({ delivery: null as any, show: false });
+      }
     };
 
     const reassignRider = async (deliveryId: string, rider: UserProfile) => {
-      const del = reassignModal.delivery || deliveries.find(d => d.id === deliveryId);
-      const formerRiderId = del?.riderId || del?.driverId;
-
-      await updateDoc(doc(db, "deliveries", deliveryId), {
-        riderId: rider.id, driverId: rider.id, driverName: rider.name,
-        courierName: rider.name, courierPhone: rider.phone, riderBikeNumber: rider.bikeNumber || "",
-        courierAvatar: rider.photoUrl || "",
-        updatedAt: Timestamp.now()
-      });
-      addLog("Reassign Rider", `${del?.courierName || "Previous"} → ${rider.name} for #${idShort(deliveryId)}`);
-
-      // Notify customer
-      const targetUserId = del?.userId;
-      if (targetUserId) {
-        try {
-          const notifRef = doc(collection(db, "users", targetUserId, "notifications"));
-          await setDoc(notifRef, {
-            id: notifRef.id,
-            title: "Rider Reassigned",
-            message: `${rider.name} (${rider.phone || "Active Courier"}) has been reassigned to your shipment #${idShort(deliveryId)}.`,
-            time: "Just now",
-            isRead: false,
-            parcelId: deliveryId,
-            createdAt: Timestamp.now()
-          });
-        } catch (err) {
-          console.error("Failed to notify customer of reassigned rider:", err);
-        }
-      }
-
-      // Notify former rider if distinct
-      if (formerRiderId && formerRiderId !== rider.id) {
-        try {
-          const notifRef = doc(collection(db, "users", formerRiderId, "notifications"));
-          await setDoc(notifRef, {
-            id: notifRef.id,
-            title: "Mission Reassigned",
-            message: `Delivery #${idShort(deliveryId)} has been reassigned to another courier. You are no longer assigned to this delivery.`,
-            time: "Just now",
-            isRead: false,
-            parcelId: deliveryId,
-            createdAt: Timestamp.now()
-          });
-        } catch (err) {
-          console.error("Failed to notify former rider:", err);
-        }
-      }
-
-      // Notify new rider
       try {
-        const notifRef = doc(collection(db, "users", rider.id, "notifications"));
-        await setDoc(notifRef, {
-          id: notifRef.id,
-          title: "New Delivery Assigned!",
-          message: `You have been assigned to delivery #${idShort(deliveryId)}: ${del?.pickupAddress || "Pickup"} → ${del?.deliveryAddress || "Dropoff"}.`,
-          time: "Just now",
-          isRead: false,
-          parcelId: deliveryId,
-          createdAt: Timestamp.now()
-        });
-      } catch (err) {
-        console.error("Failed to notify new rider:", err);
-      }
+        const del = reassignModal.delivery || deliveries.find(d => d.id === deliveryId);
+        const formerRiderId = del?.riderId || del?.driverId;
 
-      setReassignModal({ delivery: null as any, show: false });
+        await updateDoc(doc(db, "deliveries", deliveryId), {
+          riderId: rider.id, driverId: rider.id, driverName: rider.name,
+          courierName: rider.name, courierPhone: rider.phone, riderBikeNumber: rider.bikeNumber || "",
+          courierAvatar: rider.photoUrl || "",
+          updatedAt: Timestamp.now()
+        });
+        addLog("Reassign Rider", `${del?.courierName || "Previous"} → ${rider.name} for #${idShort(deliveryId)}`);
+
+        // Notify customer
+        const targetUserId = del?.userId;
+        if (targetUserId) {
+          try {
+            const notifRef = doc(collection(db, "users", targetUserId, "notifications"));
+            await setDoc(notifRef, {
+              id: notifRef.id,
+              title: "Rider Reassigned",
+              message: `${rider.name} (${rider.phone || "Active Courier"}) has been reassigned to your shipment #${idShort(deliveryId)}.`,
+              time: "Just now",
+              isRead: false,
+              parcelId: deliveryId,
+              createdAt: Timestamp.now()
+            });
+          } catch (err) {
+            console.error("Failed to notify customer of reassigned rider:", err);
+          }
+        }
+
+        // Notify former rider if distinct
+        if (formerRiderId && formerRiderId !== rider.id) {
+          try {
+            const notifRef = doc(collection(db, "users", formerRiderId, "notifications"));
+            await setDoc(notifRef, {
+              id: notifRef.id,
+              title: "Mission Reassigned",
+              message: `Delivery #${idShort(deliveryId)} has been reassigned to another courier. You are no longer assigned to this delivery.`,
+              time: "Just now",
+              isRead: false,
+              parcelId: deliveryId,
+              createdAt: Timestamp.now()
+            });
+          } catch (err) {
+            console.error("Failed to notify former rider:", err);
+          }
+        }
+
+        // Notify new rider
+        try {
+          const notifRef = doc(collection(db, "users", rider.id, "notifications"));
+          await setDoc(notifRef, {
+            id: notifRef.id,
+            title: "New Delivery Assigned!",
+            message: `You have been assigned to delivery #${idShort(deliveryId)}: ${del?.pickupAddress || "Pickup"} → ${del?.deliveryAddress || "Dropoff"}.`,
+            time: "Just now",
+            isRead: false,
+            parcelId: deliveryId,
+            createdAt: Timestamp.now()
+          });
+        } catch (err) {
+          console.error("Failed to notify new rider:", err);
+        }
+
+        addToast?.("success", `Shipment #${idShort(deliveryId)} successfully reassigned to ${rider.name}`);
+      } catch (err: any) {
+        console.error("Failed to reassign rider:", err);
+        addToast?.("error", `Could not reassign rider: ${err?.message || err}`);
+      } finally {
+        setReassignModal({ delivery: null as any, show: false });
+      }
     };
 
     const bulkUpdate = async () => {
@@ -4563,7 +4893,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                       <td className="p-3.5 hidden lg:table-cell">
                         {(!d.riderId && !d.driverId) ? (
                           <button
-                            onClick={() => setSelectedShipmentId(d.id)}
+                            onClick={() => setAssignModal({ delivery: d, show: true })}
                             className="px-3 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-lg text-[10px] font-black transition-all flex items-center gap-1 shadow-xs cursor-pointer"
                           >
                             <UserPlus size={12} /> Assign Rider
@@ -4578,7 +4908,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                               {d.courierPhone && <p className="text-[9px] text-gray-500 dark:text-gray-400 font-mono">{d.courierPhone}</p>}
                               {["PENDING", "QUEUED", "RESERVED_NEXT", "ASSIGNED"].includes(d.status) && (
                                 <button
-                                  onClick={() => setSelectedShipmentId(d.id)}
+                                  onClick={() => setReassignModal({ delivery: d, show: true })}
                                   className="text-[9px] font-bold text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer"
                                 >
                                   Manage / Reassign
