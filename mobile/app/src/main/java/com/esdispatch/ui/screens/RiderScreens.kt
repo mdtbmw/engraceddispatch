@@ -40,6 +40,7 @@ import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.components.BottomNav
 import com.esdispatch.ui.components.SupportButton
 import com.esdispatch.ui.components.SupportDialog
+import com.esdispatch.ui.components.PinInputField
 import com.esdispatch.viewmodel.DeliveryViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -437,7 +438,7 @@ fun RiderDashboardScreen(
                                         text = "$todayDeliveredCount / $dailyTargetRides Trips Completed",
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Black,
-                                        color = Color.White
+                                        color = AppTextColor
                                     )
                                     Text(
                                         text = if (todayDeliveredCount >= dailyTargetRides) "Daily target achieved! Bonus unlocked." else "${(dailyTargetRides - todayDeliveredCount).coerceAtLeast(0)} more trips to unlock bonus",
@@ -692,13 +693,6 @@ fun RiderDashboardScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(if (activeCount > 0) Gold else TextGray)
-                                        .breathingPulse(active = activeCount > 0, minScale = 0.8f, maxScale = 1.4f, durationMs = 1500)
-                                )
                                 Icon(
                                     imageVector = Icons.Default.DirectionsBike,
                                     contentDescription = null,
@@ -1005,13 +999,6 @@ fun RiderDashboardScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(if (activeCount > 0) Gold else TextGray)
-                                    .breathingPulse(active = activeCount > 0, minScale = 0.8f, maxScale = 1.35f, durationMs = 1500)
-                            )
                             Icon(
                                 imageVector = Icons.Default.DirectionsBike,
                                 contentDescription = null,
@@ -2017,19 +2004,11 @@ fun RiderUpdateBottomSheetContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            OutlinedTextField(
-                value = otpInput,
-                onValueChange = { if (it.length <= 4) otpInput = it },
-                label = { Text("4-Digit PIN") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(0.6f),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Gold,
-                    unfocusedBorderColor = BorderColor,
-                    focusedLabelColor = Gold,
-                    unfocusedLabelColor = TextGray
-                )
+            PinInputField(
+                pin = otpInput,
+                onPinChange = { if (it.length <= 4 && it.all { char -> char.isDigit() }) otpInput = it },
+                obscureText = false,
+                modifier = Modifier.padding(vertical = 8.dp)
             )
 
             Spacer(modifier = Modifier.height(20.dp))

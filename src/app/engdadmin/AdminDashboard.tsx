@@ -30,7 +30,7 @@ function useOnlineStatus() {
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy } from "firebase/firestore";
-import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info, Bike } from "lucide-react";
+import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Minus, ArrowRight, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info, Bike } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
 import BroadcastNewsTab from "./BroadcastNewsTab";
@@ -41,7 +41,7 @@ import { PriceDisplay } from "@/components/design-system/PriceDisplay";
 import { DispatchDecisionDrawer } from "@/components/design-system/DispatchDecisionDrawer";
 import { NotificationLifecycleManager } from "@/components/design-system/NotificationLifecycle";
 import { ShipmentMicroPage } from "@/components/design-system/ShipmentMicroPage";
-type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "broadcast" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support";
+type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "broadcast" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support" | "payouts";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; createdAt?: any; vendorBalance?: number; pin?: string; userPin?: string; securityPin?: string; }
 interface Delivery {
   id: string;
@@ -153,6 +153,22 @@ interface VendorPayoutRequest {
   accountNumber: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
   requestedAt?: any;
+}
+
+interface TipWithdrawalRequest {
+  id: string;
+  riderId: string;
+  riderName?: string;
+  amount: number;
+  bankName: string;
+  accountNumber: string;
+  accountName?: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  createdAt?: any;
+  approvedAt?: any;
+  rejectedAt?: any;
+  adminEmail?: string;
+  notes?: string;
 }
 
 interface AppContent { id: string; key: string; title: string; description: string; imageUrl: string; ctaText: string; ctaLink: string; order: number; active: boolean; }
@@ -1780,6 +1796,7 @@ function AdminProfileModal({
 }
 
 function AdminDashboardPage() {
+  const isOnline = useOnlineStatus();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [adminProfile, setAdminProfile] = useState<{ name: string; staffId: string; phone: string; role: string } | null>(null);
   const [showAdminProfileModal, setShowAdminProfileModal] = useState(false);
@@ -1876,6 +1893,7 @@ function AdminDashboardPage() {
   const [stores, setStores] = useState<VendorStore[]>([]);
   const [marketplaceOrders, setMarketplaceOrders] = useState<MarketplaceOrder[]>([]);
   const [payoutRequests, setPayoutRequests] = useState<VendorPayoutRequest[]>([]);
+  const [tipWithdrawals, setTipWithdrawals] = useState<TipWithdrawalRequest[]>([]);
 
   const [connected, setConnected] = useState(false);
   const [refreshT, setRefreshT] = useState("");
@@ -2062,6 +2080,20 @@ function AdminDashboardPage() {
               setNewOrderAlert(newOrder);
               addToast("info", `🔔 New order incoming: ${newOrder.itemName} for ${newOrder.receiverName}!`);
             }
+          } else if (change.type === "modified" || change.type === "removed") {
+            const data = change.doc.data();
+            const status = data?.status || "";
+            if (status === "CANCELLED" || change.type === "removed" || (status && status !== "PENDING")) {
+              setNewOrderAlert(prev => {
+                if (prev?.id === change.doc.id) {
+                  if (status === "CANCELLED") {
+                    addToast("info", `Order #${idShort(change.doc.id)} was cancelled by user.`);
+                  }
+                  return null;
+                }
+                return prev;
+              });
+            }
           }
         });
       } else {
@@ -2224,6 +2256,33 @@ function AdminDashboardPage() {
       });
       setPayoutRequests(list);
     }, console.error));
+    unsubs.push(onSnapshot(collection(db, "tip_withdrawals"), snap => {
+      const list: TipWithdrawalRequest[] = [];
+      snap.forEach(d => {
+        const x = d.data();
+        list.push({
+          id: d.id,
+          riderId: x.riderId || "",
+          riderName: x.riderName || "Courier",
+          amount: x.amount || 0,
+          bankName: x.bankName || "",
+          accountNumber: x.accountNumber || "",
+          accountName: x.accountName || "",
+          status: x.status || "PENDING",
+          createdAt: x.createdAt,
+          approvedAt: x.approvedAt,
+          rejectedAt: x.rejectedAt,
+          adminEmail: x.adminEmail || "",
+          notes: x.notes || "",
+        });
+      });
+      list.sort((a, b) => {
+        const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        return tB - tA;
+      });
+      setTipWithdrawals(list);
+    }, console.error));
     unsubs.push(onSnapshot(doc(db, "system_config", "global_settings"), s => {
       if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() }));
     }, () => {}));
@@ -2318,6 +2377,7 @@ function AdminDashboardPage() {
   const totalBookedGmv = deliveries.reduce((s, d) => s + (d.price || 0), 0);
   const totalTips = delivered.reduce((s, d) => s + (d.tipAmount || 0), 0);
   const completedReferrals = referrals.filter(r => r.status === "completed");
+  const pendingTipPayouts = tipWithdrawals.filter(w => w.status === "PENDING");
 
   if (loading) return (
     <div className="min-h-screen bg-[#111] flex items-center justify-center">
@@ -2402,6 +2462,7 @@ function AdminDashboardPage() {
     { id: "dashboard", label: "Dashboard", icon: <Folder size={22} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "marketplace", label: "Marketplace & Stores", icon: <ShoppingBag size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"], badge: pendingDeliveries.length > 0 ? pendingDeliveries.length : undefined },
+    { id: "payouts", label: "Tip Payouts", icon: <DollarSign size={24} strokeWidth={2} />, roles: ["super_admin", "admin"], badge: pendingTipPayouts.length > 0 ? pendingTipPayouts.length : undefined },
     { id: "tracking", label: "Live Tracking", icon: <MapPin size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "broadcast", label: "Broadcast News", icon: <Radio size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "users", label: "Users", icon: <Users size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
@@ -2433,6 +2494,12 @@ function AdminDashboardPage() {
         adminProfile={adminProfile} onOpenAdminProfile={() => setShowAdminProfileModal(true)}
         onMarkAllNotifsRead={handleMarkAllNotifsRead} onClearAllNotifs={handleClearAllNotifs}
       />
+      {!isOnline && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 text-center text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center justify-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+          <span>Offline &bull; Reconnecting to dispatch network. Realtime updates will resume automatically.</span>
+        </div>
+      )}
       <AdminProfileModal
         show={showAdminProfileModal}
         onClose={() => setShowAdminProfileModal(false)}
@@ -2502,7 +2569,7 @@ function AdminDashboardPage() {
             }}
             addToast={addToast}
           />}
-        {tab === "users" && <UsersTab activeUsers={activeUsers} deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} />}
+        {tab === "users" && <UsersTab activeUsers={activeUsers} deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} userRole={userRole} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} users={users} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
         {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
         {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
@@ -2514,6 +2581,7 @@ function AdminDashboardPage() {
         {tab === "cms" && <CMSTab db={db} addLog={addLog} userRole={userRole} />}
         {tab === "support" && <SupportTab db={db} addLog={addLog} addToast={addToast} />}
         {tab === "logs" && <LogsTab logs={logs} />}
+        {tab === "payouts" && <TipPayoutsTab withdrawals={tipWithdrawals} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} users={users} />}
       </div>
     </main>
     </div>;
@@ -2530,7 +2598,7 @@ function getDynamicPassword(email: string, pin: string): string {
   return `${pin}${pin}_${hashStr}`;
 }
 
-function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addToast, createNotification }: { 
+function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addToast, createNotification, userRole = "admin" }: { 
   activeUsers: UserProfile[]; 
   deliveries?: any[];
   searchQuery: string; 
@@ -2538,6 +2606,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
   addLog: any; 
   addToast?: (type: Toast["type"], message: string) => void;
   createNotification?: (title: string, desc: string) => Promise<void>;
+  userRole?: string;
 }) {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
@@ -2579,11 +2648,21 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
   const [newUserForm, setNewUserForm] = useState({ name: "", email: "", phone: "", role: "customer", password: "", pin: "", confirmPin: "", bikeNumber: "", staffId: "" });
   const [creatingUser, setCreatingUser] = useState(false);
   const [sweepingPresence, setSweepingPresence] = useState(false);
+  const isAuthorizedAdmin = userRole === "admin" || userRole === "super_admin";
   const [fundUser, setFundUser] = useState<UserProfile | null>(null);
   const [fundAction, setFundAction] = useState<"credit" | "debit">("credit");
   const [fundAmount, setFundAmount] = useState("");
   const [fundReason, setFundReason] = useState("");
   const [fundingWallet, setFundingWallet] = useState(false);
+
+  useEffect(() => {
+    if (!fundUser) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFundUser(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [fundUser]);
   const [form, setForm] = useState({ name: "", role: "", phone: "", bikeNumber: "", staffId: "", status: "" });
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [uPage, setUPage] = useState(0);
@@ -2959,6 +3038,10 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
 
   const handleFundWallet = async () => {
     if (!fundUser) return;
+    if (!isAuthorizedAdmin) {
+      addToast?.("error", "Access denied: Only administrators can fund or adjust accounts.");
+      return;
+    }
     const amt = parseFloat(fundAmount);
     if (!amt || isNaN(amt) || amt <= 0) {
       addToast?.("error", "Please enter a valid amount greater than 0");
@@ -3395,8 +3478,8 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {/* Customer & Vendor Wallet / Balance Funding Only */}
-                        {(u.role === "customer" || !u.role || u.role === "vendor") && (
+                        {/* Customer & Vendor Wallet / Balance Funding Only - Strictly Admin */}
+                        {isAuthorizedAdmin && (u.role === "customer" || !u.role || u.role === "vendor") && (
                           <button
                             title={u.role === "vendor" ? "Adjust Merchant Balance" : "Fund / Adjust Wallet"}
                             onClick={() => {
@@ -3553,7 +3636,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
       {/* Role-Specific User Inspector Modal */}
       {previewUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4">
+          <div className="w-full max-w-lg bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/15 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4 max-h-[calc(100dvh-2rem)] sm:max-h-[min(90vh,640px)] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10">
               <div className="flex items-center gap-3">
                 <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center font-black text-sm ${
@@ -3740,8 +3823,8 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
 
             {/* Role-Specific Footer Actions */}
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-white/10 flex-wrap">
-              {/* Only Customer and Vendor get wallet adjustment */}
-              {(previewUser.role === "customer" || !previewUser.role || previewUser.role === "vendor") && (
+              {/* Only Customer and Vendor get wallet adjustment - Strictly Admin */}
+              {isAuthorizedAdmin && (previewUser.role === "customer" || !previewUser.role || previewUser.role === "vendor") && (
                 <button
                   type="button"
                   onClick={() => {
@@ -3806,164 +3889,236 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
         </div>
       )}
 
-      {/* Luxury Obsidian/Gold Fund Wallet Modal */}
-      {fundUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-md bg-[#161616] text-white border border-[#FFB800]/30 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+      {/* Luxury Obsidian/Gold Fund Wallet Modal - Strictly Admin Only (Adaptive Light & Dark Mode) */}
+      {fundUser && isAuthorizedAdmin && (
+        <div
+          onClick={() => setFundUser(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-fade-in overflow-y-auto"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="relative w-full max-w-lg bg-white dark:bg-[#161616] text-gray-900 dark:text-white border border-black/10 dark:border-white/15 rounded-3xl shadow-2xl flex flex-col max-h-[calc(100dvh-2rem)] sm:max-h-[min(90vh,640px)] overflow-hidden my-auto animate-scale-in"
+          >
+            {/* Modal Pinned Header */}
+            <div className="shrink-0 px-6 py-4 border-b border-gray-100 dark:border-white/10 flex items-center justify-between bg-gray-50/90 dark:bg-[#1a1a1a]/95 backdrop-blur-md">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/40 flex items-center justify-center font-black">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 dark:bg-[#FFB800]/15 text-amber-700 dark:text-[#FFB800] border border-amber-500/20 dark:border-[#FFB800]/30 flex items-center justify-center font-black shrink-0">
                   <DollarSign className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Adjust Wallet Balance</h3>
-                  <p className="text-[11px] text-gray-400 font-medium">Direct ledger credit or debit</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-gray-900 dark:text-white">Adjust Wallet Balance</h3>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 dark:bg-[#FFB800]/15 text-amber-800 dark:text-[#FFB800] border border-amber-500/20 dark:border-[#FFB800]/30">
+                      Admin Only
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Direct ledger credit or debit</p>
                 </div>
               </div>
-              <button onClick={() => setFundUser(null)} className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/5 cursor-pointer">
+              <button
+                type="button"
+                onClick={() => setFundUser(null)}
+                className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 cursor-pointer transition-colors"
+                title="Close"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Target User Summary Card */}
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-[#FFB800]/15 text-[#FFB800] font-black text-xs flex items-center justify-center">
-                  {getInitials(fundUser.name)}
+            {/* Scrollable Content Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {/* Target User Dossier Card */}
+              <div className="p-3.5 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200/80 dark:border-white/10 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 dark:bg-[#FFB800]/15 text-amber-800 dark:text-[#FFB800] font-black text-sm flex items-center justify-center shrink-0 border border-amber-500/20 dark:border-[#FFB800]/20">
+                    {getInitials(fundUser.name)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-black text-gray-900 dark:text-white truncate">{fundUser.name}</p>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-200/80 dark:bg-white/10 text-gray-700 dark:text-gray-300 capitalize shrink-0">
+                        {fundUser.role || "customer"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{fundUser.email || fundUser.phone || "No contact info registered"}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-black text-white">{fundUser.name}</p>
-                  <p className="text-[10px] text-gray-400 truncate">{fundUser.email || fundUser.phone}</p>
+                <div className="text-right shrink-0">
+                  <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Available Balance</span>
+                  <span className="text-base font-black text-gray-900 dark:text-[#FFB800]">{fmt(fundUser.walletBalance || 0)}</span>
                 </div>
               </div>
-              <div className="text-right">
-                <span className="text-[10px] text-gray-400 font-medium block">Current Balance</span>
-                <span className="text-sm font-black text-[#FFB800]">{fmt(fundUser.walletBalance || 0)}</span>
-              </div>
-            </div>
 
-            {/* Credit / Debit Segmented Toggle */}
-            <div className="grid grid-cols-2 p-1 bg-black/40 border border-white/10 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setFundAction("credit")}
-                className={`py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                  fundAction === "credit"
-                    ? "bg-emerald-600 text-white shadow-xs"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                + Credit Account
-              </button>
-              <button
-                type="button"
-                onClick={() => setFundAction("debit")}
-                className={`py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                  fundAction === "debit"
-                    ? "bg-red-600 text-white shadow-xs"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                - Debit Account
-              </button>
-            </div>
-
-            {/* Amount Input with clear left icon and pl-12 */}
-            <div>
-              <label className="block text-[10px] font-extrabold text-gray-300 mb-1.5 uppercase tracking-wider">
-                Transaction Amount (₦)
-              </label>
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-[#FFB800] pointer-events-none">
-                  ₦
-                </div>
-                <input
-                  type="number"
-                  min="1"
-                  step="any"
-                  placeholder="0.00"
-                  value={fundAmount}
-                  onChange={e => setFundAmount(e.target.value)}
-                  className="w-full h-11 bg-white/5 border border-white/15 rounded-xl pl-12 pr-4 text-sm font-bold text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50"
-                  autoFocus
-                />
-              </div>
-            </div>
-
-            {/* Quick Preset Chips */}
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Quick Presets</span>
-              <div className="grid grid-cols-4 gap-1.5">
-                {[1000, 2500, 5000, 10000, 25000, 50000, 100000].map(amt => (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => setFundAmount(String(amt))}
-                    className="py-1.5 px-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[11px] font-bold text-gray-200 hover:text-[#FFB800] transition-colors cursor-pointer"
-                  >
-                    +{fmt(amt).replace("₦", "")}
-                  </button>
-                ))}
+              {/* Transaction Type Segmented Toggle */}
+              <div className="p-1 bg-gray-100 dark:bg-black/50 border border-gray-200/80 dark:border-white/10 rounded-2xl grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setFundAmount("")}
-                  className="py-1.5 px-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[11px] font-bold text-gray-400 hover:text-white transition-colors cursor-pointer"
+                  onClick={() => setFundAction("credit")}
+                  className={`py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    fundAction === "credit"
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-white/5"
+                  }`}
                 >
-                  Clear
+                  <Plus className="w-4 h-4" /> Credit Account (+)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFundAction("debit")}
+                  className={`py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    fundAction === "debit"
+                      ? "bg-red-600 text-white shadow-xs"
+                      : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-white/5"
+                  }`}
+                >
+                  <Minus className="w-4 h-4" /> Debit Account (-)
                 </button>
               </div>
-            </div>
 
-            {/* Narration Input */}
-            <div>
-              <label className="block text-[10px] font-extrabold text-gray-300 mb-1 uppercase tracking-wider">
-                Audit Narration & Reason
-              </label>
-              <input
-                type="text"
-                placeholder={fundAction === "credit" ? "e.g. Operational promo bonus" : "e.g. Overdraft correction"}
-                value={fundReason}
-                onChange={e => setFundReason(e.target.value)}
-                className="w-full h-10 bg-white/5 border border-white/15 rounded-xl px-3.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50"
-              />
-            </div>
-
-            {/* Projected Live Balance Card */}
-            {parseFloat(fundAmount) > 0 && (
-              <div className="p-3 bg-black/40 border border-[#FFB800]/30 rounded-xl flex items-center justify-between text-xs animate-fade-in">
-                <span className="text-gray-400 font-medium">Projected Balance:</span>
-                <span className="font-black text-white text-sm">
-                  {fmt(
-                    Math.max(
-                      0,
-                      (fundUser.walletBalance || 0) + (fundAction === "credit" ? parseFloat(fundAmount) : -parseFloat(fundAmount))
-                    )
-                  )}
-                </span>
+              {/* Amount Entry */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-black text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                  Transaction Amount (₦)
+                </label>
+                <div className="relative flex items-center">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-base font-black text-gray-900 dark:text-[#FFB800] pointer-events-none">
+                    ₦
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    placeholder="0.00"
+                    value={fundAmount}
+                    onChange={e => setFundAmount(e.target.value)}
+                    className="w-full h-11 bg-white dark:bg-[#202020] border-2 border-gray-200 dark:border-white/15 rounded-xl pl-10 pr-4 text-base font-black text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:border-[#FFB800] focus:ring-2 focus:ring-[#FFB800]/30 transition-all"
+                    autoFocus
+                  />
+                </div>
               </div>
-            )}
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/10">
+              {/* Quick Presets */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                    Quick Preset Amounts
+                  </span>
+                  {fundAmount && (
+                    <button
+                      type="button"
+                      onClick={() => setFundAmount("")}
+                      className="text-xs font-bold text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[1000, 2500, 5000, 10000, 25000, 50000, 100000].map(amt => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setFundAmount(String(amt))}
+                      className={`h-7 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                        parseFloat(fundAmount) === amt
+                          ? "bg-gray-900 dark:bg-[#FFB800] text-white dark:text-[#111] border-gray-900 dark:border-[#FFB800] font-black shadow-xs"
+                          : "bg-white hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 border-gray-200 dark:border-white/10 text-gray-800 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                      }`}
+                    >
+                      +{fmt(amt).replace("₦", "")}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setFundAmount("")}
+                    className="h-7 px-2 bg-white hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+
+              {/* Narration & Reason Input */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-black text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                  Audit Reason & Narration
+                </label>
+                <input
+                  type="text"
+                  placeholder={fundAction === "credit" ? "e.g. Promotional grant, manual deposit confirmation" : "e.g. Duplicate credit reversal, balance correction"}
+                  value={fundReason}
+                  onChange={e => setFundReason(e.target.value)}
+                  className="w-full h-10 bg-white dark:bg-[#202020] border-2 border-gray-200 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:border-[#FFB800] focus:ring-2 focus:ring-[#FFB800]/30 transition-all"
+                />
+              </div>
+
+              {/* Validation Alert or Projected Live Balance Card */}
+              {fundAction === "debit" && parseFloat(fundAmount) > (fundUser.walletBalance || 0) ? (
+                <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-500/30 rounded-xl flex items-center gap-2.5 text-xs text-red-700 dark:text-red-300 animate-fade-in">
+                  <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+                  <span>
+                    Insufficient funds: Cannot debit <strong>{fmt(parseFloat(fundAmount))}</strong> from an available balance of <strong>{fmt(fundUser.walletBalance || 0)}</strong>.
+                  </span>
+                </div>
+              ) : parseFloat(fundAmount) > 0 ? (
+                <div className="p-3 bg-gray-50/80 dark:bg-white/[0.03] border border-gray-200/90 dark:border-white/10 rounded-2xl flex items-center justify-between text-xs animate-fade-in">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 dark:text-gray-400 font-medium">Projected:</span>
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">{fmt(fundUser.walletBalance || 0)}</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+                    <span className="font-black text-gray-900 dark:text-white text-sm">
+                      {fmt(
+                        Math.max(
+                          0,
+                          (fundUser.walletBalance || 0) + (fundAction === "credit" ? parseFloat(fundAmount) : -parseFloat(fundAmount))
+                        )
+                      )}
+                    </span>
+                  </div>
+                  <span
+                    className={`font-black text-[11px] px-2.5 py-0.5 rounded-full ${
+                      fundAction === "credit"
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border border-emerald-500/30"
+                        : "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300 border border-red-500/30"
+                    }`}
+                  >
+                    {fundAction === "credit" ? `+${fmt(parseFloat(fundAmount))}` : `-${fmt(parseFloat(fundAmount))}`}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Modal Pinned Footer */}
+            <div className="shrink-0 px-6 py-3.5 border-t border-gray-100 dark:border-white/10 bg-gray-50/90 dark:bg-[#121212] flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setFundUser(null)}
-                className="h-10 px-4 rounded-xl border border-white/15 text-xs font-bold text-gray-300 hover:bg-white/5 cursor-pointer"
+                className="h-10 px-4 rounded-xl border border-gray-300 dark:border-white/15 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 cursor-pointer transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={fundingWallet || !parseFloat(fundAmount)}
+                disabled={
+                  fundingWallet ||
+                  !parseFloat(fundAmount) ||
+                  (fundAction === "debit" && parseFloat(fundAmount) > (fundUser.walletBalance || 0))
+                }
                 onClick={handleFundWallet}
-                className={`h-10 px-5 rounded-xl font-black text-xs flex items-center gap-2 shadow-lg cursor-pointer transition-all ${
+                className={`h-10 px-5 rounded-xl font-black text-xs flex items-center gap-2 shadow-xs cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                   fundAction === "credit"
                     ? "bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111]"
                     : "bg-red-600 hover:bg-red-700 text-white"
                 }`}
               >
                 {fundingWallet ? <RefreshCw className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
-                <span>{fundingWallet ? "Executing..." : fundAction === "credit" ? "Credit Balance" : "Debit Balance"}</span>
+                <span>
+                  {fundingWallet
+                    ? "Executing..."
+                    : fundAction === "credit"
+                    ? `Credit ${parseFloat(fundAmount) > 0 ? fmt(parseFloat(fundAmount)) : "Balance"}`
+                    : `Debit ${parseFloat(fundAmount) > 0 ? fmt(parseFloat(fundAmount)) : "Balance"}`}
+                </span>
               </button>
             </div>
           </div>
@@ -8895,6 +9050,328 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
       <button onClick={() => setTPage(p => Math.min(tTotalPages - 1, p + 1))} disabled={tPage >= tTotalPages - 1} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-[#222] text-xs font-bold text-[#111] dark:text-white disabled:opacity-40 hover:bg-gray-200 dark:hover:bg-[#333]"><ChevronRight size={14} /></button>
     </div>}
   </div>;
+}
+
+function TipPayoutsTab({
+  withdrawals,
+  db,
+  addLog,
+  addToast,
+  createNotification,
+  users,
+}: {
+  withdrawals: TipWithdrawalRequest[];
+  db: any;
+  addLog: (a: string, d: string) => Promise<void> | void;
+  addToast: (t: Toast["type"], m: string) => void;
+  createNotification: (title: string, desc: string) => Promise<void>;
+  users: UserProfile[];
+}) {
+  const [filter, setFilter] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED">("ALL");
+  const [search, setSearch] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [rejectModalTarget, setRejectModalTarget] = useState<TipWithdrawalRequest | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    addToast("info", `Copied: ${text}`);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleApprove = async (p: TipWithdrawalRequest) => {
+    if (!confirm(`Approve tip payout of ₦${p.amount.toLocaleString()} to ${p.riderName || "Rider"}?`)) return;
+    setActionLoading(p.id);
+    try {
+      await updateDoc(doc(db, "tip_withdrawals", p.id), {
+        status: "APPROVED",
+        approvedAt: Timestamp.now(),
+      });
+      await addLog("Approve Tip Payout", `Approved ₦${p.amount.toLocaleString()} for rider ${p.riderName} (${p.bankName} - ${p.accountNumber})`);
+      addToast("success", `Payout of ₦${p.amount.toLocaleString()} approved!`);
+      if (p.riderId) {
+        try {
+          await addDoc(collection(db, "users", p.riderId, "notifications"), {
+            title: "Tip Payout Approved",
+            description: `Your tip withdrawal request of ₦${p.amount.toLocaleString()} has been approved and processed to ${p.bankName} (${p.accountNumber}).`,
+            read: false,
+            time: "Just now",
+            createdAt: Timestamp.now(),
+            timestamp: Date.now(),
+          });
+        } catch (e) {
+          console.error("Error sending rider notif:", e);
+        }
+      }
+    } catch (err: any) {
+      addToast("error", err.message || "Failed to approve payout");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectModalTarget) return;
+    const p = rejectModalTarget;
+    setActionLoading(p.id);
+    try {
+      await updateDoc(doc(db, "tip_withdrawals", p.id), {
+        status: "REJECTED",
+        rejectedAt: Timestamp.now(),
+        notes: rejectReason || "Request declined by administration.",
+      });
+      if (p.riderId) {
+        const userRef = doc(db, "users", p.riderId);
+        await updateDoc(userRef, {
+          walletBalance: increment(p.amount),
+        });
+        try {
+          await addDoc(collection(db, "users", p.riderId, "notifications"), {
+            title: "Tip Payout Declined",
+            description: `Your tip withdrawal request of ₦${p.amount.toLocaleString()} was declined (${rejectReason || "Administrative decision"}). The funds have been refunded to your wallet.`,
+            read: false,
+            time: "Just now",
+            createdAt: Timestamp.now(),
+            timestamp: Date.now(),
+          });
+        } catch (e) {
+          console.error("Error sending rider notif:", e);
+        }
+      }
+      await addLog("Reject Tip Payout", `Rejected ₦${p.amount.toLocaleString()} for rider ${p.riderName}. Funds refunded.`);
+      addToast("info", "Payout rejected and funds refunded to rider wallet.");
+      setRejectModalTarget(null);
+      setRejectReason("");
+    } catch (err: any) {
+      addToast("error", err.message || "Failed to reject payout");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const filtered = withdrawals.filter(w => {
+    if (filter !== "ALL" && w.status !== filter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const matchRider = w.riderName?.toLowerCase().includes(q);
+      const matchBank = w.bankName?.toLowerCase().includes(q);
+      const matchAcc = w.accountNumber?.toLowerCase().includes(q);
+      const matchAccName = w.accountName?.toLowerCase().includes(q);
+      return matchRider || matchBank || matchAcc || matchAccName;
+    }
+    return true;
+  });
+
+  const totalDisbursed = withdrawals.filter(w => w.status === "APPROVED").reduce((s, w) => s + (w.amount || 0), 0);
+  const pendingAmount = withdrawals.filter(w => w.status === "PENDING").reduce((s, w) => s + (w.amount || 0), 0);
+  const pendingCount = withdrawals.filter(w => w.status === "PENDING").length;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
+            <DollarSign className="w-6 h-6 text-[#FFB800]" /> Rider Tip Payouts
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Review, verify bank credentials, and authorize tip withdrawals submitted by couriers.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-5 shadow-xs">
+          <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Pending Approvals</div>
+          <div className="text-2xl font-black text-amber-600 dark:text-[#FFB800] mt-1.5 flex items-baseline gap-2">
+            ₦{pendingAmount.toLocaleString()}
+            <span className="text-xs font-bold text-gray-500">({pendingCount} requests)</span>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-5 shadow-xs">
+          <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Total Disbursed</div>
+          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1.5">
+            ₦{totalDisbursed.toLocaleString()}
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-5 shadow-xs">
+          <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Total Requests</div>
+          <div className="text-2xl font-black text-gray-900 dark:text-white mt-1.5">
+            {withdrawals.length}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+          {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={"px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer " + (
+                filter === f
+                  ? "bg-[#FFB800] text-[#111] shadow-xs"
+                  : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10"
+              )}
+            >
+              {f === "ALL" ? "All Requests" : f === "PENDING" ? `Pending (${pendingCount})` : f}
+            </button>
+          ))}
+        </div>
+        <div className="w-full sm:w-72">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search rider, bank, account..." />
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 shadow-sm">
+        {filtered.length === 0 ? (
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400 font-medium">
+            <DollarSign className="w-12 h-12 mx-auto mb-3 text-[#FFB800]/50" />
+            <p className="font-extrabold text-base text-gray-900 dark:text-white">No withdrawal requests found</p>
+            <p className="text-xs mt-1">Courier tip payout applications will appear here in real-time.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-[#222]">
+                <tr>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Courier</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Amount</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Bank Details</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Requested</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Status</th>
+                  <th className="text-right font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                {filtered.map(p => {
+                  const riderUser = users.find(u => u.uid === p.riderId);
+                  const dateFormatted = p.createdAt?.toMillis
+                    ? new Date(p.createdAt.toMillis()).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+                    : (p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "Just now");
+
+                  return (
+                    <tr key={p.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                      <td className="p-4">
+                        <div className="font-black text-sm text-gray-900 dark:text-white flex items-center gap-2">
+                          <Bike className="w-4 h-4 text-[#FFB800]" />
+                          {p.riderName || riderUser?.name || "Courier"}
+                        </div>
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400 font-mono mt-0.5">
+                          ID: {p.riderId?.slice(0, 10)}...
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="font-black text-base text-gray-900 dark:text-white">
+                          ₦{p.amount.toLocaleString()}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="font-black text-gray-900 dark:text-white">{p.bankName || "Unknown Bank"}</div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="font-mono font-bold text-gray-700 dark:text-gray-300">{p.accountNumber}</span>
+                          <button
+                            onClick={() => copyToClipboard(p.accountNumber, p.id)}
+                            className="p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded cursor-pointer"
+                            title="Copy Account Number"
+                          >
+                            {copiedId === p.id ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                        {p.accountName && (
+                          <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                            {p.accountName}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-4 text-gray-600 dark:text-gray-400 font-medium">
+                        {dateFormatted}
+                      </td>
+                      <td className="p-4">
+                        <span className={`px-3 py-1 rounded-full font-black text-[10px] uppercase tracking-wider ${
+                          p.status === "APPROVED"
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 border border-green-500/20"
+                            : p.status === "REJECTED"
+                            ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-500/20"
+                            : "bg-amber-100 text-amber-800 dark:bg-[#FFB800]/20 dark:text-[#FFB800] border border-amber-500/30 animate-pulse"
+                        }`}>
+                          {p.status}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        {p.status === "PENDING" && (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              disabled={actionLoading === p.id}
+                              onClick={() => handleApprove(p)}
+                              className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[11px] rounded-xl transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                            >
+                              {actionLoading === p.id ? "Processing..." : "Approve"}
+                            </button>
+                            <button
+                              disabled={actionLoading === p.id}
+                              onClick={() => setRejectModalTarget(p)}
+                              className="px-3 py-1.5 bg-red-500/10 text-red-700 dark:text-red-400 border border-red-500/30 font-bold text-[11px] rounded-xl hover:bg-red-500/20 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {rejectModalTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-500" /> Decline Payout Request
+              </h3>
+              <button onClick={() => setRejectModalTarget(null)} className="text-gray-400 hover:text-white cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Rejecting will automatically refund ₦{rejectModalTarget.amount.toLocaleString()} back to {rejectModalTarget.riderName || "the rider"}&apos;s wallet balance.
+            </p>
+            <div>
+              <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">Reason for Rejection</label>
+              <input
+                type="text"
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                placeholder="e.g., Bank account details mismatch, invalid account number"
+                className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/40"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setRejectModalTarget(null)}
+                className="px-4 py-2 text-xs font-bold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={actionLoading === rejectModalTarget.id}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-black rounded-xl transition-all shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {actionLoading === rejectModalTarget.id ? "Processing..." : "Confirm Reject & Refund"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function AdminDashboardWrapper() {

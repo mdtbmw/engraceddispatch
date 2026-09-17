@@ -64,13 +64,16 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         fun determineProgress(status: String?, text: String): Int {
             val st = status?.uppercase() ?: ""
             val lower = text.lowercase()
+            if (lower.contains("pin") || lower.contains("otp") || lower.contains("code") || lower.contains("verify") || lower.contains("verification")) {
+                return 0 // Do not display a misleading progress bar on OTP/PIN verification alerts
+            }
             return when {
                 st.contains("DELIVERED") || lower.contains("delivered") -> 100
                 st.contains("ARRIVED") || lower.contains("arrived") -> 90
                 st.contains("TRANSIT") || st.contains("PICK") || lower.contains("transit") || lower.contains("picked") -> 65
                 st.contains("ASSIGN") || lower.contains("assigned") -> 35
-                st.contains("PENDING") || st.contains("BOOK") || lower.contains("booked") || lower.contains("pending") -> 15
-                else -> 50
+                st.contains("PENDING") || st.contains("BOOK") || lower.contains("booked") || lower.contains("pending") -> 10
+                else -> 0
             }
         }
 
@@ -129,8 +132,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             // Dynamic stage progress on Lock Screen & Notification Drawer (15%, 35%, 65%, 90%, 100%)
             if (parcelId != null && parcelId != "GIFT") {
                 val progress = determineProgress(status, "$title $message")
-                if (progress >= 100) {
-                    builder.setProgress(0, 0, false) // Completed: dismiss progress bar
+                if (progress <= 0 || progress >= 100) {
+                    builder.setProgress(0, 0, false) // No progress bar for idle/PIN alerts or completed shipments
                 } else {
                     builder.setProgress(100, progress, false)
                 }

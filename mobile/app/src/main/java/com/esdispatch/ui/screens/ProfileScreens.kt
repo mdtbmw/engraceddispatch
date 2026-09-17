@@ -1566,10 +1566,11 @@ fun WalletScreen(
                                         }
                                         Spacer(modifier = Modifier.height(10.dp))
                                         Text(
-                                            text = "ℹ️ Courier earnings represent 100% customer tips credited per completed delivery and are withdrawable directly to your bank account.",
+                                            text = "ℹ️ Courier earnings represent 100% customer tips credited per delivery.",
                                             fontSize = 11.sp,
                                             color = TextGray,
-                                            lineHeight = 15.sp
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     } else {
                                         Row(
@@ -1796,9 +1797,21 @@ fun WalletScreen(
                     showConfirmationDialog = false
                     showFundWithdrawSheet = false
                     pinAuthSuccessCallback = {
-                        viewModel.topUpWallet(-pendingAmount)
-                        successTitle = "Withdrawal Initiated"
-                        successMessage = "Your withdrawal of ₦${String.format("%,.2f", pendingAmount)} is being processed and will arrive in your bank account shortly."
+                        if (isRider) {
+                            viewModel.submitTipWithdrawalRequest(
+                                amount = pendingAmount,
+                                bankName = viewModel.bankName.value,
+                                accountNumber = viewModel.accountNumber.value,
+                                accountName = viewModel.accountName.value
+                            )
+                        } else {
+                            viewModel.topUpWallet(-pendingAmount)
+                        }
+                        successTitle = if (isRider) "Withdrawal Request Submitted" else "Withdrawal Initiated"
+                        successMessage = if (isRider)
+                            "Your tip withdrawal request of ₦${String.format("%,.2f", pendingAmount)} has been submitted to admin for approval."
+                        else
+                            "Your withdrawal of ₦${String.format("%,.2f", pendingAmount)} is being processed and will arrive in your bank account shortly."
                         showSuccessSheet = true
                     }
                     showPinAuthSheet = true
@@ -5412,7 +5425,11 @@ fun PinSetupSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
 
+    val hasExistingPin = currentPin.isNotBlank()
+    var step by remember { mutableStateOf(if (hasExistingPin) 1 else 2) }
+    var oldPinInput by remember { mutableStateOf("") }
     var newPinInput by remember { mutableStateOf("") }
+    var confirmPinInput by remember { mutableStateOf("") }
 
     val dismissWithAnim = {
         scope.launch { sheetState.hide() }.invokeOnCompletion {
@@ -5434,40 +5451,87 @@ fun PinSetupSheet(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Wallet PIN Security", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
-            Text(
-                text = if (currentPin.isBlank()) "Setup a secure 4-digit PIN to authenticate all wallet transactions and withdrawals."
-                else "You have an active security PIN. Enter a new PIN below to update it.",
-                fontSize = 13.sp,
-                color = TextGray
-            )
+            val title = when (step) {
+                1 -> "Verify Current PIN"
+                2 -> if (hasExistingPin) "Enter New PIN" else "Setup Security PIN"
+                else -> "Confirm New PIN"
+            }
+            val subtitle = when (step) {
+                1 -> "Please enter your current 4-digit security PIN to authorize this change."
+                2 -> "Enter a new 4-digit security PIN to protect your wallet and shipments."
+                else -> "Re-enter your new 4-digit PIN to confirm."
+            }
+
+            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
+            Text(subtitle, fontSize = 13.sp, color = TextGray)
 
             Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                PinInputField(
-                    pin = newPinInput,
-                    onPinChange = { newPinInput = it },
-                    obscureText = false
-                )
+                when (step) {
+                    1 -> PinInputField(
+                        pin = oldPinInput,
+                        onPinChange = { oldPinInput = it },
+                        obscureText = true
+                    )
+                    2 -> PinInputField(
+                        pin = newPinInput,
+                        onPinChange = { newPinInput = it },
+                        obscureText = false
+                    )
+                    3 -> PinInputField(
+                        pin = confirmPinInput,
+                        onPinChange = { confirmPinInput = it },
+                        obscureText = true
+                    )
+                }
             }
 
             Button(
                 onClick = {
-                    if (newPinInput.length == 4) {
-                        viewModel.setUserPin(newPinInput)
-                        Toast.makeText(context, "Security PIN updated successfully!", Toast.LENGTH_SHORT).show()
-                        dismissWithAnim()
-                    } else {
-                        Toast.makeText(context, "PIN must be exactly 4 digits", Toast.LENGTH_SHORT).show()
+                    when (step) {
+                        1 -> {
+                            if (oldPinInput.length == 4) {
+                                if (viewModel.verifyUserPin(oldPinInput)) {
+                                    step = 2
+                                } else {
+                                    Toast.makeText(context, "Current PIN is incorrect", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Toast.makeText(context, "Enter 4 digits", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        2 -> {
+                            if (newPinInput.length == 4) {
+                                step = 3
+                            } else {
+                                Toast.makeText(context, "PIN must be exactly 4 digits", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        3 -> {
+                            if (confirmPinInput == newPinInput) {
+                                viewModel.setUserPin(newPinInput)
+                                Toast.makeText(context, "Security PIN updated successfully!", Toast.LENGTH_SHORT).show()
+                                dismissWithAnim()
+                            } else {
+                                Toast.makeText(context, "PINs do not match. Please re-enter.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
             ) {
-                Text("Confirm PIN", fontWeight = FontWeight.Black)
+                Text(
+                    text = when (step) {
+                        1 -> "Verify Old PIN"
+                        2 -> "Next"
+                        else -> "Confirm & Save PIN"
+                    },
+                    fontWeight = FontWeight.Black
+                )
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -6360,9 +6424,11 @@ fun BankSetupSheet(
 ) {
     val currentBankName by viewModel.bankName.collectAsState()
     val currentAcctNo by viewModel.accountNumber.collectAsState()
+    val currentAcctName by viewModel.accountName.collectAsState()
 
     var bankNameInput by remember { mutableStateOf(currentBankName) }
     var acctNoInput by remember { mutableStateOf(currentAcctNo) }
+    var acctNameInput by remember { mutableStateOf(currentAcctName.ifEmpty { viewModel.userName.value }) }
 
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -6389,7 +6455,7 @@ fun BankSetupSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("Settlement Account Setup", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
-            Text("Link your Nigerian bank details to withdraw cash from your wallet instantly.", fontSize = 13.sp, color = TextGray)
+            Text("Link your Nigerian bank details to withdraw cash from your wallet or tips.", fontSize = 13.sp, color = TextGray)
 
             OutlinedTextField(
                 value = bankNameInput,
@@ -6424,10 +6490,26 @@ fun BankSetupSheet(
                 )
             )
 
+            OutlinedTextField(
+                value = acctNameInput,
+                onValueChange = { acctNameInput = it },
+                label = { Text("Account Name") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = TextGray.copy(alpha = 0.5f),
+                    focusedTextColor = AppOnSurface,
+                    unfocusedTextColor = AppOnSurface,
+                    focusedLabelColor = Gold,
+                    unfocusedLabelColor = TextGray
+                )
+            )
+
             Button(
                 onClick = {
                     if (bankNameInput.isNotBlank() && acctNoInput.isNotBlank()) {
-                        viewModel.saveBankInfo(bankNameInput, acctNoInput, viewModel.userName.value)
+                        viewModel.saveBankDetails(bankNameInput, acctNoInput, acctNameInput)
                         Toast.makeText(context, "Bank details configured!", Toast.LENGTH_SHORT).show()
                         onSetupComplete()
                     } else {

@@ -625,12 +625,12 @@ fun PreloaderScreen(
 
                 Spacer(modifier = Modifier.width(18.dp))
 
-                // Vertical Column containing top-line "ENGRACE" and bottom-line "DISPATCH"
+                // Vertical Column containing top-line "ES" and bottom-line "DISPATCH"
                 Column(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = "ENGRACE",
+                        text = "ES",
                         fontSize = 28.sp,
                         fontFamily = SpaceGrotesk,
                         fontWeight = FontWeight.Black,

@@ -321,6 +321,7 @@ fun ActiveTrackingScreen(
     val activeViewMode by viewModel.activeViewMode.collectAsState()
     val isRider = userRole == "rider" || activeViewMode == "rider"
     val enableQrCodeHandover by viewModel.enableQrCodeHandover.collectAsState()
+    val userName by viewModel.userName.collectAsState()
 
     val effectiveParcels = if (isRider) riderAssignments else userParcels
     val activeParcels = remember(effectiveParcels) {
@@ -385,10 +386,12 @@ fun ActiveTrackingScreen(
     var showChatSheet by remember { mutableStateOf(false) }
     var showCancelDialog by remember { mutableStateOf(false) }
 
+    val walletBalance by viewModel.walletBalance.collectAsState()
     if (showFeedbackDialog) {
         DeliveryFeedbackDialog(
             parcel = parcel,
             isDark = isDark,
+            walletBalance = walletBalance,
             onDismiss = { showFeedbackDialog = false },
             onSubmit = { rating, tip ->
                 viewModel.rateAndTipRider(
@@ -726,7 +729,13 @@ fun ActiveTrackingScreen(
             val routeColor = if (aiTrafficCongested) "#FF3B30" else if (showTraffic) "#FF9500" else "#FFB800"
 
             val matchedRider = riders.find { it.id == parcel.riderId || it.name.equals(parcel.courierName, ignoreCase = true) } ?: riders.firstOrNull()
-            val resolvedCourierAvatar = if (parcel.courierAvatar.isNotBlank()) parcel.courierAvatar else (matchedRider?.avatar ?: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&h=120&fit=crop")
+            val resolvedCourierAvatar = if (isRider) {
+                userAvatar
+            } else if (parcel.courierAvatar.isNotBlank()) {
+                parcel.courierAvatar
+            } else {
+                matchedRider?.avatar?.ifBlank { "" } ?: ""
+            }
             val resolvedCourierName = if (parcel.courierName.isNotBlank()) parcel.courierName else (matchedRider?.name ?: "Verified Dispatch Courier")
             val resolvedCourierPhone = if (parcel.courierPhone.isNotBlank()) parcel.courierPhone else (matchedRider?.phone ?: "+234 803 777 8888")
 
@@ -975,6 +984,19 @@ fun ActiveTrackingScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                        IconButton(
+                            onClick = {
+                                viewModel.clearActiveTrackingParcel()
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Dismiss",
+                                tint = Obsidian,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -1120,20 +1142,37 @@ fun ActiveTrackingScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         if (hasNoBooking) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(36.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Gold),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(Icons.Filled.Send, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                            if (isRider) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(36.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Gold),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(Icons.Filled.DirectionsBike, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                    }
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Text(userName.ifBlank { "Courier Profile" }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
                                                 }
-                                                Spacer(modifier = Modifier.width(10.dp))
-                                                Text("Tap to Book Express Dispatch", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                                Icon(Icons.Filled.KeyboardArrowUp, null, tint = Gold, modifier = Modifier.size(20.dp))
+                                            } else {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(36.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Gold),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(Icons.Filled.Send, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                    }
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Text("Tap to Book Express Dispatch", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                                }
+                                                Icon(Icons.Filled.KeyboardArrowUp, null, tint = Gold, modifier = Modifier.size(20.dp))
                                             }
-                                            Icon(Icons.Filled.KeyboardArrowUp, null, tint = Gold, modifier = Modifier.size(20.dp))
                                         } else {
                                             val isCourierAssigned = parcel.courierName.isNotBlank() &&
                                                 !parcel.courierName.equals("unassigned", ignoreCase = true) &&
@@ -1353,6 +1392,140 @@ fun ActiveTrackingScreen(
                                                             letterSpacing = 1.sp
                                                         )
                                                     }
+                                                }
+                                            }
+                                        }
+                                    } else if (parcel.status == ParcelStatus.DELIVERED) {
+                                        // DELIVERED DRAWER: Replace route details with Delivery Complete, Courier Rating & Tipping, and Book New Dispatch
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .align(Alignment.TopCenter)
+                                                .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 100.dp)
+                                                .verticalScroll(rememberScrollState()),
+                                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            // Header
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(
+                                                            text = "#${parcel.id}",
+                                                            fontWeight = FontWeight.Black,
+                                                            fontSize = 17.sp,
+                                                            color = AppOnSurface
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        AnimatedStatusBadge(
+                                                            status = parcel.status,
+                                                            isDark = isDark,
+                                                            fontSize = 10.sp,
+                                                            paddingHorizontal = 8.dp,
+                                                            paddingVertical = 3.dp
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = parcel.itemName,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = TextGray
+                                                    )
+                                                }
+
+                                                IconButton(
+                                                    onClick = { viewModel.clearActiveTrackingParcel() },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = TextGray)
+                                                }
+                                            }
+
+                                            // Rating & Tipping Card for Customer
+                                            if (!isRider) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(20.dp),
+                                                    color = if (isDark) Charcoal else GoldenWhiteLight,
+                                                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.2f) else Slate),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.padding(18.dp),
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Image(
+                                                                painter = rememberAsyncImagePainter(resolvedCourierAvatar),
+                                                                contentDescription = "Courier",
+                                                                modifier = Modifier.size(44.dp).clip(CircleShape),
+                                                                contentScale = ContentScale.Crop
+                                                            )
+                                                            Spacer(modifier = Modifier.width(12.dp))
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(
+                                                                    text = resolvedCourierName,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 14.sp,
+                                                                    color = AppOnSurface
+                                                                )
+                                                                Text(
+                                                                    text = "Delivered your parcel safely",
+                                                                    fontSize = 11.sp,
+                                                                    color = TextGray
+                                                                )
+                                                            }
+                                                        }
+
+                                                        Button(
+                                                            onClick = { showFeedbackDialog = true },
+                                                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                            shape = RoundedCornerShape(14.dp),
+                                                            modifier = Modifier.fillMaxWidth().height(46.dp)
+                                                        ) {
+                                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                Icon(Icons.Filled.Star, contentDescription = null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                                Spacer(modifier = Modifier.width(8.dp))
+                                                                Text("RATE & TIP COURIER", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // Book A New Dispatch Button
+                                            Button(
+                                                onClick = {
+                                                    viewModel.clearActiveTrackingParcel()
+                                                    if (!isRider) onNavigate("SendParcel") else onNavigate("Dashboard")
+                                                },
+                                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                shape = RoundedCornerShape(16.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (!isRider) Icons.Filled.LocalShipping else Icons.Filled.DirectionsBike,
+                                                        contentDescription = null,
+                                                        tint = Obsidian,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Text(
+                                                        text = if (!isRider) "BOOK A NEW DISPATCH" else "RETURN TO FLEET DASHBOARD",
+                                                        fontWeight = FontWeight.Black,
+                                                        fontSize = 14.sp,
+                                                        letterSpacing = 0.5.sp
+                                                    )
                                                 }
                                             }
                                         }
@@ -1758,8 +1931,9 @@ fun ActiveTrackingScreen(
                                                         OutlinedButton(
                                                             onClick = {
                                                                 val phone = if (parcel.status == ParcelStatus.ASSIGNED) parcel.senderPhone else parcel.receiverPhone
-                                                                if (phone.isNotBlank()) {
-                                                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                                                                val cleanPhone = phone.filter { it.isDigit() || it == '+' }
+                                                                if (cleanPhone.isNotBlank()) {
+                                                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanPhone"))
                                                                     context.startActivity(intent)
                                                                 } else {
                                                                     Toast.makeText(context, "No contact phone available", Toast.LENGTH_SHORT).show()
@@ -2449,8 +2623,9 @@ fun ActiveTrackingScreen(
                                                             .clip(CircleShape)
                                                             .background(GoldenWhiteLight)
                                                             .clickable {
-                                                                if (contactPhone.isNotBlank()) {
-                                                                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$contactPhone"))
+                                                                val cleanPhone = contactPhone.filter { it.isDigit() || it == '+' }
+                                                                if (cleanPhone.isNotBlank()) {
+                                                                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanPhone"))
                                                                     try {
                                                                         context.startActivity(dialIntent)
                                                                     } catch (e: Exception) {
@@ -2565,7 +2740,8 @@ fun ActiveTrackingScreen(
                                                             .clip(CircleShape)
                                                             .background(GoldenWhiteLight)
                                                             .clickable {
-                                                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$resolvedCourierPhone"))
+                                                                val cleanPhone = resolvedCourierPhone.filter { it.isDigit() || it == '+' }
+                                                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanPhone"))
                                                                 try {
                                                                     context.startActivity(dialIntent)
                                                                 } catch (e: Exception) {
@@ -3180,6 +3356,8 @@ fun LiveMapView(
                     transform: rotate(45deg);
                     background-size: cover;
                     background-position: center;
+                    background-color: #1A1A1A;
+                    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23FFB800'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E");
                 }
                 .user-pointer-dot {
                     position: absolute;
@@ -3435,7 +3613,12 @@ fun LiveMapView(
                         deliveryMarker = new mapboxgl.Marker(deliveryEl).setLngLat([deliveryLoc[1], deliveryLoc[0]]).setPopup(deliveryPopup).addTo(map);
                         deliveryPopup.addTo(map);
 
-                        courierMarker = new mapboxgl.Marker(courierEl).setLngLat([pickupLoc[1], pickupLoc[0]]).addTo(map);
+                        var hasValidCoords = ${courierLatitude != null && courierLongitude != null && courierLatitude != 0.0 && courierLongitude != 0.0};
+                        if (!isRider && hasValidCoords) {
+                            var initCourierLng = ${courierLongitude ?: 0.0};
+                            var initCourierLat = ${courierLatitude ?: 0.0};
+                            courierMarker = new mapboxgl.Marker(courierEl).setLngLat([initCourierLng, initCourierLat]).addTo(map);
+                        }
 
                         if (window.AndroidMap) {
                             window.AndroidMap.onMarkerPlaced("Pickup", pickupLoc[0], pickupLoc[1]);
@@ -3687,7 +3870,12 @@ fun LiveMapView(
                         deliveryMarker = L.marker(deliveryLoc, { icon: darkCircleIcon }).addTo(map);
                         deliveryMarker.bindTooltip("<b>Delivery Location</b><br>" + deliveryAddress, { permanent: true, direction: 'top', className: 'map-tooltip' });
 
-                        courierMarker = L.marker(pickupLoc, { icon: courierIcon }).addTo(map);
+                        var hasValidCoords = ${courierLatitude != null && courierLongitude != null && courierLatitude != 0.0 && courierLongitude != 0.0};
+                        if (!isRider && hasValidCoords) {
+                            var initCourierLat = ${courierLatitude ?: 0.0};
+                            var initCourierLng = ${courierLongitude ?: 0.0};
+                            courierMarker = L.marker([initCourierLat, initCourierLng], { icon: courierIcon }).addTo(map);
+                        }
 
                         if (window.AndroidMap) {
                             window.AndroidMap.onMarkerPlaced("Pickup", pickupLoc[0], pickupLoc[1]);
@@ -3841,12 +4029,17 @@ fun LiveMapView(
                         lng = pickupLoc[1] + (deliveryLoc[1] - pickupLoc[1]) * progressVal;
                         bearing = calculateBearing(pickupLoc[0], pickupLoc[1], deliveryLoc[0], deliveryLoc[1]);
                     }
+                    updateCourierLocation(lat, lng, bearing);
+                }
 
+                function updateCourierLocation(lat, lng, bearing) {
+                    if (isRider) return;
                     var hasRealCoords = ${courierLatitude != null && courierLongitude != null};
                     if (hasRealCoords) {
                         lat = ${courierLatitude ?: 6.3350};
                         lng = ${courierLongitude ?: 5.6037};
                     }
+                    if (lat === 0.0 && lng === 0.0) return;
 
                     if (courierMarker) {
                         if (isMapboxActive) {
@@ -3861,20 +4054,6 @@ fun LiveMapView(
                                 el.style.transform = (el.style.transform || '').replace(/rotate\(.*?\)/, '') + ' rotate(' + bearing + 'deg)';
                             }
                         }
-                    }
-                    if (map && followMode === 'courier' && !hasRealCoords) {
-                        if (isMapboxActive) {
-                            map.panTo([lng, lat], { animate: true, duration: 500 });
-                        } else {
-                            map.panTo([lat, lng], { animate: true, duration: 0.5 });
-                        }
-                    }
-                    if (window.AndroidMap) {
-                        window.AndroidMap.onTrackingUpdated(lat, lng);
-                    }
-                }
-
-                function updateCourierCoordinates(latVal, lngVal) {
                     var bearing = 0;
                     if (lastCourierCoords) {
                         bearing = calculateBearing(lastCourierCoords[0], lastCourierCoords[1], latVal, lngVal);
@@ -3897,6 +4076,19 @@ fun LiveMapView(
                         }
                         if (window.AndroidMap) {
                             window.AndroidMap.onTrackingUpdated(latVal, lngVal);
+                        }
+                    } else if (map && !hasNoBooking) {
+                        if (isMapboxActive) {
+                            var courierEl = document.createElement('div');
+                            courierEl.className = 'mapbox-pulsing-courier';
+                            if ("$courierAvatar".length > 0) courierEl.style.backgroundImage = 'url("$courierAvatar")';
+                            courierMarker = new mapboxgl.Marker(courierEl).setLngLat([lngVal, latVal]).addTo(map);
+                        } else if (leafletMap) {
+                            var courierIconHtml = "<div style='width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid #FFB800; " +
+                                ("$courierAvatar".length > 0 ? "background-image: url(\"$courierAvatar\"); " : "background-color: #1A1A1A; ") +
+                                "background-size: cover; box-shadow: none;'></div>";
+                            var cIcon = L.divIcon({ className: 'pulsing-courier', html: courierIconHtml, iconSize: [36, 36], iconAnchor: [18, 18] });
+                            courierMarker = L.marker([latVal, lngVal], { icon: cIcon }).addTo(leafletMap);
                         }
                     }
                 }
@@ -4627,9 +4819,11 @@ fun reverseGeocodeAddress(context: android.content.Context, lat: Double, lng: Do
 fun DeliveryFeedbackDialog(
     parcel: Parcel,
     isDark: Boolean,
+    walletBalance: Double = 0.0,
     onDismiss: () -> Unit,
     onSubmit: (Double, Double) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var rating by remember { mutableStateOf(5) }
     var selectedTipIndex by remember { mutableStateOf(1) } // Default to index 1 (₦1,000)
     val tipOptions = listOf(0.0, 500.0, 1000.0, 2000.0, -1.0) // -1.0 is Custom
@@ -4763,12 +4957,24 @@ fun DeliveryFeedbackDialog(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "Add Courier Tip",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) GoldLight else Obsidian
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Add Courier Tip",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) GoldLight else Obsidian
+                            )
+                            Text(
+                                text = "Balance: ₦${String.format("%,.2f", walletBalance)}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (tipAmount > walletBalance) Color(0xFFFF5252) else TextGray
+                            )
+                        }
                         
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -4856,7 +5062,13 @@ fun DeliveryFeedbackDialog(
                         }
 
                         Button(
-                            onClick = { onSubmit(rating.toDouble(), tipAmount) },
+                            onClick = {
+                                if (tipAmount > 0.0 && tipAmount > walletBalance) {
+                                    Toast.makeText(context, "Insufficient wallet balance (₦${String.format("%,.2f", walletBalance)}). Please top up your wallet to add a tip.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    onSubmit(rating.toDouble(), tipAmount)
+                                }
+                            },
                             modifier = Modifier
                                 .weight(1.8f)
                                 .height(44.dp),
@@ -4969,9 +5181,10 @@ fun ParcelChatDialog(
                     }
 
                     if (recipientPhone.isNotBlank()) {
+                        val cleanPhone = recipientPhone.filter { it.isDigit() || it == '+' }
                         IconButton(
                             onClick = {
-                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$recipientPhone"))
+                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanPhone"))
                                 try {
                                     context.startActivity(dialIntent)
                                 } catch (e: Exception) {

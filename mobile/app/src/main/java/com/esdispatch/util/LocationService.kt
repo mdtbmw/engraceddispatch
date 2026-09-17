@@ -15,6 +15,12 @@ import androidx.core.app.NotificationCompat
 import com.esdispatch.data.FirebaseManager
 import com.google.android.gms.location.*
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
+
 class LocationService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -40,9 +46,32 @@ class LocationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = createNotification()
-        startForeground(1001, notification)
-        startLocationUpdates()
+        val hasFine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!hasFine && !hasCoarse) {
+            Log.e(TAG, "Cannot start LocationService foreground: Location permissions not granted")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        try {
+            val notification = createNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(
+                    this,
+                    1001,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                )
+            } else {
+                startForeground(1001, notification)
+            }
+            startLocationUpdates()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting LocationService foreground: ${e.message}")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 

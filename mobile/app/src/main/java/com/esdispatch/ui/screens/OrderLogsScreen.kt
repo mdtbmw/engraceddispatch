@@ -55,11 +55,12 @@ fun OrderLogsScreen(
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
 
     val filteredParcels = remember(parcels, activeFilter) {
+        val sorted = parcels.sortedByDescending { it.createdAt ?: 0L }
         when (activeFilter) {
-            "Transit" -> parcels.filter { it.status == ParcelStatus.TRANSIT }
-            "Delivered" -> parcels.filter { it.status == ParcelStatus.DELIVERED }
-            "Cancelled" -> parcels.filter { it.status == ParcelStatus.CANCELLED }
-            else -> parcels
+            "Transit" -> sorted.filter { it.status == ParcelStatus.TRANSIT }
+            "Delivered" -> sorted.filter { it.status == ParcelStatus.DELIVERED }
+            "Cancelled" -> sorted.filter { it.status == ParcelStatus.CANCELLED }
+            else -> sorted
         }
     }
 

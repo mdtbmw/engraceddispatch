@@ -228,6 +228,7 @@ class MainActivity : FragmentActivity() {
                 val customToast by viewModel.customToast.collectAsState()
                 val customToastData by viewModel.customToastData.collectAsState()
                 val marketplaceEnabled by viewModel.marketplaceEnabled.collectAsState()
+                val networkOnline by viewModel.networkOnline.collectAsState()
 
                 val handleNavigation: (String) -> Unit = { route ->
                     val effectiveRoute = if (!marketplaceEnabled && (route == "Marketplace" || route.startsWith("VendorStorefront") || route == "VendorPortal" || route.startsWith("VendorProfile"))) {
@@ -235,35 +236,46 @@ class MainActivity : FragmentActivity() {
                     } else {
                         route
                     }
-                    when (effectiveRoute) {
-                        "BACK" -> {
-                            if (!navController.popBackStack()) {
-                                navController.navigate("Dashboard") {
-                                    popUpTo("Dashboard") { inclusive = false }
+                    try {
+                        when (effectiveRoute) {
+                            "BACK" -> {
+                                if (!navController.popBackStack()) {
+                                    navController.navigate("Dashboard") {
+                                        popUpTo("Dashboard") { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            }
+                            "Dashboard" -> {
+                                if (!navController.popBackStack("Dashboard", false)) {
+                                    navController.navigate("Dashboard") {
+                                        popUpTo("Dashboard") { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            }
+                            "SendParcel" -> {
+                                if (!navController.popBackStack("SendParcel", false)) {
+                                    navController.navigate("SendParcel") {
+                                        launchSingleTop = true
+                                    }
+                                }
+                            }
+                            "Tracking", "ActiveTracking" -> {
+                                if (!navController.popBackStack("ActiveTracking", false)) {
+                                    navController.navigate("ActiveTracking") {
+                                        launchSingleTop = true
+                                    }
+                                }
+                            }
+                            else -> {
+                                navController.navigate(effectiveRoute) {
                                     launchSingleTop = true
                                 }
                             }
                         }
-                        "Dashboard" -> {
-                            if (!navController.popBackStack("Dashboard", false)) {
-                                navController.navigate("Dashboard") {
-                                    popUpTo("Dashboard") { inclusive = false }
-                                    launchSingleTop = true
-                                }
-                            }
-                        }
-                        "SendParcel" -> {
-                            if (!navController.popBackStack("SendParcel", false)) {
-                                navController.navigate("SendParcel") {
-                                    launchSingleTop = true
-                                }
-                            }
-                        }
-                        else -> {
-                            navController.navigate(effectiveRoute) {
-                                launchSingleTop = true
-                            }
-                        }
+                    } catch (e: Throwable) {
+                        android.util.Log.e("MainActivity", "Navigation failure for route '$route': ${e.message}")
                     }
                 }
 
@@ -361,10 +373,10 @@ class MainActivity : FragmentActivity() {
                         })
                     }
                     composable("Login") {
-                        LoginScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        LoginScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("SignUp") {
-                        SignUpScreen(viewModel = viewModel, onNavigate = { navController.navigate(it) })
+                        SignUpScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("CompleteProfile") {
                         CompleteProfileScreen(viewModel = viewModel, onNavigate = {
@@ -448,6 +460,9 @@ class MainActivity : FragmentActivity() {
 
                     // Extras & Tools
                     composable("ActiveTracking") {
+                        ActiveTrackingScreen(viewModel = viewModel, onNavigate = handleNavigation)
+                    }
+                    composable("Tracking") {
                         ActiveTrackingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("Scanner") {
@@ -588,6 +603,43 @@ class MainActivity : FragmentActivity() {
                                     activeToastData = null
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Offline Connectivity Status Banner (Subtle, non-disruptive, auto-reconnecting)
+                AnimatedVisibility(
+                    visible = !networkOnline,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 8.dp)
+                        .zIndex(9995f)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (darkModeEnabled) Color(0xFF1E1C14) else Color(0xFFFFF8E7),
+                        border = BorderStroke(1.dp, if (darkModeEnabled) Gold.copy(alpha = 0.6f) else Obsidian.copy(alpha = 0.25f)),
+                        shadowElevation = 6.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .background(Color(0xFFFFB800), shape = CircleShape)
+                            )
+                            Text(
+                                text = "Offline Mode • Actions will sync when reconnected",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (darkModeEnabled) Gold else Obsidian
+                            )
                         }
                     }
                 }

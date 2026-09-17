@@ -111,10 +111,22 @@ fun BookingFormScreen(
     var length by remember { mutableStateOf("20") }
     var width by remember { mutableStateOf("15") }
     var height by remember { mutableStateOf("10") }
-    var sName by remember { mutableStateOf("") }
-    var sPhone by remember { mutableStateOf("") }
+    val currentUserName by viewModel.userName.collectAsState()
+    val currentUserPhone by viewModel.userPhone.collectAsState()
+
+    var sName by remember { mutableStateOf(draft.senderName.ifBlank { currentUserName }) }
+    var sPhone by remember { mutableStateOf(draft.senderPhone.ifBlank { currentUserPhone }) }
     var rName by remember { mutableStateOf("") }
     var rPhone by remember { mutableStateOf("") }
+
+    LaunchedEffect(currentUserName, currentUserPhone) {
+        if (sName.isBlank() && currentUserName.isNotBlank()) {
+            sName = currentUserName
+        }
+        if (sPhone.isBlank() && currentUserPhone.isNotBlank()) {
+            sPhone = currentUserPhone
+        }
+    }
 
     var additionalStops by remember { mutableStateOf(listOf<String>()) }
     var selectedInsurance by remember { mutableStateOf("none") } // none, basic, premium
@@ -266,8 +278,8 @@ fun BookingFormScreen(
         length = draft.length.toString()
         width = draft.width.toString()
         height = draft.height.toString()
-        sName = draft.senderName
-        sPhone = draft.senderPhone
+        sName = draft.senderName.ifBlank { currentUserName }
+        sPhone = draft.senderPhone.ifBlank { currentUserPhone }
         rName = draft.receiverName
         rPhone = draft.receiverPhone
     }

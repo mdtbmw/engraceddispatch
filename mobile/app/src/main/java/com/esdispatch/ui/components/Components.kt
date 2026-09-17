@@ -440,7 +440,7 @@ fun BottomNav(
                 .offset(y = (-28).dp)
                 .size(60.dp)
                 .clip(CircleShape)
-                .background(GoldGradient)
+                .background(Gold)
                 .breathingPulse(active = true, minScale = 0.98f, maxScale = 1.02f, durationMs = 3200)
                 .tactilePress(scaleDown = 0.90f) { 
                     if (activeViewMode == "rider") {
@@ -1604,6 +1604,38 @@ fun CancelDeliverySecurityDialog(
     val deductionFee = if (parcel.status == ParcelStatus.ASSIGNED) 500.0 else 0.0
     val refundAmount = (parcel.price - deductionFee).coerceAtLeast(0.0)
 
+    LaunchedEffect(biometricEnabled, biometricAvailable) {
+        if (biometricEnabled && biometricAvailable && activity != null && isCancellable) {
+            com.esdispatch.util.BiometricHelper.authenticate(
+                activity = activity,
+                title = "Authorize Cancellation",
+                subtitle = "Confirm cancellation of shipment #${parcel.id.take(8)}",
+                onSuccess = {
+                    isCancelling = true
+                    viewModel.cancelDelivery(parcel.id, "Cancelled by user (Biometric)") { success ->
+                        isCancelling = false
+                        if (success) {
+                            val msg = if (deductionFee > 0.0) {
+                                "Order cancelled • ₦${String.format("%,.2f", refundAmount)} refunded (₦500 dispatch fee applied)"
+                            } else {
+                                "Order cancelled • ₦${String.format("%,.2f", refundAmount)} refunded"
+                            }
+                            com.esdispatch.util.CustomToastBridge.show(msg, com.esdispatch.viewmodel.ToastType.SUCCESS)
+                            onCancelled?.invoke(refundAmount, deductionFee)
+                            onSuccess?.invoke(refundAmount)
+                            onDismiss()
+                        } else {
+                            cancelPinError = "Unable to cancel delivery. Please retry."
+                        }
+                    }
+                },
+                onError = { err ->
+                    // Fallback to manual PIN input
+                }
+            )
+        }
+    }
+
     AlertDialog(
         onDismissRequest = {
             if (!isCancelling) onDismiss()
@@ -1765,33 +1797,17 @@ fun CancelDeliverySecurityDialog(
                         Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    OutlinedTextField(
-                        value = cancelPinInput,
-                        onValueChange = {
+                    PinInputField(
+                        pin = cancelPinInput,
+                        onPinChange = {
                             if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
                                 cancelPinInput = it
                                 cancelPinError = null
                             }
                         },
-                        modifier = Modifier.fillMaxWidth(0.65f),
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        singleLine = true,
-                        textStyle = androidx.compose.ui.text.TextStyle(
-                            color = if (isDark) Color.White else Obsidian,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 8.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Gold,
-                            unfocusedBorderColor = Slate,
-                            cursorColor = Gold,
-                            focusedTextColor = if (isDark) Color.White else Obsidian,
-                            unfocusedTextColor = if (isDark) Color.White else Obsidian
-                        ),
-                        shape = RoundedCornerShape(14.dp)
+                        isError = cancelPinError != null,
+                        obscureText = true,
+                        modifier = Modifier.padding(vertical = 4.dp)
                     )
 
                     if (cancelPinError != null) {

@@ -200,6 +200,7 @@ fun SignaturePadView(onComplete: (android.graphics.Bitmap) -> Unit) {
     var paths by remember { mutableStateOf(listOf<Path>()) }
     var currentPath by remember { mutableStateOf<Path?>(null) }
     var padPx by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
+    var drawTick by remember { mutableStateOf(0L) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -215,15 +216,18 @@ fun SignaturePadView(onComplete: (android.graphics.Bitmap) -> Unit) {
                             val newPath = Path().apply { moveTo(offset.x, offset.y) }
                             currentPath = newPath
                             paths = paths + newPath
+                            drawTick++
                         },
-                        onDrag = { change, dragAmount ->
+                        onDrag = { change, _ ->
                             change.consume()
                             currentPath?.lineTo(change.position.x, change.position.y)
+                            drawTick++
                         }
                     )
                 }
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
+                val tick = drawTick // forces real-time frame redraw on each gesture point
                 paths.forEach { path ->
                     drawPath(
                         path = path,
@@ -242,7 +246,11 @@ fun SignaturePadView(onComplete: (android.graphics.Bitmap) -> Unit) {
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             OutlinedButton(
-                onClick = { paths = emptyList() },
+                onClick = {
+                    paths = emptyList()
+                    currentPath = null
+                    drawTick++
+                },
                 modifier = Modifier.weight(1f).height(56.dp)
             ) {
                 Text("Clear", color = Color.White)
@@ -250,23 +258,29 @@ fun SignaturePadView(onComplete: (android.graphics.Bitmap) -> Unit) {
             Spacer(modifier = Modifier.width(16.dp))
             Button(
                 onClick = {
-                    if (padPx.width < 10f || padPx.height < 10f) return@Button
-                    val w = padPx.width.toInt()
-                    val h = padPx.height.toInt()
-                    val bitmap = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
-                    val canvas = android.graphics.Canvas(bitmap)
-                    canvas.drawColor(android.graphics.Color.WHITE)
-                    val paint = android.graphics.Paint().apply {
-                        color = android.graphics.Color.BLACK
-                        style = android.graphics.Paint.Style.STROKE
-                        strokeWidth = 10f
-                        strokeCap = android.graphics.Paint.Cap.ROUND
-                        strokeJoin = android.graphics.Paint.Join.ROUND
-                        isAntiAlias = true
+                    if (paths.isEmpty()) {
+                        return@Button
                     }
-                    paths.forEach { path -> canvas.drawPath(path.asAndroidPath(), paint) }
-                    currentPath?.let { canvas.drawPath(it.asAndroidPath(), paint) }
-                    onComplete(bitmap)
+                    try {
+                        val w = padPx.width.toInt().coerceIn(100, 2048)
+                        val h = padPx.height.toInt().coerceIn(100, 2048)
+                        val bitmap = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                        val canvas = android.graphics.Canvas(bitmap)
+                        canvas.drawColor(android.graphics.Color.WHITE)
+                        val paint = android.graphics.Paint().apply {
+                            color = android.graphics.Color.BLACK
+                            style = android.graphics.Paint.Style.STROKE
+                            strokeWidth = 10f
+                            strokeCap = android.graphics.Paint.Cap.ROUND
+                            strokeJoin = android.graphics.Paint.Join.ROUND
+                            isAntiAlias = true
+                        }
+                        paths.forEach { path -> canvas.drawPath(path.asAndroidPath(), paint) }
+                        currentPath?.let { canvas.drawPath(it.asAndroidPath(), paint) }
+                        onComplete(bitmap)
+                    } catch (e: Exception) {
+                        Log.e("POD", "Failed to generate signature bitmap: ${e.message}")
+                    }
                 },
                 modifier = Modifier.weight(1f).height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold)

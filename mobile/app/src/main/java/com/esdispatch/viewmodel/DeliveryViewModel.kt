@@ -440,9 +440,6 @@ class DeliveryViewModel : WalletViewModel() {
         .build()
 
     // User Profile Info
-    
-
-    
 
     private val _userPhone = MutableStateFlow("")
     val userPhone: StateFlow<String> = _userPhone.asStateFlow()
@@ -860,13 +857,27 @@ class DeliveryViewModel : WalletViewModel() {
         appContext?.let { ctx ->
             val intent = android.content.Intent(ctx, com.esdispatch.util.LocationService::class.java)
             if (online) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    ctx.startForegroundService(intent)
+                val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (hasFine || hasCoarse) {
+                    try {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            ctx.startForegroundService(intent)
+                        } else {
+                            ctx.startService(intent)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("DeliveryViewModel", "Failed to start LocationService: ${e.message}")
+                    }
                 } else {
-                    ctx.startService(intent)
+                    Log.w("DeliveryViewModel", "Location permission missing, LocationService not started")
                 }
             } else {
-                ctx.stopService(intent)
+                try {
+                    ctx.stopService(intent)
+                } catch (e: Exception) {
+                    Log.e("DeliveryViewModel", "Failed to stop LocationService: ${e.message}")
+                }
             }
         }
     }
@@ -1433,82 +1444,105 @@ class DeliveryViewModel : WalletViewModel() {
     fun queueOfflineSync(actionType: String, payloadJson: String) = queueOfflineAction(actionType, payloadJson)
 
     fun syncOfflineQueue() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val list = _offlineSyncQueueList.value.filter { !it.synced }
-            val db = com.esdispatch.data.FirebaseManager.firestore
+            if (list.isEmpty()) {
+                android.util.Log.d("DeliveryViewModel", "Offline queue is empty or fully synchronized.")
+                return@launch
+            }
+            val db = com.esdispatch.data.FirebaseManager.firestore ?: run {
+                android.util.Log.w("DeliveryViewModel", "Firestore not ready for offline queue flush.")
+                return@launch
+            }
             list.forEach { item ->
                 try {
-                    if (db != null) {
-                        when (item.actionType) {
-                            "UPDATE_STATUS" -> {
-                                val json = org.json.JSONObject(item.payloadJson)
-                                val pId = json.optString("parcelId")
-                                val st = json.optString("status")
-                                if (pId.isNotBlank() && st.isNotBlank()) {
-                                    db.collection("deliveries").document(pId)
-                                        .update(mapOf("status" to st, "lastUpdated" to System.currentTimeMillis()))
-                                }
-                            }
-                            "GPS_LOG" -> {
-                                val json = org.json.JSONObject(item.payloadJson)
-                                val pId = json.optString("parcelId")
-                                val lat = json.optDouble("lat")
-                                val lng = json.optDouble("lng")
-                                if (pId.isNotBlank() && !lat.isNaN() && !lng.isNaN()) {
-                                    db.collection("deliveries").document(pId)
-                                        .update(mapOf("courierLatitude" to lat, "courierLongitude" to lng, "lastUpdated" to System.currentTimeMillis()))
-                                }
-                            }
-                            "FIELD_EXCEPTION" -> {
-                                val json = org.json.JSONObject(item.payloadJson)
-                                val pId = json.optString("parcelId")
-                                val exType = json.optString("exceptionType")
-                                val reason = json.optString("reason")
-                                if (pId.isNotBlank()) {
-                                    db.collection("deliveries").document(pId)
-                                        .update(mapOf(
-                                            "exceptionType" to exType,
-                                            "exceptionReason" to reason,
-                                            "lastUpdated" to System.currentTimeMillis()
-                                        ))
-                                }
-                            }
-                            "POD_UPLOAD" -> {
-                                val json = org.json.JSONObject(item.payloadJson)
-                                val pId = json.optString("parcelId")
-                                val podType = json.optString("podType", "PHOTO")
-                                if (pId.isNotBlank()) {
-                                    db.collection("deliveries").document(pId)
-                                        .update(mapOf(
-                                            "podStatus" to "OFFLINE_CAPTURED",
-                                            "podType" to podType,
-                                            "status" to ParcelStatus.DELIVERED.name,
-                                            "progress" to 1.0f,
-                                            "lastUpdated" to System.currentTimeMillis()
-                                        ))
-                                }
-                            }
-                            else -> {
-                                val syncLog = hashMapOf(
-                                    "actionType" to item.actionType,
-                                    "payload" to item.payloadJson,
-                                    "syncedAt" to com.google.firebase.Timestamp.now(),
-                                    "localTimestamp" to item.timestamp
-                                )
-                                db.collection("offline_sync_logs").add(syncLog)
+                    when (item.actionType) {
+                        "UPDATE_STATUS" -> {
+                            val json = org.json.JSONObject(item.payloadJson)
+                            val pId = json.optString("parcelId")
+                            val st = json.optString("status")
+                            if (pId.isNotBlank() && st.isNotBlank()) {
+                                db.collection("deliveries").document(pId)
+                                    .update(mapOf("status" to st, "lastUpdated" to System.currentTimeMillis()))
+                                    .addOnSuccessListener {
+                                        viewModelScope.launch { repository?.markSyncItemSynced(item.id) }
+                                    }
+                            } else {
+                                repository?.markSyncItemSynced(item.id)
                             }
                         }
+                        "GPS_LOG" -> {
+                            val json = org.json.JSONObject(item.payloadJson)
+                            val pId = json.optString("parcelId")
+                            val lat = json.optDouble("lat")
+                            val lng = json.optDouble("lng")
+                            if (pId.isNotBlank() && !lat.isNaN() && !lng.isNaN()) {
+                                db.collection("deliveries").document(pId)
+                                    .update(mapOf("courierLatitude" to lat, "courierLongitude" to lng, "lastUpdated" to System.currentTimeMillis()))
+                                    .addOnSuccessListener {
+                                        viewModelScope.launch { repository?.markSyncItemSynced(item.id) }
+                                    }
+                            } else {
+                                repository?.markSyncItemSynced(item.id)
+                            }
+                        }
+                        "FIELD_EXCEPTION" -> {
+                            val json = org.json.JSONObject(item.payloadJson)
+                            val pId = json.optString("parcelId")
+                            val exType = json.optString("exceptionType")
+                            val reason = json.optString("reason")
+                            if (pId.isNotBlank()) {
+                                db.collection("deliveries").document(pId)
+                                    .update(mapOf(
+                                        "exceptionType" to exType,
+                                        "exceptionReason" to reason,
+                                        "lastUpdated" to System.currentTimeMillis()
+                                    ))
+                                    .addOnSuccessListener {
+                                        viewModelScope.launch { repository?.markSyncItemSynced(item.id) }
+                                    }
+                            } else {
+                                repository?.markSyncItemSynced(item.id)
+                            }
+                        }
+                        "POD_UPLOAD" -> {
+                            val json = org.json.JSONObject(item.payloadJson)
+                            val pId = json.optString("parcelId")
+                            val podType = json.optString("podType", "PHOTO")
+                            if (pId.isNotBlank()) {
+                                db.collection("deliveries").document(pId)
+                                    .update(mapOf(
+                                        "podStatus" to "OFFLINE_CAPTURED",
+                                        "podType" to podType,
+                                        "status" to ParcelStatus.DELIVERED.name,
+                                        "progress" to 1.0f,
+                                        "lastUpdated" to System.currentTimeMillis()
+                                    ))
+                                    .addOnSuccessListener {
+                                        viewModelScope.launch { repository?.markSyncItemSynced(item.id) }
+                                    }
+                            } else {
+                                repository?.markSyncItemSynced(item.id)
+                            }
+                        }
+                        else -> {
+                            val syncLog = hashMapOf(
+                                "actionType" to item.actionType,
+                                "payload" to item.payloadJson,
+                                "syncedAt" to com.google.firebase.Timestamp.now(),
+                                "localTimestamp" to item.timestamp
+                            )
+                            db.collection("offline_sync_logs").add(syncLog)
+                                .addOnSuccessListener {
+                                    viewModelScope.launch { repository?.markSyncItemSynced(item.id) }
+                                }
+                        }
                     }
-                    repository?.markSyncItemSynced(item.id)
                 } catch (e: Exception) {
                     android.util.Log.e("DeliveryViewModel", "Error syncing offline item ${item.id}: ${e.message}")
                 }
             }
-            if (list.isNotEmpty()) {
-                android.util.Log.d("DeliveryViewModel", "Successfully synchronized ${list.size} offline items in background.")
-            } else {
-                android.util.Log.d("DeliveryViewModel", "Offline queue is fully synchronized in background.")
-            }
+            android.util.Log.d("DeliveryViewModel", "Dispatched sync for ${list.size} offline items.")
         }
     }
 
@@ -1777,6 +1811,18 @@ class DeliveryViewModel : WalletViewModel() {
 
     private val _selectedParcel = MutableStateFlow<Parcel?>(null)
     val selectedParcel: StateFlow<Parcel?> = _selectedParcel.asStateFlow()
+
+    fun setSelectedParcel(parcel: Parcel?) {
+        _selectedParcel.value = parcel
+    }
+
+    fun setActiveTrackingParcel(parcel: Parcel?) {
+        _selectedParcel.value = parcel
+    }
+
+    fun clearActiveTrackingParcel() {
+        _selectedParcel.value = null
+    }
 
     // Draft Parcel state for creation flow
     private val _parcelDraft = MutableStateFlow(ParcelDraft())
@@ -2709,9 +2755,42 @@ class DeliveryViewModel : WalletViewModel() {
                                     } else {
                                         stopRiderListeners()
                                     }
-                                    if (isVerifiedVal != null) {
+                                    if (role == "rider") {
+                                        _isVerified.value = true
+                                        savePref("is_verified", true)
+                                    } else if (isVerifiedVal != null) {
                                         _isVerified.value = isVerifiedVal
                                         savePref("is_verified", isVerifiedVal)
+                                    }
+
+                                    val creationTs = FirebaseManager.auth?.currentUser?.metadata?.creationTimestamp
+                                    if (creationTs != null && creationTs > 0L) {
+                                        val calDate = java.util.Date(creationTs)
+                                        val formattedDate = java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.ENGLISH).format(calDate)
+                                        _memberSince.value = formattedDate
+                                        savePref("member_since", formattedDate)
+                                    } else {
+                                        val storedMemberSince = data["memberSince"] as? String
+                                        if (!storedMemberSince.isNullOrBlank()) {
+                                            _memberSince.value = storedMemberSince
+                                            savePref("member_since", storedMemberSince)
+                                        }
+                                    }
+
+                                    val bName = data["bankName"] as? String
+                                    if (!bName.isNullOrBlank()) {
+                                        _bankName.value = bName
+                                        savePref("bank_name", bName)
+                                    }
+                                    val accNum = data["accountNumber"] as? String
+                                    if (!accNum.isNullOrBlank()) {
+                                        _accountNumber.value = accNum
+                                        savePref("account_number", accNum)
+                                    }
+                                    val accName = data["accountName"] as? String
+                                    if (!accName.isNullOrBlank()) {
+                                        _accountName.value = accName
+                                        savePref("account_name", accName)
                                     }
 
                                     val earned = (data["totalEarned"] as? Number)?.toDouble()
@@ -2891,13 +2970,22 @@ class DeliveryViewModel : WalletViewModel() {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             val callback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
+                    val wasOffline = !_networkOnline.value
                     _networkOnline.value = true
+                    if (wasOffline) {
+                        syncOfflineQueue()
+                    }
                 }
                 override fun onLost(network: Network) {
                     _networkOnline.value = false
                 }
                 override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                    _networkOnline.value = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    val hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    val wasOffline = !_networkOnline.value
+                    _networkOnline.value = hasInternet
+                    if (wasOffline && hasInternet) {
+                        syncOfflineQueue()
+                    }
                 }
             }
             connectivityCallback = callback
@@ -2907,7 +2995,11 @@ class DeliveryViewModel : WalletViewModel() {
             cm.registerNetworkCallback(request, callback)
             val active = cm.activeNetwork
             val caps = active?.let { cm.getNetworkCapabilities(it) }
-            _networkOnline.value = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            val isOnline = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            _networkOnline.value = isOnline
+            if (isOnline) {
+                syncOfflineQueue()
+            }
         } catch (e: Exception) {
             android.util.Log.e("DeliveryViewModel", "Failed to setup connectivity monitor: ${e.message}")
             _networkOnline.value = true
@@ -3650,12 +3742,13 @@ class DeliveryViewModel : WalletViewModel() {
                     }
                     
                     com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users").document(uid)
-                        .update(
+                        .set(
                             mapOf(
                                 "photoUrl" to dataUrl,
                                 "avatarBase64" to base64Str,
                                 "updatedAt" to com.google.firebase.Timestamp.now()
-                            )
+                            ),
+                            com.google.firebase.firestore.SetOptions.merge()
                         )
                         .addOnSuccessListener {
                             com.esdispatch.util.CustomToastBridge.show("Profile picture updated!", ToastType.SUCCESS)
@@ -3741,8 +3834,74 @@ class DeliveryViewModel : WalletViewModel() {
         }
         val uid = _firebaseUserId.value ?: FirebaseManager.auth?.currentUser?.uid
         if (uid != null && hashed.isNotEmpty()) {
-            FirebaseManager.firestore?.collection("users")?.document(uid)?.update("pin", hashed)
+            FirebaseManager.firestore?.collection("users")?.document(uid)?.set(
+                mapOf(
+                    "pin" to hashed,
+                    "updatedAt" to com.google.firebase.Timestamp.now()
+                ),
+                com.google.firebase.firestore.SetOptions.merge()
+            )
         }
+    }
+
+    fun saveBankDetails(bName: String, accNum: String, accName: String) {
+        _bankName.value = bName
+        _accountNumber.value = accNum
+        _accountName.value = accName
+        savePref("bank_name", bName)
+        savePref("account_number", accNum)
+        savePref("account_name", accName)
+        val uid = _firebaseUserId.value ?: FirebaseManager.auth?.currentUser?.uid ?: return
+        FirebaseManager.firestore?.collection("users")?.document(uid)?.set(
+            mapOf(
+                "bankName" to bName,
+                "accountNumber" to accNum,
+                "accountName" to accName,
+                "updatedAt" to com.google.firebase.Timestamp.now()
+            ),
+            com.google.firebase.firestore.SetOptions.merge()
+        )
+    }
+
+    fun submitTipWithdrawalRequest(
+        amount: Double,
+        bankName: String = "",
+        accountNumber: String = "",
+        accountName: String = "",
+        onComplete: (Boolean, String?) -> Unit = { _, _ -> }
+    ) {
+        val uid = _firebaseUserId.value ?: FirebaseManager.auth?.currentUser?.uid ?: run {
+            onComplete(false, "User not authenticated")
+            return
+        }
+        val db = FirebaseManager.firestore ?: run {
+            onComplete(false, "Firestore unavailable")
+            return
+        }
+        if (amount <= 0.0) {
+            onComplete(false, "Invalid withdrawal amount")
+            return
+        }
+        val reqId = "WD-${System.currentTimeMillis()}"
+        val data = hashMapOf(
+            "id" to reqId,
+            "riderId" to uid,
+            "riderName" to _userName.value,
+            "amount" to amount,
+            "bankName" to bankName,
+            "accountNumber" to accountNumber,
+            "accountName" to accountName,
+            "status" to "PENDING",
+            "createdAt" to System.currentTimeMillis()
+        )
+        db.collection("tip_withdrawals").document(reqId)
+            .set(data)
+            .addOnSuccessListener {
+                onComplete(true, null)
+            }
+            .addOnFailureListener { e ->
+                onComplete(false, e.message ?: "Failed to submit withdrawal request")
+            }
     }
 
     fun verifyUserPin(inputPin: String): Boolean {

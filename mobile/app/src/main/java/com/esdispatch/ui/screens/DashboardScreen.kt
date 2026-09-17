@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Lock
@@ -1262,10 +1263,10 @@ fun DashboardScreen(
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
-                                        .offset(x = (-4).dp, y = 4.dp)
-                                        .size(10.dp)
+                                        .padding(top = 8.dp, end = 8.dp)
+                                        .size(8.dp)
                                         .background(Gold, shape = CircleShape)
-                                        .border(2.dp, Obsidian, CircleShape)
+                                        .border(1.5.dp, Obsidian, CircleShape)
                                 )
                             }
                         }
@@ -1378,19 +1379,41 @@ fun DashboardScreen(
                                     }
                                 }
                             )
+                            val activeRide = viewModel.parcels.value.firstOrNull { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED }
+                            val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(scanIconBg)
-                                    .clickable { onNavigate("Scanner") },
+                                    .clickable {
+                                        if (activeRide != null) {
+                                            clipboardManager.setText(AnnotatedString(activeRide.id))
+                                            Toast.makeText(context, "Tracking ID #${activeRide.id} copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            val clip = clipboardManager.getText()?.text?.trim() ?: ""
+                                            if (clip.isNotBlank()) {
+                                                searchQuery = clip
+                                                val matched = viewModel.parcels.value.find { it.id.equals(clip, ignoreCase = true) || it.id.endsWith(clip, ignoreCase = true) }
+                                                if (matched != null) {
+                                                    viewModel.setActiveTrackingParcel(matched)
+                                                    onNavigate("ActiveTracking")
+                                                } else {
+                                                    Toast.makeText(context, "Pasted '$clip' from clipboard", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.QrCodeScanner,
-                                    contentDescription = "Scan",
+                                    imageVector = if (activeRide != null) Icons.Filled.ContentCopy else Icons.Filled.ContentPaste,
+                                    contentDescription = if (activeRide != null) "Copy Tracking ID" else "Paste Tracking ID",
                                     tint = scanIconTint,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
@@ -1593,7 +1616,7 @@ fun DashboardScreen(
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
-                                    .offset(x = (-2).dp, y = 2.dp)
+                                    .padding(top = 8.dp, end = 8.dp)
                                     .size(8.dp)
                                     .background(Gold, shape = CircleShape)
                                     .border(1.5.dp, Obsidian, CircleShape)
@@ -3157,20 +3180,46 @@ fun WaybillInvoiceCard(
                         color = textColor,
                         letterSpacing = 1.5.sp
                     )
+                    val timestampFormatted = if (parcel.createdAt > 0L) {
+                        "Booked: " + java.text.SimpleDateFormat("MMM dd, yyyy • hh:mm a", java.util.Locale.US).format(java.util.Date(parcel.createdAt))
+                    } else if (parcel.dateString.isNotBlank()) {
+                        parcel.dateString
+                    } else null
+                    if (timestampFormatted != null) {
+                        Text(
+                            text = timestampFormatted,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextGray
+                        )
+                    }
                 }
 
                 // Share Button
+                val clipboardMgr = androidx.compose.ui.platform.LocalClipboardManager.current
                 IconButton(
                     onClick = {
+                        val deliveryTimestamp = if (parcel.createdAt > 0L) {
+                            java.text.SimpleDateFormat("MMM dd, yyyy • hh:mm a", java.util.Locale.US).format(java.util.Date(parcel.createdAt))
+                        } else if (parcel.dateString.isNotBlank()) {
+                            parcel.dateString
+                        } else {
+                            "Completed"
+                        }
+                        val trackingUrl = "https://esdispatch.vercel.app/track?id=${parcel.id}"
                         val shareText = """
-                            ESDISPATCH CONSIGNMENT RECEIPT
+                            📦 ESDISPATCH CONSIGNMENT RECEIPT
+                            --------------------------------
                             Waybill: $waybillNumber
+                            Tracking ID: #${parcel.id}
                             Item: ${parcel.itemName}
                             Status: ${parcel.status.name}
+                            Date/Time: $deliveryTimestamp
                             Fare: ₦${String.format("%,.2f", parcel.price)}
                             Pickup: ${parcel.pickupAddress}
                             Delivery: ${parcel.deliveryAddress}
-                            Carrier: ESDispatch Fleet Verified
+                            Carrier: ${parcel.courierName.ifBlank { "ESDispatch Fleet Verified" }}
+                            Live Tracking: $trackingUrl
                         """.trimIndent()
                         val sendIntent = Intent().apply {
                             action = Intent.ACTION_SEND
@@ -3195,27 +3244,50 @@ fun WaybillInvoiceCard(
             }
 
             // Stylized Barcode
-            Canvas(
+            val cb = androidx.compose.ui.platform.LocalClipboardManager.current
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(36.dp)
-                    .background(if (isDark) Color(0xFF141414) else Color(0xFFF2F2F2), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .clickable {
+                        cb.setText(AnnotatedString(waybillNumber))
+                        Toast.makeText(context, "Waybill #$waybillNumber copied!", Toast.LENGTH_SHORT).show()
+                    }
             ) {
-                val barColor = if (isDark) Color.White.copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.85f)
-                val totalWidth = size.width
-                val barCount = 44
-                val spacing = totalWidth / barCount
-                val seed = waybillNumber.hashCode()
-                for (i in 0 until barCount) {
-                    val isThick = ((seed shr (i % 16)) and 1) == 1 || i % 3 == 0
-                    val strokeW = if (isThick) 3.5f else 1.5f
-                    val x = i * spacing + spacing / 2
-                    drawLine(
-                        color = barColor,
-                        start = Offset(x, 0f),
-                        end = Offset(x, size.height),
-                        strokeWidth = strokeW
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp)
+                        .background(if (isDark) Color(0xFF141414) else Color(0xFFF2F2F2), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    val barColor = if (isDark) Color.White.copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.85f)
+                    val totalWidth = size.width
+                    val barCount = 44
+                    val spacing = totalWidth / barCount
+                    val seed = waybillNumber.hashCode()
+                    for (i in 0 until barCount) {
+                        val barWidth = if (((seed + i * 17) % 3) == 0) 3.dp.toPx() else 1.5.dp.toPx()
+                        val x = i * spacing + spacing / 2
+                        drawLine(
+                            color = barColor,
+                            start = androidx.compose.ui.geometry.Offset(x, 0f),
+                            end = androidx.compose.ui.geometry.Offset(x, size.height),
+                            strokeWidth = barWidth
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "* $waybillNumber *",
+                        fontSize = 11.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = textColor.copy(alpha = 0.7f),
+                        letterSpacing = 2.sp
                     )
                 }
             }

@@ -78,6 +78,15 @@ fun ExpressBookingScreen(
     var rName by remember { mutableStateOf(draft.receiverName) }
     var rPhone by remember { mutableStateOf(draft.receiverPhone) }
 
+    LaunchedEffect(currentUserName, currentUserPhone) {
+        if (sName.isBlank() && currentUserName.isNotBlank()) {
+            sName = currentUserName
+        }
+        if (sPhone.isBlank() && currentUserPhone.isNotBlank()) {
+            sPhone = currentUserPhone
+        }
+    }
+
     var itemName by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("Electronics") }
     var weight by remember { mutableStateOf("1.5") }
@@ -595,7 +604,7 @@ fun ExpressBookingScreen(
                                             shortLabel,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = GoldLight,
+                                            color = if (isLight) Obsidian else GoldLight,
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                             maxLines = 1
                                         )
