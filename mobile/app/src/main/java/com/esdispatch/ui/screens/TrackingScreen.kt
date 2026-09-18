@@ -3101,10 +3101,14 @@ fun LiveMapView(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
             )
             setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
+            settings.allowFileAccess = true
+            settings.allowContentAccess = true
+            settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
             settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
             try {
                 settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
@@ -3209,13 +3213,34 @@ fun LiveMapView(
         <html>
         <head>
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
-            <!-- Include both Mapbox and Leaflet for dynamic hybrid loading -->
+            <!-- Offline first: local assets bundled with APK, falling back to CDN -->
+            <link rel="stylesheet" href="file:///android_asset/leaflet/leaflet.css" />
+            <link rel="stylesheet" href="leaflet/leaflet.css" />
             <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+            <script src="file:///android_asset/leaflet/leaflet.js"></script>
+            <script>
+                if (typeof L === 'undefined') {
+                    document.write('<script src="leaflet/leaflet.js"><\/script>');
+                }
+            </script>
+            <script>
+                if (typeof L === 'undefined') {
+                    document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>');
+                }
+            </script>
             <link href="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css" rel="stylesheet" />
             <script src="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.js"></script>
             <style>
-                html, body, #map {
+                html, body {
+                    margin: 0;
+                    padding: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: #0B0B0E;
+                    overflow: hidden;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                }
+                #map {
                     margin: 0;
                     padding: 0;
                     width: 100%;
@@ -3225,7 +3250,12 @@ fun LiveMapView(
                     left: 0;
                     right: 0;
                     bottom: 0;
-                    background: #0E0E10;
+                    background-color: #0E0E12;
+                    background-image: 
+                        radial-gradient(circle at 50% 50%, rgba(255, 184, 0, 0.05) 0%, transparent 65%),
+                        linear-gradient(rgba(255, 184, 0, 0.05) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255, 184, 0, 0.05) 1px, transparent 1px);
+                    background-size: 100% 100%, 36px 36px, 36px 36px;
                     overflow: hidden;
                     z-index: 1;
                 }
@@ -3516,11 +3546,13 @@ fun LiveMapView(
                     }
                 }
 
+                var initRetries = 0;
                 function initMapContainer() {
                     var container = document.getElementById('map');
                     if (!container) return;
-                    if (container.offsetWidth === 0 || container.offsetHeight === 0) {
-                        requestAnimationFrame(initMapContainer);
+                    if ((container.offsetWidth === 0 || container.offsetHeight === 0) && initRetries < 25) {
+                        initRetries++;
+                        setTimeout(initMapContainer, 40);
                         return;
                     }
                     if (map) return;
@@ -3805,38 +3837,68 @@ fun LiveMapView(
 
                 // ------------------ LEAFLET FALLBACK IMPLEMENTATION ------------------
                 function loadLeafletFeatures() {
-                    var initialCenter = hasUserLoc ? userLoc : pickupLoc;
-                    map = L.map('map', {
-                        center: initialCenter,
-                        zoom: 14,
-                        minZoom: 3,
-                        maxZoom: 18,
-                        zoomControl: false,
-                        attributionControl: false
-                    });
-                    leafletMap = map;
+                    if (typeof L === 'undefined') {
+                        console.warn("Leaflet library not ready, retrying in 50ms...");
+                        setTimeout(loadLeafletFeatures, 50);
+                        return;
+                    }
+                    if (map && leafletMap) return;
+                    try {
+                        var initialCenter = hasUserLoc ? userLoc : pickupLoc;
+                        map = L.map('map', {
+                            center: initialCenter,
+                            zoom: 14,
+                            minZoom: 3,
+                            maxZoom: 18,
+                            zoomControl: false,
+                            attributionControl: false
+                        });
+                        leafletMap = map;
 
-                    darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, maxNativeZoom: 18, subdomains: 'abcd' });
-                    streetTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, maxNativeZoom: 18, subdomains: 'abcd', attribution: '© CARTO, © OpenStreetMap' });
-                    satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
-                    satelliteLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
-                    satelliteRoads = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
+                        darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, maxNativeZoom: 18, subdomains: 'abcd' });
+                        streetTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, maxNativeZoom: 18, subdomains: 'abcd', attribution: '© CARTO, © OpenStreetMap' });
+                        satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
+                        satelliteLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
+                        satelliteRoads = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
 
-                    var isSat = '$isSatellite' === 'true';
-                    if (isSat) {
-                        satelliteTiles.addTo(map);
-                        satelliteRoads.addTo(map); // add street, road and highway labels over satellite!
-                        satelliteLabels.addTo(map); // add boundaries & places label overlay on top of raw satellite tiles!
-                        document.getElementById('satelliteBtn').classList.add('active');
-                        document.getElementById('streetBtn').classList.remove('active');
-                    } else {
-                        if (isDarkTheme) {
-                            darkTiles.addTo(map);
+                        var isSat = '$isSatellite' === 'true';
+                        if (isSat) {
+                            satelliteTiles.addTo(map);
+                            satelliteRoads.addTo(map); // add street, road and highway labels over satellite!
+                            satelliteLabels.addTo(map); // add boundaries & places label overlay on top of raw satellite tiles!
+                            var satBtn = document.getElementById('satelliteBtn');
+                            if (satBtn) satBtn.classList.add('active');
+                            var strBtn = document.getElementById('streetBtn');
+                            if (strBtn) strBtn.classList.remove('active');
                         } else {
-                            streetTiles.addTo(map);
+                            if (isDarkTheme) {
+                                darkTiles.addTo(map);
+                            } else {
+                                streetTiles.addTo(map);
+                            }
+                            var strBtn = document.getElementById('streetBtn');
+                            if (strBtn) strBtn.classList.add('active');
+                            var satBtn = document.getElementById('satelliteBtn');
+                            if (satBtn) satBtn.classList.remove('active');
                         }
-                        document.getElementById('streetBtn').classList.add('active');
-                        document.getElementById('satelliteBtn').classList.remove('active');
+
+                        // Resilient tile fallbacks
+                        darkTiles.on('tileerror', function() {
+                            if (!window._osmDarkFallbackAdded) {
+                                window._osmDarkFallbackAdded = true;
+                                console.warn("Carto dark tile load error, attaching OpenStreetMap fallback layer");
+                                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc' }).addTo(map);
+                            }
+                        });
+                        streetTiles.on('tileerror', function() {
+                            if (!window._osmStreetFallbackAdded) {
+                                window._osmStreetFallbackAdded = true;
+                                console.warn("Carto street tile load error, attaching OpenStreetMap fallback layer");
+                                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc' }).addTo(map);
+                            }
+                        });
+                    } catch(e) {
+                        console.error("Leaflet initialization error:", e);
                     }
 
                     window.userZoomed = false;
@@ -4128,7 +4190,7 @@ fun LiveMapView(
 
     LaunchedEffect(htmlContent) {
         isPageLoaded = false
-        webView.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
+        webView.loadDataWithBaseURL("file:///android_asset/", htmlContent, "text/html", "UTF-8", null)
     }
 
     LaunchedEffect(isPageLoaded) {

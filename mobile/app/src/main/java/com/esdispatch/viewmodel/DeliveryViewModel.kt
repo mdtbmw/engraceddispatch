@@ -909,6 +909,37 @@ class DeliveryViewModel : WalletViewModel() {
     private val _riderAssignments = MutableStateFlow<List<Parcel>>(emptyList())
     val riderAssignments: StateFlow<List<Parcel>> = _riderAssignments.asStateFlow()
 
+    private val _riderCurrentCoords = MutableStateFlow<Pair<Double, Double>?>(null)
+    val riderCurrentCoords: StateFlow<Pair<Double, Double>?> = _riderCurrentCoords.asStateFlow()
+
+    fun updateRiderCurrentLocation(lat: Double, lng: Double) {
+        if (lat != 0.0 && lng != 0.0) {
+            _riderCurrentCoords.value = Pair(lat, lng)
+        }
+    }
+
+    /**
+     * Calculate Haversine distance in kilometers from rider to pickup coordinates.
+     */
+    fun calculateDistanceToRider(targetLat: Double, targetLng: Double): Double {
+        if (targetLat == 0.0 || targetLng == 0.0) return 0.0
+        val riderLoc = _riderCurrentCoords.value ?: Pair(6.3350, 5.6037) // default to Benin City center
+        val lat1 = Math.toRadians(riderLoc.first)
+        val lon1 = Math.toRadians(riderLoc.second)
+        val lat2 = Math.toRadians(targetLat)
+        val lon2 = Math.toRadians(targetLng)
+
+        val dLat = lat2 - lat1
+        val dLon = lon2 - lon1
+
+        val a = Math.sin(dLat / 2).let { it * it } +
+                Math.cos(lat1) * Math.cos(lat2) *
+                Math.sin(dLon / 2).let { it * it }
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        val r = 6371.0 // Earth radius in km
+        return r * c
+    }
+
     private val _scannedRiderParcel = MutableStateFlow<Parcel?>(null)
     val scannedRiderParcel: StateFlow<Parcel?> = _scannedRiderParcel.asStateFlow()
 
@@ -1104,6 +1135,34 @@ class DeliveryViewModel : WalletViewModel() {
         val price = parcel?.price ?: 0.0
         val payout = price * 0.8 // 80% rider payout
 
+        // Save delivered parcel coords as rider's latest known location
+        if (parcel != null && parcel.deliveryLat != null && parcel.deliveryLng != null) {
+            updateRiderCurrentLocation(parcel.deliveryLat, parcel.deliveryLng)
+        }
+
+        // Optimistically clear rider active assignment locally so rider is immediately free to see available gigs!
+        _riderAssignments.update { list ->
+            list.map { if (it.id == parcelId) it.copy(status = ParcelStatus.DELIVERED, progress = 1.0f) else it }
+        }
+        _parcels.update { list ->
+            list.map { if (it.id == parcelId) it.copy(status = ParcelStatus.DELIVERED, progress = 1.0f) else it }
+        }
+
+        // Authoritatively mark rider as available in Firestore
+        try {
+            com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                .collection("drivers").document(uid)
+                .set(
+                    mapOf(
+                        "isOnline" to true,
+                        "is_active" to true,
+                        "status" to "available",
+                        "updatedAt" to System.currentTimeMillis()
+                    ),
+                    com.google.firebase.firestore.SetOptions.merge()
+                )
+        } catch (e: Exception) {}
+
         updateParcelStatusByRider(parcelId, ParcelStatus.DELIVERED, 1.0f) { success, _ ->
             if (success) {
                 // A real delivery is completed (not just booked): bump delivery stats.
@@ -1119,12 +1178,6 @@ class DeliveryViewModel : WalletViewModel() {
                     uid, _loyaltyPoints.value, updatedCount
                 )
 
-                // Local list update (escrow payout is settled authoritatively by backend trigger)
-                val updatedList = _parcels.value.map {
-                    if (it.id == parcelId) it.copy(status = ParcelStatus.DELIVERED, progress = 1.0f) else it
-                }
-                _parcels.value = updatedList
-                
                 // Add Notification
                 addNotification(
                     title = "Parcel Delivered",
@@ -1137,6 +1190,10 @@ class DeliveryViewModel : WalletViewModel() {
 
     /** Upload a proof-of-delivery (photo/signature) to Storage, stamp the delivery doc, then pay the rider. */
     fun uploadPodAndCompleteParcel(parcelId: String, podBytes: ByteArray, podType: String, onComplete: ((Boolean) -> Unit)? = null) {
+        // Optimistically clear assignment immediately
+        _riderAssignments.update { list ->
+            list.map { if (it.id == parcelId) it.copy(status = ParcelStatus.DELIVERED, progress = 1.0f) else it }
+        }
         try {
             val ref = com.google.firebase.storage.FirebaseStorage.getInstance()
                 .reference.child("pod/$parcelId/$podType-${System.currentTimeMillis()}.jpg")

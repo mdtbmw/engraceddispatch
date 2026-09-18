@@ -1426,8 +1426,9 @@ object FirebaseManager {
             return@callbackFlow
         }
 
+        val currentUid = auth?.currentUser?.uid ?: ""
         val listener = db.collection("deliveries")
-            .whereEqualTo("status", "PENDING")
+            .whereIn("status", listOf("PENDING", "QUEUED", "OFFERED", "pending", "queued"))
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to available deliveries: ${error.message}")
@@ -1440,7 +1441,8 @@ object FirebaseManager {
                         try {
                             val parcel = parseParcelFromDoc(doc)
                             val assigned = parcel.riderId.ifBlank { parcel.driverId.ifBlank { parcel.reservedRiderId } }
-                            if (assigned.isBlank() || assigned.equals("unassigned", ignoreCase = true)) {
+                            val isReservedForMe = currentUid.isNotBlank() && parcel.reservedRiderId == currentUid
+                            if (assigned.isBlank() || assigned.equals("unassigned", ignoreCase = true) || isReservedForMe) {
                                 list.add(parcel)
                             }
                         } catch (e: Exception) {

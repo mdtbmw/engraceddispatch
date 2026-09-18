@@ -128,10 +128,15 @@ fun RiderDashboardScreen(
     }
 
     val activeCount = remember(riderAssignments) {
-        riderAssignments.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.RETURNED }.size
+        riderAssignments.filter {
+            it.status != ParcelStatus.DELIVERED &&
+            it.status != ParcelStatus.CANCELLED &&
+            it.status != ParcelStatus.RETURNED &&
+            it.status != ParcelStatus.HANDOVER_VERIFIED
+        }.size
     }
     val deliveredCount = remember(riderAssignments) {
-        riderAssignments.filter { it.status == ParcelStatus.DELIVERED }.size
+        riderAssignments.filter { it.status == ParcelStatus.DELIVERED || it.status == ParcelStatus.HANDOVER_VERIFIED }.size
     }
 
     val todayDeliveredCount by viewModel.todayDeliveredCount.collectAsState()
@@ -247,12 +252,29 @@ fun RiderDashboardScreen(
                 if (!isOnlineState || activeCount > 0) {
                     emptyList()
                 } else {
-                    availableDeliveries
+                    // Sort available deliveries closest to the rider first
+                    availableDeliveries.sortedBy { p ->
+                        val lat = p.pickupLat ?: 6.3350
+                        val lng = p.pickupLng ?: 5.6037
+                        viewModel.calculateDistanceToRider(lat, lng)
+                    }
                 }
             }
-            "Active" -> riderAssignments.filter { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.PENDING && it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.RETURNED }
-            "Delivered" -> riderAssignments.filter { it.status == ParcelStatus.DELIVERED }
+            "Active" -> riderAssignments.filter {
+                it.status != ParcelStatus.DELIVERED &&
+                it.status != ParcelStatus.PENDING &&
+                it.status != ParcelStatus.CANCELLED &&
+                it.status != ParcelStatus.RETURNED &&
+                it.status != ParcelStatus.HANDOVER_VERIFIED
+            }
+            "Delivered" -> riderAssignments.filter { it.status == ParcelStatus.DELIVERED || it.status == ParcelStatus.HANDOVER_VERIFIED }
             else -> riderAssignments
+        }
+    }
+
+    LaunchedEffect(activeCount) {
+        if (activeCount == 0 && selectedFilter == "Active") {
+            selectedFilter = "Available"
         }
     }
 
@@ -636,8 +658,15 @@ fun RiderDashboardScreen(
                     }
                 } else {
                     items(filteredAssignments, key = { it.id }) { parcel ->
+                        val distanceKm = if (selectedFilter == "Available" || parcel.status == ParcelStatus.PENDING) {
+                            val lat = parcel.pickupLat ?: 6.3350
+                            val lng = parcel.pickupLng ?: 5.6037
+                            viewModel.calculateDistanceToRider(lat, lng)
+                        } else null
+
                         RiderParcelCard(
                             parcel = parcel,
+                            distanceKm = distanceKm,
                             onUpdateStatus = {
                                 selectedParcelForUpdate = parcel
                                 showUpdateBottomSheet = true
@@ -1110,6 +1139,7 @@ fun RiderDashboardScreen(
 @Composable
 fun RiderParcelCard(
     parcel: Parcel,
+    distanceKm: Double? = null,
     onUpdateStatus: () -> Unit,
     onViewWaybill: () -> Unit = {}
 ) {
@@ -1135,6 +1165,41 @@ fun RiderParcelCard(
         )
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
+            // Proximity Vicinity Badge for nearby / same location dispatches
+            if (distanceKm != null) {
+                val isImmediateVicinity = distanceKm <= 0.5
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isImmediateVicinity) SuccessGreen.copy(alpha = 0.15f) else Gold.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, if (isImmediateVicinity) SuccessGreen.copy(alpha = 0.5f) else Gold.copy(alpha = 0.35f)),
+                    modifier = Modifier.padding(bottom = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isImmediateVicinity) Icons.Default.LocationOn else Icons.Default.NearMe,
+                            contentDescription = null,
+                            tint = if (isImmediateVicinity) SuccessGreen else Gold,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        val distanceLabel = if (isImmediateVicinity) {
+                            if (distanceKm < 0.1) "AT YOUR CURRENT LOCATION • IMMEDIATE PICKUP" else "${String.format("%.0f", distanceKm * 1000)}m AWAY • SAME LOCATION VICINITY"
+                        } else {
+                            "${String.format("%.1f", distanceKm)} km away • Fast Pickup"
+                        }
+                        Text(
+                            text = distanceLabel,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (isImmediateVicinity) SuccessGreen else Gold
+                        )
+                    }
+                }
+            }
+
             // Mission Hierarchy Badge
             if (parcel.status == ParcelStatus.RESERVED_NEXT) {
                 Surface(
