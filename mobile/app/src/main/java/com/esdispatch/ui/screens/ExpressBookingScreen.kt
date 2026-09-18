@@ -188,7 +188,7 @@ fun ExpressBookingScreen(
 
     // Address autocomplete via AddressDatabase (instant) + Mapbox Places (async refinement)
     LaunchedEffect(activeQuery) {
-        if (activeQuery.isBlank() || activeQuery.length < 2) {
+        if (activeQuery.isBlank()) {
             apiSuggestionItems = emptyList()
             return@LaunchedEffect
         }
@@ -196,7 +196,7 @@ fun ExpressBookingScreen(
 
         if (activeQuery.length >= 2) {
             isSearchingSuggestions = true
-            kotlinx.coroutines.delay(300L) // debounce
+            kotlinx.coroutines.delay(250L) // debounce
             try {
                 val fullResults = viewModel.searchAddressAutocompleteItems(activeQuery)
                 if (fullResults.isNotEmpty()) {
@@ -449,10 +449,10 @@ fun ExpressBookingScreen(
 
                         // Inline Autocomplete Dropdown for Pickup
                         val suggestionItemsForPickup = if (focusedField == "pickup") {
-                            if (activeQuery.isNotBlank() && activeQuery.length >= 2) {
+                            if (activeQuery.isNotBlank()) {
                                 if (apiSuggestionItems.isNotEmpty()) apiSuggestionItems else findAddressMatchItems(activeQuery)
                             } else {
-                                findAddressMatchItems(activeQuery)
+                                findAddressMatchItems("")
                             }
                         } else emptyList()
 
@@ -644,10 +644,10 @@ fun ExpressBookingScreen(
 
                         // Inline Autocomplete Dropdown for Delivery
                         val suggestionItemsForDelivery = if (focusedField == "delivery") {
-                            if (activeQuery.isNotBlank() && activeQuery.length >= 2) {
+                            if (activeQuery.isNotBlank()) {
                                 if (apiSuggestionItems.isNotEmpty()) apiSuggestionItems else findAddressMatchItems(activeQuery)
                             } else {
-                                findAddressMatchItems(activeQuery)
+                                findAddressMatchItems("")
                             }
                         } else emptyList()
 

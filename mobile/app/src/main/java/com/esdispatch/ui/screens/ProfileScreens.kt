@@ -5119,10 +5119,11 @@ fun VerificationSheet(
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
-
-    var otpInput by remember { mutableStateOf("") }
-    var isSendingOtp by remember { mutableStateOf(false) }
-    var otpSent by remember { mutableStateOf(false) }
+    val isVerified by viewModel.isVerified.collectAsState()
+    val userEmail by viewModel.userEmail.collectAsState()
+    val userPhone by viewModel.userPhone.collectAsState()
+    var isChecking by remember { mutableStateOf(false) }
+    var isSendingEmail by remember { mutableStateOf(false) }
 
     val dismissWithAnim = {
         scope.launch { sheetState.hide() }.invokeOnCompletion {
@@ -5145,79 +5146,106 @@ fun VerificationSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("ESDispatch ID Verification", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
-            Text(
-                "Verify your phone/email to activate executive shipping status and receive immediate delivery bonuses.",
-                fontSize = 13.sp,
-                color = TextGray
-            )
 
-            if (!otpSent) {
+            if (isVerified) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = SuccessGreen.copy(alpha = 0.12f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = SuccessGreen,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Column {
+                            Text("Account Verified", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
+                            Text("Your account credentials are fully authenticated.", fontSize = 12.sp, color = TextGray)
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = { dismissWithAnim() },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
+                ) {
+                    Text("Done", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Text(
+                    "Verify your email address to authenticate your shipping identity.",
+                    fontSize = 13.sp,
+                    color = TextGray
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (MaterialTheme.colorScheme.background != BackgroundDark) Color(0xFFF5F5F5) else Color(0xFF2C2C2C),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Registered Email", fontSize = 11.sp, color = TextGray)
+                        Text(userEmail.ifEmpty { "Not set" }, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
+                        if (userPhone.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Registered Phone", fontSize = 11.sp, color = TextGray)
+                            Text(userPhone, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
+                        }
+                    }
+                }
+
                 Button(
                     onClick = {
-                        isSendingOtp = true
-                        viewModel.requestAccountVerificationOtp { success, msg ->
-                            isSendingOtp = false
-                            if (success) {
-                                otpSent = true
-                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                            } else {
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            }
+                        isSendingEmail = true
+                        viewModel.sendVerificationEmail { success, msg ->
+                            isSendingEmail = false
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
-                    enabled = !isSendingOtp
+                    enabled = !isSendingEmail && !isChecking
                 ) {
-                    if (isSendingOtp) {
+                    if (isSendingEmail) {
                         CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(24.dp))
                     } else {
-                        Text("Send Verification OTP", fontWeight = FontWeight.Bold)
+                        Text("Send Verification Email", fontWeight = FontWeight.Bold)
                     }
                 }
-            } else {
-                OutlinedTextField(
-                    value = otpInput,
-                    onValueChange = { otpInput = it },
-                    label = { Text("Enter 6-Digit OTP Code") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = TextGray.copy(alpha = 0.5f),
-                        focusedTextColor = AppOnSurface,
-                        unfocusedTextColor = AppOnSurface,
-                        focusedLabelColor = Gold,
-                        unfocusedLabelColor = TextGray
-                    )
-                )
 
-                Button(
+                OutlinedButton(
                     onClick = {
-                        if (otpInput.length < 4) {
-                            Toast.makeText(context, "Please enter your 6-digit OTP code", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        isSendingOtp = true
-                        viewModel.confirmAccountVerificationOtp(otpInput) { success, msg ->
-                            isSendingOtp = false
-                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                            if (success) {
+                        isChecking = true
+                        viewModel.refreshVerificationStatus { verified ->
+                            isChecking = false
+                            if (verified) {
+                                Toast.makeText(context, "Verification confirmed!", Toast.LENGTH_SHORT).show()
                                 dismissWithAnim()
+                            } else {
+                                Toast.makeText(context, "Email is not yet verified. Please open the verification link sent to your inbox.", Toast.LENGTH_LONG).show()
                             }
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen, contentColor = Obsidian),
-                    enabled = !isSendingOtp
+                    enabled = !isSendingEmail && !isChecking
                 ) {
-                    if (isSendingOtp) {
-                        CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(24.dp))
+                    if (isChecking) {
+                        CircularProgressIndicator(color = Gold, modifier = Modifier.size(24.dp))
                     } else {
-                        Text("Confirm Code", fontWeight = FontWeight.Black)
+                        Text("I Have Verified My Email", fontWeight = FontWeight.Bold, color = AppOnSurface)
                     }
                 }
             }

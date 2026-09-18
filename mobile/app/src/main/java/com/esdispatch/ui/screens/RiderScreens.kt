@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.esdispatch.data.Parcel
@@ -817,7 +818,9 @@ fun RiderDashboardScreen(
                                                 text = "Search manifest (ID, recipient, item)...",
                                                 color = TextGray,
                                                 fontSize = 14.sp,
-                                                fontWeight = FontWeight.SemiBold
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                         innerTextField()
@@ -1422,13 +1425,18 @@ fun RiderParcelCard(
                             .height(36.dp)
                             .tactilePress(scaleDown = 0.94f) { onUpdateStatus() }
                     ) {
+                        val currentRiderUid = com.esdispatch.data.FirebaseManager.auth?.currentUser?.uid ?: ""
+                        val isAssignedToCurrentRider = (parcel.riderId.isNotBlank() && parcel.riderId == currentRiderUid) ||
+                            (parcel.driverId.isNotBlank() && parcel.driverId == currentRiderUid) ||
+                            (parcel.reservedRiderId.isNotBlank() && parcel.reservedRiderId == currentRiderUid)
                         Text(
-                            text = when (parcel.status) {
-                                ParcelStatus.PENDING -> "ACCEPT DISPATCH"
-                                ParcelStatus.ASSIGNED -> "CONFIRM PICKUP"
-                                ParcelStatus.PICKED_UP -> "START TRANSIT"
-                                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> "MARK ARRIVED"
-                                ParcelStatus.ARRIVED -> "ENTER OTP & COMPLETE"
+                            text = when {
+                                parcel.status == ParcelStatus.PENDING && isAssignedToCurrentRider -> "CONFIRM PICKUP"
+                                parcel.status == ParcelStatus.PENDING -> "ACCEPT DISPATCH"
+                                parcel.status == ParcelStatus.ASSIGNED -> "CONFIRM PICKUP"
+                                parcel.status == ParcelStatus.PICKED_UP -> "START TRANSIT"
+                                parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.OUT_FOR_DELIVERY -> "MARK ARRIVED"
+                                parcel.status == ParcelStatus.ARRIVED -> "ENTER OTP & COMPLETE"
                                 else -> "VIEW DETAILS"
                             },
                             fontSize = 10.sp,
@@ -1790,7 +1798,12 @@ fun RiderUpdateBottomSheetContent(
             }
         }
 
-        if (parcel.status == ParcelStatus.PENDING) {
+        val currentRiderUid = com.esdispatch.data.FirebaseManager.auth?.currentUser?.uid ?: ""
+        val isAssignedToCurrentRider = (parcel.riderId.isNotBlank() && parcel.riderId == currentRiderUid) ||
+            (parcel.driverId.isNotBlank() && parcel.driverId == currentRiderUid) ||
+            (parcel.reservedRiderId.isNotBlank() && parcel.reservedRiderId == currentRiderUid)
+
+        if (parcel.status == ParcelStatus.PENDING && !isAssignedToCurrentRider) {
             Text(
                 text = "This is an unassigned company dispatch parcel. Do you want to accept this order and bind it to your fleet delivery manifest?",
                 color = AppTextColor,
@@ -1825,7 +1838,7 @@ fun RiderUpdateBottomSheetContent(
                     Text("ACCEPT DISPATCH", fontWeight = FontWeight.Bold)
                 }
             }
-        } else if (parcel.status == ParcelStatus.ASSIGNED) {
+        } else if (parcel.status == ParcelStatus.ASSIGNED || (parcel.status == ParcelStatus.PENDING && isAssignedToCurrentRider)) {
             Text(
                 text = "Confirm pickup of this package. Are you currently at the shipper's pickup location and have received the parcel?",
                 color = AppTextColor,

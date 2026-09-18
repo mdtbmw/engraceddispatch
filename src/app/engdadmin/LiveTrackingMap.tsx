@@ -6,15 +6,20 @@ import "leaflet/dist/leaflet.css";
 interface Coord { lat: number; lng: number; }
 type LatLng = [number, number];
 
-const BENIN_CITY_CENTER: Coord = { lat: 6.3350, lng: 5.6275 };
+const BENIN_CITY_CENTER: Coord = { lat: 6.3350, lng: 5.6037 };
+
+const isBeninCityCoord = (lat?: number, lng?: number): boolean => {
+  if (typeof lat !== "number" || typeof lng !== "number" || isNaN(lat) || isNaN(lng)) return false;
+  return lat >= 6.10 && lat <= 6.55 && lng >= 5.45 && lng <= 5.85;
+};
 
 const ADDRESS_COORDS: Record<string, Coord> = {
   // Benin City Core & Landmarks
-  "ring road": { lat: 6.3350, lng: 5.6275 },
-  "king's square": { lat: 6.3350, lng: 5.6275 },
-  "kings square": { lat: 6.3350, lng: 5.6275 },
-  "oba market": { lat: 6.3365, lng: 5.6260 },
-  "oba palace": { lat: 6.3325, lng: 5.6240 },
+  "ring road": { lat: 6.3350, lng: 5.6037 },
+  "king's square": { lat: 6.3350, lng: 5.6037 },
+  "kings square": { lat: 6.3350, lng: 5.6037 },
+  "oba market": { lat: 6.3365, lng: 5.6040 },
+  "oba palace": { lat: 6.3325, lng: 5.6010 },
   "ugbowo": { lat: 6.3980, lng: 5.6120 },
   "uniben": { lat: 6.4020, lng: 5.6140 },
   "ubth": { lat: 6.3910, lng: 5.6105 },
@@ -37,16 +42,10 @@ const ADDRESS_COORDS: Record<string, Coord> = {
   "ugbor": { lat: 6.2850, lng: 5.6150 },
   "etete": { lat: 6.2980, lng: 5.6180 },
   "textile mill": { lat: 6.3620, lng: 5.6020 },
-  "benin": { lat: 6.3350, lng: 5.6275 },
-
-  // Regional & Interstate Hubs
-  "warri": { lat: 5.5167, lng: 5.75 },
-  "asaba": { lat: 6.2021, lng: 6.6915 },
-  "onitsha": { lat: 6.1349, lng: 6.7852 },
-  "lagos": { lat: 6.5244, lng: 3.3792 },
-  "ikeja": { lat: 6.6018, lng: 3.3515 },
-  "abuja": { lat: 9.0579, lng: 7.4951 },
-  "port harcourt": { lat: 4.8158, lng: 7.0301 },
+  "mission road": { lat: 6.3390, lng: 5.6080 },
+  "akpakpava": { lat: 6.3380, lng: 5.6140 },
+  "adesuwa": { lat: 6.3130, lng: 5.6150 },
+  "benin": { lat: 6.3350, lng: 5.6037 },
 };
 
 function addressToCoord(addr: string, fallback: Coord = BENIN_CITY_CENTER): Coord {
@@ -139,13 +138,17 @@ export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSel
         L.marker(pLatLng, { icon: isSelected ? selIcon : goldIcon })
           .addTo(layer)
           .bindPopup(`<b>Pickup</b><br>${d.itemName || "Parcel"}<br>${d.pickupAddress}`);
-        pts.push(pLatLng);
+        if (isBeninCityCoord(pickup.lat, pickup.lng)) {
+          pts.push(pLatLng);
+        }
       }
       if (delivery.lat && delivery.lng) {
         L.marker(dLatLng, { icon: darkIcon })
           .addTo(layer)
           .bindPopup(`<b>Delivery</b><br>${d.receiverName}<br>${d.deliveryAddress}`);
-        pts.push(dLatLng);
+        if (isBeninCityCoord(delivery.lat, delivery.lng)) {
+          pts.push(dLatLng);
+        }
       }
       if (pickup.lat && pickup.lng && delivery.lat && delivery.lng) {
         L.polyline([pLatLng, dLatLng], {
@@ -154,7 +157,6 @@ export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSel
           dashArray: isSelected ? "" : "8 6",
           opacity: isSelected ? 0.9 : 0.4,
         }).addTo(layer);
-        pts.push(pLatLng, dLatLng);
       }
     });
 
@@ -164,12 +166,16 @@ export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSel
         L.marker(rLatLng, { icon: riderIcon })
           .addTo(layer)
           .bindPopup(`<b>${r.name}</b><br>${r.status || "idle"}<br>${r.deliveryCount || 0} deliveries`);
-        pts.push(rLatLng);
+        if (isBeninCityCoord(r.lat, r.lng)) {
+          pts.push(rLatLng);
+        }
       }
     });
 
-    if (pts.length) {
-      map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 12 });
+    if (pts.length > 0) {
+      map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 14 });
+    } else {
+      map.setView([BENIN_CITY_CENTER.lat, BENIN_CITY_CENTER.lng], 13);
     }
   }, [deliveries, drivers, selectedId]);
 

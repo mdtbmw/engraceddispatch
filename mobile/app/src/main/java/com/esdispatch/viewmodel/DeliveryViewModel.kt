@@ -178,7 +178,20 @@ class DeliveryViewModel : WalletViewModel() {
         } else {
             _photoUrl.value = "https://api.dicebear.com/7.x/avataaars/png?seed=elite&backgroundColor=c0aede"
         }
-        _isVerified.value = prefs.getBoolean("is_verified", false)
+        val role = prefs.getString("user_role", "customer") ?: "customer"
+        val isRiderRole = role.equals("rider", true) || role.equals("driver", true)
+        _isVerified.value = if (isRiderRole) true else prefs.getBoolean("is_verified", false)
+        val savedMemberSince = prefs.getString("member_since", "") ?: ""
+        if (savedMemberSince.isNotEmpty()) {
+            _memberSince.value = savedMemberSince
+        } else {
+            val creationTs = com.esdispatch.data.FirebaseManager.auth?.currentUser?.metadata?.creationTimestamp
+            if (creationTs != null && creationTs > 0L) {
+                val formatted = java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.ENGLISH).format(java.util.Date(creationTs))
+                _memberSince.value = formatted
+                savePref("member_since", formatted)
+            }
+        }
         _totalEarned.value = prefs.getString("total_earned", "0.0")?.toDoubleOrNull() ?: 0.0
         _deliveryCount.value = prefs.getInt("delivery_count", 0)
         _loyaltyPoints.value = prefs.getInt("loyalty_points", 0)
@@ -1609,7 +1622,7 @@ class DeliveryViewModel : WalletViewModel() {
         savePref("active_verification_otp", secureCode)
 
         val title = "Security Verification Code"
-        val message = "Your ESDispatch verification code is: $secureCode. Valid for 10 minutes."
+        val message = "Your ESDispatch verification code has been generated."
         appContext?.let { ctx ->
             try {
                 com.esdispatch.data.MyFirebaseMessagingService.showNotification(
@@ -1622,37 +1635,32 @@ class DeliveryViewModel : WalletViewModel() {
                 android.util.Log.e("OTPNotif", "Error displaying OTP notification: ${e.message}")
             }
         }
-        showInAppNotification(title, message)
 
         com.esdispatch.data.FirebaseManager.saveVerificationOtp(uid, secureCode) { _, _ ->
             // Successfully mirrored to Firestore (if connected)
         }
-        onResult(true, "Verification code sent: $secureCode")
+        onResult(true, "Verification code sent.")
     }
 
     fun confirmAccountVerificationOtp(enteredOtp: String, onResult: (Boolean, String) -> Unit) {
         val uid = _firebaseUserId.value ?: ""
         if (enteredOtp.isBlank() || enteredOtp.length < 4) {
-            onResult(false, "Please enter a valid 6-digit verification code.")
+            onResult(false, "Please enter a valid verification code.")
             return
         }
-
-        val storedCode = _activeVerificationOtp.value.ifBlank {
-            appContext?.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)?.getString("active_verification_otp", "") ?: ""
-        }
-
-        if (storedCode.isNotBlank() && enteredOtp.trim() == storedCode.trim()) {
+        val prefs = appContext?.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
+        val savedOtp = _activeVerificationOtp.value.ifEmpty { prefs?.getString("active_verification_otp", "") ?: "" }
+        if (savedOtp.isNotBlank() && enteredOtp.trim() == savedOtp.trim()) {
             _isVerified.value = true
             savePref("is_verified", true)
             if (uid.isNotBlank()) {
-                com.esdispatch.data.FirebaseManager.verifyOtpCode(uid, enteredOtp) { _, _ -> }
+                com.esdispatch.data.FirebaseManager.verifyOtpCode(uid, enteredOtp.trim()) { _, _ -> }
             }
             onResult(true, "Verification successful! You are now a verified VIP member.")
             return
         }
-
         if (uid.isNotBlank()) {
-            com.esdispatch.data.FirebaseManager.verifyOtpCode(uid, enteredOtp) { success, msg ->
+            com.esdispatch.data.FirebaseManager.verifyOtpCode(uid, enteredOtp.trim()) { success, msg ->
                 if (success) {
                     _isVerified.value = true
                     savePref("is_verified", true)
@@ -1674,6 +1682,17 @@ class DeliveryViewModel : WalletViewModel() {
             senderRole = senderRole,
             messageText = messageText,
             onComplete = onComplete
+        )
+    }
+
+    fun logCourierCallEvent(parcelId: String, courierPhone: String) {
+        val initiatorUid = _firebaseUserId.value ?: ""
+        val initiatorName = _userName.value.ifEmpty { "Customer" }
+        com.esdispatch.data.FirebaseManager.logCourierCallEvent(
+            parcelId = parcelId,
+            initiatorUid = initiatorUid,
+            initiatorName = initiatorName,
+            courierPhone = courierPhone
         )
     }
 
@@ -1758,7 +1777,16 @@ class DeliveryViewModel : WalletViewModel() {
     private val _userRating = MutableStateFlow(4.9)
     val userRating: StateFlow<Double> = _userRating.asStateFlow()
 
-    private val _memberSince = MutableStateFlow("Jun 2025")
+    private val _memberSince = MutableStateFlow(
+        run {
+            val ts = com.esdispatch.data.FirebaseManager.auth?.currentUser?.metadata?.creationTimestamp
+            if (ts != null && ts > 0L) {
+                java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.ENGLISH).format(java.util.Date(ts))
+            } else {
+                java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.ENGLISH).format(java.util.Date())
+            }
+        }
+    )
     val memberSince: StateFlow<String> = _memberSince.asStateFlow()
 
     private val _userPin = MutableStateFlow("")
@@ -3360,6 +3388,14 @@ class DeliveryViewModel : WalletViewModel() {
                                 savePinSecurely("local_pin", finalPin)
                             }
 
+                            _isVerified.value = true
+                            savePref("is_verified", true)
+                            try {
+                                db.collection("users").document(realUid).update(
+                                    mapOf("isVerified" to true, "emailVerified" to true)
+                                )
+                            } catch (_: Exception) {}
+
                             val isProfileComplete = finalPhone.isNotBlank() && finalPin.isNotBlank()
                             if (isProfileComplete) {
                                 triggerWelcomeNotification(finalName)
@@ -3383,6 +3419,9 @@ class DeliveryViewModel : WalletViewModel() {
                             if (finalPin.isNotEmpty()) setUserPin(finalPin)
                             setLoginMode("google")
 
+                            _isVerified.value = true
+                            savePref("is_verified", true)
+
                             val isProfileComplete = finalPhone.isNotBlank() && finalPin.isNotBlank()
                             if (isProfileComplete) {
                                 triggerWelcomeNotification(finalName)
@@ -3404,6 +3443,8 @@ class DeliveryViewModel : WalletViewModel() {
                             updateProfile(storedName ?: name, storedEmail, storedPhone ?: "")
                             if (storedPin.isNotEmpty()) setUserPin(storedPin)
                             setLoginMode("google")
+                            _isVerified.value = true
+                            savePref("is_verified", true)
                             val isProfileComplete = (storedPhone ?: "").isNotBlank() && storedPin.isNotBlank()
                             if (isProfileComplete) triggerWelcomeNotification(storedName ?: name)
                             onComplete(true, if (isProfileComplete) null else "incomplete")
@@ -3798,23 +3839,43 @@ class DeliveryViewModel : WalletViewModel() {
             }
     }
 
-    fun sendVerificationEmail() {
+    fun sendVerificationEmail(onResult: ((Boolean, String) -> Unit)? = null) {
         val user = com.esdispatch.data.FirebaseManager.auth?.currentUser
         if (user != null) {
             user.sendEmailVerification()
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful) {
                         android.util.Log.d("DeliveryViewModel", "Verification email sent to ${user.email}")
+                        onResult?.invoke(true, "Verification email sent to ${user.email}. Check your inbox.")
                     } else {
-                        android.util.Log.e("DeliveryViewModel", "Failed to send verification email: ${task.exception?.message}")
+                        val msg = task.exception?.message ?: "Failed to send verification email"
+                        android.util.Log.e("DeliveryViewModel", msg)
+                        onResult?.invoke(false, msg)
                     }
                 }
+        } else {
+            onResult?.invoke(false, "No active user session")
         }
     }
 
-    fun refreshVerificationStatus() {
-        _isVerified.value = true
-        savePref("is_verified", true)
+    fun refreshVerificationStatus(onResult: ((Boolean) -> Unit)? = null) {
+        val user = com.esdispatch.data.FirebaseManager.auth?.currentUser
+        if (user != null) {
+            user.reload().addOnCompleteListener {
+                val verified = user.isEmailVerified
+                _isVerified.value = verified
+                savePref("is_verified", verified)
+                if (verified) {
+                    try {
+                        com.esdispatch.data.FirebaseManager.firestore?.collection("users")?.document(user.uid)
+                            ?.update(mapOf("isVerified" to true, "emailVerified" to true))
+                    } catch (_: Exception) {}
+                }
+                onResult?.invoke(verified)
+            }
+        } else {
+            onResult?.invoke(_isVerified.value)
+        }
     }
 
     fun toggleTwoFactor() {

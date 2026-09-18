@@ -139,21 +139,33 @@ object AddressDatabase {
 
         val scored = entries.mapNotNull { entry ->
             val name = entry.displayName.lowercase()
-            val tags = entry.tags.joinToString(" ")
+            val tags = entry.tags.joinToString(" ").lowercase()
             val combined = "$name $tags"
 
             var score = 0
+            // Exact word or title startsWith
             if (name.startsWith(q)) score += 100
             if (expanded != q && name.startsWith(expanded)) score += 90
-            if (combined.contains(q)) score += 60
-            if (expanded != q && combined.contains(expanded)) score += 50
 
-            val queryWords = q.split(" ", ",").filter { it.length >= 3 }
+            // Check individual words in name (e.g. "Airport" in "Benin City Airport")
+            val nameWords = name.split(" ", ",", "(", ")", "/", "-").filter { it.isNotBlank() }
+            if (nameWords.any { it.startsWith(q) }) score += 85
+            if (expanded != q && nameWords.any { it.startsWith(expanded) }) score += 80
+
+            // Check tags
+            if (entry.tags.any { it.startsWith(q) || q.startsWith(it) }) score += 70
+            if (combined.contains(q)) score += 50
+            if (expanded != q && combined.contains(expanded)) score += 40
+
+            val queryWords = q.split(" ", ",").filter { it.length >= 2 }
             for (word in queryWords) {
-                if (combined.contains(word)) score += 20
+                if (nameWords.any { it.startsWith(word) }) score += 30
+                else if (combined.contains(word)) score += 15
             }
-            for (tag in entry.tags) {
-                if (levenshtein(q, tag) <= 2) score += 15
+            if (q.length >= 3) {
+                for (tag in entry.tags) {
+                    if (levenshtein(q, tag) <= 2) score += 15
+                }
             }
 
             if (score > 0) Pair(entry, score) else null
@@ -165,16 +177,16 @@ object AddressDatabase {
     }
 
     fun getDefaults(): List<AddressEntry> {
-        return listOf(
-            entries.first { it.displayName.contains("Airport", ignoreCase = true) },
-            entries.first { it.displayName.contains("University of Benin (UNIBEN), Ugbowo", ignoreCase = true) },
-            entries.first { it.displayName.contains("Ring Road", ignoreCase = true) },
-            entries.first { it.displayName.contains("Oba's Palace", ignoreCase = true) },
-            entries.first { it.displayName.contains("Ihama Road", ignoreCase = true) },
-            entries.first { it.displayName.contains("UBTH", ignoreCase = true) },
-            entries.first { it.displayName.contains("New Benin Market", ignoreCase = true) },
-            entries.first { it.displayName.contains("Ramat Park", ignoreCase = true) }
-        )
+        return listOfNotNull(
+            entries.firstOrNull { it.displayName.contains("Airport", ignoreCase = true) },
+            entries.firstOrNull { it.displayName.contains("University of Benin (UNIBEN), Ugbowo", ignoreCase = true) },
+            entries.firstOrNull { it.displayName.contains("Ring Road", ignoreCase = true) },
+            entries.firstOrNull { it.displayName.contains("Oba's Palace", ignoreCase = true) },
+            entries.firstOrNull { it.displayName.contains("Ihama Road", ignoreCase = true) },
+            entries.firstOrNull { it.displayName.contains("UBTH", ignoreCase = true) },
+            entries.firstOrNull { it.displayName.contains("New Benin Market", ignoreCase = true) },
+            entries.firstOrNull { it.displayName.contains("Ramat Park", ignoreCase = true) }
+        ).ifEmpty { entries.take(8) }
     }
 
     fun isBeninCity(address: String): Boolean {

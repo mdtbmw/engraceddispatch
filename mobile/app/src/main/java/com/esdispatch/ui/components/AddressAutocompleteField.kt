@@ -58,22 +58,37 @@ fun AddressAutocompleteField(
         com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
     }
 
-    // Trigger debounced Mapbox Places autocomplete search when value changes
+    // Trigger instant local matching + debounced Places autocomplete search when value changes
     fun performSearch(query: String) {
         searchJob?.cancel()
-        if (query.trim().length < 2) {
-            searchResults = emptyList()
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            searchResults = com.esdispatch.data.AddressDatabase.getDefaults().map { it.toSearchResult() }
             isSearching = false
-            showDropdown = false
+            showDropdown = searchResults.isNotEmpty()
             return
         }
-        searchJob = scope.launch {
-            isSearching = true
-            delay(350L) // 350ms debouncing
-            val items = GeocoderUtils.fetchMapboxPlacesAutocompleteItems(query)
-            searchResults = items
+
+        // Instant local Benin City matches on keystroke 1
+        val instantMatches = com.esdispatch.data.AddressDatabase.searchItems(trimmed)
+        if (instantMatches.isNotEmpty()) {
+            searchResults = instantMatches
+            showDropdown = true
+        }
+
+        if (trimmed.length >= 2) {
+            searchJob = scope.launch {
+                isSearching = true
+                delay(250L) // debouncing
+                val items = GeocoderUtils.fetchMapboxPlacesAutocompleteItems(trimmed)
+                if (items.isNotEmpty()) {
+                    searchResults = items
+                    showDropdown = true
+                }
+                isSearching = false
+            }
+        } else {
             isSearching = false
-            showDropdown = items.isNotEmpty()
         }
     }
 

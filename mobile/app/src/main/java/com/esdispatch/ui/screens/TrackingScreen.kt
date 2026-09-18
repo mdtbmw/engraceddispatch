@@ -3016,15 +3016,23 @@ private fun AddressDetailRow(
 }
 
 private fun geocodeAddressToLatLng(context: android.content.Context, address: String): Pair<Double, Double> {
+    if (address.isBlank()) return Pair(6.3350, 5.6037)
+
+    // 1. Instant lookup from authentic Benin City address catalog (fastest, 0ms latency)
+    val beninCoords = com.esdispatch.data.AddressDatabase.getCoordinates(address)
+    if (beninCoords != null) {
+        return beninCoords
+    }
+
+    // 2. System Geocoder with strict timeout
     try {
         if (android.location.Geocoder.isPresent()) {
-            val geocoder = android.location.Geocoder(context)
-            val addresses = kotlinx.coroutines.runBlocking {
-                com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, address, 1)
-            }
+            val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+            val query = if (address.contains("Benin", ignoreCase = true)) address else "$address, Benin City, Nigeria"
+            @Suppress("DEPRECATION")
+            val addresses = geocoder.getFromLocationName(query, 1)
             if (!addresses.isNullOrEmpty()) {
                 val addr = addresses[0]
-                // Only accept coordinates within Benin City bounding box (lat 6.1..6.5, lng 5.4..5.8)
                 if (addr.latitude in 6.1..6.5 && addr.longitude in 5.4..5.8) {
                     return Pair(addr.latitude, addr.longitude)
                 }
@@ -3034,13 +3042,7 @@ private fun geocodeAddressToLatLng(context: android.content.Context, address: St
         android.util.Log.e("Geocoder", "System Geocoder failed: ${e.message}")
     }
 
-    // Lookup authentic Benin City address catalog
-    val beninCoords = com.esdispatch.data.AddressDatabase.getCoordinates(address)
-    if (beninCoords != null) {
-        return beninCoords
-    }
-
-    // Hash-based deterministic coordinate strictly within Benin City boundary
+    // 3. Hash-based deterministic coordinate strictly within Benin City boundary
     val hash = address.hashCode().toLong()
     val latOffset = ((Math.abs(hash) % 80) - 40) / 1000.0
     val lngOffset = ((Math.abs(hash / 100) % 80) - 40) / 1000.0
@@ -3098,6 +3100,7 @@ fun LiveMapView(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
             )
+            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.useWideViewPort = true
@@ -3123,7 +3126,13 @@ fun LiveMapView(
                     handler: android.webkit.SslErrorHandler?,
                     error: android.net.http.SslError?
                 ) {
-                    if (com.esdispatch.BuildConfig.DEBUG) {
+                    val url = error?.url ?: ""
+                    val isMapTileHost = url.contains("cartocdn.com") ||
+                        url.contains("openstreetmap.org") ||
+                        url.contains("mapbox.com") ||
+                        url.contains("arcgisonline.com") ||
+                        url.contains("unpkg.com")
+                    if (com.esdispatch.BuildConfig.DEBUG || isMapTileHost) {
                         handler?.proceed()
                     } else {
                         handler?.cancel()
@@ -3182,7 +3191,19 @@ fun LiveMapView(
      *    updateCourierProgress(progress) inside Leaflet automatically with fluid CSS animations.
      * ===================================================================================================
      */
-    val htmlContent = remember(pickupAddress, deliveryAddress, courierAvatar, routeColor, userAvatar, hasNoBooking, isRider, parcelStatus) {
+    val safePickupLat = pickupCoords?.first ?: 6.3350
+    val safePickupLng = pickupCoords?.second ?: 5.6037
+    val safeDeliveryLat = deliveryCoords?.first ?: 6.3450
+    val safeDeliveryLng = deliveryCoords?.second ?: 5.6250
+    val safeUserLat = userCoords?.first ?: 6.3350
+    val safeUserLng = userCoords?.second ?: 5.6037
+    val safePickupAddr = pickupAddress.replace("\"", "\\\"").replace("\n", " ").trim()
+    val safeDeliveryAddr = deliveryAddress.replace("\"", "\\\"").replace("\n", " ").trim()
+
+    val htmlContent = remember(
+        pickupAddress, deliveryAddress, pickupCoords, deliveryCoords, userCoords,
+        courierAvatar, routeColor, userAvatar, hasNoBooking, isRider, parcelStatus
+    ) {
         """
         <!DOCTYPE html>
         <html>
@@ -3378,16 +3399,16 @@ fun LiveMapView(
                 <button class="control-btn" id="satelliteBtn" onclick="onToggleClick(true)">SATELLITE</button>
             </div>
             <script>
-                var pickupLoc = [0.0, 0.0];
-                var deliveryLoc = [0.0, 0.0];
-                var pickupAddress = "";
-                var deliveryAddress = "";
+                var pickupLoc = [$safePickupLat, $safePickupLng];
+                var deliveryLoc = [$safeDeliveryLat, $safeDeliveryLng];
+                var pickupAddress = "$safePickupAddr";
+                var deliveryAddress = "$safeDeliveryAddr";
                 var isDarkTheme = $isDarkTheme;
                 var mapboxToken = '$mapboxToken';
                 var hasNoBooking = $hasNoBooking;
                 var userAvatar = "$userAvatar";
-                var hasUserLoc = false;
-                var userLoc = [0.0, 0.0];
+                var hasUserLoc = ${userCoords != null};
+                var userLoc = [$safeUserLat, $safeUserLng];
 
                 var map = null;
                 var leafletMap = null;
@@ -3504,7 +3525,11 @@ fun LiveMapView(
                     }
                     if (map) return;
 
-                    var hasMapbox = typeof mapboxgl !== 'undefined' && mapboxToken && !mapboxToken.includes('placeholder') && mapboxToken.startsWith('pk.');
+                    var hasMapbox = typeof mapboxgl !== 'undefined' && 
+                                    mapboxToken && 
+                                    !mapboxToken.includes('placeholder') && 
+                                    mapboxToken.startsWith('pk.') &&
+                                    (typeof mapboxgl.supported !== 'function' || mapboxgl.supported());
 
                     if (hasMapbox) {
                         try {
@@ -4077,7 +4102,7 @@ fun LiveMapView(
                         if (window.AndroidMap) {
                             window.AndroidMap.onTrackingUpdated(latVal, lngVal);
                         }
-                    } else if (map && !hasNoBooking) {
+                    } else if (map && !hasNoBooking && !isRider) {
                         if (isMapboxActive) {
                             var courierEl = document.createElement('div');
                             courierEl.className = 'mapbox-pulsing-courier';
@@ -4165,6 +4190,20 @@ fun LiveMapView(
     LaunchedEffect(parcelStatus, courierLatitude, courierLongitude, isPageLoaded) {
         if (isPageLoaded && isRider) {
             webView.evaluateJavascript("if (typeof fetchOSRMRoute === 'function') { fetchOSRMRoute(); }", null)
+        }
+    }
+
+    LaunchedEffect(pickupCoords, isPageLoaded) {
+        if (isPageLoaded && pickupCoords != null) {
+            val safeAddr = pickupAddress.replace("\"", "\\\"").replace("'", "\\'").trim()
+            webView.evaluateJavascript("if (typeof setPickupLocation === 'function') { setPickupLocation(${pickupCoords.first}, ${pickupCoords.second}, '$safeAddr'); }", null)
+        }
+    }
+
+    LaunchedEffect(deliveryCoords, isPageLoaded) {
+        if (isPageLoaded && deliveryCoords != null) {
+            val safeAddr = deliveryAddress.replace("\"", "\\\"").replace("'", "\\'").trim()
+            webView.evaluateJavascript("if (typeof setDeliveryLocation === 'function') { setDeliveryLocation(${deliveryCoords.first}, ${deliveryCoords.second}, '$safeAddr'); }", null)
         }
     }
 
@@ -5166,14 +5205,14 @@ fun ParcelChatDialog(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "ESDispatch CHAT",
+                            text = if (senderRole == "customer") "Customer Support" else "Dispatch & Customer Care",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Black,
                             color = headerContentColor,
-                            letterSpacing = 1.sp
+                            letterSpacing = 0.5.sp
                         )
                         Text(
-                            text = if (senderRole == "customer") "Active Courier Support" else "Recipient Direct Contact",
+                            text = "Shipment #${parcelId.take(8).uppercase()}",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isDark) Obsidian.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.7f)
@@ -5184,6 +5223,7 @@ fun ParcelChatDialog(
                         val cleanPhone = recipientPhone.filter { it.isDigit() || it == '+' }
                         IconButton(
                             onClick = {
+                                viewModel.logCourierCallEvent(parcelId, cleanPhone)
                                 val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanPhone"))
                                 try {
                                     context.startActivity(dialIntent)

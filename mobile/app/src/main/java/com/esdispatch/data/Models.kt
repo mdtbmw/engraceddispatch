@@ -36,6 +36,7 @@ data class Parcel(
     val courierLongitude: Double? = null,
     val additionalStops: String = "",
     val riderId: String = "",
+    val driverId: String = "",
     val riderBikeNumber: String = "",
     val otpCode: String = "",
     val otpVerified: Boolean = false,

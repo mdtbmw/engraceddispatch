@@ -1439,7 +1439,7 @@ object FirebaseManager {
                     for (doc in snapshot.documents) {
                         try {
                             val parcel = parseParcelFromDoc(doc)
-                            val assigned = parcel.riderId.ifBlank { parcel.reservedRiderId }
+                            val assigned = parcel.riderId.ifBlank { parcel.driverId.ifBlank { parcel.reservedRiderId } }
                             if (assigned.isBlank() || assigned.equals("unassigned", ignoreCase = true)) {
                                 list.add(parcel)
                             }
@@ -2110,7 +2110,8 @@ object FirebaseManager {
                 riderUpdates["updatedAt"] = com.google.firebase.Timestamp.now()
                 transaction.update(riderRef, riderUpdates)
             }
-        }.addOnSuccessListener {
+            effectiveRiderId
+        }.addOnSuccessListener { resolvedRiderId ->
             val parcelUserId = customerId
             if (parcelUserId.isNotEmpty()) {
                 val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
@@ -2135,8 +2136,8 @@ object FirebaseManager {
                 }
             }
 
-            val effectiveRiderId = riderId.ifBlank { "" }
-            if (effectiveRiderId.isNotEmpty() && tipAmount > 0.0) {
+            val finalRiderId = if (!resolvedRiderId.isNullOrBlank()) resolvedRiderId else riderId.ifBlank { "" }
+            if (finalRiderId.isNotEmpty() && tipAmount > 0.0) {
                 val txRef = "ESD-TIP-IN-${System.currentTimeMillis()}"
                 val txMap = hashMapOf(
                     "id" to txRef,
@@ -2146,7 +2147,7 @@ object FirebaseManager {
                     "isTopUp" to true,
                     "timestamp" to System.currentTimeMillis()
                 )
-                db.collection("users").document(effectiveRiderId).collection("transactions").document(txRef).set(txMap)
+                db.collection("users").document(finalRiderId).collection("transactions").document(txRef).set(txMap)
             }
 
             onComplete(true, null)
@@ -2197,7 +2198,7 @@ object FirebaseManager {
                             val avgTime = doc.getSafeInt("averageDeliveryTimeMin", 20)
                             
                             val photoUrl = doc.getString("photoUrl") ?: doc.getString("avatar") ?: doc.getString("avatarBase64") ?: ""
-                            val riderAvatar = if (photoUrl.isNotBlank()) photoUrl else "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop"
+                            val riderAvatar = if (photoUrl.isNotBlank()) photoUrl else "https://api.dicebear.com/7.x/avataaars/png?seed=${uid}&backgroundColor=c0aede"
                             
                             list.add(
                                 Rider(
@@ -2266,10 +2267,58 @@ object FirebaseManager {
             .document(msgId)
             .set(msgMap)
             .addOnSuccessListener {
+                // Dual-write to central support_chats so HQ dispatchers see and can respond in real-time
+                try {
+                    val supportTicket = hashMapOf(
+                        "id" to parcelId,
+                        "ticketId" to parcelId,
+                        "parcelId" to parcelId,
+                        "userId" to senderId,
+                        "userName" to senderName,
+                        "lastMessage" to messageText,
+                        "lastUpdated" to timestamp,
+                        "status" to "OPEN"
+                    )
+                    db.collection("support_chats").document(parcelId).set(supportTicket, com.google.firebase.firestore.SetOptions.merge())
+                    db.collection("support_chats").document(parcelId).collection("messages").document(msgId).set(msgMap)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Support chat dual-write ignored: ${e.message}")
+                }
                 onComplete(true, null)
             }
             .addOnFailureListener { e ->
                 onComplete(false, e.message ?: "Failed to send chat message.")
+            }
+    }
+
+    /**
+     * Audit log when a customer or rider initiates a direct phone call.
+     */
+    fun logCourierCallEvent(
+        parcelId: String,
+        initiatorUid: String,
+        initiatorName: String,
+        courierPhone: String,
+        onComplete: ((Boolean) -> Unit)? = null
+    ) {
+        val db = firestore ?: return
+        val timestamp = System.currentTimeMillis()
+        val eventId = "CALL_${timestamp}"
+        val eventData = hashMapOf(
+            "id" to eventId,
+            "eventType" to "COURIER_CALL_INITIATED",
+            "parcelId" to parcelId,
+            "initiatorUid" to initiatorUid,
+            "initiatorName" to initiatorName,
+            "courierPhone" to courierPhone,
+            "timestamp" to timestamp,
+            "action" to "Courier Call Initiated",
+            "details" to "Customer called courier at $courierPhone for shipment #$parcelId"
+        )
+        db.collection("deliveries").document(parcelId).collection("timeline").document(eventId).set(eventData)
+        db.collection("audit_logs").document(eventId).set(eventData)
+            .addOnCompleteListener { task ->
+                onComplete?.invoke(task.isSuccessful)
             }
     }
 

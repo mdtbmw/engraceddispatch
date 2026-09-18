@@ -180,9 +180,9 @@ service cloud.firestore {
       }
 
       match /deliveries/{deliveryId} {
-        allow read: if isOwner(userId) || isAdmin() || (isAuth() && resource.data.riderId == request.auth.uid);
-        allow create, delete: if isOwner(userId) || isAdmin();
-        allow update: if isOwner(userId) || isAdmin() || (isAuth() && (resource.data.riderId == request.auth.uid || request.resource.data.riderId == request.auth.uid));
+        allow read: if isOwner(userId) || isAdmin() || (isAuth() && (resource.data.riderId == request.auth.uid || resource.data.driverId == request.auth.uid));
+        allow create, delete: if isOwner(userId) || isAdmin() || (isAuth() && (request.resource.data.riderId == request.auth.uid || request.resource.data.driverId == request.auth.uid));
+        allow update: if isOwner(userId) || isAdmin() || (isAuth() && (resource.data.riderId == request.auth.uid || resource.data.driverId == request.auth.uid || request.resource.data.riderId == request.auth.uid || request.resource.data.driverId == request.auth.uid));
       }
     }
 
@@ -516,6 +516,24 @@ service cloud.firestore {
     match /tip_withdrawals/{withdrawalId} {
       allow read: if isAuth() && (isAdmin() || isDispatcher() || resource.data.riderId == request.auth.uid);
       allow create: if isAuth() && request.resource.data.riderId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /support_chats/{chatId} {
+      allow read: if isAuth();
+      allow create, update: if isAuth();
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isAuth();
+        allow create: if isAuth();
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAdmin() || isDispatcher();
+      allow create: if isAuth();
       allow update, delete: if isAdmin();
     }
 

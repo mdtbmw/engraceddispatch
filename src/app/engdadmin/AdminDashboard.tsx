@@ -1894,6 +1894,7 @@ function AdminDashboardPage() {
   const [marketplaceOrders, setMarketplaceOrders] = useState<MarketplaceOrder[]>([]);
   const [payoutRequests, setPayoutRequests] = useState<VendorPayoutRequest[]>([]);
   const [tipWithdrawals, setTipWithdrawals] = useState<TipWithdrawalRequest[]>([]);
+  const [fleetLocations, setFleetLocations] = useState<Record<string, { lat: number; lng: number }>>({});
 
   const [connected, setConnected] = useState(false);
   const [refreshT, setRefreshT] = useState("");
@@ -2286,6 +2287,18 @@ function AdminDashboardPage() {
     unsubs.push(onSnapshot(doc(db, "system_config", "global_settings"), s => {
       if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() }));
     }, () => {}));
+    unsubs.push(onSnapshot(collection(db, "fleet_locations"), snap => {
+      const map: Record<string, { lat: number; lng: number }> = {};
+      snap.forEach(d => {
+        const x = d.data();
+        const lat = typeof x.latitude === "number" ? x.latitude : (typeof x.lat === "number" ? x.lat : null);
+        const lng = typeof x.longitude === "number" ? x.longitude : (typeof x.lng === "number" ? x.lng : null);
+        if (lat && lng) {
+          map[d.id] = { lat, lng };
+        }
+      });
+      setFleetLocations(map);
+    }, () => {}));
     unsubs.push(onSnapshot(query(collection(db, "audit_logs"), orderBy("timestamp", "desc"), limit(100)), snap => {
       const list: AuditEntry[] = [];
       snap.forEach(d => {
@@ -2368,7 +2381,15 @@ function AdminDashboardPage() {
 
   const activeUsers = users.filter(u => !u.isDeleted);
   const customers = activeUsers.filter(u => u.role === "customer" || u.role === "");
-  const drivers = activeUsers.filter(u => u.role === "rider" || u.role === "driver" || u.role === "courier");
+  const drivers = activeUsers
+    .filter(u => u.role === "rider" || u.role === "driver" || u.role === "courier")
+    .map(u => {
+      const liveLoc = fleetLocations[u.id] || fleetLocations[u.uid];
+      if (liveLoc) {
+        return { ...u, lat: liveLoc.lat, lng: liveLoc.lng };
+      }
+      return u;
+    });
   const adminUsers = activeUsers.filter(u => u.role === "admin" || u.role === "super_admin");
   const pendingDeliveries = deliveries.filter(d => ["PENDING", "QUEUED", "RESERVED_NEXT"].includes(d.status));
   const inTransit = deliveries.filter(d => ["TRANSIT", "ASSIGNED", "PICKED_UP", "ARRIVED", "OUT_FOR_DELIVERY", "HANDOVER_VERIFIED"].includes(d.status));
@@ -8368,6 +8389,8 @@ interface SupportTicket {
   lastMessage: string;
   lastUpdated: number;
   status: string;
+  parcelId?: string;
+  courierName?: string;
 }
 
 interface SupportChatMessage {
@@ -8400,7 +8423,9 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
           userName: d.userName || "Customer",
           lastMessage: d.lastMessage || "",
           lastUpdated: d.lastUpdated || 0,
-          status: d.status || "OPEN"
+          status: d.status || "OPEN",
+          parcelId: d.parcelId || doc.id,
+          courierName: d.courierName || "",
         });
       });
       list.sort((a, b) => b.lastUpdated - a.lastUpdated);
@@ -8458,6 +8483,24 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
         lastMessage: text,
         lastUpdated: now
       });
+
+      // Synchronize dispatch reply to delivery chat for mobile app customer/rider
+      const parcelId = selectedTicket.parcelId || selectedTicket.id;
+      if (parcelId) {
+        try {
+          await setDoc(doc(db, "deliveries", parcelId, "chats", msgId), {
+            id: msgId,
+            senderId: "ADMIN_HQ",
+            senderName: "Customer Support",
+            senderRole: "dispatcher",
+            messageText: text,
+            timestamp: now
+          });
+        } catch (mErr) {
+          console.warn("Could not mirror chat to delivery:", mErr);
+        }
+      }
+
       addLog("Support Reply", `Replied to ticket ${selectedTicket.ticketId}`);
     } catch (err: any) {
       addToast("error", err.message || "Failed to send reply");
