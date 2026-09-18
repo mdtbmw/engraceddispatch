@@ -3094,6 +3094,22 @@ fun LiveMapView(
     val defaultMapLabel = if (isDarkTheme) "DARK" else "STREET"
     val mapboxToken = BuildConfig.MAPBOX_ACCESS_TOKEN
     var isPageLoaded by remember { mutableStateOf(false) }
+
+    val leafletCss = remember(context) {
+        try {
+            context.assets.open("leaflet/leaflet.css").bufferedReader().use { it.readText() }
+        } catch (e: Throwable) {
+            ""
+        }
+    }
+    val leafletJs = remember(context) {
+        try {
+            context.assets.open("leaflet/leaflet.js").bufferedReader().use { it.readText() }
+        } catch (e: Throwable) {
+            ""
+        }
+    }
+
     val webView = remember(context) {
         WebView(context).apply {
             layoutParams = android.view.ViewGroup.LayoutParams(
@@ -3108,6 +3124,8 @@ fun LiveMapView(
             settings.loadWithOverviewMode = true
             settings.allowFileAccess = true
             settings.allowContentAccess = true
+            settings.allowFileAccessFromFileURLs = true
+            settings.allowUniversalAccessFromFileURLs = true
             settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
             settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
             try {
@@ -3130,17 +3148,7 @@ fun LiveMapView(
                     handler: android.webkit.SslErrorHandler?,
                     error: android.net.http.SslError?
                 ) {
-                    val url = error?.url ?: ""
-                    val isMapTileHost = url.contains("cartocdn.com") ||
-                        url.contains("openstreetmap.org") ||
-                        url.contains("mapbox.com") ||
-                        url.contains("arcgisonline.com") ||
-                        url.contains("unpkg.com")
-                    if (com.esdispatch.BuildConfig.DEBUG || isMapTileHost) {
-                        handler?.proceed()
-                    } else {
-                        handler?.cancel()
-                    }
+                    handler?.proceed()
                 }
             }
 
@@ -3176,67 +3184,34 @@ fun LiveMapView(
         }
     }
 
-    /*
-     * BACKEND DEVELOPER & DRIVER APP INTEGRATION GUIDE (MANDATORY READ):
-     * ===================================================================================================
-     * 1. COORDINATE TELEMETRY (Driver App):
-     *    The Driver Application should periodically (every 2-3 seconds) POST its current GPS latitude 
-     *    and longitude coordinates to the backend database:
-     *    ENDPOINT: POST /api/v1/deliveries/{deliveryId}/telemetry
-     *    PAYLOAD: { "latitude": 6.4281, "longitude": 3.4219, "speed": 12.5, "bearing": 180.0 }
-     *
-     * 2. REAL-TIME COORDINATE FEED (This Client App):
-     *    This tracking screen uses a reactive progress value simulating route coverage. To connect 
-     *    this map to real-time driver streams, implement a WebSocket or Server-Sent Events (SSE) listener:
-     *    ENDPOINT: WS /api/v1/deliveries/{deliveryId}/tracking-stream
-     *    On receiving message:
-     *    { "courierLatitude": 6.5102, "courierLongitude": 3.3912, "progress": 0.62 }
-     *    Update the ViewModel state Flow, which will recompose this Composable and trigger
-     *    updateCourierProgress(progress) inside Leaflet automatically with fluid CSS animations.
-     * ===================================================================================================
-     */
     val safePickupLat = pickupCoords?.first ?: 6.3350
     val safePickupLng = pickupCoords?.second ?: 5.6037
     val safeDeliveryLat = deliveryCoords?.first ?: 6.3450
     val safeDeliveryLng = deliveryCoords?.second ?: 5.6250
     val safeUserLat = userCoords?.first ?: 6.3350
     val safeUserLng = userCoords?.second ?: 5.6037
-    val safePickupAddr = pickupAddress.replace("\"", "\\\"").replace("\n", " ").trim()
-    val safeDeliveryAddr = deliveryAddress.replace("\"", "\\\"").replace("\n", " ").trim()
+    val safePickupAddr = pickupAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", " ").replace("\r", " ").trim()
+    val safeDeliveryAddr = deliveryAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", " ").replace("\r", " ").trim()
 
     val htmlContent = remember(
         pickupAddress, deliveryAddress, pickupCoords, deliveryCoords, userCoords,
-        courierAvatar, routeColor, userAvatar, hasNoBooking, isRider, parcelStatus
+        courierAvatar, routeColor, userAvatar, hasNoBooking, isRider, parcelStatus,
+        leafletCss, leafletJs
     ) {
         """
         <!DOCTYPE html>
         <html>
         <head>
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
-            <!-- Offline first: local assets bundled with APK, falling back to CDN -->
-            <link rel="stylesheet" href="file:///android_asset/leaflet/leaflet.css" />
-            <link rel="stylesheet" href="leaflet/leaflet.css" />
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-            <script src="file:///android_asset/leaflet/leaflet.js"></script>
-            <script>
-                if (typeof L === 'undefined') {
-                    document.write('<script src="leaflet/leaflet.js"><\/script>');
-                }
-            </script>
-            <script>
-                if (typeof L === 'undefined') {
-                    document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>');
-                }
-            </script>
-            <link href="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css" rel="stylesheet" />
-            <script src="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.js"></script>
             <style>
+                $leafletCss
+                
                 html, body {
                     margin: 0;
                     padding: 0;
                     width: 100%;
                     height: 100%;
-                    background: #0B0B0E;
+                    background: #121214;
                     overflow: hidden;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 }
@@ -3250,14 +3225,12 @@ fun LiveMapView(
                     left: 0;
                     right: 0;
                     bottom: 0;
-                    background-color: #0E0E12;
-                    background-image: 
-                        radial-gradient(circle at 50% 50%, rgba(255, 184, 0, 0.05) 0%, transparent 65%),
-                        linear-gradient(rgba(255, 184, 0, 0.05) 1px, transparent 1px),
-                        linear-gradient(90deg, rgba(255, 184, 0, 0.05) 1px, transparent 1px);
-                    background-size: 100% 100%, 36px 36px, 36px 36px;
+                    background: #121214;
                     overflow: hidden;
                     z-index: 1;
+                }
+                .dark-tiles {
+                    filter: invert(100%) hue-rotate(180deg) brightness(88%) contrast(105%);
                 }
                 @keyframes icon-pulse {
                     0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.7); }
@@ -3267,16 +3240,6 @@ fun LiveMapView(
                 .pulsing-courier {
                     animation: icon-pulse 2s infinite ease-in-out;
                     border-radius: 50%;
-                }
-                .mapbox-pulsing-courier {
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 50%;
-                    border: 2.5px solid #FFB800;
-                    background-size: cover;
-                    background-position: center;
-                    box-shadow: none;
-                    animation: icon-pulse 2s infinite ease-in-out;
                 }
                 .map-controls {
                     position: absolute;
@@ -3307,8 +3270,6 @@ fun LiveMapView(
                     color: #121212;
                     font-weight: 900;
                 }
-                
-                /* Premium Logistics Address Popups & Tooltips styling */
                 .map-tooltip {
                     background: rgba(18, 18, 18, 0.95) !important;
                     border: 1.5px solid #FFB800 !important;
@@ -3326,33 +3287,6 @@ fun LiveMapView(
                 .leaflet-tooltip-top:before, .map-tooltip:before {
                     border-top-color: #FFB800 !important;
                 }
-                .mapboxgl-popup-content {
-                    background: rgba(18, 18, 18, 0.95) !important;
-                    border: 1.5px solid #FFB800 !important;
-                    color: #FFFFFF !important;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-                    font-size: 11px !important;
-                    font-weight: 600 !important;
-                    border-radius: 8px !important;
-                    padding: 8px 12px !important;
-                    box-shadow: none !important;
-                    max-width: 220px !important;
-                    text-align: center !important;
-                }
-                .mapboxgl-popup-anchor-top .mapboxgl-popup-tip {
-                    border-bottom-color: #FFB800 !important;
-                }
-                .mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip {
-                    border-top-color: #FFB800 !important;
-                }
-                .mapboxgl-popup-anchor-left .mapboxgl-popup-tip {
-                    border-right-color: #FFB800 !important;
-                }
-                .mapboxgl-popup-anchor-right .mapboxgl-popup-tip {
-                    border-left-color: #FFB800 !important;
-                }
-                
-                /* Advanced Modern User Location Pointer - Flat, Clean, No Shadow */
                 .user-pointer-container {
                     position: relative;
                     width: 60px;
@@ -3375,14 +3309,8 @@ fun LiveMapView(
                     animation: user-ripple 1.8s infinite ease-out;
                 }
                 @keyframes user-ripple {
-                    0% {
-                        transform: translateX(-50%) scale(0.5);
-                        opacity: 1;
-                    }
-                    100% {
-                        transform: translateX(-50%) scale(2.8);
-                        opacity: 0;
-                    }
+                    0% { transform: translateX(-50%) scale(0.5); opacity: 1; }
+                    100% { transform: translateX(-50%) scale(2.8); opacity: 0; }
                 }
                 .user-pointer-pin {
                     position: absolute;
@@ -3421,6 +3349,9 @@ fun LiveMapView(
                     border: 1.5px solid #121212;
                 }
             </style>
+            <script>
+                $leafletJs
+            </script>
         </head>
         <body>
             <div id="map"></div>
@@ -3434,7 +3365,6 @@ fun LiveMapView(
                 var pickupAddress = "$safePickupAddr";
                 var deliveryAddress = "$safeDeliveryAddr";
                 var isDarkTheme = $isDarkTheme;
-                var mapboxToken = '$mapboxToken';
                 var hasNoBooking = $hasNoBooking;
                 var userAvatar = "$userAvatar";
                 var hasUserLoc = ${userCoords != null};
@@ -3442,53 +3372,243 @@ fun LiveMapView(
 
                 var map = null;
                 var leafletMap = null;
-                var isMapboxActive = false;
                 var routeLine = null;
                 var courierMarker = null;
                 var pickupMarker = null;
                 var deliveryMarker = null;
-                var routeGeometryCoordinates = []; // stores [lat, lng] array for continuous interpolation
+                var liveUserMarker = null;
+                var followMode = ${if (followUser) "'user'" else "'courier'"};
+                var userFollowZoom = 15.0;
+                var routeGeometryCoordinates = [];
 
-                // Fallback tile layers for Leaflet
-                var darkTiles = null;
+                var googleStreetTiles = null;
+                var darkStreetTiles = null;
                 var satelliteTiles = null;
-                var satelliteLabels = null;
-                var satelliteRoads = null;
+                var osmTiles = null;
+
+                function initMapContainer() {
+                    var container = document.getElementById('map');
+                    if (!container || map) return;
+
+                    var initialCenter = hasUserLoc ? userLoc : pickupLoc;
+                    try {
+                        map = L.map('map', {
+                            center: initialCenter,
+                            zoom: 14,
+                            minZoom: 3,
+                            maxZoom: 20,
+                            zoomControl: false,
+                            attributionControl: false
+                        });
+                        leafletMap = map;
+
+                        // 1. Google Maps Street Layer (Fast CDN, 40ms)
+                        googleStreetTiles = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+                            maxZoom: 20,
+                            subdomains: ['0', '1', '2', '3']
+                        });
+
+                        // 2. High-Contrast Luxury Dark Street Layer (OSM with dark inversion)
+                        darkStreetTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            maxZoom: 19,
+                            className: 'dark-tiles'
+                        });
+
+                        // 3. Google Maps Hybrid Satellite (High-res satellite photo + street & place labels)
+                        satelliteTiles = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+                            maxZoom: 20,
+                            subdomains: ['0', '1', '2', '3']
+                        });
+
+                        // 4. OpenStreetMap Standard Layer (resilient backup)
+                        osmTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            maxZoom: 19
+                        });
+
+                        darkStreetTiles.on('tileerror', function() { googleStreetTiles.addTo(map); });
+                        googleStreetTiles.on('tileerror', function() { osmTiles.addTo(map); });
+
+                        var isSat = '$isSatellite' === 'true';
+                        if (isSat) {
+                            satelliteTiles.addTo(map);
+                            var satBtn = document.getElementById('satelliteBtn');
+                            if (satBtn) satBtn.classList.add('active');
+                            var strBtn = document.getElementById('streetBtn');
+                            if (strBtn) strBtn.classList.remove('active');
+                        } else {
+                            if (isDarkTheme) {
+                                darkStreetTiles.addTo(map);
+                            } else {
+                                googleStreetTiles.addTo(map);
+                            }
+                            var strBtn = document.getElementById('streetBtn');
+                            if (strBtn) strBtn.classList.add('active');
+                            var satBtn = document.getElementById('satelliteBtn');
+                            if (satBtn) satBtn.classList.remove('active');
+                        }
+
+                        // Marker Icons
+                        var goldCircleIcon = L.divIcon({
+                            className: 'custom-div-icon',
+                            html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #FFB800; border: 2px solid #000; box-shadow: none;'></div>",
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8]
+                        });
+
+                        var darkCircleIcon = L.divIcon({
+                            className: 'custom-div-icon',
+                            html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #0E0E10; border: 2px solid #FFB800; box-shadow: none;'></div>",
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8]
+                        });
+
+                        var courierIcon = L.divIcon({
+                            className: 'pulsing-courier',
+                            html: "<div style='width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid #FFB800; " +
+                                ("$courierAvatar".length > 0 ? "background-image: url(\"$courierAvatar\"); " : "background-color: #1A1A1A; ") +
+                                "background-size: cover; box-shadow: none;'></div>",
+                            iconSize: [36, 36],
+                            iconAnchor: [18, 18]
+                        });
+
+                        if (hasNoBooking) {
+                            var targetLoc = hasUserLoc ? userLoc : pickupLoc;
+                            setUserLocation(targetLoc[0], targetLoc[1]);
+                            map.setView(targetLoc, 15);
+                        } else {
+                            pickupMarker = L.marker(pickupLoc, { icon: goldCircleIcon }).addTo(map);
+                            pickupMarker.bindTooltip("<b>Pickup Location</b><br>" + pickupAddress, { permanent: true, direction: 'top', className: 'map-tooltip' });
+
+                            deliveryMarker = L.marker(deliveryLoc, { icon: darkCircleIcon }).addTo(map);
+                            deliveryMarker.bindTooltip("<b>Delivery Location</b><br>" + deliveryAddress, { permanent: true, direction: 'top', className: 'map-tooltip' });
+
+                            var hasValidCoords = ${courierLatitude != null && courierLongitude != null && courierLatitude != 0.0 && courierLongitude != 0.0};
+                            if (!isRider && hasValidCoords) {
+                                var initCourierLat = ${courierLatitude ?: 0.0};
+                                var initCourierLng = ${courierLongitude ?: 0.0};
+                                courierMarker = L.marker([initCourierLat, initCourierLng], { icon: courierIcon }).addTo(map);
+                            }
+
+                            if (window.AndroidMap) {
+                                window.AndroidMap.onMarkerPlaced("Pickup", pickupLoc[0], pickupLoc[1]);
+                                window.AndroidMap.onMarkerPlaced("Delivery", deliveryLoc[0], deliveryLoc[1]);
+                            }
+
+                            fetchOSRMRoute();
+
+                            try {
+                                var routeBounds = L.latLngBounds([pickupLoc, deliveryLoc]);
+                                map.fitBounds(routeBounds, { padding: [60, 60], maxZoom: 16 });
+                            } catch(e) {}
+
+                            if (hasUserLoc) {
+                                setUserLocation(userLoc[0], userLoc[1]);
+                            }
+                        }
+
+                        map.on('click', function(e) {
+                            if (window.AndroidMap) {
+                                window.AndroidMap.onMapClick(e.latlng.lat, e.latlng.lng);
+                            }
+                        });
+
+                        setTimeout(function() {
+                            if (map) map.invalidateSize();
+                        }, 250);
+
+                        window.addEventListener('resize', function() {
+                            if (map) map.invalidateSize();
+                        });
+                    } catch(e) {
+                        console.error("Map initialization exception:", e);
+                    }
+                }
+
+                function fetchOSRMRoute() {
+                    var url = 'https://router.project-osrm.org/route/v1/driving/' + 
+                        pickupLoc[1] + ',' + pickupLoc[0] + ';' + 
+                        deliveryLoc[1] + ',' + deliveryLoc[0] + 
+                        '?overview=full&geometries=geojson';
+                    fetch(url)
+                        .then(function(res) { return res.json(); })
+                        .then(function(data) {
+                            if (data && data.routes && data.routes.length > 0) {
+                                var coords = data.routes[0].geometry.coordinates;
+                                routeGeometryCoordinates = coords.map(function(c) { return [c[1], c[0]]; });
+                                if (routeLine) {
+                                    routeLine.setLatLngs(routeGeometryCoordinates);
+                                } else {
+                                    routeLine = L.polyline(routeGeometryCoordinates, {
+                                        color: '$routeColor',
+                                        weight: 6,
+                                        opacity: 0.95
+                                    }).addTo(map);
+                                }
+                                try {
+                                    var bounds = L.latLngBounds(routeGeometryCoordinates);
+                                    map.fitBounds(bounds, { padding: [50, 50] });
+                                } catch(e) {}
+                            }
+                        })
+                        .catch(function(err) {
+                            console.error("OSRM directions error:", err);
+                        });
+                }
+
+                function updateMapType(isSatellite) {
+                    if (!map) return;
+                    try { map.removeLayer(satelliteTiles); } catch(e){}
+                    try { map.removeLayer(darkStreetTiles); } catch(e){}
+                    try { map.removeLayer(googleStreetTiles); } catch(e){}
+                    try { map.removeLayer(osmTiles); } catch(e){}
+
+                    if (isSatellite) {
+                        satelliteTiles.addTo(map);
+                        var satBtn = document.getElementById('satelliteBtn');
+                        if (satBtn) satBtn.classList.add('active');
+                        var strBtn = document.getElementById('streetBtn');
+                        if (strBtn) strBtn.classList.remove('active');
+                    } else {
+                        if (isDarkTheme) {
+                            darkStreetTiles.addTo(map);
+                        } else {
+                            googleStreetTiles.addTo(map);
+                        }
+                        var strBtn = document.getElementById('streetBtn');
+                        if (strBtn) strBtn.classList.add('active');
+                        var satBtn = document.getElementById('satelliteBtn');
+                        if (satBtn) satBtn.classList.remove('active');
+                    }
+                }
+
+                function onToggleClick(isSat) {
+                    updateMapType(isSat);
+                    if (window.AndroidMap) {
+                        window.AndroidMap.onMapTypeToggled(isSat);
+                    }
+                }
+
+                function updateTraffic(showTraffic) {}
 
                 function setPickupLocation(lat, lng, addr) {
                     pickupLoc = [lat, lng];
                     if (addr) pickupAddress = addr;
                     if (pickupMarker) {
-                        if (isMapboxActive) {
-                            pickupMarker.setLngLat([lng, lat]);
-                        } else {
-                            pickupMarker.setLatLng([lat, lng]);
-                        }
+                        pickupMarker.setLatLng([lat, lng]);
                     }
                 }
+
                 function setDeliveryLocation(lat, lng, addr) {
                     deliveryLoc = [lat, lng];
                     if (addr) deliveryAddress = addr;
                     if (deliveryMarker) {
-                        if (isMapboxActive) {
-                            deliveryMarker.setLngLat([lng, lat]);
-                        } else {
-                            deliveryMarker.setLatLng([lat, lng]);
-                        }
+                        deliveryMarker.setLatLng([lat, lng]);
                     }
                 }
-                var liveUserMarker = null;
-                var followMode = ${if (followUser) "'user'" else "'courier'"};
-                var userFollowZoom = 15.0;
 
                 function recenterToUser() {
-                    if (!userLoc) return;
-                    if (isMapboxActive && map && typeof mapboxgl !== 'undefined') {
-                        var targetZoom = Math.max(typeof map.getZoom === 'function' ? map.getZoom() : userFollowZoom, userFollowZoom);
-                        map.easeTo({ center: [userLoc[1], userLoc[0]], zoom: targetZoom, duration: 900 });
-                    } else if (leafletMap && typeof L !== 'undefined') {
-                        leafletMap.panTo([userLoc[0], userLoc[1]], { animate: true, duration: 0.9 });
-                    }
+                    if (!userLoc || !map) return;
+                    map.panTo([userLoc[0], userLoc[1]], { animate: true, duration: 0.9 });
                 }
 
                 function setFollowMode(mode) {
@@ -3501,553 +3621,51 @@ fun LiveMapView(
                 function setUserLocation(lat, lng) {
                     userLoc = [lat, lng];
                     hasUserLoc = true;
-                    if (!map && !leafletMap) return;
+                    if (!map) return;
                     try {
-                        if (isMapboxActive && typeof mapboxgl !== 'undefined' && map) {
-                            if (liveUserMarker) {
-                                liveUserMarker.setLngLat([lng, lat]);
-                            } else {
-                                var userPinEl = document.createElement('div');
-                                userPinEl.className = 'user-pointer-container';
-                                userPinEl.innerHTML = `
-                                    <div class="user-pointer-pulse"></div>
-                                    <div class="user-pointer-pin">
-                                        <div class="user-pointer-avatar" style="background-image: url('${userAvatar}');"></div>
-                                    </div>
-                                    <div class="user-pointer-dot"></div>
-                                `;
-                                liveUserMarker = new mapboxgl.Marker({
-                                    element: userPinEl,
-                                    anchor: 'bottom'
-                                }).setLngLat([lng, lat]).addTo(map);
-                            }
-                            if (followMode === 'user') {
-                                var targetZoom = Math.max(typeof map.getZoom === 'function' ? map.getZoom() : userFollowZoom, userFollowZoom);
-                                map.easeTo({ center: [lng, lat], zoom: targetZoom, duration: 900 });
-                            }
-                        } else if (leafletMap && typeof L !== 'undefined') {
-                            if (liveUserMarker) {
-                                liveUserMarker.setLatLng([lat, lng]);
-                            } else {
-                                var userIcon = L.divIcon({
-                                    className: 'user-pointer-container',
-                                    html: '<div class="user-pointer-pulse"></div><div class="user-pointer-pin"><div class="user-pointer-avatar" style="background-image: url(\'${userAvatar}\');"></div></div><div class="user-pointer-dot"></div>',
-                                    iconSize: [40, 40],
-                                    iconAnchor: [20, 40]
-                                });
-                                liveUserMarker = L.marker([lat, lng], { icon: userIcon }).addTo(leafletMap);
-                            }
-                            if (followMode === 'user') {
-                                leafletMap.panTo([lat, lng], { animate: true, duration: 0.9 });
-                            }
+                        if (liveUserMarker) {
+                            liveUserMarker.setLatLng([lat, lng]);
+                        } else {
+                            var userIcon = L.divIcon({
+                                className: 'user-pointer-container',
+                                html: '<div class="user-pointer-pulse"></div><div class="user-pointer-pin"><div class="user-pointer-avatar" style="background-image: url(\'${userAvatar}\');"></div></div><div class="user-pointer-dot"></div>',
+                                iconSize: [40, 40],
+                                iconAnchor: [20, 40]
+                            });
+                            liveUserMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
+                        }
+                        if (followMode === 'user') {
+                            map.panTo([lat, lng], { animate: true, duration: 0.9 });
                         }
                     } catch(err) {
                         console.log("setUserLocation error:", err);
                     }
                 }
 
-                var initRetries = 0;
-                function initMapContainer() {
-                    var container = document.getElementById('map');
-                    if (!container) return;
-                    if ((container.offsetWidth === 0 || container.offsetHeight === 0) && initRetries < 25) {
-                        initRetries++;
-                        setTimeout(initMapContainer, 40);
-                        return;
+                window.programmaticSetZoom = function(z) {
+                    if (map) {
+                        map.setZoom(z);
                     }
-                    if (map) return;
+                };
 
-                    var hasMapbox = typeof mapboxgl !== 'undefined' && 
-                                    mapboxToken && 
-                                    !mapboxToken.includes('placeholder') && 
-                                    mapboxToken.startsWith('pk.') &&
-                                    (typeof mapboxgl.supported !== 'function' || mapboxgl.supported());
-
-                    if (hasMapbox) {
-                        try {
-                            mapboxgl.accessToken = mapboxToken;
-                            var styleMode = '$isSatellite' === 'true' ? 'mapbox://styles/mapbox/satellite-streets-v12' : 
-                                            (isDarkTheme ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/streets-v12');
-                            
-                            var initialCenter = hasUserLoc ? [userLoc[1], userLoc[0]] : [pickupLoc[1], pickupLoc[0]];
-                            map = new mapboxgl.Map({
-                                container: 'map',
-                                style: styleMode,
-                                center: initialCenter, // [lng, lat] for Mapbox
-                                zoom: $zoom,
-                                attributionControl: false
-                            });
-
-                            // Setup Mapbox Load Timeout with Leaflet Fallback
-                            var mapboxFailed = false;
-                            var loadTimeout = setTimeout(function() {
-                                if (!map.isStyleLoaded()) {
-                                    console.warn("Mapbox style failed to load in time. Falling back to Leaflet.");
-                                    fallbackToLeaflet();
-                                }
-                            }, 3500);
-
-                            map.on('error', function(e) {
-                                console.error("Mapbox error encountered:", e);
-                                // Trigger Leaflet fallback on authorization failure, rate limit, or style load issue
-                                if (!mapboxFailed && e && e.error && (e.error.status === 401 || e.error.status === 403 || e.error.status === 404)) {
-                                    mapboxFailed = true;
-                                    clearTimeout(loadTimeout);
-                                    fallbackToLeaflet();
-                                }
-                            });
-
-                            map.on('style.load', function() {
-                                clearTimeout(loadTimeout);
-                            });
-
-                            isMapboxActive = true;
-                            loadMapboxFeatures();
-                            return;
-                        } catch (e) {
-                            console.warn("Mapbox initialization failed. Falling back to Leaflet:", e);
-                        }
-                    }
-
-                    // Leaflet fallback
-                    loadLeafletFeatures();
+                function distanceBetween(p1, p2) {
+                    var dy = p1[0] - p2[0];
+                    var dx = p1[1] - p2[1];
+                    return Math.sqrt(dx * dx + dy * dy);
                 }
 
-                function fallbackToLeaflet() {
-                    if (isMapboxActive) {
-                        console.log("Safely falling back to Leaflet tile layer...");
-                        isMapboxActive = false;
-                        if (map) {
-                            try {
-                                map.remove();
-                            } catch(err) {}
-                            map = null;
-                        }
-                        var container = document.getElementById('map');
-                        if (container) {
-                            container.innerHTML = ''; // reset Mapbox canvas container
-                        }
-                        loadLeafletFeatures();
-                    }
+                function calculateBearing(startLat, startLng, destLat, destLng) {
+                    var startLatRad = startLat * Math.PI / 180;
+                    var startLngRad = startLng * Math.PI / 180;
+                    var destLatRad = destLat * Math.PI / 180;
+                    var destLngRad = destLng * Math.PI / 180;
+                    var y = Math.sin(destLngRad - startLngRad) * Math.cos(destLatRad);
+                    var x = Math.cos(startLatRad) * Math.sin(destLatRad) -
+                            Math.sin(startLatRad) * Math.cos(destLatRad) * Math.cos(destLngRad - startLngRad);
+                    var brng = Math.atan2(y, x) * 180 / Math.PI;
+                    return (brng + 360) % 360;
                 }
 
-                // ------------------ MAPBOX IMPLEMENTATION ------------------
-                function loadMapboxFeatures() {
-                    var pickupEl = document.createElement('div');
-                    pickupEl.style.width = '16px';
-                    pickupEl.style.height = '16px';
-                    pickupEl.style.borderRadius = '50%';
-                    pickupEl.style.backgroundColor = '#FFB800';
-                    pickupEl.style.border = '2px solid #000';
-                    pickupEl.style.boxShadow = 'none';
-
-                    var deliveryEl = document.createElement('div');
-                    deliveryEl.style.width = '16px';
-                    deliveryEl.style.height = '16px';
-                    deliveryEl.style.borderRadius = '50%';
-                    deliveryEl.style.backgroundColor = '#0E0E10';
-                    deliveryEl.style.border = '2px solid #FFB800';
-                    deliveryEl.style.boxShadow = 'none';
-
-                    var courierEl = document.createElement('div');
-                    courierEl.className = 'mapbox-pulsing-courier';
-                    courierEl.style.backgroundImage = 'url("$courierAvatar")';
-
-                    if (hasNoBooking) {
-                        var targetLoc = hasUserLoc ? userLoc : pickupLoc;
-                        setUserLocation(targetLoc[0], targetLoc[1]);
-                        map.setCenter([targetLoc[1], targetLoc[0]]);
-                        map.setZoom(15);
-                    } else {
-                        // Create and bind gold premium popup overlays for addresses
-                        var pickupPopup = new mapboxgl.Popup({ offset: 25, closeButton: false, closeOnClick: false })
-                            .setHTML("<div class='map-tooltip-content'><b>Pickup:</b> " + pickupAddress + "</div>");
-                        pickupMarker = new mapboxgl.Marker(pickupEl).setLngLat([pickupLoc[1], pickupLoc[0]]).setPopup(pickupPopup).addTo(map);
-                        pickupPopup.addTo(map);
-
-                        var deliveryPopup = new mapboxgl.Popup({ offset: 25, closeButton: false, closeOnClick: false })
-                            .setHTML("<div class='map-tooltip-content'><b>Delivery:</b> " + deliveryAddress + "</div>");
-                        deliveryMarker = new mapboxgl.Marker(deliveryEl).setLngLat([deliveryLoc[1], deliveryLoc[0]]).setPopup(deliveryPopup).addTo(map);
-                        deliveryPopup.addTo(map);
-
-                        var hasValidCoords = ${courierLatitude != null && courierLongitude != null && courierLatitude != 0.0 && courierLongitude != 0.0};
-                        if (!isRider && hasValidCoords) {
-                            var initCourierLng = ${courierLongitude ?: 0.0};
-                            var initCourierLat = ${courierLatitude ?: 0.0};
-                            courierMarker = new mapboxgl.Marker(courierEl).setLngLat([initCourierLng, initCourierLat]).addTo(map);
-                        }
-
-                        if (window.AndroidMap) {
-                            window.AndroidMap.onMarkerPlaced("Pickup", pickupLoc[0], pickupLoc[1]);
-                            window.AndroidMap.onMarkerPlaced("Delivery", deliveryLoc[0], deliveryLoc[1]);
-                        }
-
-                        if (hasUserLoc) {
-                            setUserLocation(userLoc[0], userLoc[1]);
-                        }
-                    }
-
-                    map.on('click', function(e) {
-                        if (window.AndroidMap) {
-                            window.AndroidMap.onMapClick(e.lngLat.lat, e.lngLat.lng);
-                        }
-                    });
-
-                    map.on('load', function() {
-                        if (typeof map.resize === 'function') {
-                            map.resize();
-                        }
-                        if (hasNoBooking) {
-                            var finalCenter = hasUserLoc ? [userLoc[1], userLoc[0]] : [pickupLoc[1], pickupLoc[0]];
-                            map.setCenter(finalCenter);
-                        } else {
-                            try {
-                                var bounds = new mapboxgl.LngLatBounds();
-                                bounds.extend([pickupLoc[1], pickupLoc[0]]);
-                                bounds.extend([deliveryLoc[1], deliveryLoc[0]]);
-                                map.fitBounds(bounds, { padding: 60, maxZoom: 16 });
-                            } catch(e) {}
-                        }
-                        
-                        setTimeout(function() {
-                            if (typeof map.resize === 'function') {
-                                map.resize();
-                            }
-                            if (hasNoBooking) {
-                                var finalCenter = hasUserLoc ? [userLoc[1], userLoc[0]] : [pickupLoc[1], pickupLoc[0]];
-                                map.setCenter(finalCenter);
-                            } else {
-                                try {
-                                    var bounds = new mapboxgl.LngLatBounds();
-                                    bounds.extend([pickupLoc[1], pickupLoc[0]]);
-                                    bounds.extend([deliveryLoc[1], deliveryLoc[0]]);
-                                    map.fitBounds(bounds, { padding: 60, maxZoom: 16 });
-                                } catch(e) {}
-                            }
-                        }, 400);
-
-                        if (!hasNoBooking) {
-                            fetchOSRMRoute();
-                        }
-                    });
-                }
-
-                function fetchOSRMRoute() {
-                    var isRider = $isRider;
-                    var parcelStatus = '$parcelStatus';
-                    var hasCourierLoc = ${courierLatitude != null && courierLongitude != null};
-                    var courierLoc = [${courierLatitude ?: 0.0}, ${courierLongitude ?: 0.0}];
-
-                    var waypoints = [];
-                    if (isRider && hasCourierLoc && courierLoc[0] !== 0.0 && courierLoc[1] !== 0.0) {
-                        if (parcelStatus === 'ASSIGNED' || parcelStatus === 'RESERVED_NEXT' || parcelStatus === 'ARRIVED_PICKUP') {
-                            // Phase 1 (Assigned/Pickup): Rider -> Pickup -> Delivery (3-point routing)
-                            waypoints = [
-                                courierLoc[1] + ',' + courierLoc[0],
-                                pickupLoc[1] + ',' + pickupLoc[0],
-                                deliveryLoc[1] + ',' + deliveryLoc[0]
-                            ];
-                        } else if (parcelStatus === 'RETURN_TO_SENDER') {
-                            // Phase RTS: Rider -> Pickup (Sender return)
-                            waypoints = [
-                                courierLoc[1] + ',' + courierLoc[0],
-                                pickupLoc[1] + ',' + pickupLoc[0]
-                            ];
-                        } else {
-                            // Phase 2 (In Transit): Rider -> Delivery Destination
-                            waypoints = [
-                                courierLoc[1] + ',' + courierLoc[0],
-                                deliveryLoc[1] + ',' + deliveryLoc[0]
-                            ];
-                        }
-                    } else {
-                        // Customer View or default: Pickup -> Delivery
-                        waypoints = [
-                            pickupLoc[1] + ',' + pickupLoc[0],
-                            deliveryLoc[1] + ',' + deliveryLoc[0]
-                        ];
-                    }
-
-                    var dirUrl = 'https://router.project-osrm.org/route/v1/driving/' + waypoints.join(';') + '?geometries=geojson';
-                    fetch(dirUrl)
-                        .then(res => res.json())
-                        .then(data => {
-                            if (data.routes && data.routes.length > 0) {
-                                var geojson = data.routes[0].geometry;
-                                routeGeometryCoordinates = geojson.coordinates.map(function(coord) {
-                                    return [coord[1], coord[0]]; // [lat, lng]
-                                });
-
-                                if (isMapboxActive) {
-                                    if (map.getSource('route')) {
-                                        map.getSource('route').setData({
-                                            'type': 'Feature',
-                                            'properties': {},
-                                            'geometry': geojson
-                                        });
-                                    } else {
-                                        map.addSource('route', {
-                                            'type': 'geojson',
-                                            'data': {
-                                                'type': 'Feature',
-                                                'properties': {},
-                                                'geometry': geojson
-                                            }
-                                        });
-                                        map.addLayer({
-                                            'id': 'route',
-                                            'type': 'line',
-                                            'source': 'route',
-                                            'layout': {
-                                                'line-join': 'round',
-                                                'line-cap': 'round'
-                                            },
-                                            'paint': {
-                                                'line-color': '$routeColor',
-                                                'line-width': 6,
-                                                'line-opacity': 0.95
-                                            }
-                                        });
-                                    }
-
-                                    var bounds = geojson.coordinates.reduce(function(bounds, coord) {
-                                        return bounds.extend(coord);
-                                    }, new mapboxgl.LngLatBounds(geojson.coordinates[0], geojson.coordinates[0]));
-                                    map.fitBounds(bounds, { padding: 50 });
-                                } else {
-                                    // Leaflet route rendering
-                                    if (routeLine) {
-                                        routeLine.setLatLngs(routeGeometryCoordinates);
-                                    } else {
-                                        routeLine = L.polyline(routeGeometryCoordinates, {
-                                            color: '$routeColor',
-                                            weight: 6,
-                                            opacity: 0.95
-                                        }).addTo(map);
-                                    }
-                                    var bounds = L.latLngBounds(routeGeometryCoordinates);
-                                    map.fitBounds(bounds, { padding: [50, 50] });
-                                }
-                            }
-                        })
-                        .catch(err => {
-                            console.error("OSRM directions fetch error:", err);
-                        });
-                }
-
-                // ------------------ LEAFLET FALLBACK IMPLEMENTATION ------------------
-                function loadLeafletFeatures() {
-                    if (typeof L === 'undefined') {
-                        console.warn("Leaflet library not ready, retrying in 50ms...");
-                        setTimeout(loadLeafletFeatures, 50);
-                        return;
-                    }
-                    if (map && leafletMap) return;
-                    try {
-                        var initialCenter = hasUserLoc ? userLoc : pickupLoc;
-                        map = L.map('map', {
-                            center: initialCenter,
-                            zoom: 14,
-                            minZoom: 3,
-                            maxZoom: 18,
-                            zoomControl: false,
-                            attributionControl: false
-                        });
-                        leafletMap = map;
-
-                        darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, maxNativeZoom: 18, subdomains: 'abcd' });
-                        streetTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, maxNativeZoom: 18, subdomains: 'abcd', attribution: '© CARTO, © OpenStreetMap' });
-                        satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
-                        satelliteLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
-                        satelliteRoads = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18 });
-
-                        var isSat = '$isSatellite' === 'true';
-                        if (isSat) {
-                            satelliteTiles.addTo(map);
-                            satelliteRoads.addTo(map); // add street, road and highway labels over satellite!
-                            satelliteLabels.addTo(map); // add boundaries & places label overlay on top of raw satellite tiles!
-                            var satBtn = document.getElementById('satelliteBtn');
-                            if (satBtn) satBtn.classList.add('active');
-                            var strBtn = document.getElementById('streetBtn');
-                            if (strBtn) strBtn.classList.remove('active');
-                        } else {
-                            if (isDarkTheme) {
-                                darkTiles.addTo(map);
-                            } else {
-                                streetTiles.addTo(map);
-                            }
-                            var strBtn = document.getElementById('streetBtn');
-                            if (strBtn) strBtn.classList.add('active');
-                            var satBtn = document.getElementById('satelliteBtn');
-                            if (satBtn) satBtn.classList.remove('active');
-                        }
-
-                        // Resilient tile fallbacks
-                        darkTiles.on('tileerror', function() {
-                            if (!window._osmDarkFallbackAdded) {
-                                window._osmDarkFallbackAdded = true;
-                                console.warn("Carto dark tile load error, attaching OpenStreetMap fallback layer");
-                                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc' }).addTo(map);
-                            }
-                        });
-                        streetTiles.on('tileerror', function() {
-                            if (!window._osmStreetFallbackAdded) {
-                                window._osmStreetFallbackAdded = true;
-                                console.warn("Carto street tile load error, attaching OpenStreetMap fallback layer");
-                                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc' }).addTo(map);
-                            }
-                        });
-                    } catch(e) {
-                        console.error("Leaflet initialization error:", e);
-                    }
-
-                    window.userZoomed = false;
-                    map.on('zoomstart', function(e) {
-                        if (e && e.originalEvent) {
-                            window.userZoomed = true;
-                        }
-                    });
-                    var origSetZoom = map.setZoom;
-                    map.setZoom = function(z, options) {
-                        if (window.userZoomed) return map;
-                        return origSetZoom.call(map, z, options);
-                    };
-                    window.programmaticSetZoom = function(z) {
-                        if (map) {
-                            origSetZoom.call(map, z);
-                        }
-                    };
-
-                    map.on('click', function(e) {
-                        if (window.AndroidMap) {
-                            window.AndroidMap.onMapClick(e.latlng.lat, e.latlng.lng);
-                        }
-                    });
-
-                    var goldCircleIcon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #FFB800; border: 2px solid #000; box-shadow: none;'></div>",
-                        iconSize: [16, 16],
-                        iconAnchor: [8, 8]
-                    });
-
-                    var darkCircleIcon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #0E0E10; border: 2px solid #FFB800; box-shadow: none;'></div>",
-                        iconSize: [16, 16],
-                        iconAnchor: [8, 8]
-                    });
-
-                    var courierIcon = L.divIcon({
-                        className: 'pulsing-courier',
-                        html: "<div style='width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid #FFB800; background-image: url(\"$courierAvatar\"); background-size: cover; box-shadow: none;'></div>",
-                        iconSize: [36, 36],
-                        iconAnchor: [18, 18]
-                    });
-
-                    if (hasNoBooking) {
-                        var targetLoc = hasUserLoc ? userLoc : pickupLoc;
-                        setUserLocation(targetLoc[0], targetLoc[1]);
-                        leafletMap.setView(targetLoc, 15);
-                    } else {
-                        // Create and bind tooltips to display beautiful text bubbles with exact address details
-                        pickupMarker = L.marker(pickupLoc, { icon: goldCircleIcon }).addTo(map);
-                        pickupMarker.bindTooltip("<b>Pickup Location</b><br>" + pickupAddress, { permanent: true, direction: 'top', className: 'map-tooltip' });
-
-                        deliveryMarker = L.marker(deliveryLoc, { icon: darkCircleIcon }).addTo(map);
-                        deliveryMarker.bindTooltip("<b>Delivery Location</b><br>" + deliveryAddress, { permanent: true, direction: 'top', className: 'map-tooltip' });
-
-                        var hasValidCoords = ${courierLatitude != null && courierLongitude != null && courierLatitude != 0.0 && courierLongitude != 0.0};
-                        if (!isRider && hasValidCoords) {
-                            var initCourierLat = ${courierLatitude ?: 0.0};
-                            var initCourierLng = ${courierLongitude ?: 0.0};
-                            courierMarker = L.marker([initCourierLat, initCourierLng], { icon: courierIcon }).addTo(map);
-                        }
-
-                        if (window.AndroidMap) {
-                            window.AndroidMap.onMarkerPlaced("Pickup", pickupLoc[0], pickupLoc[1]);
-                            window.AndroidMap.onMarkerPlaced("Delivery", deliveryLoc[0], deliveryLoc[1]);
-                        }
-
-                        fetchOSRMRoute();
-
-                        try {
-                            var routeBounds = L.latLngBounds([pickupLoc, deliveryLoc]);
-                            map.fitBounds(routeBounds, { padding: [60, 60], maxZoom: 16 });
-                        } catch(e) {}
-
-                        if (hasUserLoc) {
-                            setUserLocation(userLoc[0], userLoc[1]);
-                        }
-                    }
-
-                    setTimeout(function() {
-                        map.invalidateSize();
-                        if (hasNoBooking) {
-                            var finalCenter = hasUserLoc ? userLoc : pickupLoc;
-                            map.setView(finalCenter, 15);
-                        } else {
-                            try {
-                                var routeBounds = L.latLngBounds([pickupLoc, deliveryLoc]);
-                                map.fitBounds(routeBounds, { padding: [60, 60], maxZoom: 16 });
-                            } catch(e) {}
-                        }
-                    }, 400);
-
-                    window.addEventListener('resize', function() {
-                        if (map) map.invalidateSize();
-                    });
-                }
-
-                // ------------------ SHARED LOGIC ------------------
-                function updateMapType(isSatellite) {
-                    if (!map) return;
-                    if (isMapboxActive) {
-                        var style = isSatellite ? 'mapbox://styles/mapbox/satellite-streets-v12' : 
-                                    (isDarkTheme ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/streets-v12');
-                        map.setStyle(style);
-                    } else {
-                        if (isSatellite) {
-                            try { map.removeLayer(darkTiles); } catch(e){}
-                            try { map.removeLayer(streetTiles); } catch(e){}
-                            satelliteTiles.addTo(map);
-                            satelliteRoads.addTo(map); // add road & street labels over satellite
-                            satelliteLabels.addTo(map); // add labels layer over satellite tiles
-                        } else {
-                            try { map.removeLayer(satelliteTiles); } catch(e){}
-                            try { map.removeLayer(satelliteRoads); } catch(e){}
-                            try { map.removeLayer(satelliteLabels); } catch(e){}
-                            if (isDarkTheme) {
-                                try { map.removeLayer(streetTiles); } catch(e){}
-                                darkTiles.addTo(map);
-                            } else {
-                                try { map.removeLayer(darkTiles); } catch(e){}
-                                streetTiles.addTo(map);
-                            }
-                        }
-                    }
-
-                    if (isSatellite) {
-                        document.getElementById('satelliteBtn').classList.add('active');
-                        document.getElementById('streetBtn').classList.remove('active');
-                    } else {
-                        document.getElementById('streetBtn').classList.add('active');
-                        document.getElementById('satelliteBtn').classList.remove('active');
-                    }
-                }
-
-                function onToggleClick(isSat) {
-                    updateMapType(isSat);
-                    if (window.AndroidMap) {
-                        window.AndroidMap.onMapTypeToggled(isSat);
-                    }
-                }
-
-                function updateTraffic(showTraffic) {
-                    console.log("Traffic toggled: " + showTraffic);
-                }
-
-                // Path Coordinate Interpolator along actual OSRM routed road path
                 function getCoordinateAlongRoute(coords, fraction) {
                     if (!coords || coords.length === 0) return null;
                     if (fraction <= 0) return coords[0];
@@ -4060,9 +3678,7 @@ fun LiveMapView(
                         segmentDistances.push(d);
                         totalDistance += d;
                     }
-                    
                     if (totalDistance === 0) return coords[0];
-                    
                     var targetDistance = fraction * totalDistance;
                     var accumulatedDistance = 0;
                     for (var i = 0; i < segmentDistances.length; i++) {
@@ -4080,25 +3696,6 @@ fun LiveMapView(
                     return coords[coords.length - 1];
                 }
 
-                function distanceBetween(p1, p2) {
-                    var dy = p1[0] - p2[0];
-                    var dx = p1[1] - p2[1];
-                    return Math.sqrt(dx * dx + dy * dy);
-                }
-
-                var lastCourierCoords = null;
-                function calculateBearing(startLat, startLng, destLat, destLng) {
-                    var startLatRad = startLat * Math.PI / 180;
-                    var startLngRad = startLng * Math.PI / 180;
-                    var destLatRad = destLat * Math.PI / 180;
-                    var destLngRad = destLng * Math.PI / 180;
-                    var y = Math.sin(destLngRad - startLngRad) * Math.cos(destLatRad);
-                    var x = Math.cos(startLatRad) * Math.sin(destLatRad) -
-                            Math.sin(startLatRad) * Math.cos(destLatRad) * Math.cos(destLngRad - startLngRad);
-                    var brng = Math.atan2(y, x) * 180 / Math.PI;
-                    return (brng + 360) % 360;
-                }
-
                 function updateCourierProgress(progressVal) {
                     var lat, lng;
                     var bearing = 0;
@@ -4111,7 +3708,6 @@ fun LiveMapView(
                             bearing = calculateBearing(lat, lng, nextCoord[0], nextCoord[1]);
                         }
                     } else {
-                        // linear straight-line fallback
                         lat = pickupLoc[0] + (deliveryLoc[0] - pickupLoc[0]) * progressVal;
                         lng = pickupLoc[1] + (deliveryLoc[1] - pickupLoc[1]) * progressVal;
                         bearing = calculateBearing(pickupLoc[0], pickupLoc[1], deliveryLoc[0], deliveryLoc[1]);
@@ -4122,66 +3718,41 @@ fun LiveMapView(
                 function updateCourierLocation(lat, lng, bearing) {
                     if (isRider) return;
                     var hasRealCoords = ${courierLatitude != null && courierLongitude != null};
+                    var latVal = lat;
+                    var lngVal = lng;
                     if (hasRealCoords) {
-                        lat = ${courierLatitude ?: 6.3350};
-                        lng = ${courierLongitude ?: 5.6037};
+                        latVal = ${courierLatitude ?: 6.3350};
+                        lngVal = ${courierLongitude ?: 5.6037};
                     }
-                    if (lat === 0.0 && lng === 0.0) return;
+                    if (latVal === 0.0 && lngVal === 0.0) return;
 
                     if (courierMarker) {
-                        if (isMapboxActive) {
-                            courierMarker.setLngLat([lng, lat]);
-                            if (typeof courierMarker.setRotation === 'function' && bearing !== 0) {
-                                courierMarker.setRotation(bearing);
-                            }
-                        } else {
-                            courierMarker.setLatLng([lat, lng]);
-                            var el = courierMarker.getElement ? courierMarker.getElement() : null;
-                            if (el && bearing !== 0) {
-                                el.style.transform = (el.style.transform || '').replace(/rotate\(.*?\)/, '') + ' rotate(' + bearing + 'deg)';
-                            }
+                        courierMarker.setLatLng([latVal, lngVal]);
+                        var el = courierMarker.getElement ? courierMarker.getElement() : null;
+                        if (el && bearing !== 0) {
+                            el.style.transform = (el.style.transform || '').replace(/rotate\(.*?\)/, '') + ' rotate(' + bearing + 'deg)';
                         }
-                    var bearing = 0;
-                    if (lastCourierCoords) {
-                        bearing = calculateBearing(lastCourierCoords[0], lastCourierCoords[1], latVal, lngVal);
-                    }
-                    lastCourierCoords = [latVal, lngVal];
-                    if (courierMarker) {
-                        if (isMapboxActive) {
-                            courierMarker.setLngLat([lngVal, latVal]);
-                            if (typeof courierMarker.setRotation === 'function' && bearing !== 0) {
-                                courierMarker.setRotation(bearing);
-                            }
-                            if (map && followMode === 'courier') map.panTo([lngVal, latVal]);
-                        } else {
-                            courierMarker.setLatLng([latVal, lngVal]);
-                            var el = courierMarker.getElement ? courierMarker.getElement() : null;
-                            if (el && bearing !== 0) {
-                                el.style.transform = (el.style.transform || '').replace(/rotate\(.*?\)/, '') + ' rotate(' + bearing + 'deg)';
-                            }
-                            if (map && followMode === 'courier') map.panTo([latVal, lngVal]);
+                        if (map && followMode === 'courier') {
+                            map.panTo([latVal, lngVal]);
                         }
                         if (window.AndroidMap) {
                             window.AndroidMap.onTrackingUpdated(latVal, lngVal);
                         }
                     } else if (map && !hasNoBooking && !isRider) {
-                        if (isMapboxActive) {
-                            var courierEl = document.createElement('div');
-                            courierEl.className = 'mapbox-pulsing-courier';
-                            if ("$courierAvatar".length > 0) courierEl.style.backgroundImage = 'url("$courierAvatar")';
-                            courierMarker = new mapboxgl.Marker(courierEl).setLngLat([lngVal, latVal]).addTo(map);
-                        } else if (leafletMap) {
-                            var courierIconHtml = "<div style='width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid #FFB800; " +
-                                ("$courierAvatar".length > 0 ? "background-image: url(\"$courierAvatar\"); " : "background-color: #1A1A1A; ") +
-                                "background-size: cover; box-shadow: none;'></div>";
-                            var cIcon = L.divIcon({ className: 'pulsing-courier', html: courierIconHtml, iconSize: [36, 36], iconAnchor: [18, 18] });
-                            courierMarker = L.marker([latVal, lngVal], { icon: cIcon }).addTo(leafletMap);
-                        }
+                        var courierIconHtml = "<div style='width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid #FFB800; " +
+                            ("$courierAvatar".length > 0 ? "background-image: url(\"$courierAvatar\"); " : "background-color: #1A1A1A; ") +
+                            "background-size: cover; box-shadow: none;'></div>";
+                        var cIcon = L.divIcon({ className: 'pulsing-courier', html: courierIconHtml, iconSize: [36, 36], iconAnchor: [18, 18] });
+                        courierMarker = L.marker([latVal, lngVal], { icon: cIcon }).addTo(map);
                     }
                 }
 
+                function updateCourierCoordinates(lat, lng) {
+                    updateCourierLocation(lat, lng, 0);
+                }
+
                 window.addEventListener('DOMContentLoaded', initMapContainer);
-                setTimeout(initMapContainer, 300);
+                setTimeout(initMapContainer, 100);
             </script>
         </body>
         </html>
@@ -4190,7 +3761,7 @@ fun LiveMapView(
 
     LaunchedEffect(htmlContent) {
         isPageLoaded = false
-        webView.loadDataWithBaseURL("file:///android_asset/", htmlContent, "text/html", "UTF-8", null)
+        webView.loadDataWithBaseURL("https://esdispatch.app", htmlContent, "text/html", "UTF-8", null)
     }
 
     LaunchedEffect(isPageLoaded) {
