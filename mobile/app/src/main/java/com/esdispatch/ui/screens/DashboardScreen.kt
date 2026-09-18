@@ -123,6 +123,8 @@ import com.esdispatch.ui.components.InteractiveTourGuide
 import com.esdispatch.ui.components.tourSpotlightTarget
 import com.esdispatch.ui.components.DeliveryCard
 import com.esdispatch.ui.components.HistoryOrderCard
+import com.esdispatch.ui.components.DisputeReportBottomSheet
+import androidx.compose.material.icons.filled.ReportProblem
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 import androidx.compose.ui.graphics.Shape
@@ -1220,12 +1222,26 @@ fun DashboardScreen(
                                     .clip(CircleShape)
                                     .clickable { onNavigate("Profile") }
                             ) {
-                                Image(
-                                    painter = rememberAsyncImagePainter(if (photoUrl.isNotEmpty()) photoUrl else "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop"),
-                                    contentDescription = "Profile Pic",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
+                                if (photoUrl.isNotBlank() && !photoUrl.contains("unsplash.com")) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(photoUrl),
+                                        contentDescription = "Profile Pic",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize().background(Obsidian),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = firstName.take(1).ifBlank { "E" }.uppercase(),
+                                            color = Gold,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 18.sp
+                                        )
+                                    }
+                                }
                             }
 
                             // Customer Stats Swap (Elite Member / Sent Count)
@@ -1579,12 +1595,26 @@ fun DashboardScreen(
                                     .clip(CircleShape)
                                     .clickable { onNavigate("Profile") }
                             ) {
-                                Image(
-                                    painter = rememberAsyncImagePainter(if (photoUrl.isNotEmpty()) photoUrl else "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop"),
-                                    contentDescription = "Profile Pic",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
+                                if (photoUrl.isNotBlank() && !photoUrl.contains("unsplash.com")) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(photoUrl),
+                                        contentDescription = "Profile Pic",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize().background(Obsidian),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = firstName.take(1).ifBlank { "E" }.uppercase(),
+                                            color = Gold,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 18.sp
+                                        )
+                                    }
+                                }
                             }
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3641,6 +3671,34 @@ fun ParcelDetailBottomSheet(
                             }
                         }
                     }
+                }
+
+                // Dispute / Report Delivery Issue Trigger
+                Spacer(modifier = Modifier.height(8.dp))
+                var showDisputeSheet by remember { mutableStateOf(false) }
+
+                OutlinedButton(
+                    onClick = { showDisputeSheet = true },
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Gold),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Gold
+                    )
+                ) {
+                    Icon(Icons.Filled.ReportProblem, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Report Issue / Submit Dispute", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                if (showDisputeSheet) {
+                    val vm: DeliveryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+                    DisputeReportBottomSheet(
+                        parcel = parcel,
+                        viewModel = vm,
+                        isDark = isDark,
+                        onDismiss = { showDisputeSheet = false }
+                    )
                 }
             }
         }

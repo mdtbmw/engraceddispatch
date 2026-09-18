@@ -26,7 +26,28 @@ class DispatchApplication : Application() {
         super.onCreate()
         instance = this
         installCrashHandler()
+        createNotificationChannels()
         initializeFirebaseSafely()
+    }
+
+    private fun createNotificationChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channelId = "parcel_status_updates"
+            val channelName = "Parcel Status Updates"
+            val channelDesc = "Live delivery alerts, courier arrival, and shipment status changes"
+            val importance = android.app.NotificationManager.IMPORTANCE_HIGH
+            val channel = android.app.NotificationChannel(channelId, channelName, importance).apply {
+                description = channelDesc
+                enableLights(true)
+                lightColor = android.graphics.Color.parseColor("#FFB800")
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 250, 200, 250)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            }
+            val notificationManager = getSystemService(android.app.NotificationManager::class.java)
+            notificationManager?.createNotificationChannel(channel)
+            android.util.Log.i("DispatchApplication", "Notification channel '$channelId' registered successfully.")
+        }
     }
 
     private fun installCrashHandler() {

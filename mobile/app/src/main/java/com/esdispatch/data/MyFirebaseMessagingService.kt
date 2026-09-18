@@ -114,13 +114,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             )
 
             val smallIconRes = try {
-                R.drawable.ic_logo
+                R.drawable.ic_notification
             } catch (e: Exception) {
-                android.R.drawable.ic_dialog_info
+                R.drawable.ic_logo
             }
 
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(smallIconRes)
+                .setColor(android.graphics.Color.parseColor("#FFB800"))
                 .setContentTitle(title)
                 .setContentText(message)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)

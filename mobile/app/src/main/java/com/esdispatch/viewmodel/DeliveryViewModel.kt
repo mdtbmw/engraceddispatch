@@ -2140,7 +2140,7 @@ class DeliveryViewModel : WalletViewModel() {
                 id = "RDR-01",
                 name = "Richard Dheo",
                 phone = "+234 803 111 2222",
-                avatar = "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop",
+                avatar = "",
                 vehicleType = "Bike",
                 status = RiderStatus.ONLINE,
                 latitude = 6.3350,
@@ -2159,7 +2159,7 @@ class DeliveryViewModel : WalletViewModel() {
                 id = "RDR-02",
                 name = "Adebayo Musa",
                 phone = "+234 812 345 6789",
-                avatar = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
+                avatar = "",
                 vehicleType = "Tricycle",
                 status = RiderStatus.ONLINE,
                 latitude = 6.3982,
@@ -2178,7 +2178,7 @@ class DeliveryViewModel : WalletViewModel() {
                 id = "RDR-03",
                 name = "Chinedu Okafor",
                 phone = "+234 802 999 8888",
-                avatar = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop",
+                avatar = "",
                 vehicleType = "Van",
                 status = RiderStatus.ONLINE,
                 latitude = 6.3150,
@@ -2197,7 +2197,7 @@ class DeliveryViewModel : WalletViewModel() {
                 id = "RDR-04",
                 name = "Chioma Balogun",
                 phone = "+234 905 444 3333",
-                avatar = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop",
+                avatar = "",
                 vehicleType = "Truck",
                 status = RiderStatus.BUSY,
                 latitude = 6.3200,
@@ -2216,7 +2216,7 @@ class DeliveryViewModel : WalletViewModel() {
                 id = "RDR-05",
                 name = "Akin Ogundipe",
                 phone = "+234 803 777 8888",
-                avatar = "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&h=100&fit=crop",
+                avatar = "",
                 vehicleType = "Bike",
                 status = RiderStatus.ONLINE,
                 latitude = 6.3500,
@@ -5848,6 +5848,97 @@ class DeliveryViewModel : WalletViewModel() {
         val refundMsg = if (refundAmount > 0) "₦${String.format("%,.2f", refundAmount)} refunded to wallet$feeStr." else "Order cancelled."
         showInAppNotification("Delivery Cancelled", "Shipment #${parcelId.take(8)} has been cancelled. $refundMsg")
         onComplete?.invoke(true)
+    }
+
+    /**
+     * Reports an issue or disputes a delivery consignment.
+     * Dual-writes status: DISPUTED to deliveries/{parcelId} and creates a high-priority ticket in support_chats/{parcelId}.
+     */
+    fun reportDeliveryIssue(
+        parcelId: String,
+        issueType: String,
+        description: String,
+        onComplete: ((Boolean, String?) -> Unit)? = null
+    ) {
+        val uid = _firebaseUserId.value ?: "USER_${System.currentTimeMillis()}"
+        val senderName = _userName.value.ifBlank { "Customer" }
+        val now = System.currentTimeMillis()
+        val parcel = _parcels.value.find { it.id == parcelId } ?: _selectedParcel.value
+
+        viewModelScope.launch {
+            try {
+                val db = com.esdispatch.data.FirebaseManager.firestore
+                if (db != null) {
+                    // 1. Update delivery status to DISPUTED
+                    val deliveryUpdates = hashMapOf<String, Any>(
+                        "status" to com.esdispatch.data.ParcelStatus.DISPUTED.name,
+                        "isDisputed" to true,
+                        "disputeReason" to issueType,
+                        "disputeNotes" to description,
+                        "disputedAt" to now
+                    )
+                    db.collection("deliveries").document(parcelId).update(deliveryUpdates)
+
+                    // 2. Dual-write to support_chats for real-time admin queue
+                    val disputeTicket = hashMapOf<String, Any>(
+                        "id" to parcelId,
+                        "ticketId" to parcelId,
+                        "parcelId" to parcelId,
+                        "userId" to uid,
+                        "userName" to senderName,
+                        "lastMessage" to "DISPUTE: $issueType - $description",
+                        "lastUpdated" to now,
+                        "status" to "OPEN",
+                        "isDispute" to true,
+                        "issueType" to issueType,
+                        "courierName" to (parcel?.courierName ?: "")
+                    )
+                    db.collection("support_chats").document(parcelId)
+                        .set(disputeTicket, com.google.firebase.firestore.SetOptions.merge())
+
+                    // 3. Post initial dispute message in chat subcollection
+                    val msgId = "MSG_${now}"
+                    val msgMap = hashMapOf<String, Any>(
+                        "id" to msgId,
+                        "senderId" to uid,
+                        "senderName" to senderName,
+                        "senderRole" to "customer",
+                        "messageText" to "Dispute reported on consignment #${parcelId.take(8).uppercase()}: $issueType. Details: $description",
+                        "timestamp" to now
+                    )
+                    db.collection("support_chats").document(parcelId)
+                        .collection("messages").document(msgId).set(msgMap)
+
+                    // Mirror to delivery chat
+                    db.collection("deliveries").document(parcelId)
+                        .collection("chats").document(msgId).set(msgMap)
+                }
+
+                // 4. Update local state
+                _parcels.update { list ->
+                    list.map { if (it.id == parcelId) it.copy(status = com.esdispatch.data.ParcelStatus.DISPUTED) else it }
+                }
+                if (_selectedParcel.value?.id == parcelId) {
+                    _selectedParcel.update { it?.copy(status = com.esdispatch.data.ParcelStatus.DISPUTED) }
+                }
+
+                // 5. Notify user
+                appContext?.let { ctx ->
+                    com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                        context = ctx,
+                        title = "Dispute Registered",
+                        message = "Dispute for consignment #${parcelId.take(8).uppercase()} sent to HQ Dispatchers.",
+                        parcelId = parcelId,
+                        status = "DISPUTED"
+                    )
+                }
+                showInAppNotification("Dispute Submitted", "HQ Dispatchers have been notified in real time.")
+                onComplete?.invoke(true, null)
+            } catch (e: Exception) {
+                android.util.Log.e("DeliveryViewModel", "Failed to report dispute: ${e.message}")
+                onComplete?.invoke(false, e.message ?: "Failed to submit dispute")
+            }
+        }
     }
 
     fun refreshAllData() {

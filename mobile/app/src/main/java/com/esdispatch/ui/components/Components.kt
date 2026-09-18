@@ -1463,7 +1463,8 @@ fun SupportButton(
 
 @Composable
 fun SupportDialog(
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onReportIssue: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var expandedFaqIndex by remember { mutableStateOf<Int?>(null) }
@@ -1538,6 +1539,23 @@ fun SupportDialog(
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
+
+                if (onReportIssue != null) {
+                    OutlinedButton(
+                        onClick = {
+                            onDismiss()
+                            onReportIssue()
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Gold),
+                        border = BorderStroke(1.5.dp, Gold),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Filled.Info, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Report Issue / Submit Dispute", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
 
                 Button(
                     onClick = {

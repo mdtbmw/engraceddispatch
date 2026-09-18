@@ -216,6 +216,20 @@ export const StatusDefinitions: Record<string, StatusMeta> = {
     borderLight: "border-red-200",
     borderDark: "dark:border-red-600/40",
   },
+  DISPUTED: {
+    key: "disputed",
+    customerLabel: "Under Review",
+    adminLabel: "Disputed",
+    tone: "red",
+    isLive: true,
+    bgLight: "bg-rose-50",
+    bgDark: "dark:bg-rose-950/40",
+    textLight: "text-rose-900",
+    textDark: "dark:text-rose-300",
+    borderLight: "border-rose-300",
+    borderDark: "dark:border-rose-600/50",
+    pulseColor: "#F43F5E",
+  },
 };
 
 export function getStatusMeta(status?: string | null): StatusMeta {

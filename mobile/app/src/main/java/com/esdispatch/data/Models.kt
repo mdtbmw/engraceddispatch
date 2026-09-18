@@ -28,7 +28,7 @@ data class Parcel(
     val price: Double = 0.0,
     val courierName: String = "",
     val courierPhone: String = "",
-    val courierAvatar: String = "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop",
+    val courierAvatar: String = "",
     val progress: Float = 0.35f, // 0.0 to 1.0 for timeline progress
     val dateString: String = "Today",
     val userId: String = "",

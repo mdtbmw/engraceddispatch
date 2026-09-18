@@ -2766,12 +2766,14 @@ fun RiderReviewScreen(
                                 .size(100.dp)
                                 .border(4.dp, Gold, CircleShape)
                                 .clip(CircleShape)
+                                .background(Obsidian),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Image(
-                                painter = rememberAsyncImagePainter("https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=200&h=200&fit=crop"),
+                            Icon(
+                                imageVector = Icons.Filled.DirectionsBike,
                                 contentDescription = "Rider Avatar",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                                tint = Gold,
+                                modifier = Modifier.size(48.dp)
                             )
                         }
 
@@ -6773,13 +6775,55 @@ fun NotificationSettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "Preferences are stored securely in your Firestore document. Push triggers are active. If you wish to connect real external FCM (Firebase Cloud Messaging) push alerts, configure your google-services.json file and implement a standard FirebaseMessagingService service class.",
+                                text = "Delivery notifications keep you updated on milestones in real time. Customize your alert stages above or test your device notification setup below.",
                                 fontSize = 11.sp,
                                 color = if (isDark) TextGray else Obsidian,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.weight(1f)
                             )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    val context = LocalContext.current
+                    Button(
+                        onClick = {
+                            try {
+                                val notificationManager = context.getSystemService(android.app.NotificationManager::class.java)
+                                val channelId = "parcel_status_updates"
+
+                                val intent = android.content.Intent(context, com.esdispatch.MainActivity::class.java).apply {
+                                    flags = android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                }
+                                val pendingIntent = android.app.PendingIntent.getActivity(
+                                    context, 0, intent,
+                                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                                )
+
+                                val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
+                                    .setSmallIcon(com.esdispatch.R.drawable.ic_notification)
+                                    .setColor(android.graphics.Color.parseColor("#FFB800"))
+                                    .setContentTitle("ESDispatch Status Update")
+                                    .setContentText("Your parcel has been assigned to an express courier and is on track.")
+                                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                                    .setAutoCancel(true)
+                                    .setContentIntent(pendingIntent)
+                                    .build()
+
+                                notificationManager.notify(1001, notification)
+                                com.esdispatch.util.CustomToastBridge.show("Test notification dispatched to your status bar.", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                            } catch (e: Exception) {
+                                com.esdispatch.util.CustomToastBridge.show("Ensure notifications are enabled in device settings.", com.esdispatch.viewmodel.ToastType.WARNING)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
+                    ) {
+                        Icon(Icons.Filled.NotificationsActive, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Send Test Notification", fontWeight = FontWeight.Black, fontSize = 13.sp)
                     }
                 }
             }

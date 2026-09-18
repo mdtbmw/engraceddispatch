@@ -217,14 +217,10 @@ fun ScannerScreen(
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
-                                // Fallback static image with transparent layout
-                                Image(
-                                    painter = rememberAsyncImagePainter("https://images.unsplash.com/photo-1589409514187-c21d14bf0d13?q=80&w=800&auto=format&fit=crop"),
-                                    contentDescription = "Scan box camera",
-                                    contentScale = ContentScale.Crop,
+                                Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .alpha(0.3f)
+                                        .background(LuxuryBlack)
                                 )
                                 
                                 Column(

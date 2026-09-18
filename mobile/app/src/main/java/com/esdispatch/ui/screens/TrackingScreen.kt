@@ -103,6 +103,10 @@ import com.esdispatch.ui.components.BottomNav
 import com.esdispatch.ui.components.SupportButton
 import com.esdispatch.ui.components.SupportDialog
 import com.esdispatch.ui.components.CancelDeliverySecurityDialog
+import com.esdispatch.ui.components.CourierAvatarBadge
+import com.esdispatch.ui.components.DisputeReportBottomSheet
+import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.ReportProblem
 import com.esdispatch.ui.theme.*
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
@@ -385,6 +389,16 @@ fun ActiveTrackingScreen(
     var isLocalLoading by remember(parcel.id) { mutableStateOf(false) }
     var showChatSheet by remember { mutableStateOf(false) }
     var showCancelDialog by remember { mutableStateOf(false) }
+    var showDisputeSheet by remember { mutableStateOf(false) }
+
+    if (showDisputeSheet) {
+        DisputeReportBottomSheet(
+            parcel = parcel,
+            viewModel = viewModel,
+            isDark = isDark,
+            onDismiss = { showDisputeSheet = false }
+        )
+    }
 
     val walletBalance by viewModel.walletBalance.collectAsState()
     if (showFeedbackDialog) {
@@ -716,7 +730,10 @@ fun ActiveTrackingScreen(
             }
 
             if (showSupportDialog) {
-                SupportDialog(onDismiss = { showSupportDialog = false })
+                SupportDialog(
+                    onDismiss = { showSupportDialog = false },
+                    onReportIssue = { showDisputeSheet = true }
+                )
             }
 
             Box(
@@ -1185,19 +1202,12 @@ fun ActiveTrackingScreen(
                                                 modifier = Modifier.weight(1f)
                                             ) {
                                                 if (isCourierAssigned) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(42.dp)
-                                                            .clip(CircleShape)
-                                                            .border(1.5.dp, Gold, CircleShape)
-                                                    ) {
-                                                        Image(
-                                                            painter = rememberAsyncImagePainter(resolvedCourierAvatar),
-                                                            contentDescription = "Courier",
-                                                            contentScale = ContentScale.Crop,
-                                                            modifier = Modifier.fillMaxSize()
-                                                        )
-                                                    }
+                                                    CourierAvatarBadge(
+                                                        avatarUrl = resolvedCourierAvatar,
+                                                        name = resolvedCourierName,
+                                                        size = 42.dp,
+                                                        borderWidth = 1.5.dp
+                                                    )
                                                     Spacer(modifier = Modifier.width(10.dp))
                                                     Column {
                                                         Text(
@@ -1461,11 +1471,10 @@ fun ActiveTrackingScreen(
                                                             modifier = Modifier.fillMaxWidth(),
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
-                                                            Image(
-                                                                painter = rememberAsyncImagePainter(resolvedCourierAvatar),
-                                                                contentDescription = "Courier",
-                                                                modifier = Modifier.size(44.dp).clip(CircleShape),
-                                                                contentScale = ContentScale.Crop
+                                                            CourierAvatarBadge(
+                                                                avatarUrl = resolvedCourierAvatar,
+                                                                name = resolvedCourierName,
+                                                                size = 44.dp
                                                             )
                                                             Spacer(modifier = Modifier.width(12.dp))
                                                             Column(modifier = Modifier.weight(1f)) {
@@ -2689,19 +2698,12 @@ fun ActiveTrackingScreen(
                                                     }
                                                 } else {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(50.dp)
-                                                                .border(2.dp, Gold, CircleShape)
-                                                                .clip(CircleShape)
-                                                        ) {
-                                                            Image(
-                                                                painter = rememberAsyncImagePainter(resolvedCourierAvatar),
-                                                                contentDescription = "Courier Profile",
-                                                                contentScale = ContentScale.Crop,
-                                                                modifier = Modifier.fillMaxSize()
-                                                            )
-                                                        }
+                                                        CourierAvatarBadge(
+                                                            avatarUrl = resolvedCourierAvatar,
+                                                            name = resolvedCourierName,
+                                                            size = 50.dp,
+                                                            borderWidth = 2.dp
+                                                        )
                                                         Spacer(modifier = Modifier.width(12.dp))
                                                         Column {
                                                             Text(
@@ -2947,7 +2949,8 @@ class LeafletJavascriptInterface(
     private val onMapClickCallback: (Double, Double) -> Unit,
     private val onMarkerPlacedCallback: (String, Double, Double) -> Unit,
     private val onTrackingUpdatedCallback: (Double, Double) -> Unit,
-    private val onMapTypeToggledCallback: (Boolean) -> Unit
+    private val onMapTypeToggledCallback: (Boolean) -> Unit,
+    private val onUserInteractedCallback: () -> Unit = {}
 ) {
     @android.webkit.JavascriptInterface
     fun onMapClick(lat: Double, lng: Double) {
@@ -2974,6 +2977,13 @@ class LeafletJavascriptInterface(
     fun onMapTypeToggled(isSatellite: Boolean) {
         (context as? android.app.Activity)?.runOnUiThread {
             onMapTypeToggledCallback(isSatellite)
+        }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onUserInteracted() {
+        (context as? android.app.Activity)?.runOnUiThread {
+            onUserInteractedCallback()
         }
     }
 }
@@ -3086,14 +3096,8 @@ fun LiveMapView(
         }
     }
     val isDarkTheme = MaterialTheme.colorScheme.background == BackgroundDark
-    val tileUrl = if (isDarkTheme) {
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
-    } else {
-        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-    }
-    val defaultMapLabel = if (isDarkTheme) "DARK" else "STREET"
-    val mapboxToken = BuildConfig.MAPBOX_ACCESS_TOKEN
     var isPageLoaded by remember { mutableStateOf(false) }
+    var userHasPanned by remember { mutableStateOf(false) }
 
     val leafletCss = remember(context) {
         try {
@@ -3154,7 +3158,7 @@ fun LiveMapView(
 
             webChromeClient = object : android.webkit.WebChromeClient() {
                 override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
-                    android.util.Log.d("MapWebViewConsole", "[${consoleMessage?.messageLevel()}] ${consoleMessage?.message()} (${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})")
+                    android.util.Log.d("MapWebViewConsole", "[${consoleMessage?.messageLevel()}] ${consoleMessage?.message()}")
                     return true
                 }
             }
@@ -3169,14 +3173,13 @@ fun LiveMapView(
                             }
                         }
                     },
-                    onMarkerPlacedCallback = { label, lat, lng ->
-                        android.util.Log.d("TrackingScreen", "Marker placed: $label at $lat, $lng")
+                    onMarkerPlacedCallback = { _, _, _ -> },
+                    onTrackingUpdatedCallback = { _, _ -> },
+                    onMapTypeToggledCallback = { isSat ->
+                        onMapTypeToggled(isSat)
                     },
-                    onTrackingUpdatedCallback = { lat, lng ->
-                        // Leaflet reported coordinates update
-                    },
-                    onMapTypeToggledCallback = { isSatellite ->
-                        onMapTypeToggled(isSatellite)
+                    onUserInteractedCallback = {
+                        userHasPanned = true
                     }
                 ),
                 "AndroidMap"
@@ -3184,20 +3187,8 @@ fun LiveMapView(
         }
     }
 
-    val safePickupLat = pickupCoords?.first ?: 6.3350
-    val safePickupLng = pickupCoords?.second ?: 5.6037
-    val safeDeliveryLat = deliveryCoords?.first ?: 6.3450
-    val safeDeliveryLng = deliveryCoords?.second ?: 5.6250
-    val safeUserLat = userCoords?.first ?: 6.3350
-    val safeUserLng = userCoords?.second ?: 5.6037
-    val safePickupAddr = pickupAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", " ").replace("\r", " ").trim()
-    val safeDeliveryAddr = deliveryAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", " ").replace("\r", " ").trim()
-
-    val htmlContent = remember(
-        pickupAddress, deliveryAddress, pickupCoords, deliveryCoords, userCoords,
-        courierAvatar, routeColor, userAvatar, hasNoBooking, isRider, parcelStatus,
-        leafletCss, leafletJs
-    ) {
+    // Load static shell ONLY ONCE
+    val htmlContent = remember(leafletCss, leafletJs) {
         """
         <!DOCTYPE html>
         <html>
@@ -3234,12 +3225,77 @@ fun LiveMapView(
                 }
                 @keyframes icon-pulse {
                     0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.7); }
-                    70% { transform: scale(1.03); box-shadow: 0 0 0 14px rgba(255, 184, 0, 0); }
+                    70% { transform: scale(1.04); box-shadow: 0 0 0 14px rgba(255, 184, 0, 0); }
                     100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0); }
                 }
                 .pulsing-courier {
-                    animation: icon-pulse 2s infinite ease-in-out;
+                    animation: icon-pulse 1.8s infinite ease-in-out;
                     border-radius: 50%;
+                }
+                @keyframes beacon-expand {
+                    0% { transform: scale(0.4); opacity: 0.9; }
+                    50% { transform: scale(1.6); opacity: 0.4; }
+                    100% { transform: scale(2.4); opacity: 0; }
+                }
+                .arrival-beacon-wrap {
+                    position: relative;
+                    width: 60px;
+                    height: 60px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    pointer-events: none;
+                }
+                .arrival-beacon-ring {
+                    position: absolute;
+                    width: 60px;
+                    height: 60px;
+                    border-radius: 50%;
+                    background: rgba(255, 184, 0, 0.35);
+                    border: 2px solid #FFB800;
+                    animation: beacon-expand 1.6s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
+                }
+                .arrival-beacon-core {
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    background: #FFB800;
+                    box-shadow: 0 0 8px #FFB800;
+                }
+                .clean-map-badge {
+                    background: transparent !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    padding: 0 !important;
+                }
+                .clean-map-badge:before {
+                    display: none !important;
+                }
+                .map-badge-pickup {
+                    background: #121214;
+                    color: #FFB800;
+                    border: 1.5px solid #FFB800;
+                    font-size: 10px;
+                    font-weight: 900;
+                    letter-spacing: 0.6px;
+                    padding: 4px 8px;
+                    border-radius: 12px;
+                    text-transform: uppercase;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+                    white-space: nowrap;
+                }
+                .map-badge-delivery {
+                    background: #FFB800;
+                    color: #121214;
+                    border: 1.5px solid #121214;
+                    font-size: 10px;
+                    font-weight: 900;
+                    letter-spacing: 0.6px;
+                    padding: 4px 8px;
+                    border-radius: 12px;
+                    text-transform: uppercase;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+                    white-space: nowrap;
                 }
                 .map-controls {
                     position: absolute;
@@ -3269,23 +3325,6 @@ fun LiveMapView(
                     background: #FFB800;
                     color: #121212;
                     font-weight: 900;
-                }
-                .map-tooltip {
-                    background: rgba(18, 18, 18, 0.95) !important;
-                    border: 1.5px solid #FFB800 !important;
-                    color: #FFFFFF !important;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-                    font-size: 11px !important;
-                    font-weight: 600 !important;
-                    border-radius: 8px !important;
-                    padding: 6px 10px !important;
-                    box-shadow: none !important;
-                    white-space: normal !important;
-                    max-width: 200px !important;
-                    text-align: center !important;
-                }
-                .leaflet-tooltip-top:before, .map-tooltip:before {
-                    border-top-color: #FFB800 !important;
                 }
                 .user-pointer-container {
                     position: relative;
@@ -3356,71 +3395,65 @@ fun LiveMapView(
         <body>
             <div id="map"></div>
             <div class="map-controls">
-                <button class="control-btn active" id="streetBtn" onclick="onToggleClick(false)">$defaultMapLabel</button>
+                <button class="control-btn active" id="streetBtn" onclick="onToggleClick(false)">STREET</button>
                 <button class="control-btn" id="satelliteBtn" onclick="onToggleClick(true)">SATELLITE</button>
             </div>
             <script>
-                var pickupLoc = [$safePickupLat, $safePickupLng];
-                var deliveryLoc = [$safeDeliveryLat, $safeDeliveryLng];
-                var pickupAddress = "$safePickupAddr";
-                var deliveryAddress = "$safeDeliveryAddr";
-                var isDarkTheme = $isDarkTheme;
-                var hasNoBooking = $hasNoBooking;
-                var userAvatar = "$userAvatar";
-                var hasUserLoc = ${userCoords != null};
-                var userLoc = [$safeUserLat, $safeUserLng];
+                var pickupLoc = [6.3350, 5.6037];
+                var deliveryLoc = [6.3450, 5.6250];
+                var userLoc = null;
+                var isDarkTheme = true;
+                var isSatelliteMode = false;
+                var followMode = 'courier';
+                var userInteracted = false;
+                var hasBooking = true;
+                var isRiderMode = false;
 
                 var map = null;
-                var leafletMap = null;
-                var routeLine = null;
+                var passedRouteLine = null;
+                var activeRouteLine = null;
                 var courierMarker = null;
                 var pickupMarker = null;
                 var deliveryMarker = null;
                 var liveUserMarker = null;
-                var followMode = ${if (followUser) "'user'" else "'courier'"};
-                var userFollowZoom = 15.0;
+                var arrivalBeaconCircle = null;
                 var routeGeometryCoordinates = [];
 
                 var googleStreetTiles = null;
                 var darkStreetTiles = null;
                 var satelliteTiles = null;
                 var osmTiles = null;
+                var currentProgress = 0.0;
 
                 function initMapContainer() {
                     var container = document.getElementById('map');
                     if (!container || map) return;
 
-                    var initialCenter = hasUserLoc ? userLoc : pickupLoc;
                     try {
                         map = L.map('map', {
-                            center: initialCenter,
+                            center: [6.3350, 5.6037],
                             zoom: 14,
                             minZoom: 3,
                             maxZoom: 20,
                             zoomControl: false,
                             attributionControl: false
                         });
-                        leafletMap = map;
 
-                        // 1. Google Maps Street Layer (Fast CDN, 40ms)
                         googleStreetTiles = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
                             maxZoom: 20,
                             subdomains: ['0', '1', '2', '3']
                         });
 
-                        // 2. High-Contrast Luxury Dark Street Layer (OSM with dark inversion)
                         darkStreetTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                             maxZoom: 19,
                             className: 'dark-tiles'
                         });
 
-                        // 3. Google Maps Hybrid Satellite (High-res satellite photo + street & place labels)
                         satelliteTiles = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
                             maxZoom: 20,
                             subdomains: ['0', '1', '2', '3']
                         });
 
-                        // 4. OpenStreetMap Standard Layer (resilient backup)
                         osmTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                             maxZoom: 19
                         });
@@ -3428,225 +3461,46 @@ fun LiveMapView(
                         darkStreetTiles.on('tileerror', function() { googleStreetTiles.addTo(map); });
                         googleStreetTiles.on('tileerror', function() { osmTiles.addTo(map); });
 
-                        var isSat = '$isSatellite' === 'true';
-                        if (isSat) {
+                        if (isSatelliteMode) {
                             satelliteTiles.addTo(map);
-                            var satBtn = document.getElementById('satelliteBtn');
-                            if (satBtn) satBtn.classList.add('active');
-                            var strBtn = document.getElementById('streetBtn');
-                            if (strBtn) strBtn.classList.remove('active');
-                        } else {
-                            if (isDarkTheme) {
-                                darkStreetTiles.addTo(map);
-                            } else {
-                                googleStreetTiles.addTo(map);
-                            }
-                            var strBtn = document.getElementById('streetBtn');
-                            if (strBtn) strBtn.classList.add('active');
-                            var satBtn = document.getElementById('satelliteBtn');
-                            if (satBtn) satBtn.classList.remove('active');
-                        }
-
-                        // Marker Icons
-                        var goldCircleIcon = L.divIcon({
-                            className: 'custom-div-icon',
-                            html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #FFB800; border: 2px solid #000; box-shadow: none;'></div>",
-                            iconSize: [16, 16],
-                            iconAnchor: [8, 8]
-                        });
-
-                        var darkCircleIcon = L.divIcon({
-                            className: 'custom-div-icon',
-                            html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #0E0E10; border: 2px solid #FFB800; box-shadow: none;'></div>",
-                            iconSize: [16, 16],
-                            iconAnchor: [8, 8]
-                        });
-
-                        var courierIcon = L.divIcon({
-                            className: 'pulsing-courier',
-                            html: "<div style='width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid #FFB800; " +
-                                ("$courierAvatar".length > 0 ? "background-image: url(\"$courierAvatar\"); " : "background-color: #1A1A1A; ") +
-                                "background-size: cover; box-shadow: none;'></div>",
-                            iconSize: [36, 36],
-                            iconAnchor: [18, 18]
-                        });
-
-                        if (hasNoBooking) {
-                            var targetLoc = hasUserLoc ? userLoc : pickupLoc;
-                            setUserLocation(targetLoc[0], targetLoc[1]);
-                            map.setView(targetLoc, 15);
-                        } else {
-                            pickupMarker = L.marker(pickupLoc, { icon: goldCircleIcon }).addTo(map);
-                            pickupMarker.bindTooltip("<b>Pickup Location</b><br>" + pickupAddress, { permanent: true, direction: 'top', className: 'map-tooltip' });
-
-                            deliveryMarker = L.marker(deliveryLoc, { icon: darkCircleIcon }).addTo(map);
-                            deliveryMarker.bindTooltip("<b>Delivery Location</b><br>" + deliveryAddress, { permanent: true, direction: 'top', className: 'map-tooltip' });
-
-                            var hasValidCoords = ${courierLatitude != null && courierLongitude != null && courierLatitude != 0.0 && courierLongitude != 0.0};
-                            if (!isRider && hasValidCoords) {
-                                var initCourierLat = ${courierLatitude ?: 0.0};
-                                var initCourierLng = ${courierLongitude ?: 0.0};
-                                courierMarker = L.marker([initCourierLat, initCourierLng], { icon: courierIcon }).addTo(map);
-                            }
-
-                            if (window.AndroidMap) {
-                                window.AndroidMap.onMarkerPlaced("Pickup", pickupLoc[0], pickupLoc[1]);
-                                window.AndroidMap.onMarkerPlaced("Delivery", deliveryLoc[0], deliveryLoc[1]);
-                            }
-
-                            fetchOSRMRoute();
-
-                            try {
-                                var routeBounds = L.latLngBounds([pickupLoc, deliveryLoc]);
-                                map.fitBounds(routeBounds, { padding: [60, 60], maxZoom: 16 });
-                            } catch(e) {}
-
-                            if (hasUserLoc) {
-                                setUserLocation(userLoc[0], userLoc[1]);
-                            }
-                        }
-
-                        map.on('click', function(e) {
-                            if (window.AndroidMap) {
-                                window.AndroidMap.onMapClick(e.latlng.lat, e.latlng.lng);
-                            }
-                        });
-
-                        setTimeout(function() {
-                            if (map) map.invalidateSize();
-                        }, 250);
-
-                        window.addEventListener('resize', function() {
-                            if (map) map.invalidateSize();
-                        });
-                    } catch(e) {
-                        console.error("Map initialization exception:", e);
-                    }
-                }
-
-                function fetchOSRMRoute() {
-                    var url = 'https://router.project-osrm.org/route/v1/driving/' + 
-                        pickupLoc[1] + ',' + pickupLoc[0] + ';' + 
-                        deliveryLoc[1] + ',' + deliveryLoc[0] + 
-                        '?overview=full&geometries=geojson';
-                    fetch(url)
-                        .then(function(res) { return res.json(); })
-                        .then(function(data) {
-                            if (data && data.routes && data.routes.length > 0) {
-                                var coords = data.routes[0].geometry.coordinates;
-                                routeGeometryCoordinates = coords.map(function(c) { return [c[1], c[0]]; });
-                                if (routeLine) {
-                                    routeLine.setLatLngs(routeGeometryCoordinates);
-                                } else {
-                                    routeLine = L.polyline(routeGeometryCoordinates, {
-                                        color: '$routeColor',
-                                        weight: 6,
-                                        opacity: 0.95
-                                    }).addTo(map);
-                                }
-                                try {
-                                    var bounds = L.latLngBounds(routeGeometryCoordinates);
-                                    map.fitBounds(bounds, { padding: [50, 50] });
-                                } catch(e) {}
-                            }
-                        })
-                        .catch(function(err) {
-                            console.error("OSRM directions error:", err);
-                        });
-                }
-
-                function updateMapType(isSatellite) {
-                    if (!map) return;
-                    try { map.removeLayer(satelliteTiles); } catch(e){}
-                    try { map.removeLayer(darkStreetTiles); } catch(e){}
-                    try { map.removeLayer(googleStreetTiles); } catch(e){}
-                    try { map.removeLayer(osmTiles); } catch(e){}
-
-                    if (isSatellite) {
-                        satelliteTiles.addTo(map);
-                        var satBtn = document.getElementById('satelliteBtn');
-                        if (satBtn) satBtn.classList.add('active');
-                        var strBtn = document.getElementById('streetBtn');
-                        if (strBtn) strBtn.classList.remove('active');
-                    } else {
-                        if (isDarkTheme) {
+                        } else if (isDarkTheme) {
                             darkStreetTiles.addTo(map);
                         } else {
                             googleStreetTiles.addTo(map);
                         }
-                        var strBtn = document.getElementById('streetBtn');
-                        if (strBtn) strBtn.classList.add('active');
-                        var satBtn = document.getElementById('satelliteBtn');
-                        if (satBtn) satBtn.classList.remove('active');
+
+                        map.on('movestart dragstart zoomstart', function(e) {
+                            if (e && e.originalEvent) {
+                                userInteracted = true;
+                                if (window.AndroidMap && window.AndroidMap.onUserInteracted) {
+                                    window.AndroidMap.onUserInteracted();
+                                }
+                            }
+                        });
+
+                        map.on('click', function(e) {
+                            if (window.AndroidMap && window.AndroidMap.onMapClick) {
+                                window.AndroidMap.onMapClick(e.latlng.lat, e.latlng.lng);
+                            }
+                        });
+
+                        setTimeout(function() { if (map) map.invalidateSize(); }, 250);
+                        window.addEventListener('resize', function() { if (map) map.invalidateSize(); });
+                    } catch(e) {
+                        console.error("Map init error:", e);
                     }
                 }
 
-                function onToggleClick(isSat) {
-                    updateMapType(isSat);
-                    if (window.AndroidMap) {
-                        window.AndroidMap.onMapTypeToggled(isSat);
-                    }
+                function distanceBetweenCoords(lat1, lon1, lat2, lon2) {
+                    var R = 6371; // km
+                    var dLat = (lat2 - lat1) * Math.PI / 180;
+                    var dLon = (lon2 - lon1) * Math.PI / 180;
+                    var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                            Math.sin(dLon/2) * Math.sin(dLon/2);
+                    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                    return R * c;
                 }
-
-                function updateTraffic(showTraffic) {}
-
-                function setPickupLocation(lat, lng, addr) {
-                    pickupLoc = [lat, lng];
-                    if (addr) pickupAddress = addr;
-                    if (pickupMarker) {
-                        pickupMarker.setLatLng([lat, lng]);
-                    }
-                }
-
-                function setDeliveryLocation(lat, lng, addr) {
-                    deliveryLoc = [lat, lng];
-                    if (addr) deliveryAddress = addr;
-                    if (deliveryMarker) {
-                        deliveryMarker.setLatLng([lat, lng]);
-                    }
-                }
-
-                function recenterToUser() {
-                    if (!userLoc || !map) return;
-                    map.panTo([userLoc[0], userLoc[1]], { animate: true, duration: 0.9 });
-                }
-
-                function setFollowMode(mode) {
-                    followMode = mode;
-                    if (mode === 'user') {
-                        recenterToUser();
-                    }
-                }
-
-                function setUserLocation(lat, lng) {
-                    userLoc = [lat, lng];
-                    hasUserLoc = true;
-                    if (!map) return;
-                    try {
-                        if (liveUserMarker) {
-                            liveUserMarker.setLatLng([lat, lng]);
-                        } else {
-                            var userIcon = L.divIcon({
-                                className: 'user-pointer-container',
-                                html: '<div class="user-pointer-pulse"></div><div class="user-pointer-pin"><div class="user-pointer-avatar" style="background-image: url(\'${userAvatar}\');"></div></div><div class="user-pointer-dot"></div>',
-                                iconSize: [40, 40],
-                                iconAnchor: [20, 40]
-                            });
-                            liveUserMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
-                        }
-                        if (followMode === 'user') {
-                            map.panTo([lat, lng], { animate: true, duration: 0.9 });
-                        }
-                    } catch(err) {
-                        console.log("setUserLocation error:", err);
-                    }
-                }
-
-                window.programmaticSetZoom = function(z) {
-                    if (map) {
-                        map.setZoom(z);
-                    }
-                };
 
                 function distanceBetween(p1, p2) {
                     var dy = p1[0] - p2[0];
@@ -3696,6 +3550,180 @@ fun LiveMapView(
                     return coords[coords.length - 1];
                 }
 
+                function setPickupLocation(lat, lng, addr) {
+                    if (!lat || !lng) return;
+                    pickupLoc = [lat, lng];
+                    if (!map) return;
+                    var goldCircleIcon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #FFB800; border: 2.5px solid #000;'></div>",
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+                    if (pickupMarker) {
+                        pickupMarker.setLatLng(pickupLoc);
+                    } else {
+                        pickupMarker = L.marker(pickupLoc, { icon: goldCircleIcon }).addTo(map);
+                        pickupMarker.bindTooltip("<div class='map-badge-pickup'>PICKUP</div>", {
+                            permanent: true,
+                            direction: 'top',
+                            className: 'clean-map-badge',
+                            offset: [0, -10]
+                        });
+                    }
+                    fetchOSRMRoute();
+                }
+
+                function setDeliveryLocation(lat, lng, addr) {
+                    if (!lat || !lng) return;
+                    deliveryLoc = [lat, lng];
+                    if (!map) return;
+                    var darkCircleIcon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #0E0E10; border: 2.5px solid #FFB800;'></div>",
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+                    if (deliveryMarker) {
+                        deliveryMarker.setLatLng(deliveryLoc);
+                    } else {
+                        deliveryMarker = L.marker(deliveryLoc, { icon: darkCircleIcon }).addTo(map);
+                        deliveryMarker.bindTooltip("<div class='map-badge-delivery'>DELIVERY</div>", {
+                            permanent: true,
+                            direction: 'top',
+                            className: 'clean-map-badge',
+                            offset: [0, -10]
+                        });
+                    }
+                    fetchOSRMRoute();
+                }
+
+                function setArrivalBeacon(active) {
+                    if (!map || !deliveryLoc) return;
+                    if (active) {
+                        if (!arrivalBeaconCircle) {
+                            var beaconIcon = L.divIcon({
+                                className: 'arrival-beacon-wrap',
+                                html: "<div class='arrival-beacon-ring'></div><div class='arrival-beacon-core'></div>",
+                                iconSize: [60, 60],
+                                iconAnchor: [30, 30]
+                            });
+                            arrivalBeaconCircle = L.marker(deliveryLoc, { icon: beaconIcon, zIndexOffset: -100 }).addTo(map);
+                        }
+                    } else {
+                        if (arrivalBeaconCircle) {
+                            try { map.removeLayer(arrivalBeaconCircle); } catch(e){}
+                            arrivalBeaconCircle = null;
+                        }
+                    }
+                }
+
+                function fetchOSRMRoute() {
+                    if (!pickupLoc || !deliveryLoc || !map) return;
+                    var url = 'https://router.project-osrm.org/route/v1/driving/' + 
+                        pickupLoc[1] + ',' + pickupLoc[0] + ';' + 
+                        deliveryLoc[1] + ',' + deliveryLoc[0] + 
+                        '?overview=full&geometries=geojson';
+                    fetch(url)
+                        .then(function(res) { return res.json(); })
+                        .then(function(data) {
+                            if (data && data.routes && data.routes.length > 0) {
+                                var coords = data.routes[0].geometry.coordinates;
+                                routeGeometryCoordinates = coords.map(function(c) { return [c[1], c[0]]; });
+                                
+                                if (!passedRouteLine) {
+                                    passedRouteLine = L.polyline([], {
+                                        color: '#71717A',
+                                        weight: 4.5,
+                                        opacity: 0.8,
+                                        lineCap: 'round',
+                                        lineJoin: 'round'
+                                    }).addTo(map);
+                                }
+                                
+                                if (!activeRouteLine) {
+                                    activeRouteLine = L.polyline(routeGeometryCoordinates, {
+                                        color: '#FFB800',
+                                        weight: 5.5,
+                                        opacity: 1.0,
+                                        lineCap: 'round',
+                                        lineJoin: 'round'
+                                    }).addTo(map);
+                                } else {
+                                    activeRouteLine.setLatLngs(routeGeometryCoordinates);
+                                }
+
+                                sliceRouteAtProgress(currentProgress);
+
+                                if (!userInteracted) {
+                                    try {
+                                        var bounds = L.latLngBounds(routeGeometryCoordinates);
+                                        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                                    } catch(e) {}
+                                }
+                            }
+                        })
+                        .catch(function(err) {
+                            console.error("OSRM directions error:", err);
+                        });
+                }
+
+                function sliceRouteAtProgress(prog) {
+                    currentProgress = prog;
+                    if (!routeGeometryCoordinates || routeGeometryCoordinates.length === 0) return;
+                    var totalPoints = routeGeometryCoordinates.length;
+                    var targetIdx = Math.min(totalPoints - 1, Math.max(0, Math.floor(prog * (totalPoints - 1))));
+                    var curCoord = getCoordinateAlongRoute(routeGeometryCoordinates, prog);
+
+                    var passed = routeGeometryCoordinates.slice(0, targetIdx + 1);
+                    if (curCoord) passed.push(curCoord);
+
+                    var active = [];
+                    if (curCoord) active.push(curCoord);
+                    active = active.concat(routeGeometryCoordinates.slice(targetIdx + 1));
+
+                    if (passedRouteLine) passedRouteLine.setLatLngs(passed);
+                    if (activeRouteLine) activeRouteLine.setLatLngs(active);
+                }
+
+                function updateCourierLocation(lat, lng, bearing) {
+                    if (isRiderMode) return;
+                    if (!lat || !lng || (lat === 0.0 && lng === 0.0)) return;
+                    if (!map) return;
+
+                    var courierIcon = L.divIcon({
+                        className: 'pulsing-courier',
+                        html: "<div style='width: 38px; height: 38px; border-radius: 50%; border: 2.5px solid #FFB800; background-color: #0E0E10; display: flex; align-items: center; justify-content: center;'>" +
+                            "<svg width='20' height='20' viewBox='0 0 24 24' fill='%23FFB800'><path d='M15.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM5 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm14-8.5c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zM10.8 10.5l2.4-2.4 1.8 1.8c1.1 1.1 2.6 1.8 4.2 1.8v-2c-1.1 0-2.2-.5-3-1.3l-1.9-1.9c-.4-.4-.9-.7-1.5-.7-.6 0-1.1.2-1.5.6L7.5 9.8 4.2 8.7 3.5 10.6l4.5 1.5 2.8-1.6z'/></svg>" +
+                            "</div>",
+                        iconSize: [38, 38],
+                        iconAnchor: [19, 19]
+                    });
+
+                    if (courierMarker) {
+                        courierMarker.setLatLng([lat, lng]);
+                        var el = courierMarker.getElement ? courierMarker.getElement() : null;
+                        if (el && bearing !== 0) {
+                            el.style.transform = (el.style.transform || '').replace(/rotate\(.*?\)/, '') + ' rotate(' + bearing + 'deg)';
+                        }
+                    } else {
+                        courierMarker = L.marker([lat, lng], { icon: courierIcon }).addTo(map);
+                    }
+
+                    if (deliveryLoc) {
+                        var distKm = distanceBetweenCoords(lat, lng, deliveryLoc[0], deliveryLoc[1]);
+                        setArrivalBeacon(distKm <= 0.05);
+                    }
+
+                    if (!userInteracted && followMode === 'courier') {
+                        map.panTo([lat, lng], { animate: true, duration: 0.8 });
+                    }
+
+                    if (window.AndroidMap && window.AndroidMap.onTrackingUpdated) {
+                        window.AndroidMap.onTrackingUpdated(lat, lng);
+                    }
+                }
+
                 function updateCourierProgress(progressVal) {
                     var lat, lng;
                     var bearing = 0;
@@ -3712,47 +3740,87 @@ fun LiveMapView(
                         lng = pickupLoc[1] + (deliveryLoc[1] - pickupLoc[1]) * progressVal;
                         bearing = calculateBearing(pickupLoc[0], pickupLoc[1], deliveryLoc[0], deliveryLoc[1]);
                     }
+                    sliceRouteAtProgress(progressVal);
                     updateCourierLocation(lat, lng, bearing);
-                }
-
-                function updateCourierLocation(lat, lng, bearing) {
-                    if (isRider) return;
-                    var hasRealCoords = ${courierLatitude != null && courierLongitude != null};
-                    var latVal = lat;
-                    var lngVal = lng;
-                    if (hasRealCoords) {
-                        latVal = ${courierLatitude ?: 6.3350};
-                        lngVal = ${courierLongitude ?: 5.6037};
-                    }
-                    if (latVal === 0.0 && lngVal === 0.0) return;
-
-                    if (courierMarker) {
-                        courierMarker.setLatLng([latVal, lngVal]);
-                        var el = courierMarker.getElement ? courierMarker.getElement() : null;
-                        if (el && bearing !== 0) {
-                            el.style.transform = (el.style.transform || '').replace(/rotate\(.*?\)/, '') + ' rotate(' + bearing + 'deg)';
-                        }
-                        if (map && followMode === 'courier') {
-                            map.panTo([latVal, lngVal]);
-                        }
-                        if (window.AndroidMap) {
-                            window.AndroidMap.onTrackingUpdated(latVal, lngVal);
-                        }
-                    } else if (map && !hasNoBooking && !isRider) {
-                        var courierIconHtml = "<div style='width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid #FFB800; " +
-                            ("$courierAvatar".length > 0 ? "background-image: url(\"$courierAvatar\"); " : "background-color: #1A1A1A; ") +
-                            "background-size: cover; box-shadow: none;'></div>";
-                        var cIcon = L.divIcon({ className: 'pulsing-courier', html: courierIconHtml, iconSize: [36, 36], iconAnchor: [18, 18] });
-                        courierMarker = L.marker([latVal, lngVal], { icon: cIcon }).addTo(map);
-                    }
                 }
 
                 function updateCourierCoordinates(lat, lng) {
                     updateCourierLocation(lat, lng, 0);
                 }
 
+                function setUserLocation(lat, lng) {
+                    userLoc = [lat, lng];
+                    if (!map) return;
+                    try {
+                        if (liveUserMarker) {
+                            liveUserMarker.setLatLng([lat, lng]);
+                        } else {
+                            var userIcon = L.divIcon({
+                                className: 'user-pointer-container',
+                                html: '<div class="user-pointer-pulse"></div><div class="user-pointer-pin"><div class="user-pointer-avatar"></div></div><div class="user-pointer-dot"></div>',
+                                iconSize: [40, 40],
+                                iconAnchor: [20, 40]
+                            });
+                            liveUserMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
+                        }
+                        if (!userInteracted && followMode === 'user') {
+                            map.panTo([lat, lng], { animate: true, duration: 0.8 });
+                        }
+                    } catch(err) {}
+                }
+
+                function updateMapType(isSat) {
+                    isSatelliteMode = isSat;
+                    if (!map) return;
+                    try { map.removeLayer(satelliteTiles); } catch(e){}
+                    try { map.removeLayer(darkStreetTiles); } catch(e){}
+                    try { map.removeLayer(googleStreetTiles); } catch(e){}
+                    try { map.removeLayer(osmTiles); } catch(e){}
+
+                    if (isSat) {
+                        satelliteTiles.addTo(map);
+                        var satBtn = document.getElementById('satelliteBtn');
+                        if (satBtn) satBtn.classList.add('active');
+                        var strBtn = document.getElementById('streetBtn');
+                        if (strBtn) strBtn.classList.remove('active');
+                    } else {
+                        if (isDarkTheme) {
+                            darkStreetTiles.addTo(map);
+                        } else {
+                            googleStreetTiles.addTo(map);
+                        }
+                        var strBtn = document.getElementById('streetBtn');
+                        if (strBtn) strBtn.classList.add('active');
+                        var satBtn = document.getElementById('satelliteBtn');
+                        if (satBtn) satBtn.classList.remove('active');
+                    }
+                }
+
+                function onToggleClick(isSat) {
+                    updateMapType(isSat);
+                    if (window.AndroidMap) {
+                        window.AndroidMap.onMapTypeToggled(isSat);
+                    }
+                }
+
+                function recenterMap() {
+                    userInteracted = false;
+                    if (!map) return;
+                    if (courierMarker && hasBooking) {
+                        map.panTo(courierMarker.getLatLng(), { animate: true, duration: 0.8 });
+                    } else if (routeGeometryCoordinates && routeGeometryCoordinates.length > 0) {
+                        var bounds = L.latLngBounds(routeGeometryCoordinates);
+                        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                    } else if (liveUserMarker) {
+                        map.panTo(liveUserMarker.getLatLng(), { animate: true, duration: 0.8 });
+                    } else if (pickupLoc && deliveryLoc) {
+                        var bounds = L.latLngBounds([pickupLoc, deliveryLoc]);
+                        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+                    }
+                }
+
                 window.addEventListener('DOMContentLoaded', initMapContainer);
-                setTimeout(initMapContainer, 100);
+                setTimeout(initMapContainer, 80);
             </script>
         </body>
         </html>
@@ -3766,15 +3834,20 @@ fun LiveMapView(
 
     LaunchedEffect(isPageLoaded) {
         if (isPageLoaded) {
-            val safePickup = pickupCoords ?: Pair(0.0, 0.0)
-            val safeDelivery = deliveryCoords ?: Pair(0.0, 0.0)
+            val safePickup = pickupCoords ?: Pair(6.3350, 5.6037)
+            val safeDelivery = deliveryCoords ?: Pair(6.3450, 5.6250)
             val safePickupAddr = pickupAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
             val safeDeliveryAddr = deliveryAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
             webView.evaluateJavascript("setPickupLocation(${safePickup.first}, ${safePickup.second}, \"$safePickupAddr\")", null)
             webView.evaluateJavascript("setDeliveryLocation(${safeDelivery.first}, ${safeDelivery.second}, \"$safeDeliveryAddr\")", null)
+            webView.evaluateJavascript("updateMapType($isSatellite)", null)
             if (userCoords != null) {
-                webView.evaluateJavascript("setUserLocation(${userCoords!!.first}, ${userCoords!!.second})", null)
+                webView.evaluateJavascript("setUserLocation(${userCoords.first}, ${userCoords.second})", null)
             }
+            if (courierLatitude != null && courierLongitude != null) {
+                webView.evaluateJavascript("updateCourierCoordinates($courierLatitude, $courierLongitude)", null)
+            }
+            webView.evaluateJavascript("updateCourierProgress($progress)", null)
         }
     }
 
@@ -3784,15 +3857,9 @@ fun LiveMapView(
         }
     }
 
-    LaunchedEffect(showTraffic, isPageLoaded) {
-        if (isPageLoaded) {
-            webView.evaluateJavascript("updateTraffic($showTraffic)", null)
-        }
-    }
-
     LaunchedEffect(zoom, isPageLoaded) {
         if (isPageLoaded) {
-            webView.evaluateJavascript("if (typeof window.programmaticSetZoom === 'function') { window.programmaticSetZoom($zoom); } else if (typeof map !== 'undefined' && map !== null) { map.setZoom($zoom); }", null)
+            webView.evaluateJavascript("if (typeof map !== 'undefined' && map !== null) { map.setZoom($zoom); }", null)
         }
     }
 
@@ -3810,40 +3877,71 @@ fun LiveMapView(
 
     LaunchedEffect(userCoords, isPageLoaded) {
         if (isPageLoaded && userCoords != null) {
-            webView.evaluateJavascript("setUserLocation(${userCoords!!.first}, ${userCoords!!.second})", null)
-        }
-    }
-
-    LaunchedEffect(followUser, isPageLoaded) {
-        if (isPageLoaded) {
-            webView.evaluateJavascript("setFollowMode('${if (followUser) "user" else "courier"}')", null)
-        }
-    }
-
-    LaunchedEffect(parcelStatus, courierLatitude, courierLongitude, isPageLoaded) {
-        if (isPageLoaded && isRider) {
-            webView.evaluateJavascript("if (typeof fetchOSRMRoute === 'function') { fetchOSRMRoute(); }", null)
+            webView.evaluateJavascript("setUserLocation(${userCoords.first}, ${userCoords.second})", null)
         }
     }
 
     LaunchedEffect(pickupCoords, isPageLoaded) {
         if (isPageLoaded && pickupCoords != null) {
             val safeAddr = pickupAddress.replace("\"", "\\\"").replace("'", "\\'").trim()
-            webView.evaluateJavascript("if (typeof setPickupLocation === 'function') { setPickupLocation(${pickupCoords.first}, ${pickupCoords.second}, '$safeAddr'); }", null)
+            webView.evaluateJavascript("setPickupLocation(${pickupCoords.first}, ${pickupCoords.second}, '$safeAddr')", null)
         }
     }
 
     LaunchedEffect(deliveryCoords, isPageLoaded) {
         if (isPageLoaded && deliveryCoords != null) {
             val safeAddr = deliveryAddress.replace("\"", "\\\"").replace("'", "\\'").trim()
-            webView.evaluateJavascript("if (typeof setDeliveryLocation === 'function') { setDeliveryLocation(${deliveryCoords.first}, ${deliveryCoords.second}, '$safeAddr'); }", null)
+            webView.evaluateJavascript("setDeliveryLocation(${deliveryCoords.first}, ${deliveryCoords.second}, '$safeAddr')", null)
         }
     }
 
-    AndroidView(
-        factory = { webView },
-        modifier = modifier
-    )
+    Box(modifier = modifier) {
+        AndroidView(
+            factory = { webView },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // Floating Recenter button when user has panned or zoomed
+        androidx.compose.animation.AnimatedVisibility(
+            visible = userHasPanned,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 120.dp)
+                .zIndex(15f)
+        ) {
+            Surface(
+                onClick = {
+                    userHasPanned = false
+                    webView.evaluateJavascript("recenterMap()", null)
+                },
+                shape = RoundedCornerShape(20.dp),
+                color = Obsidian,
+                border = BorderStroke(1.5.dp, Gold),
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CenterFocusStrong,
+                        contentDescription = "Recenter Map",
+                        tint = Gold,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "Recenter",
+                        color = Gold,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -4569,18 +4667,15 @@ fun DeliveryFeedbackDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Rider avatar
-                        Image(
-                            painter = rememberAsyncImagePainter(parcel.courierAvatar.ifEmpty { "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop" }),
-                            contentDescription = "Courier Avatar",
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
+                        CourierAvatarBadge(
+                            avatarUrl = parcel.courierAvatar,
+                            name = parcel.courierName.ifBlank { "Courier" },
+                            size = 44.dp
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = parcel.courierName.ifEmpty { "" },
+                                text = parcel.courierName.ifBlank { "Assigned Courier" },
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isDark) Color.White else Obsidian

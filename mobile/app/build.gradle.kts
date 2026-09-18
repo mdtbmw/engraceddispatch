@@ -59,6 +59,8 @@ android {
         storePassword = System.getenv("STORE_PASSWORD") ?: "android123"
         keyAlias = "upload"
         keyPassword = System.getenv("KEY_PASSWORD") ?: "android123"
+        enableV1Signing = true
+        enableV2Signing = true
       } else {
         throw GradleException("Release keystore not found at $keystorePath. Set KEYSTORE_PATH or generate one: keytool -genkey -v -keystore app/release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload")
       }

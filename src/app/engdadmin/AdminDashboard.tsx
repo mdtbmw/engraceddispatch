@@ -88,6 +88,10 @@ interface Delivery {
   adminOverrideReason?: string;
   adminOverrideBy?: string;
   adminOverrideAt?: any;
+  isDisputed?: boolean;
+  disputeReason?: string;
+  disputeNotes?: string;
+  disputedAt?: any;
 }
 interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
 interface Referral { id: string; referrerId: string; referrerName: string; referrerEmail: string; refereeId: string; refereeName: string; refereeEmail: string; rewardAmount: number; status: string; }
@@ -4645,7 +4649,9 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
 
       let matchStatus = true;
       if (statusFilter === "ACTION_NEEDED") {
-        matchStatus = ["PENDING", "QUEUED", "RESERVED_NEXT"].includes(d.status) || (!d.riderId && !d.driverId && d.status !== "DELIVERED" && d.status !== "CANCELLED");
+        matchStatus = ["PENDING", "QUEUED", "RESERVED_NEXT", "DISPUTED"].includes(d.status) || !!d.isDisputed || (!d.riderId && !d.driverId && d.status !== "DELIVERED" && d.status !== "CANCELLED");
+      } else if (statusFilter === "DISPUTES") {
+        matchStatus = d.status === "DISPUTED" || !!d.isDisputed;
       } else if (statusFilter === "IN_MOTION") {
         matchStatus = ["ASSIGNED", "PICKED_UP", "TRANSIT", "ARRIVED", "OUT_FOR_DELIVERY"].includes(d.status);
       } else if (statusFilter === "DELIVERED") {
@@ -4659,14 +4665,15 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
       const matchCat = categoryFilter === "ALL" || d.category === categoryFilter;
       return matchSearch && matchStatus && matchCat;
     }).sort((a, b) => {
-      const urgencyRank = (status: string, riderId?: string) => {
+      const urgencyRank = (status: string, riderId?: string, isDisputed?: boolean) => {
+        if (status === "DISPUTED" || isDisputed) return -1;
         if (["PENDING", "QUEUED", "RESERVED_NEXT"].includes(status) || !riderId) return 0;
         if (["ASSIGNED", "PICKED_UP", "TRANSIT", "ARRIVED", "OUT_FOR_DELIVERY"].includes(status)) return 1;
         if (status === "DELIVERED") return 2;
         return 3;
       };
-      const rankA = urgencyRank(a.status, a.riderId || a.driverId);
-      const rankB = urgencyRank(b.status, b.riderId || b.driverId);
+      const rankA = urgencyRank(a.status, a.riderId || a.driverId, a.isDisputed);
+      const rankB = urgencyRank(b.status, b.riderId || b.driverId, b.isDisputed);
       if (rankA !== rankB) return rankA - rankB;
 
       const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
@@ -4680,16 +4687,17 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
 
     const isValidStatusTransition = (current: string, next: string): boolean => {
       const allowed: Record<string, string[]> = {
-        PENDING: ["QUEUED", "RESERVED_NEXT", "ASSIGNED", "CANCELLED"],
-        QUEUED: ["RESERVED_NEXT", "ASSIGNED", "CANCELLED"],
-        RESERVED_NEXT: ["ASSIGNED", "CANCELLED"],
-        ASSIGNED: ["PICKED_UP", "TRANSIT", "CANCELLED"],
-        PICKED_UP: ["TRANSIT", "ARRIVED", "CANCELLED"],
-        TRANSIT: ["ARRIVED", "OUT_FOR_DELIVERY", "CANCELLED"],
-        ARRIVED: ["HANDOVER_VERIFIED", "OUT_FOR_DELIVERY", "CANCELLED"],
-        OUT_FOR_DELIVERY: ["ARRIVED", "HANDOVER_VERIFIED", "DELIVERED", "CANCELLED"],
-        HANDOVER_VERIFIED: ["DELIVERED", "CANCELLED"],
-        DELIVERED: [],
+        PENDING: ["QUEUED", "RESERVED_NEXT", "ASSIGNED", "DISPUTED", "CANCELLED"],
+        QUEUED: ["RESERVED_NEXT", "ASSIGNED", "DISPUTED", "CANCELLED"],
+        RESERVED_NEXT: ["ASSIGNED", "DISPUTED", "CANCELLED"],
+        ASSIGNED: ["PICKED_UP", "TRANSIT", "DISPUTED", "CANCELLED"],
+        PICKED_UP: ["TRANSIT", "ARRIVED", "DISPUTED", "CANCELLED"],
+        TRANSIT: ["ARRIVED", "OUT_FOR_DELIVERY", "DISPUTED", "CANCELLED"],
+        ARRIVED: ["HANDOVER_VERIFIED", "OUT_FOR_DELIVERY", "DISPUTED", "CANCELLED"],
+        OUT_FOR_DELIVERY: ["ARRIVED", "HANDOVER_VERIFIED", "DELIVERED", "DISPUTED", "CANCELLED"],
+        HANDOVER_VERIFIED: ["DELIVERED", "DISPUTED", "CANCELLED"],
+        DISPUTED: ["ASSIGNED", "TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"],
+        DELIVERED: ["DISPUTED"],
         CANCELLED: []
       };
       return allowed[current]?.includes(next) || false;
@@ -5088,7 +5096,8 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
 
     // Operational Stat Metrics
     const totalDeliveries = deliveries.length;
-    const actionNeededCount = deliveries.filter(d => ["PENDING", "QUEUED", "RESERVED_NEXT"].includes(d.status) || (!d.riderId && !d.driverId && d.status !== "DELIVERED" && d.status !== "CANCELLED")).length;
+    const actionNeededCount = deliveries.filter(d => ["PENDING", "QUEUED", "RESERVED_NEXT", "DISPUTED"].includes(d.status) || !!d.isDisputed || (!d.riderId && !d.driverId && d.status !== "DELIVERED" && d.status !== "CANCELLED")).length;
+    const disputeCount = deliveries.filter(d => d.status === "DISPUTED" || !!d.isDisputed).length;
     const inMotionCount = deliveries.filter(d => ["ASSIGNED", "PICKED_UP", "TRANSIT", "ARRIVED", "OUT_FOR_DELIVERY"].includes(d.status)).length;
     const deliveredCount = deliveries.filter(d => d.status === "DELIVERED").length;
     const totalRevenue = deliveries.reduce((acc, d) => acc + (d.price || 0) + (d.tipAmount || 0), 0);
@@ -5232,6 +5241,18 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                 {actionNeededCount}
               </span>
             </button>
+            {disputeCount > 0 && (
+              <button
+                onClick={() => setStatusFilter("DISPUTES")}
+                className={"px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer " + (statusFilter === "DISPUTES" ? "bg-rose-600 text-white shadow-xs" : "bg-rose-500/10 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20 font-bold border border-rose-500/30")}
+              >
+                <AlertTriangle size={13} className="animate-pulse text-rose-500" />
+                Disputed
+                <span className={"px-1.5 py-0.2 rounded-full text-[10px] font-black " + (statusFilter === "DISPUTES" ? "bg-white/20 text-white" : "bg-rose-500/20 text-rose-600 dark:text-rose-300 animate-pulse")}>
+                  {disputeCount}
+                </span>
+              </button>
+            )}
             <button
               onClick={() => setStatusFilter("IN_MOTION")}
               className={"px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer " + (statusFilter === "IN_MOTION" ? "bg-gray-900 text-white dark:bg-white dark:text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#333] border border-gray-200 dark:border-white/10")}
@@ -5362,6 +5383,11 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                           {d.additionalStops && d.additionalStops.startsWith("batch:") && (
                             <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/20 text-amber-800 dark:text-[#FFB800] border border-amber-500/30 flex items-center gap-1">
                               <Layers size={10} /> BATCH RUN
+                            </span>
+                          )}
+                          {(d.isDisputed || d.status === "DISPUTED") && (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 flex items-center gap-1 animate-pulse" title={d.disputeNotes || d.disputeReason || "Dispute under review"}>
+                              <AlertTriangle size={9} /> DISPUTED
                             </span>
                           )}
                           {(d as any).adminOverrideReason && (
@@ -8391,6 +8417,8 @@ interface SupportTicket {
   status: string;
   parcelId?: string;
   courierName?: string;
+  isDispute?: boolean;
+  issueType?: string;
 }
 
 interface SupportChatMessage {
@@ -8405,7 +8433,7 @@ interface SupportChatMessage {
 function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: any }) {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "OPEN" | "RESOLVED" | "CLOSED">("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "OPEN" | "DISPUTES" | "RESOLVED" | "CLOSED">("ALL");
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
   const [replyText, setReplyText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -8416,6 +8444,7 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
       const list: SupportTicket[] = [];
       snapshot.forEach((doc) => {
         const d = doc.data();
+        const isDisp = !!d.isDispute || d.status === "DISPUTED" || !!d.issueType || (typeof d.lastMessage === "string" && d.lastMessage.startsWith("DISPUTE:"));
         list.push({
           id: doc.id,
           ticketId: d.ticketId || doc.id,
@@ -8426,6 +8455,8 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
           status: d.status || "OPEN",
           parcelId: d.parcelId || doc.id,
           courierName: d.courierName || "",
+          isDispute: isDisp,
+          issueType: d.issueType || (isDisp ? "Consignment Dispute" : undefined),
         });
       });
       list.sort((a, b) => b.lastUpdated - a.lastUpdated);
@@ -8515,6 +8546,19 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
         status: newStatus,
         lastUpdated: Date.now()
       });
+      const parcelId = selectedTicket.parcelId || selectedTicket.id;
+      if (parcelId) {
+        try {
+          if (newStatus === "RESOLVED") {
+            await updateDoc(doc(db, "deliveries", parcelId), {
+              isDisputed: false,
+              disputeResolvedAt: Date.now()
+            });
+          }
+        } catch (mErr) {
+          console.warn("Could not sync dispute resolve to delivery:", mErr);
+        }
+      }
       setSelectedTicket({ ...selectedTicket, status: newStatus });
       addLog("Support Status", `Marked ticket ${selectedTicket.ticketId} as ${newStatus}`);
       addToast("success", `Ticket marked as ${newStatus}`);
@@ -8523,9 +8567,13 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
     }
   };
 
-  const filteredTickets = tickets.filter(
-    (t) => statusFilter === "ALL" || (t.status || "OPEN").toUpperCase() === statusFilter
-  );
+  const filteredTickets = tickets.filter((t) => {
+    if (statusFilter === "ALL") return true;
+    if (statusFilter === "DISPUTES") return t.isDispute || t.status === "DISPUTED";
+    return (t.status || "OPEN").toUpperCase() === statusFilter;
+  });
+
+  const disputesCount = tickets.filter(t => t.isDispute || t.status === "DISPUTED").length;
 
   return (
     <div className="tab-content space-y-6">
@@ -8546,19 +8594,29 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
           <div className="flex items-center justify-between px-2 mb-2">
             <h3 className="font-bold text-sm text-[#111] dark:text-white">Conversations ({filteredTickets.length})</h3>
           </div>
-          <div className="flex items-center gap-1 px-2 mb-3">
-            {(["ALL", "OPEN", "RESOLVED", "CLOSED"] as const).map((filter) => (
+          <div className="flex items-center gap-1 px-2 mb-3 flex-wrap">
+            {(["ALL", "OPEN", "DISPUTES", "RESOLVED", "CLOSED"] as const).map((filter) => (
               <button
                 key={filter}
                 type="button"
                 onClick={() => setStatusFilter(filter)}
-                className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer flex items-center gap-1 ${
                   statusFilter === filter
-                    ? "bg-[#FFB800] text-[#111] shadow-xs"
+                    ? filter === "DISPUTES"
+                      ? "bg-rose-600 text-white shadow-xs"
+                      : "bg-[#FFB800] text-[#111] shadow-xs"
+                    : filter === "DISPUTES" && disputesCount > 0
+                    ? "bg-rose-500/15 text-rose-500 hover:bg-rose-500/25 border border-rose-500/30"
                     : "bg-black/5 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:text-[#111] dark:hover:text-white"
                 }`}
               >
+                {filter === "DISPUTES" && <AlertTriangle size={10} className={disputesCount > 0 ? "animate-pulse" : ""} />}
                 {filter}
+                {filter === "DISPUTES" && disputesCount > 0 && (
+                  <span className={`px-1 py-0.2 rounded-full text-[9px] font-black ${statusFilter === "DISPUTES" ? "bg-white/20 text-white" : "bg-rose-500/20 text-rose-500"}`}>
+                    {disputesCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -8580,15 +8638,22 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                 >
                   <div className="flex justify-between items-center mb-1">
                     <span className="font-bold text-xs">{t.userName}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      selectedTicket?.id === t.id 
-                        ? "bg-black text-[#FFB800]" 
-                        : t.status === "RESOLVED"
-                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
-                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
-                    }`}>
-                      {t.status}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      {(t.isDispute || t.status === "DISPUTED") && (
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-500 border border-rose-500/30 flex items-center gap-0.5 animate-pulse">
+                          <AlertTriangle size={9} /> DISPUTE
+                        </span>
+                      )}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        selectedTicket?.id === t.id 
+                          ? "bg-black text-[#FFB800]" 
+                          : t.status === "RESOLVED"
+                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+                          : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                      }`}>
+                        {t.status}
+                      </span>
+                    </div>
                   </div>
                   <p className={`text-xs truncate ${selectedTicket?.id === t.id ? "text-gray-900 font-medium" : "text-gray-600 dark:text-gray-400 font-medium"}`}>
                     {t.lastMessage || "No messages yet"}
@@ -8604,8 +8669,15 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
             <>
               <div className="pb-3 border-b border-black/10 dark:border-white/10 flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <h4 className="font-black text-sm text-[#111] dark:text-white">{selectedTicket.userName}</h4>
-                  <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">Ticket: {selectedTicket.ticketId} • User ID: {selectedTicket.userId}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-black text-sm text-[#111] dark:text-white">{selectedTicket.userName}</h4>
+                    {(selectedTicket.isDispute || selectedTicket.status === "DISPUTED") && (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-rose-500/20 text-rose-500 border border-rose-500/30 flex items-center gap-1 animate-pulse">
+                        <AlertTriangle size={11} /> {selectedTicket.issueType || "CONSIGNMENT DISPUTE"}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">Ticket: {selectedTicket.ticketId} • Consignment: #{selectedTicket.parcelId?.slice(0, 8).toUpperCase() || selectedTicket.id.slice(0, 8).toUpperCase()}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
