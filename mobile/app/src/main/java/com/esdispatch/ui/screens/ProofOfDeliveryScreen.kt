@@ -69,9 +69,34 @@ fun ProofOfDeliveryScreen(
     var isUploading by remember { mutableStateOf(false) }
     var uploadStatusText by remember { mutableStateOf("Uploading Proof...") }
 
-    val cameraController = remember {
-        LifecycleCameraController(context).apply {
-            bindToLifecycle(lifecycleOwner)
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val cameraPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasCameraPermission = isGranted
+        if (!isGranted) {
+            Toast.makeText(context, "Camera permission is required to capture proof of delivery.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) {
+            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+        }
+    }
+
+    val cameraController = remember(hasCameraPermission) {
+        if (hasCameraPermission) {
+            LifecycleCameraController(context).apply {
+                bindToLifecycle(lifecycleOwner)
+            }
+        } else {
+            null
         }
     }
 
@@ -249,8 +274,8 @@ fun ProofOfDeliveryScreen(
                             uploadStatusText = "Uploading Photo Proof..."
 
                             val bitmap = capturedBitmap!!
-                            // Client-side downscaling (max dimension 1280px)
-                            val maxDim = 1280
+                            // Client-side downscaling (max dimension 1024px, 80% JPEG)
+                            val maxDim = 1024
                             val scaled = if (bitmap.width > maxDim || bitmap.height > maxDim) {
                                 val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
                                 val (w, h) = if (ratio > 1f) {
@@ -314,38 +339,88 @@ fun ProofOfDeliveryScreen(
                         .background(Color.Black)
                         .border(1.5.dp, Gold.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                 ) {
-                    AndroidView(
-                        factory = { ctx ->
-                            PreviewView(ctx).apply {
-                                this.controller = cameraController
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    if (hasCameraPermission && cameraController != null) {
+                        AndroidView(
+                            factory = { ctx ->
+                                PreviewView(ctx).apply {
+                                    this.controller = cameraController
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
 
-                    // Visual Framing Guide Box
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .fillMaxHeight(0.72f)
-                            .align(Alignment.Center)
-                            .border(2.dp, Gold, RoundedCornerShape(18.dp))
-                    ) {
-                        Surface(
+                        // Visual Framing Guide Box
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 12.dp),
-                            shape = RoundedCornerShape(20.dp),
-                            color = Obsidian.copy(alpha = 0.75f),
-                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.6f))
+                                .fillMaxWidth(0.85f)
+                                .fillMaxHeight(0.72f)
+                                .align(Alignment.Center)
+                                .border(2.dp, Gold, RoundedCornerShape(18.dp))
                         ) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = 12.dp),
+                                shape = RoundedCornerShape(20.dp),
+                                color = Obsidian.copy(alpha = 0.75f),
+                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.6f))
+                            ) {
+                                Text(
+                                    text = "Position product inside frame",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Gold,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        // Permission Fallback Screen
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(Gold.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.CameraAlt,
+                                    contentDescription = null,
+                                    tint = Gold,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "Position product inside frame",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Gold,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                text = "Camera Permission Required",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "To capture proof of delivery and complete handover verification, please grant camera access.",
+                                fontSize = 12.sp,
+                                color = TextGray,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(20.dp))
+                            Button(
+                                onClick = {
+                                    cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("GRANT CAMERA ACCESS", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                            }
                         }
                     }
                 }
@@ -361,7 +436,7 @@ fun ProofOfDeliveryScreen(
                 ) {
                     Button(
                         onClick = {
-                            if (isUploading) return@Button
+                            if (isUploading || cameraController == null) return@Button
                             val executor = ContextCompat.getMainExecutor(context)
                             isUploading = true
                             uploadStatusText = "Capturing Photo..."

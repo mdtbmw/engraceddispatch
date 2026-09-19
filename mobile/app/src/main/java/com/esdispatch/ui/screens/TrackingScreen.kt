@@ -1646,16 +1646,13 @@ fun ActiveTrackingScreen(
                                                 ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Rider assigned"
                                                 ParcelStatus.ARRIVED_PICKUP -> "Preparing for pickup"
                                                 ParcelStatus.PICKED_UP -> "In transit"
-                                                ParcelStatus.ARRIVED -> "Arriving soon"
+                                                ParcelStatus.ARRIVED -> "Arrived at destination"
                                                 ParcelStatus.HANDOVER_VERIFIED -> "Verifying delivery"
                                                 ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
                                                     val dist = realDistanceKm
-                                                    if (tickingSeconds > 0) {
-                                                        val mins = (tickingSeconds / 60).coerceAtLeast(1)
-                                                        val minR = (mins - 2).coerceAtLeast(1)
-                                                        val maxR = mins + 3
-                                                        "$minR–$maxR mins"
-                                                    } else if (dist != null && dist > 0.05f) {
+                                                    val hasCourierTelemetry = parcel.courierLatitude != null && parcel.courierLongitude != null && parcel.courierLatitude != 0.0
+                                                    val isFreshTransit = parcel.transitTimestamp > 0L && (System.currentTimeMillis() - parcel.transitTimestamp) < 3 * 60 * 60 * 1000L
+                                                    if (hasCourierTelemetry && isFreshTransit && dist != null && dist > 0.05f) {
                                                         val mins = ((dist * 2.5f).toInt()).coerceAtLeast(2)
                                                         val minR = (mins - 2).coerceAtLeast(1)
                                                         val maxR = mins + 3
@@ -3863,8 +3860,13 @@ fun LiveMapView(
                     } else if (pickupLoc && deliveryLoc) {
                         var bounds = L.latLngBounds([pickupLoc, deliveryLoc]);
                         map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+                    } else {
+                        map.setView([6.3350, 5.6037], 13);
                     }
+                }
+
                 function clearMapRoutesAndPins() {
+                    hasBooking = false;
                     if (pickupMarker) {
                         try { map.removeLayer(pickupMarker); } catch(e){}
                         pickupMarker = null;
@@ -3892,6 +3894,11 @@ fun LiveMapView(
                     routeGeometryCoordinates = [];
                     pickupLoc = null;
                     deliveryLoc = null;
+                    if (liveUserMarker) {
+                        map.setView(liveUserMarker.getLatLng(), 15);
+                    } else {
+                        map.setView([6.3350, 5.6037], 13);
+                    }
                 }
 
                 window.addEventListener('DOMContentLoaded', initMapContainer);

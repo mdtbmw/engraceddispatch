@@ -1017,7 +1017,7 @@ class DeliveryViewModel : WalletViewModel() {
             com.esdispatch.data.FirebaseManager.listenToAvailableDeliveries().collect { list ->
                 val currentIds = list.map { it.id }.toSet()
                 val newDispatches = list.filter { it.id !in previousIds }
-                if (previousIds.isNotEmpty() && newDispatches.isNotEmpty() && _currentAttendanceStatus.value == "ON_DUTY") {
+                if (previousIds.isNotEmpty() && newDispatches.isNotEmpty() && (_isOnline.value || _currentAttendanceStatus.value == "ON_DUTY")) {
                     com.esdispatch.util.SoundManager.playDispatchSweep()
                     val firstDispatch = newDispatches.first()
                     val notifTitle = "New Dispatch Available Nearby!"
@@ -2351,33 +2351,7 @@ class DeliveryViewModel : WalletViewModel() {
         )
         _aiRiders.value = ridersList
 
-        try {
-            val db = FirebaseManager.firestore
-            if (db != null) {
-                for (rider in ridersList) {
-                    val data = hashMapOf(
-                        "uid" to rider.id,
-                        "name" to rider.name,
-                        "phone" to rider.phone,
-                        "avatar" to rider.avatar,
-                        "role" to "rider",
-                        "bikeNumber" to "ESD-BIKE-${rider.id}",
-                        "isOnline" to (rider.status != RiderStatus.OFFLINE),
-                        "status" to (if (rider.status == RiderStatus.BUSY) "busy" else if (rider.status == RiderStatus.ONLINE) "active" else "offline"),
-                        "latitude" to rider.latitude,
-                        "longitude" to rider.longitude,
-                        "currentWorkload" to rider.currentWorkload,
-                        "batteryLevel" to rider.batteryLevel,
-                        "rating" to rider.rating,
-                        "averageDeliveryTimeMin" to rider.averageDeliveryTimeMin,
-                        "updatedAt" to System.currentTimeMillis()
-                    )
-                    db.collection("users").document(rider.id).set(data, com.google.firebase.firestore.SetOptions.merge())
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("DeliveryViewModel", "Failed to seed drivers to Firestore: ${e.message}")
-        }
+        // Local fallback list only; strictly zero mock driver documents seeded to Firestore
     }
 
     private fun seedAiChat() {
@@ -3053,6 +3027,8 @@ class DeliveryViewModel : WalletViewModel() {
                         }
                         // 3. Listen to real-time parcel history from Firestore
                         launch {
+                            var previousStatuses = mutableMapOf<String, ParcelStatus>()
+                            var isInitialLoad = true
                             com.esdispatch.data.FirebaseManager.listenToUserDeliveries(uid).collect { parcelList ->
                                 if (parcelList.isNotEmpty()) {
                                     repository?.saveParcels(parcelList)
@@ -3074,6 +3050,37 @@ class DeliveryViewModel : WalletViewModel() {
                                     } else {
                                         _selectedParcel.value = activeParcels.firstOrNull() ?: parcelList.firstOrNull()
                                     }
+
+                                    // Real-time status transition notification for customer device
+                                    if (!isInitialLoad) {
+                                        for (parcel in parcelList) {
+                                            val oldStatus = previousStatuses[parcel.id]
+                                            if (oldStatus != null && oldStatus != parcel.status) {
+                                                val (notifTitle, notifMsg) = getStatusNotificationText(parcel.status, parcel.itemName, parcel.id)
+                                                addNotification(notifTitle, notifMsg)
+                                                showInAppNotification(notifTitle, notifMsg)
+                                                when (parcel.status) {
+                                                    ParcelStatus.ARRIVED -> com.esdispatch.util.SoundManager.playCelebrationFanfare()
+                                                    ParcelStatus.DELIVERED -> com.esdispatch.util.SoundManager.playSuccessArpeggio()
+                                                    else -> com.esdispatch.util.SoundManager.playNotificationBeep()
+                                                }
+                                                appContext?.let { ctx ->
+                                                    try {
+                                                        com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                                                            context = ctx,
+                                                            title = notifTitle,
+                                                            message = notifMsg,
+                                                            parcelId = parcel.id,
+                                                            status = parcel.status.name
+                                                        )
+                                                    } catch (_: Exception) {}
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        isInitialLoad = false
+                                    }
+                                    previousStatuses = parcelList.associate { it.id to it.status }.toMutableMap()
                                 }
                             }
                         }
@@ -3293,12 +3300,29 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    private fun getStatusNotificationText(status: ParcelStatus, itemName: String, id: String): Pair<String, String> {
+        val name = itemName.ifBlank { "Shipment" }
+        return when (status) {
+            ParcelStatus.ASSIGNED -> Pair("Courier Assigned", "A courier has been assigned to your shipment '$name' and is heading to pickup.")
+            ParcelStatus.RESERVED_NEXT -> Pair("Courier Reserved", "A courier has reserved your shipment '$name' as their next dropoff.")
+            ParcelStatus.ARRIVED_PICKUP -> Pair("Courier at Pickup", "Courier has arrived at the pickup location for '$name'.")
+            ParcelStatus.PICKED_UP -> Pair("Package Picked Up", "Your parcel '$name' has been picked up by the courier.")
+            ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> Pair("Out for Delivery", "Your shipment '$name' is in transit to the delivery location.")
+            ParcelStatus.ARRIVED -> Pair("Courier Arrived!", "Your courier has arrived at your address for '$name'. Please provide your 4-digit PIN.")
+            ParcelStatus.HANDOVER_VERIFIED -> Pair("Handover Verified", "PIN verified for '$name'. Photo proof of delivery is being finalized.")
+            ParcelStatus.DELIVERED -> Pair("Package Delivered!", "Your package '$name' has been successfully delivered. Thank you!")
+            ParcelStatus.CANCELLED -> Pair("Shipment Cancelled", "Your shipment '$name' was cancelled.")
+            ParcelStatus.DISPUTED -> Pair("Dispute Logged", "A dispute was logged for shipment '$name'. Support is reviewing it.")
+            else -> Pair("Delivery Update", "Status for '$name' updated to ${status.name}.")
+        }
+    }
+
     fun initWelcomeGiftForNewUser() {
-        _walletBalance.value = 2500.0
-        savePref("wallet_balance", 2500.0)
+        _walletBalance.value = 0.0
+        savePref("wallet_balance", 0.0)
         
-        _loyaltyPoints.value = 100
-        savePref("loyalty_points", 100)
+        _loyaltyPoints.value = 0
+        savePref("loyalty_points", 0)
         
         _deliveryCount.value = 0
         savePref("delivery_count", 0)
@@ -3306,42 +3330,18 @@ class DeliveryViewModel : WalletViewModel() {
         _welcomeGiftClaimed.value = true
         savePref("welcome_gift_claimed", true)
 
-        val welcomeTx = Transaction(
-            id = "TX-GIFT-${System.currentTimeMillis().toString().substring(8)}",
-            title = "Welcome Gift Awarded",
-            date = "Today",
-            amount = 2500.0,
-            isTopUp = true
-        )
-        _transactions.value = listOf(welcomeTx)
-        viewModelScope.launch {
-            repository?.saveTransaction(welcomeTx)
-        }
-
-        val notifTitle = "Welcome Gift Claimed!"
-        val notifMsg = "Congratulations! You have received ₦2,500 welcome credit and 100 loyalty coins."
+        val notifTitle = "Welcome to ESDispatch!"
+        val notifMsg = "Your account is active and ready for fast, premium logistics across Benin City."
         addNotification(notifTitle, notifMsg)
-        appContext?.let { ctx ->
-            try {
-                com.esdispatch.data.MyFirebaseMessagingService.showNotification(
-                    context = ctx,
-                    title = notifTitle,
-                    message = notifMsg,
-                    parcelId = "GIFT"
-                )
-            } catch (e: Exception) {
-                android.util.Log.e("GiftNotif", "Error showing gift notification: ${e.message}")
-            }
-        }
 
         val uid = _firebaseUserId.value
         if (uid != null) {
-            com.esdispatch.data.FirebaseManager.syncWalletBalanceToFirestore(uid, _walletBalance.value)
-            com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(uid, _loyaltyPoints.value, _deliveryCount.value)
+            com.esdispatch.data.FirebaseManager.syncWalletBalanceToFirestore(uid, 0.0)
+            com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(uid, 0, 0)
             val db = com.esdispatch.data.FirebaseManager.firestore
             if (db != null) {
                 db.collection("users").document(uid)
-                    .update("welcomeGiftClaimed", true, "walletBalance", 2500.0, "loyaltyPoints", 100)
+                    .update("welcomeGiftClaimed", true, "walletBalance", 0.0, "loyaltyPoints", 0)
             }
         }
     }
@@ -4598,44 +4598,12 @@ class DeliveryViewModel : WalletViewModel() {
         _welcomeGiftClaimed.value = true
         savePref("welcome_gift_claimed", true)
         
-        _walletBalance.value += 2500.0
-        savePref("wallet_balance", _walletBalance.value)
-        
-        _loyaltyPoints.value += 100
-        savePref("loyalty_points", _loyaltyPoints.value)
-        
-        val welcomeTx = Transaction(
-            id = "TX-COIN-${System.currentTimeMillis().toString().substring(8)}",
-            title = "Welcome Coins Claimed",
-            date = "Today",
-            amount = 100.0,
-            isTopUp = true
-        )
-        _transactions.value = listOf(welcomeTx) + _transactions.value
-        
-        val notifTitle = "Welcome Gift Claimed!"
-        val notifMsg = "Congratulations! You have received 100 Engraced loyalty coins and the premium promo code 'ENGRACEDVIP' for 15% off your first delivery."
+        val notifTitle = "Account Ready"
+        val notifMsg = "Your ESDispatch account is verified and ready for real-time dispatch booking across Benin City."
         addNotification(notifTitle, notifMsg)
-        
-        appContext?.let { ctx ->
-            try {
-                com.esdispatch.data.MyFirebaseMessagingService.showNotification(
-                    context = ctx,
-                    title = notifTitle,
-                    message = notifMsg,
-                    parcelId = "GIFT"
-                )
-            } catch (e: Exception) {
-                android.util.Log.e("GiftNotif", "Error showing gift notification: ${e.message}")
-            }
-        }
         
         val uid = _firebaseUserId.value
         if (uid != null) {
-            com.esdispatch.data.FirebaseManager.syncWalletBalanceToFirestore(uid, _walletBalance.value)
-            com.esdispatch.data.FirebaseManager.syncTransactionToFirestore(welcomeTx, uid)
-            com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(uid, _loyaltyPoints.value, _deliveryCount.value)
-            
             val db = com.esdispatch.data.FirebaseManager.firestore
             if (db != null) {
                 db.collection("users").document(uid)
@@ -6131,7 +6099,7 @@ class DeliveryViewModel : WalletViewModel() {
                 val firstName = userName.trim().split(" ").firstOrNull() ?: userName
                 addNotification(
                     "Welcome to ESDispatch!",
-                    "Hello $firstName, welcome to premium logistics. Your account is active and ₦2,500 welcome credit has been added to your wallet."
+                    "Hello $firstName, welcome to premium logistics. Your account is active and ready for real-time dispatch booking."
                 )
                 addNotification(
                     "Secure Authentication Active",

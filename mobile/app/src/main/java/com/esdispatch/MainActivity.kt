@@ -167,11 +167,22 @@ class MainActivity : FragmentActivity() {
             viewModel.setPendingShortcutRoute("Tracking")
         }
 
+        val permsToRequest = mutableListOf<String>()
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            permsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+            permsToRequest.add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            permsToRequest.add(android.Manifest.permission.CAMERA)
+        }
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             val permission = android.Manifest.permission.POST_NOTIFICATIONS
             if (androidx.core.content.ContextCompat.checkSelfPermission(this, permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(permission), 101)
+                permsToRequest.add(permission)
             }
+        }
+        if (permsToRequest.isNotEmpty()) {
+            androidx.core.app.ActivityCompat.requestPermissions(this, permsToRequest.distinct().toTypedArray(), 101)
         }
 
         enableEdgeToEdge()
