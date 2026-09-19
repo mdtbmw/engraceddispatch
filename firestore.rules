@@ -106,12 +106,14 @@ service cloud.firestore {
           && (
             // Either financial fields are untouched:
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['walletBalance', 'loyaltyPoints'])
-            // OR valid initial one-time welcome gift claim:
+            // OR valid initial one-time welcome gift claim (zero fake balance):
             || (
               (!resource.data.keys().hasAny(['welcomeGiftClaimed']) || resource.data.welcomeGiftClaimed == false)
               && request.resource.data.welcomeGiftClaimed == true
-              && request.resource.data.walletBalance == 2500.0
-              && request.resource.data.loyaltyPoints == 100
+              && (
+                !request.resource.data.diff(resource.data).affectedKeys().hasAny(['walletBalance', 'loyaltyPoints'])
+                || (request.resource.data.walletBalance == 0.0 && request.resource.data.loyaltyPoints == 0)
+              )
             )
             // OR client spending/deduction where balances only decrement:
             || (
@@ -224,6 +226,7 @@ service cloud.firestore {
         || (isAuth() && (resource.data.userId == request.auth.uid || !('userId' in resource.data) || resource.data.userId == '')
             && (
               (request.resource.data.status == 'CANCELLED' && resource.data.status in ['PENDING', 'RECEIVED', 'QUEUED', 'ASSIGNED', 'RESERVED_NEXT'])
+              || (request.resource.data.status == 'DISPUTED')
               || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['price', 'deliveryFee', 'payoutAmount', 'payoutCredited', 'status', 'riderId', 'driverId'])
             ))
         || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRated', 'customerRating', 'tipAmount', 'feedback', 'updatedAt']));
@@ -519,21 +522,33 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    match /support_chats/{chatId} {
+    // =========================================================
+    // BATCH DELIVERIES & OFFLINE SYNC LOGS
+    // =========================================================
+
+    match /batch_bookings/{batchId} {
       allow read: if isAuth();
-      allow create, update: if isAuth();
+      allow create: if isAuth() && isReasonableWrite() && (request.resource.data.customerId == request.auth.uid || isAdmin());
+      allow update: if isAuth() && (resource.data.customerId == request.auth.uid || resource.data.riderId == request.auth.uid || isAdmin() || isDispatcher());
+      allow delete: if isAdmin();
+    }
+
+    match /batches/{batchId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && isReasonableWrite() && (request.resource.data.customerId == request.auth.uid || isAdmin());
+      allow update: if isAuth() && (resource.data.customerId == request.auth.uid || resource.data.riderId == request.auth.uid || isAdmin() || isDispatcher());
       allow delete: if isAdmin();
 
-      match /messages/{messageId} {
+      match /items/{itemId} {
         allow read: if isAuth();
-        allow create: if isAuth();
-        allow update, delete: if isAdmin();
+        allow create, update: if isAuth() && (isAdmin() || isDispatcher() || resource.data.riderId == request.auth.uid || request.resource.data.riderId == request.auth.uid);
+        allow delete: if isAdmin();
       }
     }
 
-    match /audit_logs/{logId} {
+    match /offline_sync_logs/{docId} {
       allow read: if isAdmin() || isDispatcher();
-      allow create: if isAuth();
+      allow create: if isAuth() && isReasonableWrite();
       allow update, delete: if isAdmin();
     }
 
