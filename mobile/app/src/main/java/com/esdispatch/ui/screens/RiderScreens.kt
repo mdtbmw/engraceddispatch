@@ -594,7 +594,7 @@ fun RiderDashboardScreen(
 
                                 val emptyTitle = when {
                                     searchQuery.isNotBlank() -> "No Matching Shipments"
-                                    selectedFilter == "Available" && !isOnlineState -> "You Are Currently Off Duty"
+                                    selectedFilter == "Available" && !isOnlineState -> "Unavailable for Dispatch"
                                     selectedFilter == "Available" && activeCount > 0 -> "Active Mission In Progress"
                                     selectedFilter == "Available" -> "No Dispatches Available"
                                     selectedFilter == "Active" -> "No Active Deliveries"
@@ -604,7 +604,7 @@ fun RiderDashboardScreen(
 
                                 val emptySubtitle = when {
                                     searchQuery.isNotBlank() -> "No parcels matched '$searchQuery'. Try checking the tracking ID or recipient phone number."
-                                    selectedFilter == "Available" && !isOnlineState -> "Switch your fleet status to On Duty to receive incoming customer orders and proximity match dispatches."
+                                    selectedFilter == "Available" && !isOnlineState -> "Turn your dispatch availability ON to receive incoming customer orders and proximity match dispatches."
                                     selectedFilter == "Available" && activeCount > 0 -> "Focus on your current delivery ($activeCount active stop). Complete this delivery before accepting new customer dispatches."
                                     selectedFilter == "Available" -> "All nearby parcels are currently assigned. New customer booking dispatches will appear here in real-time."
                                     selectedFilter == "Active" -> "Accept an available dispatch or wait for dispatcher assignment to begin a mission."
@@ -638,7 +638,7 @@ fun RiderDashboardScreen(
                                         ),
                                         shape = RoundedCornerShape(14.dp)
                                     ) {
-                                        Text("Go On Duty Now", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Text("Turn Availability ON", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                     }
                                 } else if (selectedFilter == "Available" && activeCount > 0) {
                                     Spacer(modifier = Modifier.height(18.dp))
@@ -744,17 +744,18 @@ fun RiderDashboardScreen(
                             ) {
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(
-                                        text = if (isOnlineState) "ON DUTY" else "OFF DUTY",
+                                        text = "DISPATCH AVAILABILITY",
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextGray,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    Text(
+                                        text = if (isOnlineState) "AVAILABLE" else "UNAVAILABLE",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Black,
                                         color = if (isOnlineState) Gold else TextGray,
                                         letterSpacing = 0.5.sp
-                                    )
-                                    Text(
-                                        text = if (isOnlineState) "Ready" else "Inactive",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextGray
                                     )
                                 }
                                 Switch(
@@ -1054,8 +1055,8 @@ fun RiderDashboardScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = if (isOnlineState) "ON" else "OFF",
-                                fontSize = 11.sp,
+                                text = if (isOnlineState) "Available" else "Unavailable",
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Black,
                                 color = if (isOnlineState) Gold else TextGray
                             )
@@ -1195,6 +1196,30 @@ fun RiderParcelCard(
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Black,
                             color = if (isImmediateVicinity) SuccessGreen else Gold
+                        )
+                    }
+                }
+            }
+
+            // Batch Stop Hierarchy Badge
+            if (parcel.isBatch) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Gold.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f)),
+                    modifier = Modifier.padding(bottom = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Layers, contentDescription = null, tint = Gold, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "BATCH STOP ${parcel.batchItemIndex} OF ${parcel.batchTotalItems} • ${parcel.itemName.uppercase()}",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Gold
                         )
                     }
                 }
@@ -1496,12 +1521,14 @@ fun RiderParcelCard(
                             (parcel.reservedRiderId.isNotBlank() && parcel.reservedRiderId == currentRiderUid)
                         Text(
                             text = when {
+                                parcel.status == ParcelStatus.PENDING && isAssignedToCurrentRider && parcel.isBatch -> "PICK UP ${parcel.itemName.ifBlank { "ITEM" }.uppercase()}"
                                 parcel.status == ParcelStatus.PENDING && isAssignedToCurrentRider -> "CONFIRM PICKUP"
                                 parcel.status == ParcelStatus.PENDING -> "ACCEPT DISPATCH"
+                                parcel.status == ParcelStatus.ASSIGNED && parcel.isBatch -> "PICK UP ${parcel.itemName.ifBlank { "ITEM" }.uppercase()}"
                                 parcel.status == ParcelStatus.ASSIGNED -> "CONFIRM PICKUP"
                                 parcel.status == ParcelStatus.PICKED_UP -> "START TRANSIT"
                                 parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.OUT_FOR_DELIVERY -> "MARK ARRIVED"
-                                parcel.status == ParcelStatus.ARRIVED -> "ENTER OTP & COMPLETE"
+                                parcel.status == ParcelStatus.ARRIVED -> "ENTER PIN & DELIVER"
                                 else -> "VIEW DETAILS"
                             },
                             fontSize = 10.sp,
@@ -1904,8 +1931,13 @@ fun RiderUpdateBottomSheetContent(
                 }
             }
         } else if (parcel.status == ParcelStatus.ASSIGNED || (parcel.status == ParcelStatus.PENDING && isAssignedToCurrentRider)) {
+            val pickupPrompt = if (parcel.isBatch) {
+                "Confirm pickup of '${parcel.itemName.ifBlank { "batch item" }}' (Stop #${parcel.batchItemIndex} of ${parcel.batchTotalItems}). Are you currently at the pickup location and have received this specific package?"
+            } else {
+                "Confirm pickup of this package. Are you currently at the shipper's pickup location and have received the parcel?"
+            }
             Text(
-                text = "Confirm pickup of this package. Are you currently at the shipper's pickup location and have received the parcel?",
+                text = pickupPrompt,
                 color = AppTextColor,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
@@ -1920,7 +1952,8 @@ fun RiderUpdateBottomSheetContent(
                     viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.PICKED_UP, 0.40f) { success, err ->
                         isSubmitting = false
                         if (success) {
-                            Toast.makeText(context, "Package collected! Status updated to Picked Up.", Toast.LENGTH_SHORT).show()
+                            val msg = if (parcel.isBatch) "${parcel.itemName.ifBlank { "Item" }} collected! Status updated to Picked Up." else "Package collected! Status updated to Picked Up."
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             onDismiss()
                         } else {
                             Toast.makeText(context, err ?: "Failed to update status", Toast.LENGTH_SHORT).show()
@@ -1935,7 +1968,8 @@ fun RiderUpdateBottomSheetContent(
                 if (isSubmitting) {
                     CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(20.dp))
                 } else {
-                    Text("CONFIRM PICKUP", fontWeight = FontWeight.Bold)
+                    val btnText = if (parcel.isBatch) "PICK UP ${parcel.itemName.ifBlank { "ITEM" }.uppercase()}" else "CONFIRM PICKUP"
+                    Text(btnText, fontWeight = FontWeight.Bold)
                 }
             }
         } else if (parcel.status == ParcelStatus.PICKED_UP) {

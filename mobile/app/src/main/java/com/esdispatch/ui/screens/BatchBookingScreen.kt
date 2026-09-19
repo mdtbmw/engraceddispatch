@@ -51,6 +51,7 @@ import com.esdispatch.util.CargoFeasibilityValidator
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
 import android.content.Intent
+import androidx.compose.ui.draw.scale
 import com.esdispatch.data.BatchDestinationItem
 
 val beninLandmarks = listOf(
@@ -96,6 +97,8 @@ fun BatchBookingScreen(
             )
         )
     }
+    var useSamePickupLocation by remember { mutableStateOf(true) }
+    var useSameDeliveryLocation by remember { mutableStateOf(false) }
     var activeContactPickerStopIndex by remember { mutableStateOf(-1) }
 
     var showCheckoutSheet by remember { mutableStateOf(false) }
@@ -347,13 +350,47 @@ fun BatchBookingScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(20.dp)) {
-                        Text(
-                            text = "Pickup Location",
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 14.sp,
-                            color = accentColor,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (useSamePickupLocation) "Pickup Location (All Stops)" else "Default Pickup Location",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 14.sp,
+                                color = accentColor
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Same for all",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextGray
+                                )
+                                Switch(
+                                    checked = useSamePickupLocation,
+                                    onCheckedChange = { same ->
+                                        useSamePickupLocation = same
+                                        if (same) {
+                                            batchStops = batchStops.map { it.copy(pickupAddress = pickup) }
+                                        }
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Obsidian,
+                                        checkedTrackColor = Gold,
+                                        uncheckedThumbColor = TextGray,
+                                        uncheckedTrackColor = LuxuryBlack
+                                    ),
+                                    modifier = Modifier.scale(0.8f)
+                                )
+                            }
+                        }
 
                         OutlinedTextField(
                             value = pickup,
@@ -566,17 +603,51 @@ fun BatchBookingScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Dropoff Destinations (${batchStops.size}/5)",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 14.sp,
-                        color = accentColor
-                    )
+                    Column {
+                        Text(
+                            text = "Dropoff Destinations (${batchStops.size}/5)",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp,
+                            color = accentColor
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(top = 2.dp)
+                        ) {
+                            Text(
+                                text = "Same delivery address",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextGray
+                            )
+                            Switch(
+                                checked = useSameDeliveryLocation,
+                                onCheckedChange = { same ->
+                                    useSameDeliveryLocation = same
+                                    if (same && batchStops.isNotEmpty()) {
+                                        val firstAddr = batchStops[0].destinationAddress
+                                        batchStops = batchStops.map { it.copy(destinationAddress = firstAddr) }
+                                    }
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Obsidian,
+                                    checkedTrackColor = Gold,
+                                    uncheckedThumbColor = TextGray,
+                                    uncheckedTrackColor = LuxuryBlack
+                                ),
+                                modifier = Modifier.scale(0.75f)
+                            )
+                        }
+                    }
 
                     if (batchStops.size < 5) {
                         Button(
                             onClick = {
+                                val firstAddr = if (useSameDeliveryLocation && batchStops.isNotEmpty()) batchStops[0].destinationAddress else ""
                                 batchStops = batchStops + BatchDestinationItem(
+                                    pickupAddress = if (useSamePickupLocation) pickup else "",
+                                    destinationAddress = firstAddr,
                                     itemName = "Package ${batchStops.size + 1}",
                                     weight = "1.5"
                                 )
@@ -644,13 +715,52 @@ fun BatchBookingScreen(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
+                            // Per-Stop Pickup Address (when separate pickup locations are enabled)
+                            if (!useSamePickupLocation) {
+                                OutlinedTextField(
+                                    value = stop.pickupAddress,
+                                    onValueChange = { newPick ->
+                                        val mutable = batchStops.toMutableList()
+                                        mutable[index] = mutable[index].copy(pickupAddress = newPick)
+                                        batchStops = mutable
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 8.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    placeholder = { Text("Pickup Address for Stop #${index + 1}", color = TextGray, fontSize = 13.sp) },
+                                    leadingIcon = { Icon(Icons.Filled.Place, null, tint = accentIconColor, modifier = Modifier.size(18.dp)) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = accentColor,
+                                        unfocusedBorderColor = fieldBorderColor,
+                                        focusedContainerColor = fieldBgColor,
+                                        unfocusedContainerColor = fieldBgColor,
+                                        focusedTextColor = fieldTextColor,
+                                        unfocusedTextColor = fieldTextColor,
+                                        focusedPlaceholderColor = TextGray,
+                                        unfocusedPlaceholderColor = TextGray
+                                    )
+                                )
+                            }
+
                             // Destination Address Field
+                            val displayDestAddress = if (useSameDeliveryLocation && index > 0 && batchStops.isNotEmpty()) {
+                                batchStops[0].destinationAddress
+                            } else {
+                                stop.destinationAddress
+                            }
                             OutlinedTextField(
-                                value = stop.destinationAddress,
+                                value = displayDestAddress,
+                                enabled = !(useSameDeliveryLocation && index > 0),
                                 onValueChange = { newAddr ->
-                                    val mutable = batchStops.toMutableList()
-                                    mutable[index] = mutable[index].copy(destinationAddress = newAddr)
-                                    batchStops = mutable
+                                    if (useSameDeliveryLocation && index == 0) {
+                                        batchStops = batchStops.map { it.copy(destinationAddress = newAddr) }
+                                    } else {
+                                        val mutable = batchStops.toMutableList()
+                                        mutable[index] = mutable[index].copy(destinationAddress = newAddr)
+                                        batchStops = mutable
+                                    }
                                     pickupFocused = false
                                     focusedDestinationIndex = index
                                     performSearch(newAddr)
@@ -665,7 +775,7 @@ fun BatchBookingScreen(
                                         }
                                     },
                                 shape = RoundedCornerShape(16.dp),
-                                placeholder = { Text("Dropoff Address for Stop #${index + 1}", color = TextGray, fontSize = 13.sp) },
+                                placeholder = { Text(if (useSameDeliveryLocation && index > 0) "Same delivery as Stop #1" else "Dropoff Address for Stop #${index + 1}", color = TextGray, fontSize = 13.sp) },
                                 leadingIcon = { Icon(Icons.Filled.Navigation, null, tint = accentIconColor, modifier = Modifier.size(18.dp)) },
                                 textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
@@ -990,11 +1100,17 @@ fun BatchBookingScreen(
                 walletBalance = viewModel.walletBalance.collectAsState().value,
                 onConfirmWalletPayment = {
                     showCheckoutSheet = false
+                    val finalizedStops = batchStops.map { stop ->
+                        stop.copy(
+                            pickupAddress = if (useSamePickupLocation || stop.pickupAddress.isBlank()) pickup else stop.pickupAddress,
+                            destinationAddress = if (useSameDeliveryLocation && batchStops.isNotEmpty()) batchStops[0].destinationAddress else stop.destinationAddress
+                        )
+                    }
                     viewModel.confirmBatchStopsBooking(
                         pickupAddress = pickup,
                         senderName = sName,
                         senderPhone = sPhone,
-                        stops = batchStops,
+                        stops = finalizedStops,
                         totalCost = quotePrice
                     ) { ok, msg ->
                         if (ok) {
@@ -1019,11 +1135,17 @@ fun BatchBookingScreen(
                 onPaymentComplete = { reference ->
                     showPaystackSheet = false
                     viewModel.topUpWallet(pendingAmount)
+                    val finalizedStops = batchStops.map { stop ->
+                        stop.copy(
+                            pickupAddress = if (useSamePickupLocation || stop.pickupAddress.isBlank()) pickup else stop.pickupAddress,
+                            destinationAddress = if (useSameDeliveryLocation && batchStops.isNotEmpty()) batchStops[0].destinationAddress else stop.destinationAddress
+                        )
+                    }
                     viewModel.confirmBatchStopsBooking(
                         pickupAddress = pickup,
                         senderName = sName,
                         senderPhone = sPhone,
-                        stops = batchStops,
+                        stops = finalizedStops,
                         totalCost = quotePrice
                     ) { ok, msg ->
                         if (ok) {

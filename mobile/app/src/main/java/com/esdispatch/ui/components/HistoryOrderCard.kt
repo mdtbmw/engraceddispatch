@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -114,6 +115,54 @@ fun HistoryOrderCard(
                         size = StatusBadgeSize.COMPACT,
                         showLivePulse = false
                     )
+                }
+            }
+
+            if (parcel.status == ParcelStatus.DISPUTED || parcel.isDisputed || parcel.disputeReason.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (dark) Color(0xFF332005) else Color(0xFFFFF7E6),
+                    border = BorderStroke(1.dp, if (dark) Color(0xFFFFB800).copy(alpha = 0.5f) else Color(0xFFFFB800).copy(alpha = 0.6f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ReportProblem,
+                                contentDescription = null,
+                                tint = Gold,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Issue Reported: Under Review",
+                                fontSize = 11.sp,
+                                fontFamily = Poppins,
+                                fontWeight = FontWeight.Bold,
+                                color = if (dark) Gold else Color(0xFF996B00)
+                            )
+                        }
+                        if (parcel.disputeReason.isNotBlank()) {
+                            Text(
+                                text = parcel.disputeReason,
+                                fontSize = 10.sp,
+                                fontFamily = Poppins,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextGray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
             }
 

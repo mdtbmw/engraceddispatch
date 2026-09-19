@@ -24,6 +24,10 @@ import {
   Lock,
   DollarSign,
   ChevronRight,
+  Camera,
+  Maximize2,
+  X,
+  Layers,
 } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { RouteDisplay } from "./RouteDisplay";
@@ -60,6 +64,7 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
   const [statusSuccessFlash, setStatusSuccessFlash] = useState(false);
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
   const [loadingTimeline, setLoadingTimeline] = useState(true);
+  const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!delivery?.id) {
@@ -213,11 +218,16 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
       drivers.find((d) => d.id === targetId || d.uid === targetId) || {
         id: targetId,
         name: delivery.courierName || delivery.driverName || "Assigned Courier",
-        phone: delivery.courierPhone || "",
-        bikeNumber: delivery.riderBikeNumber || "Fleet Bike",
+        phone: delivery.courierPhone || delivery.driverPhone || "",
+        bikeNumber: delivery.riderBikeNumber || delivery.driverBikeNumber || "",
       }
     );
-  }, [delivery, drivers]);
+  }, [drivers, delivery?.riderId, delivery?.driverId, delivery?.courierName, delivery?.courierPhone, delivery?.riderBikeNumber]);
+
+  const batchSiblings = useMemo(() => {
+    if (!delivery?.batchId) return [];
+    return (deliveries || []).filter((d: any) => d.batchId && d.batchId === delivery.batchId);
+  }, [deliveries, delivery?.batchId]);
 
   const hasRider = Boolean(
     delivery?.riderId ||
@@ -655,9 +665,20 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
 
           {/* Handover OTP & Security */}
           <div className="bg-white dark:bg-[#1a1a1a] p-5 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-3">
-            <h3 className="text-xs font-black uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-[#FFB800]" /> Handover Security OTP
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-[#FFB800]" /> Handover Security OTP
+              </h3>
+              {delivery.verificationStatus === "VERIFIED" || delivery.otpVerified || delivery.status === "DELIVERED" ? (
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                  <CheckCircle2 size={10} /> VERIFIED
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                  PENDING VERIFICATION
+                </span>
+              )}
+            </div>
             <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-center">
               <p className="text-[10px] font-bold text-gray-700 dark:text-gray-300 mb-1">
                 Recipient Verification Code
@@ -840,6 +861,222 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
             </div>
           </div>
 
+          {/* Delivery Verification Proof & Batch Audit Card */}
+          <div className="bg-white dark:bg-[#1a1a1a] p-6 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-3">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-[#FFB800]" />
+                <h3 className="text-sm font-black text-[#111] dark:text-white uppercase tracking-wider">
+                  Delivery Verification Proof & Batch Audit
+                </h3>
+              </div>
+              {delivery.isBatch && (
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/30 flex items-center gap-1">
+                  <Layers size={12} />
+                  Batch Item {delivery.batchItemIndex || 1} of {delivery.batchTotalItems || 1}
+                </span>
+              )}
+            </div>
+
+            {/* Batch Item Operational Record */}
+            {delivery.isBatch && (
+              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-bold text-gray-500">
+                    Batch ID: {delivery.batchId || "N/A"}
+                  </span>
+                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">
+                    Independent Trackable Record
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1">
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5">
+                    <span className="text-[10px] text-gray-500 font-bold block">Pickup Time</span>
+                    <span className="font-extrabold text-[#111] dark:text-white">
+                      {delivery.pickupTimestamp ? new Date(delivery.pickupTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Pending Pickup"}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5">
+                    <span className="text-[10px] text-gray-500 font-bold block">In-Transit Time</span>
+                    <span className="font-extrabold text-[#111] dark:text-white">
+                      {delivery.transitTimestamp ? new Date(delivery.transitTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Pending Transit"}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5">
+                    <span className="text-[10px] text-gray-500 font-bold block">Delivery Time</span>
+                    <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                      {delivery.deliveryTimestamp ? new Date(delivery.deliveryTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Pending Delivery"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sister Batch Items List */}
+                {batchSiblings.length > 1 && (
+                  <div className="pt-2 border-t border-black/5 dark:border-white/5 space-y-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-gray-500">
+                      All Items in this Batch ({batchSiblings.length})
+                    </span>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {batchSiblings.map((item: any, idx: number) => {
+                        const isCurrent = item.id === delivery.id;
+                        return (
+                          <div
+                            key={item.id || idx}
+                            className={`p-2 rounded-xl text-xs flex items-center justify-between border ${
+                              isCurrent
+                                ? "bg-[#FFB800]/10 border-[#FFB800]/40 text-[#111] dark:text-white font-bold"
+                                : "bg-white dark:bg-[#1a1a1a] border-black/5 dark:border-white/5 text-gray-600 dark:text-gray-300"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="w-5 h-5 rounded-full bg-black/10 dark:bg-white/10 text-[10px] font-black flex items-center justify-center shrink-0">
+                                {item.batchItemIndex || idx + 1}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="truncate font-semibold">{item.itemName || "Item"} {isCurrent && "(Current)"}</p>
+                                <p className="text-[10px] text-gray-500 truncate">{item.deliveryAddress || "Benin City"}</p>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/5 shrink-0">
+                              {item.status || "PENDING"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Proof Artifacts: Photo Proof & Digital Signature */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              {/* Photo Proof */}
+              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Camera size={14} className="text-[#FFB800]" />
+                    <span className="text-xs font-extrabold text-[#111] dark:text-white">
+                      Handover Photo Proof (Mandatory)
+                    </span>
+                  </div>
+                  {(delivery.photoUrl || delivery.podUrl) ? (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+                      CAPTURED
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                      AWAITING ARRIVAL
+                    </span>
+                  )}
+                </div>
+
+                {(delivery.photoUrl || delivery.podUrl) ? (
+                  <div className="space-y-2">
+                    <div
+                      onClick={() => setPreviewPhotoUrl(delivery.photoUrl || delivery.podUrl)}
+                      className="relative h-44 rounded-xl overflow-hidden border border-black/10 dark:border-white/10 group cursor-pointer"
+                    >
+                      <img
+                        src={delivery.photoUrl || delivery.podUrl}
+                        alt="Handover Photo Proof"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5 text-white text-xs font-black transition-opacity">
+                        <Maximize2 size={16} /> Click to Inspect
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-gray-500 font-mono">
+                      <span className="truncate max-w-[200px]">
+                        {delivery.photoUrl ? "Canonical Storage URL" : "Storage Artifact"}
+                      </span>
+                      <button
+                        onClick={() => setPreviewPhotoUrl(delivery.photoUrl || delivery.podUrl)}
+                        className="text-[#FFB800] hover:underline font-bold"
+                      >
+                        Inspect Zoom
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-40 rounded-xl border border-dashed border-gray-300 dark:border-white/10 flex flex-col items-center justify-center text-center p-4 text-gray-500">
+                    <Camera className="w-8 h-8 opacity-40 mb-2" />
+                    <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                      No Photo Captured Yet
+                    </p>
+                    <p className="text-[10px] text-gray-500 mt-1 max-w-[220px]">
+                      Courier will capture framed photo of parcel at recipient address prior to completion.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Signature Proof */}
+              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#222] border border-black/5 dark:border-white/5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Lock size={14} className="text-[#FFB800]" />
+                    <span className="text-xs font-extrabold text-[#111] dark:text-white">
+                      Recipient Signature
+                    </span>
+                  </div>
+                  {delivery.signatureUrl ? (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+                      SIGNED
+                    </span>
+                  ) : delivery.signatureEnabled ? (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                      REQUIRED
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-gray-500/15 text-gray-500 border border-gray-500/30">
+                      OPTIONAL / OFF
+                    </span>
+                  )}
+                </div>
+
+                {delivery.signatureUrl ? (
+                  <div className="space-y-2">
+                    <div
+                      onClick={() => setPreviewPhotoUrl(delivery.signatureUrl)}
+                      className="relative h-44 rounded-xl overflow-hidden bg-white dark:bg-[#111] border border-black/10 dark:border-white/10 group cursor-pointer flex items-center justify-center p-3"
+                    >
+                      <img
+                        src={delivery.signatureUrl}
+                        alt="Customer Signature"
+                        className="max-h-full max-w-full object-contain filter invert dark:invert-0"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5 text-white text-xs font-black transition-opacity">
+                        <Maximize2 size={16} /> Click to Inspect
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-gray-500 font-mono">
+                      <span>Digitally Authenticated</span>
+                      <button
+                        onClick={() => setPreviewPhotoUrl(delivery.signatureUrl)}
+                        className="text-[#FFB800] hover:underline font-bold"
+                      >
+                        Inspect Zoom
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-40 rounded-xl border border-dashed border-gray-300 dark:border-white/10 flex flex-col items-center justify-center text-center p-4 text-gray-500">
+                    <Lock className="w-8 h-8 opacity-40 mb-2" />
+                    <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                      {delivery.signatureEnabled ? "Awaiting Customer Signature" : "Signature Verification OFF"}
+                    </p>
+                    <p className="text-[10px] text-gray-500 mt-1 max-w-[220px]">
+                      {delivery.signatureEnabled
+                        ? "Configured in global settings to require digital signature following photo proof."
+                        : "Handover is verified via mandatory photo proof and recipient 4-digit PIN."}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Chain of Custody & Event Audit Trail */}
           <div className="bg-white dark:bg-[#1a1a1a] p-6 rounded-3xl border border-black/10 dark:border-white/10 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-3">
@@ -929,6 +1166,40 @@ export const ShipmentMicroPage: React.FC<ShipmentMicroPageProps> = ({
           </div>
         </div>
       </div>
+      {/* Full-size Photo / Signature Inspect Modal */}
+      {previewPhotoUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in cursor-pointer"
+          onClick={() => setPreviewPhotoUrl(null)}
+        >
+          <div
+            className="relative max-w-3xl max-h-[90vh] bg-[#1a1a1a] rounded-3xl p-4 border border-white/20 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-[#FFB800]" />
+                <span className="text-xs font-black text-white uppercase tracking-wider">
+                  Verified Delivery Artifact
+                </span>
+              </div>
+              <button
+                onClick={() => setPreviewPhotoUrl(null)}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex items-center justify-center max-h-[75vh] overflow-auto">
+              <img
+                src={previewPhotoUrl}
+                alt="Delivery Artifact Preview"
+                className="max-h-[70vh] w-auto rounded-2xl object-contain shadow-lg bg-white/5"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

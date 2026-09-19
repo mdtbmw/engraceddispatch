@@ -2129,6 +2129,38 @@ fun SettingsScreen(
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
                             SettingsItemHighContrast(
+                                icon = Icons.Filled.VolumeUp,
+                                title = "Test Notification & Chime",
+                                subtitle = "Test custom luxury sound and lockscreen display",
+                                badge = "PLAY",
+                                badgeColor = Gold,
+                                onClick = {
+                                    com.esdispatch.data.MyFirebaseMessagingService.triggerTestNotification(context)
+                                }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
+                            SettingsItemHighContrast(
+                                icon = Icons.Filled.Lock,
+                                title = "Lock Screen Notification Permissions",
+                                subtitle = "Configure device lockscreen alert & heads-up banner display",
+                                badge = "MANAGE",
+                                badgeColor = Gold,
+                                onClick = {
+                                    try {
+                                        val intent = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                            putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                            data = android.net.Uri.fromParts("package", context.packageName, null)
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = if (isDark) BorderDark else Color(0xFFF3F4F6))
+                            SettingsItemHighContrast(
                                 icon = Icons.Filled.Tune,
                                 title = "Delivery Alert Stages",
                                 subtitle = "Granular alerts for Booked, Dispatched & Delivered",

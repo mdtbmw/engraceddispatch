@@ -6934,6 +6934,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         <Toggle label="Dynamic Pricing" desc="Surge pricing based on demand" checked={!!sForm.dynamicPricing} onChange={v => upd("dynamicPricing", v)} />
         <Toggle label="Phone Verification (SMS/WhatsApp/Call)" desc="Require phone number OTP verification for order booking and account security" checked={!!sForm.phoneVerificationEnabled} onChange={v => upd("phoneVerificationEnabled", v)} />
         <Toggle label="QR Code Delivery Handover" desc="Display QR code alongside 4-digit PIN for parcel handover verification (disabled by default for direct PIN entry)" checked={!!sForm.enableQrCodeHandover} onChange={v => upd("enableQrCodeHandover", v)} />
+        <Toggle label="Delivery Signature Verification" desc="Require customer digital signature after capturing mandatory photo proof (OFF by default — photo proof is always required)" checked={!!sForm.signatureVerificationEnabled} onChange={v => upd("signatureVerificationEnabled", v)} />
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Feature Toggles")} loading={saving} /></div>
     </div>

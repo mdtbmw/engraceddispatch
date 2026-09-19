@@ -64,7 +64,22 @@ data class Parcel(
     val estimatedDurationMinutes: Int = 0,
     val deliveryGuardianAlert: String = "",
     val idempotencyKey: String = "",
-    val podType: String = ""
+    val podType: String = "",
+    val batchId: String = "",
+    val isBatch: Boolean = false,
+    val batchItemId: String = "",
+    val batchItemIndex: Int = 0,
+    val batchTotalItems: Int = 1,
+    val pickupTimestamp: Long = 0L,
+    val transitTimestamp: Long = 0L,
+    val deliveryTimestamp: Long = 0L,
+    val photoUrl: String = "",
+    val signatureUrl: String = "",
+    val signatureEnabled: Boolean = false,
+    val verificationStatus: String = "UNVERIFIED",
+    val isDisputed: Boolean = false,
+    val disputeReason: String = "",
+    val disputeNotes: String = ""
 )
 
 @Entity(tableName = "transactions")
@@ -101,11 +116,51 @@ data class NotificationItem(
 
 data class BatchDestinationItem(
     val id: String = UUID.randomUUID().toString(),
+    val pickupAddress: String = "",
     val destinationAddress: String = "",
     val recipientName: String = "",
     val recipientPhone: String = "",
     val itemName: String = "",
     val weight: String = "1.5"
+)
+
+data class BatchItem(
+    val itemId: String = UUID.randomUUID().toString(),
+    val batchId: String = "",
+    val itemName: String = "",
+    val description: String = "",
+    val pickupAddress: String = "",
+    val deliveryAddress: String = "",
+    val recipientName: String = "",
+    val recipientPhone: String = "",
+    val weight: Double = 1.0,
+    val pickupLat: Double? = null,
+    val pickupLng: Double? = null,
+    val deliveryLat: Double? = null,
+    val deliveryLng: Double? = null,
+    val pickupStatus: String = "PENDING", // PENDING, PICKED_UP
+    val deliveryStatus: String = "PENDING", // PENDING, IN_TRANSIT, ARRIVED, DELIVERED
+    val pickupTimestamp: Long = 0L,
+    val transitTimestamp: Long = 0L,
+    val deliveryTimestamp: Long = 0L,
+    val deliveryPin: String = "",
+    val photoUrl: String = "",
+    val signatureUrl: String = "",
+    val signatureEnabled: Boolean = false,
+    val verificationStatus: String = "UNVERIFIED"
+)
+
+data class BatchBooking(
+    val batchId: String = "",
+    val customerId: String = "",
+    val riderId: String = "",
+    val paymentId: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val overallStatus: String = "PENDING",
+    val totalItems: Int = 0,
+    val completedItems: Int = 0,
+    val currentActiveItem: String = "",
+    val items: List<BatchItem> = emptyList()
 )
 
 data class PromoCode(

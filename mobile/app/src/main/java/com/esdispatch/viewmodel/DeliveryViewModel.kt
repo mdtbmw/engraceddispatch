@@ -245,6 +245,7 @@ class DeliveryViewModel : WalletViewModel() {
         _emailVerificationRequired.value = prefs.getBoolean("email_verification_required", false)
         _phoneVerificationRequired.value = prefs.getBoolean("phone_verification_required", false)
         _enableQrCodeHandover.value = prefs.getBoolean("enable_qr_code_handover", false)
+        _signatureVerificationEnabled.value = prefs.getBoolean("signature_verification_enabled", false)
         _dashboardSectionsEnabled.value = mapOf(
             "promo_banner" to prefs.getBoolean("section_promo_banner", true),
             "active_shipments" to prefs.getBoolean("section_active_shipments", true),
@@ -294,6 +295,10 @@ class DeliveryViewModel : WalletViewModel() {
                     (snap.get("enableQrCodeHandover") as? Boolean)?.let {
                         _enableQrCodeHandover.value = it
                         savePref("enable_qr_code_handover", it)
+                    }
+                    (snap.get("signatureVerificationEnabled") as? Boolean)?.let {
+                        _signatureVerificationEnabled.value = it
+                        savePref("signature_verification_enabled", it)
                     }
                     (snap.get("maintenanceMode") as? Boolean)?.let { _maintenanceMode.value = it }
                     
@@ -501,7 +506,8 @@ class DeliveryViewModel : WalletViewModel() {
     private val _emailVerificationRequired = MutableStateFlow(false)
     val emailVerificationRequired: StateFlow<Boolean> = _emailVerificationRequired.asStateFlow()
 
-    
+    private val _signatureVerificationEnabled = MutableStateFlow(false)
+    val signatureVerificationEnabled: StateFlow<Boolean> = _signatureVerificationEnabled.asStateFlow()
 
     private val _dashboardSectionsEnabled = MutableStateFlow(
         mapOf(
@@ -1007,13 +1013,68 @@ class DeliveryViewModel : WalletViewModel() {
         riderAssignmentsJob?.cancel()
 
         availableDeliveriesJob = viewModelScope.launch {
+            var previousIds = emptySet<String>()
             com.esdispatch.data.FirebaseManager.listenToAvailableDeliveries().collect { list ->
+                val currentIds = list.map { it.id }.toSet()
+                val newDispatches = list.filter { it.id !in previousIds }
+                if (previousIds.isNotEmpty() && newDispatches.isNotEmpty() && _currentAttendanceStatus.value == "ON_DUTY") {
+                    com.esdispatch.util.SoundManager.playDispatchSweep()
+                    val firstDispatch = newDispatches.first()
+                    val notifTitle = "New Dispatch Available Nearby!"
+                    val notifMsg = "${firstDispatch.itemName.ifBlank { "Parcel" }} • Pickup: ${firstDispatch.pickupAddress.take(35)}... Tap to view."
+                    addNotification(notifTitle, notifMsg)
+                    showInAppNotification(notifTitle, notifMsg)
+                    appContext?.let { ctx ->
+                        try {
+                            com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                                context = ctx,
+                                title = notifTitle,
+                                message = notifMsg,
+                                parcelId = firstDispatch.id,
+                                status = "OFFERED"
+                            )
+                        } catch (_: Exception) {}
+                        try {
+                            val vibrator = ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 250, 150, 250), -1))
+                            } else {
+                                @Suppress("DEPRECATION")
+                                vibrator?.vibrate(400)
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+                previousIds = currentIds
                 _availableDeliveries.value = list
             }
         }
 
         riderAssignmentsJob = viewModelScope.launch {
+            var previousAssignedIds = emptySet<String>()
             com.esdispatch.data.FirebaseManager.listenToRiderAssignments(riderId).collect { list ->
+                val currentAssignedIds = list.map { it.id }.toSet()
+                val newlyAssigned = list.filter { it.id !in previousAssignedIds && it.status in listOf(com.esdispatch.data.ParcelStatus.ASSIGNED, com.esdispatch.data.ParcelStatus.RESERVED_NEXT) }
+                if (previousAssignedIds.isNotEmpty() && newlyAssigned.isNotEmpty()) {
+                    val assignedItem = newlyAssigned.first()
+                    val isReserved = assignedItem.status == com.esdispatch.data.ParcelStatus.RESERVED_NEXT
+                    val title = if (isReserved) "Trip Reserved Next!" else "New Trip Assigned!"
+                    val msg = "Pickup: ${assignedItem.pickupAddress} • Dropoff: ${assignedItem.deliveryAddress}"
+                    addNotification(title, msg)
+                    showInAppNotification(title, msg)
+                    appContext?.let { ctx ->
+                        try {
+                            com.esdispatch.data.MyFirebaseMessagingService.showNotification(
+                                context = ctx,
+                                title = title,
+                                message = msg,
+                                parcelId = assignedItem.id,
+                                status = assignedItem.status.name
+                            )
+                        } catch (_: Exception) {}
+                    }
+                }
+                previousAssignedIds = currentAssignedIds
                 _riderAssignments.value = list
                 val totalTips = list.filter { it.status == com.esdispatch.data.ParcelStatus.DELIVERED }
                     .sumOf { it.tipAmount }
@@ -1190,27 +1251,95 @@ class DeliveryViewModel : WalletViewModel() {
 
     /** Upload a proof-of-delivery (photo/signature) to Storage, stamp the delivery doc, then pay the rider. */
     fun uploadPodAndCompleteParcel(parcelId: String, podBytes: ByteArray, podType: String, onComplete: ((Boolean) -> Unit)? = null) {
-        // Optimistically clear assignment immediately
-        _riderAssignments.update { list ->
-            list.map { if (it.id == parcelId) it.copy(status = ParcelStatus.DELIVERED, progress = 1.0f) else it }
+        uploadDeliveryPhotoAndVerify(parcelId, podBytes, "proof") { success, _ ->
+            onComplete?.invoke(success)
         }
+    }
+
+    /** Upload delivery proof photo to canonical storage path, update Firestore, and either complete or proceed to signature */
+    fun uploadDeliveryPhotoAndVerify(
+        parcelId: String,
+        photoBytes: ByteArray,
+        itemId: String = "proof",
+        onComplete: ((Boolean, String?) -> Unit)? = null
+    ) {
         try {
-            val ref = com.google.firebase.storage.FirebaseStorage.getInstance()
-                .reference.child("pod/$parcelId/$podType-${System.currentTimeMillis()}.jpg")
-            ref.putBytes(podBytes)
+            val canonicalPath = "delivery_proofs/$parcelId/$itemId.jpg"
+            val ref = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child(canonicalPath)
+            ref.putBytes(photoBytes)
                 .addOnSuccessListener {
                     ref.downloadUrl.addOnSuccessListener { url ->
+                        val downloadUrl = url.toString()
+                        val updates = hashMapOf<String, Any>(
+                            "podUrl" to downloadUrl,
+                            "photoUrl" to downloadUrl,
+                            "podType" to "PHOTO",
+                            "photoVerified" to true,
+                            "podTimestamp" to com.google.firebase.Timestamp.now(),
+                            "deliveryTimestamp" to System.currentTimeMillis()
+                        )
                         com.esdispatch.data.FirebaseManager.firestore?.collection("deliveries")?.document(parcelId)
-                            ?.update(
-                                mapOf(
-                                    "podUrl" to url.toString(),
-                                    "podType" to podType,
-                                    "podTimestamp" to com.google.firebase.Timestamp.now()
-                                )
-                            )
-                            ?.addOnFailureListener { e ->
-                                android.util.Log.e("POD", "Failed to stamp podUrl on delivery: ${e.message}")
-                            }
+                            ?.set(updates, com.google.firebase.firestore.SetOptions.merge())
+
+                        val sigReq = _signatureVerificationEnabled.value
+                        if (!sigReq) {
+                            markParcelDelivered(parcelId)
+                            onComplete?.invoke(true, null)
+                        } else {
+                            onComplete?.invoke(true, downloadUrl)
+                        }
+                    }.addOnFailureListener { e ->
+                        android.util.Log.e("POD", "Failed to retrieve photo download URL: ${e.message}")
+                        if (!_signatureVerificationEnabled.value) {
+                            markParcelDelivered(parcelId)
+                        }
+                        onComplete?.invoke(true, null)
+                    }
+                }
+                .addOnFailureListener { e ->
+                    android.util.Log.e("POD", "Failed to upload delivery photo: ${e.message}")
+                    val payload = org.json.JSONObject(mapOf(
+                        "parcelId" to parcelId,
+                        "podType" to "PHOTO",
+                        "podStatus" to "OFFLINE_CAPTURED"
+                    )).toString()
+                    queueOfflineSync("POD_UPLOAD", payload)
+                    if (!_signatureVerificationEnabled.value) {
+                        markParcelDelivered(parcelId)
+                    }
+                    onComplete?.invoke(true, null)
+                }
+        } catch (e: Exception) {
+            android.util.Log.e("POD", "Error uploading photo: ${e.message}")
+            if (!_signatureVerificationEnabled.value) {
+                markParcelDelivered(parcelId)
+            }
+            onComplete?.invoke(true, null)
+        }
+    }
+
+    /** Upload customer digital signature to canonical storage path and complete delivery */
+    fun uploadSignatureAndCompleteDelivery(
+        parcelId: String,
+        signatureBytes: ByteArray,
+        itemId: String = "signature",
+        onComplete: ((Boolean) -> Unit)? = null
+    ) {
+        try {
+            val canonicalPath = "delivery_proofs/$parcelId/$itemId.jpg"
+            val ref = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child(canonicalPath)
+            ref.putBytes(signatureBytes)
+                .addOnSuccessListener {
+                    ref.downloadUrl.addOnSuccessListener { url ->
+                        val downloadUrl = url.toString()
+                        val updates = hashMapOf<String, Any>(
+                            "signatureUrl" to downloadUrl,
+                            "signatureVerified" to true,
+                            "signatureTimestamp" to com.google.firebase.Timestamp.now()
+                        )
+                        com.esdispatch.data.FirebaseManager.firestore?.collection("deliveries")?.document(parcelId)
+                            ?.set(updates, com.google.firebase.firestore.SetOptions.merge())
+
                         markParcelDelivered(parcelId)
                         onComplete?.invoke(true)
                     }.addOnFailureListener {
@@ -1219,24 +1348,12 @@ class DeliveryViewModel : WalletViewModel() {
                     }
                 }
                 .addOnFailureListener { e ->
-                    android.util.Log.e("DeliveryViewModel", "POD upload failed: ${e.message}")
-                    val payload = org.json.JSONObject(mapOf(
-                        "parcelId" to parcelId,
-                        "podType" to podType,
-                        "podStatus" to "OFFLINE_CAPTURED"
-                    )).toString()
-                    queueOfflineSync("POD_UPLOAD", payload)
+                    android.util.Log.e("Signature", "Upload failed: ${e.message}")
                     markParcelDelivered(parcelId)
                     onComplete?.invoke(true)
                 }
         } catch (e: Exception) {
-            android.util.Log.e("POD", "POD upload error: ${e.message}")
-            val payload = org.json.JSONObject(mapOf(
-                "parcelId" to parcelId,
-                "podType" to podType,
-                "podStatus" to "OFFLINE_CAPTURED"
-            )).toString()
-            queueOfflineSync("POD_UPLOAD", payload)
+            android.util.Log.e("Signature", "Error: ${e.message}")
             markParcelDelivered(parcelId)
             onComplete?.invoke(true)
         }
@@ -5066,12 +5183,13 @@ class DeliveryViewModel : WalletViewModel() {
                 val parcelId = "PC-${currentTime.toString().takeLast(6)}-${index + 1}"
                 val otp = (1000..9999).random().toString()
                 val itemName = if (stop.itemName.isNotBlank()) stop.itemName else "Batch Delivery #${index + 1}"
+                val effectivePickup = if (stop.pickupAddress.isNotBlank()) stop.pickupAddress else pickupAddress
                 val parcel = Parcel(
                     id = parcelId,
                     itemName = itemName,
                     imageUrl = "https://images.unsplash.com/photo-1589409514187-c21d14bf0d13?w=100&h=100&fit=crop",
                     status = ParcelStatus.PENDING,
-                    pickupAddress = pickupAddress.ifBlank { "Unspecified Pickup" },
+                    pickupAddress = effectivePickup.ifBlank { "Unspecified Pickup" },
                     deliveryAddress = stop.destinationAddress.ifBlank { "Unspecified Delivery" },
                     senderName = senderName.ifBlank { _userName.value.ifBlank { "Engraced Member" } },
                     senderPhone = sPhone,
@@ -5083,7 +5201,13 @@ class DeliveryViewModel : WalletViewModel() {
                     progress = 0.0f,
                     userId = uid ?: "",
                     otpCode = otp,
-                    additionalStops = "batch:$batchId"
+                    additionalStops = "batch:$batchId",
+                    batchId = batchId,
+                    isBatch = true,
+                    batchItemId = parcelId,
+                    batchItemIndex = index,
+                    batchTotalItems = stops.size,
+                    verificationStatus = "UNVERIFIED"
                 )
                 newParcels.add(parcel)
 
@@ -5121,6 +5245,21 @@ class DeliveryViewModel : WalletViewModel() {
                 newNotifications.forEach { repository?.saveNotification(it) }
                 repository?.saveTransaction(batchTx)
                 newParcels.forEach { syncParcel(it) }
+                
+                // Record parent batch in Firestore
+                val batchDoc = hashMapOf<String, Any>(
+                    "batchId" to batchId,
+                    "customerId" to (uid ?: ""),
+                    "riderId" to "",
+                    "totalItems" to stops.size,
+                    "completedItems" to 0,
+                    "overallStatus" to "PENDING",
+                    "createdAt" to com.google.firebase.Timestamp.now(),
+                    "itemIds" to newParcels.map { it.id },
+                    "totalCost" to totalCost
+                )
+                com.esdispatch.data.FirebaseManager.firestore?.collection("batch_bookings")?.document(batchId)?.set(batchDoc)
+
                 if (uid != null) {
                     com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
                         userId = uid,

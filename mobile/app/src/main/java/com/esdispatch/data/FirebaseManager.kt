@@ -613,6 +613,23 @@ object FirebaseManager {
             "pickupLng" to parcel.pickupLng,
             "deliveryLat" to parcel.deliveryLat,
             "deliveryLng" to parcel.deliveryLng,
+            "podType" to parcel.podType,
+            "podUrl" to parcel.podUrl,
+            "batchId" to parcel.batchId,
+            "isBatch" to parcel.isBatch,
+            "batchItemId" to parcel.batchItemId,
+            "batchItemIndex" to parcel.batchItemIndex,
+            "batchTotalItems" to parcel.batchTotalItems,
+            "pickupTimestamp" to parcel.pickupTimestamp,
+            "transitTimestamp" to parcel.transitTimestamp,
+            "deliveryTimestamp" to parcel.deliveryTimestamp,
+            "photoUrl" to parcel.photoUrl,
+            "signatureUrl" to parcel.signatureUrl,
+            "signatureEnabled" to parcel.signatureEnabled,
+            "verificationStatus" to parcel.verificationStatus,
+            "isDisputed" to (parcel.isDisputed || parcel.status == ParcelStatus.DISPUTED),
+            "disputeReason" to parcel.disputeReason,
+            "disputeNotes" to parcel.disputeNotes,
             "lastUpdated" to System.currentTimeMillis()
         )
 
@@ -672,6 +689,7 @@ object FirebaseManager {
         val reservedCourierName = doc.getString("reservedCourierName") ?: ""
         val reservedCourierPhone = doc.getString("reservedCourierPhone") ?: ""
         val podUrl = doc.getString("podUrl") ?: ""
+        val podType = doc.getString("podType") ?: ""
         val podStatus = doc.getString("podStatus") ?: ""
         val payoutCredited = doc.getSafeBoolean("payoutCredited", false)
         val category = doc.getString("category")?.takeIf { it.isNotBlank() } ?: "Standard"
@@ -681,6 +699,21 @@ object FirebaseManager {
         val deliveryLng = doc.getSafeDoubleNullable("deliveryLng")
         val createdAt = doc.getSafeLong("createdAt", 0L)
         val userId = doc.getString("userId")?.takeIf { it.isNotBlank() } ?: fallbackUserId
+        val batchId = doc.getString("batchId") ?: ""
+        val isBatch = doc.getSafeBoolean("isBatch", false)
+        val batchItemId = doc.getString("batchItemId") ?: ""
+        val batchItemIndex = doc.getSafeInt("batchItemIndex", 0)
+        val batchTotalItems = doc.getSafeInt("batchTotalItems", 1)
+        val pickupTimestamp = doc.getSafeLong("pickupTimestamp", 0L)
+        val transitTimestamp = doc.getSafeLong("transitTimestamp", 0L)
+        val deliveryTimestamp = doc.getSafeLong("deliveryTimestamp", 0L)
+        val photoUrl = doc.getString("photoUrl") ?: podUrl
+        val signatureUrl = doc.getString("signatureUrl") ?: ""
+        val signatureEnabled = doc.getSafeBoolean("signatureEnabled", false)
+        val verificationStatus = doc.getString("verificationStatus") ?: "UNVERIFIED"
+        val isDisputed = doc.getSafeBoolean("isDisputed", false) || status == ParcelStatus.DISPUTED
+        val disputeReason = doc.getString("disputeReason") ?: ""
+        val disputeNotes = doc.getString("disputeNotes") ?: ""
 
         return Parcel(
             id = id,
@@ -720,13 +753,29 @@ object FirebaseManager {
             reservedCourierName = reservedCourierName,
             reservedCourierPhone = reservedCourierPhone,
             podUrl = podUrl,
+            podType = podType,
             podStatus = podStatus,
             payoutCredited = payoutCredited,
             category = category,
             pickupLat = pickupLat,
             pickupLng = pickupLng,
             deliveryLat = deliveryLat,
-            deliveryLng = deliveryLng
+            deliveryLng = deliveryLng,
+            batchId = batchId,
+            isBatch = isBatch,
+            batchItemId = batchItemId,
+            batchItemIndex = batchItemIndex,
+            batchTotalItems = batchTotalItems,
+            pickupTimestamp = pickupTimestamp,
+            transitTimestamp = transitTimestamp,
+            deliveryTimestamp = deliveryTimestamp,
+            photoUrl = photoUrl,
+            signatureUrl = signatureUrl,
+            signatureEnabled = signatureEnabled,
+            verificationStatus = verificationStatus,
+            isDisputed = isDisputed,
+            disputeReason = disputeReason,
+            disputeNotes = disputeNotes
         )
     }
 
@@ -1542,7 +1591,7 @@ object FirebaseManager {
                 val riderSnap = transaction.get(db.collection("users").document(riderId))
                 val isOnline = riderSnap.getBoolean("isOnline") ?: false
                 if (!isOnline) {
-                    throw Exception("You are offline. Go on duty to accept new dispatches.")
+                    throw Exception("You are currently unavailable for dispatch. Turn your availability ON to accept dispatches.")
                 }
             }
 

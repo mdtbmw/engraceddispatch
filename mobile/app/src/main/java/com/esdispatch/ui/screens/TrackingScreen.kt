@@ -333,11 +333,9 @@ fun ActiveTrackingScreen(
             it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED
         }
     }
-    val activeParcel = remember(selectedParcel, activeParcels, effectiveParcels) {
-        val nonCancelledSelected = selectedParcel?.takeIf { it.status != ParcelStatus.CANCELLED }
-        nonCancelledSelected
-            ?: activeParcels.firstOrNull()
-            ?: effectiveParcels.firstOrNull { it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.DELIVERED }
+    val activeParcel = remember(selectedParcel, activeParcels) {
+        val activeSelected = selectedParcel?.takeIf { it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.DELIVERED }
+        activeSelected ?: activeParcels.firstOrNull()
     }
 
     val previewParcel = remember {
@@ -537,27 +535,26 @@ fun ActiveTrackingScreen(
     var realDistanceKm by remember { mutableStateOf<Float?>(null) }
 
     fun calculateEta(prog: Float, weather: String, aiActive: Boolean, distKm: Float? = realDistanceKm): Int {
-        val baseSeconds = if (distKm != null && distKm > 0.05f) {
-            ((distKm * 144f) + 90f).toInt()
-        } else {
-            ((1f - prog) * 1200).toInt().coerceAtLeast(10)
+        if (distKm == null || distKm <= 0.05f) {
+            return 0
         }
+        val baseSeconds = ((distKm * 144f) + 90f).toInt()
         val weatherMultiplier = when {
             weather.contains("Rainy") || weather.contains("Heavy Rain") -> 1.35
             weather.contains("Thunderstorm") || weather.contains("Stormy") -> 1.75
             weather.contains("Foggy") -> 1.25
             else -> 1.0
         }
-        val aiOffset = if (aiActive) -45 else 0 // AI model optimization offset
-        return ((baseSeconds * weatherMultiplier) + aiOffset).toInt().coerceAtLeast(5)
+        val aiOffset = if (aiActive) -45 else 0
+        return ((baseSeconds * weatherMultiplier) + aiOffset).toInt().coerceAtLeast(60)
     }
 
-    // Dynamic 'Estimated Time of Arrival' countdown ticking in real-time
-    var tickingSeconds by remember(parcel.progress, currentWeather, isAiEtaActive) {
-        mutableStateOf(calculateEta(parcel.progress, currentWeather, isAiEtaActive))
+    // Dynamic 'Estimated Time of Arrival' countdown ticking in real-time when GPS telemetry is active
+    var tickingSeconds by remember(parcel.progress, currentWeather, isAiEtaActive, realDistanceKm) {
+        mutableStateOf(calculateEta(parcel.progress, currentWeather, isAiEtaActive, realDistanceKm))
     }
 
-    LaunchedEffect(parcel.progress, currentWeather, isAiEtaActive) {
+    LaunchedEffect(parcel.progress, currentWeather, isAiEtaActive, realDistanceKm) {
         while (tickingSeconds > 0) {
             delay(1000L)
             tickingSeconds--
@@ -908,8 +905,9 @@ fun ActiveTrackingScreen(
                 }
             }
 
-            // FLOATING RIDER APPROACHING BANNER (< 500m)
-            if (!hasNoBooking && parcel.progress >= 0.95f && parcel.status != ParcelStatus.DELIVERED) {
+            // FLOATING RIDER APPROACHING BANNER (< 500m or ARRIVED)
+            val approachingDist = realDistanceKm
+            if (!hasNoBooking && parcel.status != ParcelStatus.DELIVERED && ((approachingDist != null && approachingDist < 0.5f) || parcel.status == ParcelStatus.ARRIVED)) {
                 Card(
                     modifier = Modifier
                         .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -934,15 +932,20 @@ fun ActiveTrackingScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Rider Approaching! (< 500m)",
+                                text = if (parcel.status == ParcelStatus.ARRIVED) "Courier Arrived at Destination!" else "Rider Approaching! (< 500m)",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Obsidian
                             )
-                            val mins = tickingSeconds / 60
-                            val secs = tickingSeconds % 60
+                            val timeText = if (tickingSeconds > 0) {
+                                val mins = tickingSeconds / 60
+                                val secs = tickingSeconds % 60
+                                "Arriving in ${mins}m ${secs}s • Watch map for live approach"
+                            } else {
+                                "Courier is approaching destination • Watch map for live approach"
+                            }
                             Text(
-                                text = "Arriving in ${mins}m ${secs}s • Watch map for live approach",
+                                text = timeText,
                                 fontSize = 11.sp,
                                 color = Obsidian.copy(alpha = 0.85f),
                                 fontWeight = FontWeight.Medium
@@ -1372,35 +1375,52 @@ fun ActiveTrackingScreen(
                                                     }
                                                 }
                                             } else {
-                                                Button(
-                                                    onClick = { onNavigate("SendParcel") },
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .fillMaxHeight()
-                                                        .testTag("book_new_dispatch_button"),
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        containerColor = Gold,
-                                                        contentColor = Obsidian
-                                                    ),
-                                                    shape = RoundedCornerShape(16.dp)
+                                                Surface(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    shape = RoundedCornerShape(20.dp),
+                                                    color = if (isLight) GoldenWhiteLight else Charcoal,
+                                                    border = BorderStroke(1.dp, if (isLight) Slate else Gold.copy(alpha = 0.3f))
                                                 ) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.Center
+                                                    Column(
+                                                        modifier = Modifier.padding(24.dp),
+                                                        horizontalAlignment = Alignment.CenterHorizontally
                                                     ) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.LocalShipping,
-                                                            contentDescription = null,
-                                                            tint = Obsidian,
-                                                            modifier = Modifier.size(24.dp)
-                                                        )
-                                                        Spacer(modifier = Modifier.width(12.dp))
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(56.dp)
+                                                                .clip(CircleShape)
+                                                                .background(Gold.copy(alpha = 0.15f)),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.LocalShipping,
+                                                                contentDescription = null,
+                                                                tint = Gold,
+                                                                modifier = Modifier.size(30.dp)
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.height(14.dp))
                                                         Text(
-                                                            text = "BOOK A NEW DISPATCH",
-                                                            fontWeight = FontWeight.Black,
+                                                            text = "No Active Delivery",
                                                             fontSize = 16.sp,
-                                                            letterSpacing = 1.sp
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = AppOnSurface
                                                         )
+                                                        Text(
+                                                            text = "You currently have no active deliveries in transit. Create a booking to track your courier in real time.",
+                                                            fontSize = 12.sp,
+                                                            color = TextGray,
+                                                            textAlign = TextAlign.Center,
+                                                            modifier = Modifier.padding(top = 6.dp, bottom = 18.dp)
+                                                        )
+                                                        Button(
+                                                            onClick = { onNavigate("SendParcel") },
+                                                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                            shape = RoundedCornerShape(14.dp),
+                                                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                                                        ) {
+                                                            Text("BOOK NOW", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                                                        }
                                                     }
                                                 }
                                             }
@@ -1620,29 +1640,45 @@ fun ActiveTrackingScreen(
 
                                             // ETA Indicator (Truthful Ranges & Telemetry Backed) - UPDATED IN REAL-TIME
                                             val etaText = when (parcel.status) {
-                                                ParcelStatus.DELIVERED -> "ARRIVED"
-                                                ParcelStatus.CANCELLED -> "CANCELLED"
-                                                ParcelStatus.QUEUED -> "IN QUEUE"
-                                                ParcelStatus.RESERVED_NEXT -> "RESERVED"
-                                                ParcelStatus.PENDING -> "PROCESSING"
-                                                ParcelStatus.ASSIGNED -> "ASSIGNED"
-                                                ParcelStatus.HANDOVER_VERIFIED -> "VERIFYING"
-                                                else -> {
-                                                    val mins = (tickingSeconds / 60).coerceAtLeast(2)
-                                                    val minR = (mins - 2).coerceAtLeast(1)
-                                                    val maxR = mins + 4
-                                                    "$minR–$maxR mins"
+                                                ParcelStatus.DELIVERED -> "Delivered"
+                                                ParcelStatus.CANCELLED -> "Cancelled"
+                                                ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Waiting for rider"
+                                                ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Rider assigned"
+                                                ParcelStatus.ARRIVED_PICKUP -> "Preparing for pickup"
+                                                ParcelStatus.PICKED_UP -> "In transit"
+                                                ParcelStatus.ARRIVED -> "Arriving soon"
+                                                ParcelStatus.HANDOVER_VERIFIED -> "Verifying delivery"
+                                                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+                                                    val dist = realDistanceKm
+                                                    if (tickingSeconds > 0) {
+                                                        val mins = (tickingSeconds / 60).coerceAtLeast(1)
+                                                        val minR = (mins - 2).coerceAtLeast(1)
+                                                        val maxR = mins + 3
+                                                        "$minR–$maxR mins"
+                                                    } else if (dist != null && dist > 0.05f) {
+                                                        val mins = ((dist * 2.5f).toInt()).coerceAtLeast(2)
+                                                        val minR = (mins - 2).coerceAtLeast(1)
+                                                        val maxR = mins + 3
+                                                        "$minR–$maxR mins"
+                                                    } else {
+                                                        "In transit"
+                                                    }
                                                 }
+                                                else -> "In transit"
                                             }
                                             val etaSubText = when (parcel.status) {
-                                                ParcelStatus.DELIVERED -> "Package Delivered"
-                                                ParcelStatus.CANCELLED -> "Order Cancelled"
-                                                ParcelStatus.QUEUED -> "Awaiting Available Rider"
-                                                ParcelStatus.RESERVED_NEXT -> "Courier Finishing Drop"
-                                                ParcelStatus.PENDING -> "Order Received"
-                                                ParcelStatus.ASSIGNED -> "Dispatched to Pickup"
-                                                ParcelStatus.HANDOVER_VERIFIED -> "Proof in Progress"
-                                                else -> realDistanceKm?.let { String.format(java.util.Locale.US, "%.1f km • GPS Live", it) } ?: "Transit (Traffic Adjusted)"
+                                                ParcelStatus.DELIVERED -> "Delivery completed"
+                                                ParcelStatus.CANCELLED -> "Order cancelled"
+                                                ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Dispatching order..."
+                                                ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Heading to pickup"
+                                                ParcelStatus.ARRIVED_PICKUP -> "Courier at pickup location"
+                                                ParcelStatus.PICKED_UP -> "Package collected • On route"
+                                                ParcelStatus.ARRIVED -> "Courier arrived at destination"
+                                                ParcelStatus.HANDOVER_VERIFIED -> "Photo proof in progress"
+                                                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+                                                    realDistanceKm?.let { String.format(java.util.Locale.US, "%.1f km • GPS Live", it) } ?: "On schedule"
+                                                }
+                                                else -> "On schedule"
                                             }
                                             Column(horizontalAlignment = Alignment.End) {
                                                 Text(
@@ -3223,13 +3259,16 @@ fun LiveMapView(
                 .dark-tiles {
                     filter: invert(100%) hue-rotate(180deg) brightness(88%) contrast(105%);
                 }
-                @keyframes icon-pulse {
-                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.7); }
-                    70% { transform: scale(1.04); box-shadow: 0 0 0 14px rgba(255, 184, 0, 0); }
-                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0); }
+                .solid-courier {
+                    border-radius: 50%;
                 }
-                .pulsing-courier {
-                    animation: icon-pulse 1.8s infinite ease-in-out;
+                @keyframes stop-pulse {
+                    0% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.6); }
+                    70% { transform: scale(1.04); box-shadow: 0 0 0 8px rgba(255, 184, 0, 0); }
+                    100% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0); }
+                }
+                .active-stop-pulse {
+                    animation: stop-pulse 2s infinite ease-in-out;
                     border-radius: 50%;
                 }
                 @keyframes beacon-expand {
@@ -3454,6 +3493,11 @@ fun LiveMapView(
                             subdomains: ['0', '1', '2', '3']
                         });
 
+                        esriTransportationTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {
+                            maxZoom: 19,
+                            opacity: 0.95
+                        });
+
                         osmTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                             maxZoom: 19
                         });
@@ -3463,6 +3507,7 @@ fun LiveMapView(
 
                         if (isSatelliteMode) {
                             satelliteTiles.addTo(map);
+                            try { esriTransportationTiles.addTo(map); } catch(e){}
                         } else if (isDarkTheme) {
                             darkStreetTiles.addTo(map);
                         } else {
@@ -3556,9 +3601,9 @@ fun LiveMapView(
                     if (!map) return;
                     var goldCircleIcon = L.divIcon({
                         className: 'custom-div-icon',
-                        html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #FFB800; border: 2.5px solid #000;'></div>",
-                        iconSize: [16, 16],
-                        iconAnchor: [8, 8]
+                        html: "<div style='width: 26px; height: 26px; border-radius: 50%; background-color: #FFB800; border: 2px solid #0E0E10; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #0E0E10; box-shadow: 0 2px 5px rgba(0,0,0,0.5);'>P</div>",
+                        iconSize: [26, 26],
+                        iconAnchor: [13, 13]
                     });
                     if (pickupMarker) {
                         pickupMarker.setLatLng(pickupLoc);
@@ -3568,7 +3613,7 @@ fun LiveMapView(
                             permanent: true,
                             direction: 'top',
                             className: 'clean-map-badge',
-                            offset: [0, -10]
+                            offset: [0, -14]
                         });
                     }
                     fetchOSRMRoute();
@@ -3579,10 +3624,10 @@ fun LiveMapView(
                     deliveryLoc = [lat, lng];
                     if (!map) return;
                     var darkCircleIcon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: "<div style='width: 16px; height: 16px; border-radius: 50%; background-color: #0E0E10; border: 2.5px solid #FFB800;'></div>",
-                        iconSize: [16, 16],
-                        iconAnchor: [8, 8]
+                        className: 'active-stop-pulse',
+                        html: "<div style='width: 26px; height: 26px; border-radius: 50%; background-color: #0E0E10; border: 2px solid #FFB800; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #FFB800; box-shadow: 0 2px 5px rgba(0,0,0,0.5);'>D</div>",
+                        iconSize: [26, 26],
+                        iconAnchor: [13, 13]
                     });
                     if (deliveryMarker) {
                         deliveryMarker.setLatLng(deliveryLoc);
@@ -3592,7 +3637,7 @@ fun LiveMapView(
                             permanent: true,
                             direction: 'top',
                             className: 'clean-map-badge',
-                            offset: [0, -10]
+                            offset: [0, -14]
                         });
                     }
                     fetchOSRMRoute();
@@ -3692,12 +3737,12 @@ fun LiveMapView(
                     if (!map) return;
 
                     var courierIcon = L.divIcon({
-                        className: 'pulsing-courier',
-                        html: "<div style='width: 38px; height: 38px; border-radius: 50%; border: 2.5px solid #FFB800; background-color: #0E0E10; display: flex; align-items: center; justify-content: center;'>" +
-                            "<svg width='20' height='20' viewBox='0 0 24 24' fill='%23FFB800'><path d='M15.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM5 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm14-8.5c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zM10.8 10.5l2.4-2.4 1.8 1.8c1.1 1.1 2.6 1.8 4.2 1.8v-2c-1.1 0-2.2-.5-3-1.3l-1.9-1.9c-.4-.4-.9-.7-1.5-.7-.6 0-1.1.2-1.5.6L7.5 9.8 4.2 8.7 3.5 10.6l4.5 1.5 2.8-1.6z'/></svg>" +
+                        className: 'solid-courier',
+                        html: "<div style='width: 30px; height: 30px; border-radius: 50%; border: 2px solid #FFB800; background-color: #0E0E10; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.5);'>" +
+                            "<svg width='16' height='16' viewBox='0 0 24 24' fill='%23FFB800'><path d='M15.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM5 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm14-8.5c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zM10.8 10.5l2.4-2.4 1.8 1.8c1.1 1.1 2.6 1.8 4.2 1.8v-2c-1.1 0-2.2-.5-3-1.3l-1.9-1.9c-.4-.4-.9-.7-1.5-.7-.6 0-1.1.2-1.5.6L7.5 9.8 4.2 8.7 3.5 10.6l4.5 1.5 2.8-1.6z'/></svg>" +
                             "</div>",
-                        iconSize: [38, 38],
-                        iconAnchor: [19, 19]
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
                     });
 
                     if (courierMarker) {
@@ -3773,12 +3818,14 @@ fun LiveMapView(
                     isSatelliteMode = isSat;
                     if (!map) return;
                     try { map.removeLayer(satelliteTiles); } catch(e){}
+                    try { map.removeLayer(esriTransportationTiles); } catch(e){}
                     try { map.removeLayer(darkStreetTiles); } catch(e){}
                     try { map.removeLayer(googleStreetTiles); } catch(e){}
                     try { map.removeLayer(osmTiles); } catch(e){}
 
                     if (isSat) {
                         satelliteTiles.addTo(map);
+                        try { esriTransportationTiles.addTo(map); } catch(e){}
                         var satBtn = document.getElementById('satelliteBtn');
                         if (satBtn) satBtn.classList.add('active');
                         var strBtn = document.getElementById('streetBtn');
@@ -3817,6 +3864,34 @@ fun LiveMapView(
                         var bounds = L.latLngBounds([pickupLoc, deliveryLoc]);
                         map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
                     }
+                function clearMapRoutesAndPins() {
+                    if (pickupMarker) {
+                        try { map.removeLayer(pickupMarker); } catch(e){}
+                        pickupMarker = null;
+                    }
+                    if (deliveryMarker) {
+                        try { map.removeLayer(deliveryMarker); } catch(e){}
+                        deliveryMarker = null;
+                    }
+                    if (courierMarker) {
+                        try { map.removeLayer(courierMarker); } catch(e){}
+                        courierMarker = null;
+                    }
+                    if (passedRouteLine) {
+                        try { map.removeLayer(passedRouteLine); } catch(e){}
+                        passedRouteLine = null;
+                    }
+                    if (activeRouteLine) {
+                        try { map.removeLayer(activeRouteLine); } catch(e){}
+                        activeRouteLine = null;
+                    }
+                    if (arrivalBeaconCircle) {
+                        try { map.removeLayer(arrivalBeaconCircle); } catch(e){}
+                        arrivalBeaconCircle = null;
+                    }
+                    routeGeometryCoordinates = [];
+                    pickupLoc = null;
+                    deliveryLoc = null;
                 }
 
                 window.addEventListener('DOMContentLoaded', initMapContainer);
@@ -3832,22 +3907,30 @@ fun LiveMapView(
         webView.loadDataWithBaseURL("https://esdispatch.app", htmlContent, "text/html", "UTF-8", null)
     }
 
-    LaunchedEffect(isPageLoaded) {
+    LaunchedEffect(isPageLoaded, hasNoBooking) {
         if (isPageLoaded) {
-            val safePickup = pickupCoords ?: Pair(6.3350, 5.6037)
-            val safeDelivery = deliveryCoords ?: Pair(6.3450, 5.6250)
-            val safePickupAddr = pickupAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
-            val safeDeliveryAddr = deliveryAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
-            webView.evaluateJavascript("setPickupLocation(${safePickup.first}, ${safePickup.second}, \"$safePickupAddr\")", null)
-            webView.evaluateJavascript("setDeliveryLocation(${safeDelivery.first}, ${safeDelivery.second}, \"$safeDeliveryAddr\")", null)
-            webView.evaluateJavascript("updateMapType($isSatellite)", null)
-            if (userCoords != null) {
-                webView.evaluateJavascript("setUserLocation(${userCoords.first}, ${userCoords.second})", null)
+            if (hasNoBooking) {
+                webView.evaluateJavascript("clearMapRoutesAndPins()", null)
+                webView.evaluateJavascript("updateMapType($isSatellite)", null)
+                if (userCoords != null) {
+                    webView.evaluateJavascript("setUserLocation(${userCoords.first}, ${userCoords.second})", null)
+                }
+            } else {
+                val safePickup = pickupCoords ?: Pair(6.3350, 5.6037)
+                val safeDelivery = deliveryCoords ?: Pair(6.3450, 5.6250)
+                val safePickupAddr = pickupAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+                val safeDeliveryAddr = deliveryAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+                webView.evaluateJavascript("setPickupLocation(${safePickup.first}, ${safePickup.second}, \"$safePickupAddr\")", null)
+                webView.evaluateJavascript("setDeliveryLocation(${safeDelivery.first}, ${safeDelivery.second}, \"$safeDeliveryAddr\")", null)
+                webView.evaluateJavascript("updateMapType($isSatellite)", null)
+                if (userCoords != null) {
+                    webView.evaluateJavascript("setUserLocation(${userCoords.first}, ${userCoords.second})", null)
+                }
+                if (courierLatitude != null && courierLongitude != null) {
+                    webView.evaluateJavascript("updateCourierCoordinates($courierLatitude, $courierLongitude)", null)
+                }
+                webView.evaluateJavascript("updateCourierProgress($progress)", null)
             }
-            if (courierLatitude != null && courierLongitude != null) {
-                webView.evaluateJavascript("updateCourierCoordinates($courierLatitude, $courierLongitude)", null)
-            }
-            webView.evaluateJavascript("updateCourierProgress($progress)", null)
         }
     }
 
@@ -3863,14 +3946,14 @@ fun LiveMapView(
         }
     }
 
-    LaunchedEffect(progress, isPageLoaded) {
-        if (isPageLoaded) {
+    LaunchedEffect(progress, isPageLoaded, hasNoBooking) {
+        if (isPageLoaded && !hasNoBooking) {
             webView.evaluateJavascript("updateCourierProgress($progress)", null)
         }
     }
 
-    LaunchedEffect(courierLatitude, courierLongitude, isPageLoaded) {
-        if (isPageLoaded && courierLatitude != null && courierLongitude != null) {
+    LaunchedEffect(courierLatitude, courierLongitude, isPageLoaded, hasNoBooking) {
+        if (isPageLoaded && !hasNoBooking && courierLatitude != null && courierLongitude != null) {
             webView.evaluateJavascript("updateCourierCoordinates($courierLatitude, $courierLongitude)", null)
         }
     }
@@ -3881,15 +3964,15 @@ fun LiveMapView(
         }
     }
 
-    LaunchedEffect(pickupCoords, isPageLoaded) {
-        if (isPageLoaded && pickupCoords != null) {
+    LaunchedEffect(pickupCoords, isPageLoaded, hasNoBooking) {
+        if (isPageLoaded && !hasNoBooking && pickupCoords != null) {
             val safeAddr = pickupAddress.replace("\"", "\\\"").replace("'", "\\'").trim()
             webView.evaluateJavascript("setPickupLocation(${pickupCoords.first}, ${pickupCoords.second}, '$safeAddr')", null)
         }
     }
 
-    LaunchedEffect(deliveryCoords, isPageLoaded) {
-        if (isPageLoaded && deliveryCoords != null) {
+    LaunchedEffect(deliveryCoords, isPageLoaded, hasNoBooking) {
+        if (isPageLoaded && !hasNoBooking && deliveryCoords != null) {
             val safeAddr = deliveryAddress.replace("\"", "\\\"").replace("'", "\\'").trim()
             webView.evaluateJavascript("setDeliveryLocation(${deliveryCoords.first}, ${deliveryCoords.second}, '$safeAddr')", null)
         }
@@ -3958,44 +4041,38 @@ fun DeliveryEstimationCard(
     val currentTimeStr = remember(now) { timeFormat.format(now) }
 
     val estimationText = when (status) {
-        ParcelStatus.PENDING -> "Awaiting Assignment"
-        ParcelStatus.QUEUED -> "Queued in Dispatch"
-        ParcelStatus.RESERVED_NEXT -> "Courier Reserved"
-        ParcelStatus.ASSIGNED -> "Preparing for Pickup"
-        ParcelStatus.PICKED_UP -> "Parcel Picked Up"
-        ParcelStatus.ARRIVED -> "Arrived at Destination"
-        ParcelStatus.HANDOVER_VERIFIED -> "Handover Verified"
-        ParcelStatus.DELIVERED -> "Delivered ($currentTimeStr)"
-        ParcelStatus.OUT_FOR_DELIVERY -> todayStr
-        ParcelStatus.CANCELLED -> "No Delivery (Cancelled)"
-        ParcelStatus.TRANSIT -> {
-            when {
-                progress >= 0.7f -> todayStr
-                progress >= 0.3f -> "Estimated: $todayStr"
-                else -> "In Dispatch Queue"
+        ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Waiting for rider"
+        ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Rider assigned"
+        ParcelStatus.ARRIVED_PICKUP -> "Preparing for pickup"
+        ParcelStatus.PICKED_UP -> "In transit"
+        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+            val remainingMins = (35 * (1f - progress.coerceIn(0f, 0.95f))).toInt()
+            if (remainingMins <= 3) {
+                "Arriving soon"
+            } else {
+                val minRange = (remainingMins - 3).coerceAtLeast(2)
+                val maxRange = remainingMins + 4
+                "$minRange–$maxRange mins"
             }
         }
+        ParcelStatus.ARRIVED -> "Arriving soon"
+        ParcelStatus.HANDOVER_VERIFIED -> "Verifying delivery"
+        ParcelStatus.DELIVERED -> "Delivered"
+        ParcelStatus.CANCELLED -> "Cancelled"
         else -> "Active Dispatch"
     }
 
     val windowText = when (status) {
-        ParcelStatus.PENDING -> "Waiting for dispatcher to assign a courier"
-        ParcelStatus.QUEUED -> "All couriers active; order will dispatch shortly"
-        ParcelStatus.RESERVED_NEXT -> "Courier is finishing a nearby delivery and will proceed next"
-        ParcelStatus.ASSIGNED -> "Courier has been dispatched to pickup location"
-        ParcelStatus.PICKED_UP -> "Courier has picked up the parcel"
-        ParcelStatus.ARRIVED -> "Courier is at the delivery location"
-        ParcelStatus.HANDOVER_VERIFIED -> "OTP verified • Courier is uploading final Proof of Delivery"
-        ParcelStatus.DELIVERED -> "Successfully handed over to recipient"
-        ParcelStatus.OUT_FOR_DELIVERY -> "Active courier on route in Benin City"
-        ParcelStatus.CANCELLED -> "Shipment was cancelled by sender"
-        ParcelStatus.TRANSIT -> {
-            val remainingMins = (35 * (1f - progress.coerceIn(0f, 0.95f))).toInt().coerceAtLeast(4)
-            val minRange = (remainingMins - 3).coerceAtLeast(2)
-            val maxRange = remainingMins + 4
-            "Estimated arrival in $minRange–$maxRange mins (Traffic adjusted)"
-        }
-        else -> "Active delivery transit"
+        ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Dispatching order..."
+        ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Heading to pickup"
+        ParcelStatus.ARRIVED_PICKUP -> "Courier at pickup location"
+        ParcelStatus.PICKED_UP -> "Package collected • On route"
+        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> "In transit • On schedule"
+        ParcelStatus.ARRIVED -> "Courier arrived at destination"
+        ParcelStatus.HANDOVER_VERIFIED -> "Photo proof in progress"
+        ParcelStatus.DELIVERED -> "Delivery completed"
+        ParcelStatus.CANCELLED -> "Order was cancelled"
+        else -> "Active delivery"
     }
 
     val confidenceScore = when (status) {

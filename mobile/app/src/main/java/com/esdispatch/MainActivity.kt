@@ -161,6 +161,11 @@ class MainActivity : FragmentActivity() {
         if (shortcutRoute != null) {
             viewModel.setPendingShortcutRoute(shortcutRoute)
         }
+        val notifParcelId = intent?.getStringExtra("parcelId")
+        if (!notifParcelId.isNullOrBlank() && notifParcelId != "GIFT" && notifParcelId != "OTP") {
+            viewModel.selectParcelForTracking(notifParcelId)
+            viewModel.setPendingShortcutRoute("Tracking")
+        }
 
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             val permission = android.Manifest.permission.POST_NOTIFICATIONS
@@ -171,6 +176,7 @@ class MainActivity : FragmentActivity() {
 
         enableEdgeToEdge()
         com.esdispatch.util.SoundManager.initialize(this)
+        com.esdispatch.data.MyFirebaseMessagingService.createNotificationChannels(this)
         setContent {
             val context = androidx.compose.ui.platform.LocalContext.current
             val soundEnabled by viewModel.soundEffectsEnabled.collectAsState()
@@ -211,7 +217,9 @@ class MainActivity : FragmentActivity() {
             LaunchedEffect(darkModeEnabled) {
                 val window = (context as? android.app.Activity)?.window
                 if (window != null) {
-                    androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkModeEnabled
+                    // Light mode headers are Obsidian (#0D0D11) -> icons must be white (isAppearanceLightStatusBars = false)
+                    // Dark mode headers are Gold (#FFB800) -> icons must be dark (isAppearanceLightStatusBars = true)
+                    androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkModeEnabled
                     androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkModeEnabled
                 }
             }
@@ -737,6 +745,11 @@ class MainActivity : FragmentActivity() {
         val shortcutRoute = intent.getStringExtra("shortcut_route")
         if (shortcutRoute != null) {
             viewModel.setPendingShortcutRoute(shortcutRoute)
+        }
+        val notifParcelId = intent.getStringExtra("parcelId")
+        if (!notifParcelId.isNullOrBlank() && notifParcelId != "GIFT" && notifParcelId != "OTP") {
+            viewModel.selectParcelForTracking(notifParcelId)
+            viewModel.setPendingShortcutRoute("Tracking")
         }
     }
 

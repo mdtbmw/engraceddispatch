@@ -111,6 +111,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.DirectionsBike
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Edit
 import coil.compose.rememberAsyncImagePainter
 import com.esdispatch.data.Parcel
 import com.esdispatch.data.ParcelStatus
@@ -3537,6 +3539,22 @@ fun ParcelDetailBottomSheet(
                     Text(parcel.courierName.ifEmpty { "" }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isDark) Color.White else Obsidian)
                 }
 
+                // Batch Stop Metadata
+                if (parcel.isBatch || parcel.batchTotalItems > 1) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Batch Delivery", fontSize = 13.sp, color = TextGray)
+                        Text(
+                            "Stop ${parcel.batchItemIndex} of ${parcel.batchTotalItems}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Gold
+                        )
+                    }
+                }
+
                 // Check if rider is assigned and display profile details
                 if (parcel.status == ParcelStatus.ASSIGNED || parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.OUT_FOR_DELIVERY) {
                     Spacer(modifier = Modifier.height(14.dp))
@@ -3669,6 +3687,167 @@ fun ParcelDetailBottomSheet(
                                     modifier = Modifier.padding(horizontal = 6.dp)
                                 )
                             }
+                        }
+                    }
+                }
+
+                // Verified Handover Proof (Photo & Digital Signature)
+                val photoProof = parcel.photoUrl.ifBlank { parcel.podUrl }
+                if (photoProof.isNotBlank() || parcel.signatureUrl.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isDark) LuxuryBlack else GoldenWhiteLight,
+                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Obsidian.copy(alpha = 0.2f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Filled.CameraAlt,
+                                        contentDescription = null,
+                                        tint = Gold,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "VERIFIED HANDOVER PROOF",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (isDark) Color.White else Obsidian
+                                    )
+                                }
+                                if (parcel.deliveryTimestamp > 0) {
+                                    val formattedTime = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
+                                        .format(java.util.Date(parcel.deliveryTimestamp))
+                                    Text(
+                                        text = formattedTime,
+                                        fontSize = 10.sp,
+                                        color = TextGray
+                                    )
+                                }
+                            }
+
+                            if (photoProof.isNotBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color.Black.copy(alpha = 0.1f))
+                                ) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(photoProof),
+                                        contentDescription = "Handover Photo Proof",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+                            }
+
+                            if (parcel.signatureUrl.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            if (isDark) Charcoal else Color.White,
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Edit,
+                                            contentDescription = null,
+                                            tint = Gold,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Digital Signature Recorded",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDark) Color.White else Obsidian
+                                        )
+                                    }
+                                    Text("Verified", fontSize = 10.sp, color = SuccessGreen, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Customer Reported Issue Feedback State
+                if (parcel.exceptionType.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = ErrorRed.copy(alpha = 0.08f),
+                        border = BorderStroke(1.dp, ErrorRed.copy(alpha = 0.4f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Filled.ReportProblem,
+                                        contentDescription = null,
+                                        tint = ErrorRed,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "REPORTED ISSUE",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ErrorRed
+                                    )
+                                }
+                                Text(
+                                    text = "Under Review",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ErrorRed,
+                                    modifier = Modifier
+                                        .background(ErrorRed.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Text(
+                                text = parcel.exceptionType.replace('_', ' ').uppercase(),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else Obsidian
+                            )
+                            if (parcel.exceptionReason.isNotBlank()) {
+                                Text(
+                                    text = parcel.exceptionReason,
+                                    fontSize = 11.sp,
+                                    color = TextGray
+                                )
+                            }
+                            Text(
+                                text = "Our operations dispatch team is actively reviewing your report.",
+                                fontSize = 10.sp,
+                                color = TextGray
+                            )
                         }
                     }
                 }
