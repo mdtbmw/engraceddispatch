@@ -186,9 +186,23 @@ service cloud.firestore {
     // Customers receive courier positions via the deliveries document instead.
 
     match /fleet_locations/{riderId} {
-      allow read: if isAuth() && (isOwner(riderId) || isDispatcher() || isAdmin());
+      allow read: if isAuth();
       allow create, update: if isOwner(riderId) || isAdmin();
       allow delete: if isAdmin();
+    }
+
+    // =========================================================
+    // SUPPORT & DISPUTE CHATS
+    // =========================================================
+
+    match /support_chats/{ticketId} {
+      allow read, create, update: if isAuth();
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read, create: if isAuth() && isReasonableWrite();
+        allow update, delete: if isAdmin();
+      }
     }
 
     // =========================================================

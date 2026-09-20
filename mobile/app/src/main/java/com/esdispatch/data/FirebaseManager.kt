@@ -382,18 +382,28 @@ object FirebaseManager {
     }
 
     /**
-     * Update a rider's active online availability and status in Firestore
+     * Update a rider's active online availability and shift status in Firestore
      */
     fun updateRiderOnlineStatus(userId: String, isOnline: Boolean) {
         val db = firestore ?: return
-        val statusMap = hashMapOf(
+        val now = System.currentTimeMillis()
+        val statusMap = hashMapOf<String, Any>(
             "isOnline" to isOnline,
             "is_active" to isOnline,
             "isActive" to isOnline,
+            "isAvailable" to isOnline,
+            "availability" to isOnline,
             "status" to (if (isOnline) "active" else "offline"),
-            "lastSeen" to System.currentTimeMillis(),
-            "updatedAt" to System.currentTimeMillis()
+            "lastSeen" to now,
+            "lastSeenAt" to now,
+            "updatedAt" to now
         )
+        if (isOnline) {
+            statusMap["availabilityStartedAt"] = now
+        } else {
+            statusMap["availabilityEndedAt"] = now
+        }
+
         db.collection("users").document(userId)
             .set(statusMap, com.google.firebase.firestore.SetOptions.merge())
             .addOnSuccessListener {
@@ -402,6 +412,39 @@ object FirebaseManager {
             .addOnFailureListener { e ->
                 Log.e(TAG, "Failed to update rider online status in users: ${e.message}")
             }
+
+        // Dual-write to riders/{userId} for dispatch query matching
+        db.collection("riders").document(userId)
+            .set(statusMap, com.google.firebase.firestore.SetOptions.merge())
+    }
+
+    /**
+     * Periodic presence heartbeat for active riders on duty
+     */
+    fun updateRiderPresenceHeartbeat(userId: String) {
+        val db = firestore ?: return
+        val now = System.currentTimeMillis()
+        val heartbeat = mapOf<String, Any>(
+            "lastSeenAt" to now,
+            "lastSeen" to now,
+            "isAvailable" to true
+        )
+        db.collection("users").document(userId).set(heartbeat, com.google.firebase.firestore.SetOptions.merge())
+        db.collection("riders").document(userId).set(heartbeat, com.google.firebase.firestore.SetOptions.merge())
+    }
+
+    /**
+     * Broadcast to all eligible riders that a dispatch has been atomically claimed
+     */
+    fun broadcastDispatchClaimed(parcelId: String, winnerName: String) {
+        val db = firestore ?: return
+        val data = hashMapOf<String, Any>(
+            "parcelId" to parcelId,
+            "status" to "CLAIMED",
+            "claimedBy" to winnerName,
+            "timestamp" to System.currentTimeMillis()
+        )
+        db.collection("fleet_broadcasts").document(parcelId).set(data, com.google.firebase.firestore.SetOptions.merge())
     }
 
     /**
@@ -1803,6 +1846,7 @@ object FirebaseManager {
                     parcelId = parcelId
                 )
             }
+            broadcastDispatchClaimed(parcelId, riderName)
             onComplete(true, null)
         }.addOnFailureListener { e ->
             onComplete(false, e.message ?: "Trip no longer available.")
@@ -2715,6 +2759,7 @@ object FirebaseManager {
         senderName: String,
         senderRole: String,
         messageText: String,
+        deliveryId: String = "",
         onComplete: (Boolean, String?) -> Unit
     ) {
         val db = firestore
@@ -2725,27 +2770,29 @@ object FirebaseManager {
 
         val msgId = java.util.UUID.randomUUID().toString()
         val timestamp = System.currentTimeMillis()
-        val msgMap = hashMapOf(
+        val msgMap = hashMapOf<String, Any>(
             "id" to msgId,
             "senderId" to senderId,
             "senderName" to senderName,
             "senderRole" to senderRole,
             "messageText" to messageText,
-            "timestamp" to timestamp
+            "timestamp" to timestamp,
+            "deliveryId" to deliveryId
         )
 
         val chatDocRef = db.collection("support_chats").document(ticketId)
-        chatDocRef.set(
-            hashMapOf(
-                "ticketId" to ticketId,
-                "userId" to senderId,
-                "userName" to senderName,
-                "lastMessage" to messageText,
-                "lastUpdated" to timestamp,
-                "status" to "OPEN"
-            ),
-            com.google.firebase.firestore.SetOptions.merge()
+        val chatHeader = hashMapOf<String, Any>(
+            "ticketId" to ticketId,
+            "userId" to senderId,
+            "userName" to senderName,
+            "lastMessage" to messageText,
+            "lastUpdated" to timestamp,
+            "status" to "OPEN"
         )
+        if (deliveryId.isNotBlank()) {
+            chatHeader["deliveryId"] = deliveryId
+        }
+        chatDocRef.set(chatHeader, com.google.firebase.firestore.SetOptions.merge())
 
         chatDocRef.collection("messages")
             .document(msgId)
@@ -2786,6 +2833,7 @@ object FirebaseManager {
                         val senderRole = doc.getString("senderRole") ?: "customer"
                         val text = doc.getString("messageText") ?: ""
                         val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
+                        val deliveryId = doc.getString("deliveryId") ?: ""
 
                         list.add(
                             SupportChatMessage(
@@ -2794,7 +2842,8 @@ object FirebaseManager {
                                 senderName = senderName,
                                 senderRole = senderRole,
                                 messageText = text,
-                                timestamp = timestamp
+                                timestamp = timestamp,
+                                deliveryId = deliveryId
                             )
                         )
                     } catch (e: Exception) {

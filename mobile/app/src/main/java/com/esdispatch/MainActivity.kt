@@ -133,6 +133,12 @@ class MainActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
         if (::viewModel.isInitialized && !viewModel.isGoogleAuthInProgress.value) {
+            // STRICT: An active rider shift session is NOT subject to customer PIN lock!
+            // When user is a rider and is currently online/working, do NOT lock the app on screen off/minimize.
+            val isRiderWorking = (viewModel.userRole.value == "rider" || viewModel.activeViewMode.value == "rider") && viewModel.isOnline.value
+            if (isRiderWorking) {
+                return
+            }
             val prefs = getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
             val hasLocalUser = !prefs.getString("local_uid", "").isNullOrEmpty()
             val hasFirebaseUser = com.esdispatch.data.FirebaseManager.auth?.currentUser != null
@@ -162,8 +168,14 @@ class MainActivity : FragmentActivity() {
         }
         val action = intent?.getStringExtra("action")
         val notifParcelId = intent?.getStringExtra("parcelId")
-        if (action == "rider_manifest" || notifParcelId == "DISPATCH") {
-            viewModel.setPendingShortcutRoute("RiderDashboard")
+        val notifType = intent?.getStringExtra("type")
+        val isRiderAlert = action == "rider_manifest" || notifType == "NEW_DISPATCH" || notifParcelId == "DISPATCH"
+
+        if (isRiderAlert) {
+            if (!notifParcelId.isNullOrBlank() && notifParcelId != "DISPATCH") {
+                viewModel.selectDispatchForRider(notifParcelId)
+            }
+            viewModel.setPendingShortcutRoute("RiderDeliveries")
         } else if (!notifParcelId.isNullOrBlank() && notifParcelId != "GIFT" && notifParcelId != "OTP") {
             viewModel.selectParcelForTracking(notifParcelId)
             viewModel.setPendingShortcutRoute("Tracking")

@@ -4720,6 +4720,13 @@ fun LiveChatSheet(
     val listState = rememberLazyListState()
 
     val liveSupportMessages by viewModel.supportChatMessages.collectAsState()
+    val userParcels by viewModel.parcels.collectAsState()
+    val riderAssignments by viewModel.riderAssignments.collectAsState()
+    val userRole by viewModel.userRole.collectAsState()
+    val relevantDeliveries = remember(userParcels, riderAssignments, userRole) {
+        (if (userRole == "rider") riderAssignments else userParcels).take(8)
+    }
+    var selectedDeliveryId by remember { mutableStateOf<String?>(null) }
     var msgInput by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
@@ -4779,7 +4786,59 @@ fun LiveChatSheet(
                 }
             }
             Text("Real-time direct communication with ESDispatch headquarters operations.", fontSize = 12.sp, color = TextGray)
-            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Horizontal Ride Selector Chips
+            if (relevantDeliveries.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Select Delivery / Ride (Optional):", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextGray)
+                Spacer(modifier = Modifier.height(6.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    item {
+                        FilterChip(
+                            selected = selectedDeliveryId == null,
+                            onClick = { selectedDeliveryId = null },
+                            label = { Text("General Support", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Gold,
+                                selectedLabelColor = Obsidian,
+                                containerColor = if (MaterialTheme.colorScheme.background != BackgroundDark) Color(0xFFF0F0F0) else Color(0xFF242428),
+                                labelColor = AppOnSurface
+                            ),
+                            border = BorderStroke(1.dp, if (selectedDeliveryId == null) Gold else Color.Transparent),
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                    }
+                    items(relevantDeliveries) { deliv ->
+                        val isSelected = selectedDeliveryId == deliv.id
+                        val shortId = deliv.id.take(8).uppercase()
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { selectedDeliveryId = if (isSelected) null else deliv.id },
+                            label = {
+                                Text(
+                                    "#$shortId • ${deliv.itemName.ifBlank { "Delivery" }}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Gold,
+                                selectedLabelColor = Obsidian,
+                                containerColor = if (MaterialTheme.colorScheme.background != BackgroundDark) Color(0xFFF0F0F0) else Color(0xFF242428),
+                                labelColor = AppOnSurface
+                            ),
+                            border = BorderStroke(1.dp, if (isSelected) Gold else Color.Transparent),
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Chat lists
             LazyColumn(
@@ -4827,6 +4886,22 @@ fun LiveChatSheet(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                 }
+                                if (msg.deliveryId.isNotBlank()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (isMe) Obsidian.copy(alpha = 0.15f) else Gold.copy(alpha = 0.2f),
+                                        border = BorderStroke(0.5.dp, if (isMe) Obsidian.copy(alpha = 0.3f) else Gold.copy(alpha = 0.5f)),
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Ref: #${msg.deliveryId.take(8).uppercase()}",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = if (isMe) Obsidian else (if (MaterialTheme.colorScheme.background == BackgroundDark) Gold else Obsidian),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
                                 Text(msg.messageText, fontSize = 14.sp)
                             }
                         }
@@ -4845,7 +4920,12 @@ fun LiveChatSheet(
                 OutlinedTextField(
                     value = msgInput,
                     onValueChange = { msgInput = it },
-                    placeholder = { Text("Write message...", color = TextGray) },
+                    placeholder = { 
+                        Text(
+                            text = if (selectedDeliveryId != null) "Message about #${selectedDeliveryId!!.take(8).uppercase()}..." else "Write message...",
+                            color = TextGray
+                        ) 
+                    },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(24.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -4860,8 +4940,12 @@ fun LiveChatSheet(
                     onClick = {
                         if (msgInput.isNotBlank()) {
                             val userMsg = msgInput.trim()
+                            val taggedDeliveryId = selectedDeliveryId ?: ""
                             msgInput = ""
-                            viewModel.sendSupportChatMessage(userMsg) { success, err ->
+                            viewModel.sendSupportChatMessage(
+                                messageText = userMsg,
+                                deliveryId = taggedDeliveryId
+                            ) { success, err ->
                                 if (!success) {
                                     Toast.makeText(context, err ?: "Failed to send message", Toast.LENGTH_SHORT).show()
                                 }

@@ -214,11 +214,26 @@ class LocationService : Service() {
             Log.d(TAG, "Proximity arrival detected for stop: $distanceMeters m")
             val db = FirebaseManager.firestore ?: return
             val nextStatus = if (activeStopType == "PICKUP") ParcelStatus.ARRIVED_PICKUP else ParcelStatus.ARRIVED
-            db.collection("deliveries").document(pId)
-                .update(mapOf("status" to nextStatus.name))
-                .addOnSuccessListener {
-                    Log.d(TAG, "Proximity arrival status updated to ${nextStatus.name}")
+            val progressVal = if (activeStopType == "PICKUP") 0.50f else 0.90f
+            val updateMap = mapOf<String, Any>(
+                "status" to nextStatus.name,
+                "progress" to progressVal,
+                "lastUpdated" to System.currentTimeMillis()
+            )
+            val docRef = db.collection("deliveries").document(pId)
+            docRef.update(updateMap).addOnSuccessListener {
+                Log.d(TAG, "Proximity arrival status updated to ${nextStatus.name}")
+                docRef.get().addOnSuccessListener { snap ->
+                    val userId = snap.getString("userId") ?: ""
+                    if (userId.isNotEmpty()) {
+                        db.collection("users").document(userId).collection("deliveries").document(pId)
+                            .update(updateMap)
+                            .addOnFailureListener { e ->
+                                Log.w(TAG, "Failed to update user delivery subcollection arrival: ${e.message}")
+                            }
+                    }
                 }
+            }
         }
     }
 

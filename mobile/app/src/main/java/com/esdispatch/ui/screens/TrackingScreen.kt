@@ -426,6 +426,14 @@ fun ActiveTrackingScreen(
     }
 
     val walletBalance by viewModel.walletBalance.collectAsState()
+
+    // Automatically and intelligently pop up Feedback & Tip dialog when delivery is completed
+    LaunchedEffect(parcel.status, parcel.isRated, isRider) {
+        if (!isRider && parcel.status == ParcelStatus.DELIVERED && !parcel.isRated && parcel.id.isNotBlank()) {
+            showFeedbackDialog = true
+        }
+    }
+
     if (showFeedbackDialog) {
         DeliveryFeedbackDialog(
             parcel = parcel,
@@ -2110,11 +2118,76 @@ fun ActiveTrackingScreen(
                                                     }
                                                 } else {
                                                     // Share Live Tracking & Tip Rider Row (Customers Only)
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                                    ) {
-                                                        // Share Live Tracking Link
+                                                    if (parcel.status == ParcelStatus.DELIVERED) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                                        ) {
+                                                            // Share Live Tracking Link
+                                                            Button(
+                                                                onClick = {
+                                                                    val sendIntent: Intent = Intent().apply {
+                                                                        action = Intent.ACTION_SEND
+                                                                        putExtra(Intent.EXTRA_TEXT, "Track my ESDispatch package live: https://esdispatch.com/track/${parcel.id}")
+                                                                        type = "text/plain"
+                                                                    }
+                                                                    val shareIntent = Intent.createChooser(sendIntent, "Share Tracking Link")
+                                                                    context.startActivity(shareIntent)
+                                                                },
+                                                                modifier = Modifier.weight(1f).height(40.dp).tactilePress(scaleDown = 0.94f),
+                                                                colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Obsidian else Gold),
+                                                                shape = RoundedCornerShape(12.dp),
+                                                                border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Obsidian.copy(alpha = 0.3f))
+                                                            ) {
+                                                                Text("Share Link", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isDark) Gold else Obsidian)
+                                                            }
+
+                                                            // Feedback & Tip Rider After Delivery
+                                                            if (parcel.isRated) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .weight(1f)
+                                                                        .height(40.dp)
+                                                                        .background(
+                                                                            if (isDark) Charcoal else Color(0xFFEEEEEE),
+                                                                            RoundedCornerShape(12.dp)
+                                                                        )
+                                                                        .border(BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.2f) else Color.Transparent), RoundedCornerShape(12.dp)),
+                                                                    contentAlignment = Alignment.Center
+                                                                ) {
+                                                                    Row(
+                                                                        verticalAlignment = Alignment.CenterVertically,
+                                                                        horizontalArrangement = Arrangement.Center
+                                                                    ) {
+                                                                        Icon(
+                                                                            imageVector = Icons.Filled.Star,
+                                                                            contentDescription = null,
+                                                                            tint = if (isDark) Gold else Obsidian,
+                                                                            modifier = Modifier.size(14.dp)
+                                                                        )
+                                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                                        val tipFormatted = if (parcel.tipAmount > 0.0) " • ₦${String.format("%,.0f", parcel.tipAmount)}" else ""
+                                                                        Text(
+                                                                            text = "${parcel.customerRating.toInt()}$tipFormatted",
+                                                                            fontSize = 11.sp,
+                                                                            fontWeight = FontWeight.Bold,
+                                                                            color = if (isDark) Gold else Obsidian
+                                                                        )
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                Button(
+                                                                    onClick = { showFeedbackDialog = true },
+                                                                    modifier = Modifier.weight(1f).height(40.dp).tactilePress(scaleDown = 0.94f),
+                                                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                                    shape = RoundedCornerShape(12.dp)
+                                                                ) {
+                                                                    Text("Feedback & Tip", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Obsidian)
+                                                                }
+                                                            }
+                                                        }
+                                                    } else {
+                                                        // Active delivery: Share Tracking Link only (Feedback & Tip hidden until delivery is complete)
                                                         Button(
                                                             onClick = {
                                                                 val sendIntent: Intent = Intent().apply {
@@ -2125,56 +2198,12 @@ fun ActiveTrackingScreen(
                                                                 val shareIntent = Intent.createChooser(sendIntent, "Share Tracking Link")
                                                                 context.startActivity(shareIntent)
                                                             },
-                                                            modifier = Modifier.weight(1f).height(40.dp).tactilePress(scaleDown = 0.94f),
+                                                            modifier = Modifier.fillMaxWidth().height(40.dp).tactilePress(scaleDown = 0.94f),
                                                             colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Obsidian else Gold),
                                                             shape = RoundedCornerShape(12.dp),
                                                             border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Obsidian.copy(alpha = 0.3f))
                                                         ) {
-                                                            Text("Share Link", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isDark) Gold else Obsidian)
-                                                        }
-
-                                                        // Feedback & Tip Rider After Delivery
-                                                        if (parcel.isRated) {
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .weight(1f)
-                                                                    .height(40.dp)
-                                                                    .background(
-                                                                        if (isDark) Charcoal else Color(0xFFEEEEEE),
-                                                                        RoundedCornerShape(12.dp)
-                                                                    )
-                                                                    .border(BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.2f) else Color.Transparent), RoundedCornerShape(12.dp)),
-                                                                contentAlignment = Alignment.Center
-                                                            ) {
-                                                                Row(
-                                                                    verticalAlignment = Alignment.CenterVertically,
-                                                                    horizontalArrangement = Arrangement.Center
-                                                                ) {
-                                                                    Icon(
-                                                                        imageVector = Icons.Filled.Star,
-                                                                        contentDescription = null,
-                                                                        tint = if (isDark) Gold else Obsidian,
-                                                                        modifier = Modifier.size(14.dp)
-                                                                    )
-                                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                                    val tipFormatted = if (parcel.tipAmount > 0.0) " • ₦${String.format("%,.0f", parcel.tipAmount)}" else ""
-                                                                    Text(
-                                                                        text = "${parcel.customerRating.toInt()}$tipFormatted",
-                                                                        fontSize = 11.sp,
-                                                                        fontWeight = FontWeight.Bold,
-                                                                        color = if (isDark) Gold else Obsidian
-                                                                    )
-                                                                }
-                                                            }
-                                                        } else {
-                                                            Button(
-                                                                onClick = { showFeedbackDialog = true },
-                                                                modifier = Modifier.weight(1f).height(40.dp).tactilePress(scaleDown = 0.94f),
-                                                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
-                                                                shape = RoundedCornerShape(12.dp)
-                                                            ) {
-                                                                Text("Feedback & Tip", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Obsidian)
-                                                            }
+                                                            Text("Share Tracking Link", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) Gold else Obsidian)
                                                         }
                                                     }
                                                 }
@@ -3903,6 +3932,31 @@ fun LiveMapView(
                         });
                 }
 
+                function distToSegmentSquared(px, py, vx, vy, wx, wy) {
+                    var l2 = (vx - wx)*(vx - wx) + (vy - wy)*(vy - wy);
+                    if (l2 === 0) return (px - vx)*(px - vx) + (py - vy)*(py - vy);
+                    var t = ((px - vx)*(wx - vx) + (py - vy)*(wy - vy)) / l2;
+                    t = Math.max(0, Math.min(1, t));
+                    var dx = px - (vx + t*(wx - vx));
+                    var dy = py - (vy + t*(wy - vy));
+                    return dx*dx + dy*dy;
+                }
+
+                function isCourierOffRoute(lat, lng, routeLatLngs, thresholdMeters) {
+                    if (!routeLatLngs || routeLatLngs.length < 2) return false;
+                    var threshDeg = (thresholdMeters || 40) / 111000.0;
+                    var threshSq = threshDeg * threshDeg;
+                    var minSq = 999999999;
+                    for (var i = 0; i < routeLatLngs.length - 1; i++) {
+                        var v = routeLatLngs[i];
+                        var w = routeLatLngs[i + 1];
+                        var dSq = distToSegmentSquared(lat, lng, v[0], v[1], w[0], w[1]);
+                        if (dSq < minSq) minSq = dSq;
+                        if (minSq <= threshSq) return false; // within acceptable corridor
+                    }
+                    return minSq > threshSq;
+                }
+
                 function updateCourierLocation(lat, lng, bearing, speed) {
                     if (!lat || !lng || (lat === 0.0 && lng === 0.0)) return;
                     courierLoc = [lat, lng];
@@ -3974,7 +4028,20 @@ fun LiveMapView(
                         setArrivalBeacon(distToStopKm <= 0.05, activeStop);
                     }
 
-                    if (!lastRouteOrigin || distanceBetweenCoords(lat, lng, lastRouteOrigin[0], lastRouteOrigin[1]) > 0.025) {
+                    // Check for route deviation or significant movement to dynamically reroute
+                    var isOffRoute = false;
+                    if (activeRouteLine && activeRouteLine.getLatLngs) {
+                        var currentRoutePts = activeRouteLine.getLatLngs();
+                        if (Array.isArray(currentRoutePts) && currentRoutePts.length > 1) {
+                            var flatPts = currentRoutePts.map(function(pt) {
+                                return Array.isArray(pt) ? pt : [pt.lat, pt.lng];
+                            });
+                            isOffRoute = isCourierOffRoute(lat, lng, flatPts, 40);
+                        }
+                    }
+
+                    var movedFarFromOrigin = !lastRouteOrigin || distanceBetweenCoords(lat, lng, lastRouteOrigin[0], lastRouteOrigin[1]) > 0.040;
+                    if (isOffRoute || movedFarFromOrigin) {
                         fetchOSRMRoute();
                     }
 

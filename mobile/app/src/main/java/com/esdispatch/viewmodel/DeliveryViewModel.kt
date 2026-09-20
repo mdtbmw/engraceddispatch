@@ -854,6 +854,24 @@ class DeliveryViewModel : WalletViewModel() {
     private val _isOnline = MutableStateFlow(false)
     val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
 
+    private val _selectedDispatchId = MutableStateFlow<String?>(null)
+    val selectedDispatchId: StateFlow<String?> = _selectedDispatchId.asStateFlow()
+
+    fun selectDispatchForRider(parcelId: String) {
+        _selectedDispatchId.value = parcelId
+        val found = _availableDeliveries.value.find { it.id == parcelId }
+            ?: _riderAssignments.value.find { it.id == parcelId }
+        if (found != null) {
+            _selectedParcel.value = found
+        }
+    }
+
+    fun clearSelectedDispatch() {
+        _selectedDispatchId.value = null
+    }
+
+    private var riderHeartbeatJob: kotlinx.coroutines.Job? = null
+
     fun setRiderOnlineStatus(online: Boolean) {
         _isOnline.value = online
         _currentAttendanceStatus.value = if (online) "ON_DUTY" else "OFF_DUTY"
@@ -885,17 +903,23 @@ class DeliveryViewModel : WalletViewModel() {
             }
         }
 
-        // When switching online, if available dispatches exist, alert the rider immediately
         if (online) {
-            val pending = _availableDeliveries.value
-            if (pending.isNotEmpty()) {
-                com.esdispatch.util.SoundManager.playDispatchSweep()
-                val first = pending.first()
-                val notifTitle = if (first.category.equals("Express", ignoreCase = true)) "⚡ Express Dispatch Nearby!" else "New Dispatch Available Nearby!"
-                val notifMsg = "${first.itemName.ifBlank { "Parcel" }} • Pickup: ${first.pickupAddress.take(35)}... Tap to view."
-                addNotification(notifTitle, notifMsg)
-                showInAppNotification(notifTitle, notifMsg)
+            // Start presence heartbeat while on duty
+            riderHeartbeatJob?.cancel()
+            riderHeartbeatJob = viewModelScope.launch {
+                while (_isOnline.value) {
+                    val u = _firebaseUserId.value
+                    if (u != null && !u.startsWith("local_user_")) {
+                        com.esdispatch.data.FirebaseManager.updateRiderPresenceHeartbeat(u)
+                    }
+                    delay(60_000L) // Heartbeat every 60s
+                }
             }
+        } else {
+            // STRICT: When rider is OFFLINE, clear available deliveries and cancel heartbeat
+            _availableDeliveries.value = emptyList()
+            riderHeartbeatJob?.cancel()
+            riderHeartbeatJob = null
         }
         
         // Start or stop the LocationService for live GPS tracking
@@ -1062,19 +1086,20 @@ class DeliveryViewModel : WalletViewModel() {
         availableDeliveriesJob = viewModelScope.launch {
             var previousIds = emptySet<String>()
             com.esdispatch.data.FirebaseManager.listenToAvailableDeliveries().collect { list ->
+                // STRICT: If rider is offline, never display or alert about available deliveries
+                if (!_isOnline.value) {
+                    _availableDeliveries.value = emptyList()
+                    return@collect
+                }
                 val isFirstRun = previousIds.isEmpty()
                 val currentIds = list.map { it.id }.toSet()
                 val newDispatches = list.filter { it.id !in previousIds }
-                val isOnlineOrRider = _isOnline.value || _currentAttendanceStatus.value == "ON_DUTY" || _activeViewMode.value == "rider" || _userRole.value == "rider"
+                val isOnlineRider = _isOnline.value && (_activeViewMode.value == "rider" || _userRole.value == "rider")
 
-                // On first connect, alert if any available dispatch was created recently (within last 30 mins); on subsequent emissions, alert for any new dispatch
-                val dispatchesToAlert = if (isFirstRun) {
-                    list.filter { it.createdAt > System.currentTimeMillis() - 30 * 60 * 1000L }
-                } else {
-                    newDispatches
-                }
+                // Only alert for NEW dispatches arriving while the rider is actively on shift
+                val dispatchesToAlert = if (isFirstRun) emptyList() else newDispatches
 
-                if (dispatchesToAlert.isNotEmpty() && isOnlineOrRider) {
+                if (dispatchesToAlert.isNotEmpty() && isOnlineRider) {
                     com.esdispatch.util.SoundManager.playDispatchSweep()
                     val firstDispatch = dispatchesToAlert.first()
                     val notifTitle = if (firstDispatch.category.equals("Express", ignoreCase = true)) "⚡ Express Dispatch Nearby!" else "New Dispatch Available Nearby!"
@@ -1895,7 +1920,12 @@ class DeliveryViewModel : WalletViewModel() {
         _supportChatMessages.value = emptyList()
     }
 
-    fun sendSupportChatMessage(messageText: String, ticketId: String? = null, onComplete: ((Boolean, String?) -> Unit)? = null) {
+    fun sendSupportChatMessage(
+        messageText: String,
+        ticketId: String? = null,
+        deliveryId: String = "",
+        onComplete: ((Boolean, String?) -> Unit)? = null
+    ) {
         val tid = ticketId ?: _firebaseUserId.value ?: return
         val senderId = _firebaseUserId.value ?: ""
         val senderName = _userName.value.ifEmpty { "Customer" }
@@ -1905,6 +1935,7 @@ class DeliveryViewModel : WalletViewModel() {
             senderName = senderName,
             senderRole = if (_userRole.value == "admin") "admin" else "customer",
             messageText = messageText,
+            deliveryId = deliveryId,
             onComplete = { success, err ->
                 onComplete?.invoke(success, err)
             }

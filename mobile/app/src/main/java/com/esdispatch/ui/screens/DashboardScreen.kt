@@ -275,13 +275,57 @@ fun DashboardScreen(
         previousDeliveryCount = deliveryCount
     }
 
+    val context = LocalContext.current
+    var feedbackParcel by remember { mutableStateOf<Parcel?>(null) }
+    var dismissedFeedbackParcelId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(completedParcels, userRole) {
+        if (userRole != "rider") {
+            val unrated = completedParcels.firstOrNull { 
+                !it.isRated && it.id != dismissedFeedbackParcelId && (it.riderId.isNotBlank() || it.driverId.isNotBlank()) 
+            }
+            if (unrated != null && feedbackParcel == null) {
+                feedbackParcel = unrated
+            }
+        }
+    }
+
+    feedbackParcel?.let { parcelToRate ->
+        DeliveryFeedbackDialog(
+            parcel = parcelToRate,
+            isDark = isDark,
+            walletBalance = walletBalance,
+            onDismiss = {
+                dismissedFeedbackParcelId = parcelToRate.id
+                feedbackParcel = null
+            },
+            onSubmit = { rating, tip ->
+                val rId = parcelToRate.riderId.ifEmpty { parcelToRate.driverId }
+                viewModel.rateAndTipRider(
+                    parcelId = parcelToRate.id,
+                    riderId = rId,
+                    rating = rating,
+                    tipAmount = tip,
+                    onComplete = { success, error ->
+                        if (success) {
+                            Toast.makeText(context, "Feedback and Tip submitted successfully!", Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(context, "Error: ${error ?: "Submission failed"}", Toast.LENGTH_LONG).show()
+                        }
+                        dismissedFeedbackParcelId = parcelToRate.id
+                        feedbackParcel = null
+                    }
+                )
+            }
+        )
+    }
+
     val headerContentColor = Color.White
     val headerContentSecondaryColor = Color.White.copy(alpha = 0.7f)
     val notificationBgColor = Color.White.copy(alpha = 0.1f)
     val profileBorderColor = Gold
     val quiltedLineColor = Color.White.copy(alpha = 0.04f)
     
-    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
     val marketplaceProducts by viewModel.marketplaceProducts.collectAsState()

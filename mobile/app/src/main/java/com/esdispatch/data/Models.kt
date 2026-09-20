@@ -333,5 +333,6 @@ data class SupportChatMessage(
     val senderName: String = "",
     val senderRole: String = "customer", // "customer", "dispatcher", "admin"
     val messageText: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val deliveryId: String = ""
 )

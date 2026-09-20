@@ -23,6 +23,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -64,6 +67,26 @@ fun ProofOfDeliveryScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val signatureRequired by viewModel.signatureVerificationEnabled.collectAsState()
 
+    val parcels by viewModel.parcels.collectAsState()
+    val riderAssignments by viewModel.riderAssignments.collectAsState()
+    val parcel = remember(parcels, riderAssignments, parcelId) {
+        parcels.find { it.id == parcelId } ?: riderAssignments.find { it.id == parcelId }
+    }
+
+    var isOtpVerified by remember {
+        mutableStateOf(parcel?.otpVerified == true || parcel?.status?.name == "HANDOVER_VERIFIED")
+    }
+
+    LaunchedEffect(parcel?.otpVerified, parcel?.status) {
+        if (parcel?.otpVerified == true || parcel?.status?.name == "HANDOVER_VERIFIED") {
+            isOtpVerified = true
+        }
+    }
+
+    var otpInput by remember { mutableStateOf("") }
+    var isVerifyingOtp by remember { mutableStateOf(false) }
+    var otpErrorMessage by remember { mutableStateOf<String?>(null) }
+
     var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isSignatureStep by remember { mutableStateOf(false) }
     var isUploading by remember { mutableStateOf(false) }
@@ -96,8 +119,8 @@ fun ProofOfDeliveryScreen(
         }
     }
 
-    LaunchedEffect(hasCameraPermission, lifecycleOwner) {
-        if (hasCameraPermission) {
+    LaunchedEffect(hasCameraPermission, lifecycleOwner, isOtpVerified) {
+        if (hasCameraPermission && isOtpVerified) {
             try {
                 cameraController.unbind()
                 cameraController.bindToLifecycle(lifecycleOwner)
@@ -120,7 +143,11 @@ fun ProofOfDeliveryScreen(
     Scaffold(
         topBar = {
             ScreenHeader(
-                title = if (isSignatureStep) "Customer Signature" else "Proof of Delivery",
+                title = when {
+                    !isOtpVerified -> "Handover Verification"
+                    isSignatureStep -> "Customer Signature"
+                    else -> "Proof of Delivery"
+                },
                 onBack = {
                     if (isSignatureStep) {
                         isSignatureStep = false
@@ -174,8 +201,13 @@ fun ProofOfDeliveryScreen(
                         color = Gold.copy(alpha = 0.15f),
                         border = BorderStroke(1.dp, Gold.copy(alpha = 0.5f))
                     ) {
+                        val stepBadgeText = when {
+                            !isOtpVerified -> if (signatureRequired) "STEP 1/3 • HANDOVER PIN" else "STEP 1/2 • HANDOVER PIN"
+                            isSignatureStep -> if (signatureRequired) "STEP 3/3 • SIGNATURE" else "STEP 2/2 • SIGNATURE"
+                            else -> if (signatureRequired) "STEP 2/3 • PHOTO PROOF" else "STEP 2/2 • PHOTO PROOF"
+                        }
                         Text(
-                            text = if (isSignatureStep) "STEP 2/2 • SIGNATURE" else "STEP 1/2 • PHOTO PROOF",
+                            text = stepBadgeText,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
                             color = Gold,
@@ -185,7 +217,150 @@ fun ProofOfDeliveryScreen(
                 }
             }
 
-            if (isSignatureStep) {
+            if (!isOtpVerified) {
+                // STEP 1: Mandatory Handover PIN Security Gate
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(Gold.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.VerifiedUser,
+                            contentDescription = "Handover Security",
+                            tint = Gold,
+                            modifier = Modifier.size(38.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Text(
+                        text = "Recipient Handover PIN",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Ask the recipient for their 4-digit security PIN to confirm custody handover before taking photo proof.",
+                        fontSize = 13.sp,
+                        color = TextGray,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    // 4-Digit Numeric PIN Input
+                    OutlinedTextField(
+                        value = otpInput,
+                        onValueChange = { input ->
+                            val digitsOnly = input.filter { it.isDigit() }.take(4)
+                            otpInput = digitsOnly
+                            otpErrorMessage = null
+                        },
+                        placeholder = {
+                            Text(
+                                text = "• • • •",
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.Black,
+                                color = TextGray.copy(alpha = 0.4f),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                        ),
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Gold,
+                            textAlign = TextAlign.Center,
+                            letterSpacing = 12.sp
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Gold,
+                            unfocusedBorderColor = Gold.copy(alpha = 0.35f),
+                            focusedContainerColor = Charcoal,
+                            unfocusedContainerColor = Charcoal,
+                            cursorColor = Gold
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth(0.72f)
+                            .height(68.dp)
+                    )
+
+                    if (otpErrorMessage != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = otpErrorMessage!!,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFFF5252),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Button(
+                        onClick = {
+                            if (otpInput.length == 4 && !isVerifyingOtp) {
+                                isVerifyingOtp = true
+                                otpErrorMessage = null
+                                viewModel.verifyDeliveryOtpByRider(parcelId, otpInput) { success, err ->
+                                    isVerifyingOtp = false
+                                    if (success) {
+                                        isOtpVerified = true
+                                        Toast.makeText(context, "Handover PIN verified successfully!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        otpErrorMessage = err ?: "Invalid 4-digit PIN. Please verify with recipient."
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .tactilePress(scaleDown = 0.96f),
+                        enabled = otpInput.length == 4 && !isVerifyingOtp,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Gold,
+                            contentColor = Obsidian,
+                            disabledContainerColor = Gold.copy(alpha = 0.3f),
+                            disabledContentColor = Obsidian.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        if (isVerifyingOtp) {
+                            CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(22.dp), strokeWidth = 2.5.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Verifying Security PIN...", color = Obsidian, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        } else {
+                            Icon(Icons.Filled.LockOpen, contentDescription = null, tint = Obsidian, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("VERIFY & UNLOCK CAMERA", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Obsidian)
+                        }
+                    }
+                }
+            } else if (isSignatureStep) {
                 // STEP 2: Customer Signature (when enabled by admin)
                 Column(
                     modifier = Modifier
@@ -308,6 +483,15 @@ fun ProofOfDeliveryScreen(
                             val stream = ByteArrayOutputStream()
                             scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
                             val photoBytes = stream.toByteArray()
+
+                            // Cache captured photo to disk for resilience against network drops
+                            try {
+                                val cacheDir = java.io.File(context.cacheDir, "pod_cache").apply { mkdirs() }
+                                val cacheFile = java.io.File(cacheDir, "pod_${parcelId}.jpg")
+                                cacheFile.outputStream().use { it.write(photoBytes) }
+                            } catch (e: Exception) {
+                                Log.w("POD", "Failed to cache photo locally: ${e.message}")
+                            }
 
                             viewModel.uploadDeliveryPhotoAndVerify(parcelId, photoBytes, "proof") { success, _ ->
                                 isUploading = false
