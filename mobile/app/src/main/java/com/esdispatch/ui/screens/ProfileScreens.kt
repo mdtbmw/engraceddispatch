@@ -1662,13 +1662,29 @@ fun WalletScreen(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = tx.date,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = TextGray,
-                                                maxLines = 1
-                                            )
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = tx.date,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = TextGray
+                                                )
+                                                if (tx.status.equals("PENDING", ignoreCase = true)) {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = Gold.copy(alpha = 0.15f)
+                                                    ) {
+                                                        Text(
+                                                            text = "PENDING",
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = Gold,
+                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
 
                                         Spacer(modifier = Modifier.width(12.dp))
@@ -1732,9 +1748,9 @@ fun WalletScreen(
                                     modifier = Modifier
                                         .size(36.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) activeColor else inactiveBg)
-                                        .border(1.dp, if (isSelected) activeColor else borderColor, CircleShape)
-                                        .clickable { currentPage = i },
+                                    .background(if (isSelected) activeColor else inactiveBg)
+                                    .border(1.dp, if (isSelected) activeColor else borderColor, CircleShape)
+                                    .clickable { currentPage = i },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -1805,13 +1821,16 @@ fun WalletScreen(
                                 accountName = viewModel.accountName.value
                             )
                         } else {
-                            viewModel.topUpWallet(-pendingAmount)
+                            viewModel.requestWithdrawal(
+                                amount = pendingAmount,
+                                bankName = viewModel.bankName.value,
+                                accountNumber = viewModel.accountNumber.value,
+                                accountName = viewModel.accountName.value,
+                                userRole = "customer"
+                            )
                         }
-                        successTitle = if (isRider) "Withdrawal Request Submitted" else "Withdrawal Initiated"
-                        successMessage = if (isRider)
-                            "Your tip withdrawal request of ₦${String.format("%,.2f", pendingAmount)} has been submitted to admin for approval."
-                        else
-                            "Your withdrawal of ₦${String.format("%,.2f", pendingAmount)} is being processed and will arrive in your bank account shortly."
+                        successTitle = "Withdrawal Request Submitted"
+                        successMessage = "Your withdrawal request of ₦${String.format("%,.2f", pendingAmount)} has been submitted for admin processing and will arrive in your bank account once authorized."
                         showSuccessSheet = true
                     }
                     showPinAuthSheet = true
@@ -1830,7 +1849,7 @@ fun WalletScreen(
         PaystackCheckoutSheet(
             amount = pendingAmount,
             onPaymentComplete = { reference ->
-                viewModel.topUpWallet(pendingAmount)
+                viewModel.topUpWallet(pendingAmount, reference)
                 showPaystackSheet = false
                 successTitle = "Payment Successful"
                 successMessage = "₦${String.format("%,.2f", pendingAmount)} has been added to your wallet balance. Ref: $reference"
@@ -2442,6 +2461,14 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        if (viewModel.hasActiveRiderMission()) {
+                            showSignOutDialog = false
+                            com.esdispatch.util.CustomToastBridge.show(
+                                "Cannot sign out while you have an active delivery mission. Please complete or reassign the delivery first.",
+                                com.esdispatch.viewmodel.ToastType.WARNING
+                            )
+                            return@Button
+                        }
                         showSignOutDialog = false
                         viewModel.logout()
                         onNavigate("Login")

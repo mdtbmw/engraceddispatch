@@ -50,7 +50,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-suspend fun detectUserLocation(context: android.content.Context): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+data class DetectedLocation(
+    val address: String,
+    val lat: Double,
+    val lng: Double
+)
+
+suspend fun detectUserLocationDetailed(context: android.content.Context): DetectedLocation = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     try {
         if (androidx.core.content.ContextCompat.checkSelfPermission(
                 context,
@@ -81,14 +87,24 @@ suspend fun detectUserLocation(context: android.content.Context): String = kotli
                 }
             }
             if (loc != null) {
-                return@withContext com.esdispatch.utils.GeocoderUtils.reverseGeocodeCoordinates(context, loc.latitude, loc.longitude)
+                // 1. Check nearest landmark for rich title
+                val landmark = com.esdispatch.data.AddressDatabase.findNearest(loc.latitude, loc.longitude, maxDistKm = 0.35)
+                if (landmark != null) {
+                    return@withContext DetectedLocation(landmark.displayName, loc.latitude, loc.longitude)
+                }
+                val addr = com.esdispatch.utils.GeocoderUtils.reverseGeocodeCoordinates(context, loc.latitude, loc.longitude)
+                return@withContext DetectedLocation(addr, loc.latitude, loc.longitude)
             }
         }
     } catch (e: Exception) {
         android.util.Log.e("DetectLocation", "GPS high accuracy detection failed: ${e.message}")
     }
 
-    return@withContext "Ring Road, Benin City"
+    return@withContext DetectedLocation("Ring Road (King's Square), City Center, Benin City", 6.3315, 5.6262)
+}
+
+suspend fun detectUserLocation(context: android.content.Context): String {
+    return detectUserLocationDetailed(context).address
 }
 
 @Composable
@@ -163,13 +179,14 @@ fun BookingFormScreen(
         coroutineScope.launch {
             Toast.makeText(context, "Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
             val detected = withContext(Dispatchers.IO) {
-                detectUserLocation(context)
+                detectUserLocationDetailed(context)
             }
-            pickup = detected
+            pickup = detected.address
+            viewModel.updateDraftPickup(detected.address, detected.lat, detected.lng)
             if (granted) {
-                Toast.makeText(context, "Location updated: $detected", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Location updated: ${detected.address}", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(context, "GPS permission denied. Estimated location: $detected", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "GPS permission denied. Estimated location: ${detected.address}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -233,11 +250,12 @@ fun BookingFormScreen(
             delay(1000L)
             if (pickup.isBlank()) {
                 val detected = withContext(Dispatchers.IO) {
-                    detectUserLocation(context)
+                    detectUserLocationDetailed(context)
                 }
-                if (detected.isNotBlank() && pickup.isBlank()) {
-                    pickup = detected
-                    Toast.makeText(context, "Location Auto-Detected: $detected", Toast.LENGTH_SHORT).show()
+                if (detected.address.isNotBlank() && pickup.isBlank()) {
+                    pickup = detected.address
+                    viewModel.updateDraftPickup(detected.address, detected.lat, detected.lng)
+                    Toast.makeText(context, "Location Auto-Detected: ${detected.address}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -285,8 +303,12 @@ fun BookingFormScreen(
     }
 
     LaunchedEffect(pickup, delivery, additionalStops, quantity, weight, length, width, height, sName, sPhone, rName, rPhone) {
-        viewModel.updateDraftPickup(pickup)
-        viewModel.updateDraftDelivery(delivery)
+        val safePickupLat = if (pickup == draft.pickupAddress) draft.pickupLat else null
+        val safePickupLng = if (pickup == draft.pickupAddress) draft.pickupLng else null
+        val safeDeliveryLat = if (delivery == draft.deliveryAddress) draft.deliveryLat else null
+        val safeDeliveryLng = if (delivery == draft.deliveryAddress) draft.deliveryLng else null
+        viewModel.updateDraftPickup(pickup, safePickupLat, safePickupLng)
+        viewModel.updateDraftDelivery(delivery, safeDeliveryLat, safeDeliveryLng)
         viewModel.updateDraftAdditionalStops(additionalStops)
         viewModel.updateDraftSpecs(
             quantity = quantity.toIntOrNull() ?: 1,
@@ -540,6 +562,7 @@ fun BookingFormScreen(
                                                         .fillMaxWidth()
                                                         .clickable {
                                                             pickup = item.displayInput
+                                                            viewModel.updateDraftPickup(item.displayInput, item.lat, item.lng)
                                                             focusedField = null
                                                         }
                                                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -842,6 +865,7 @@ fun BookingFormScreen(
                                                         .fillMaxWidth()
                                                         .clickable {
                                                             delivery = item.displayInput
+                                                            viewModel.updateDraftDelivery(item.displayInput, item.lat, item.lng)
                                                             focusedField = null
                                                         }
                                                         .padding(horizontal = 12.dp, vertical = 8.dp),

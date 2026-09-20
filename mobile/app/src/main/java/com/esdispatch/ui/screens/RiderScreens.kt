@@ -117,6 +117,7 @@ fun RiderDashboardScreen(
     var showIncidentDialog by remember { mutableStateOf(false) }
     var showBonusDialog by remember { mutableStateOf(false) }
     var showMaintenanceDialog by remember { mutableStateOf(false) }
+    var showPermissionReadinessDialog by remember { mutableStateOf(false) }
 
     // Automatically trigger update status sheet when parcel is scanned
     LaunchedEffect(scannedRiderParcel) {
@@ -127,6 +128,18 @@ fun RiderDashboardScreen(
         }
     }
 
+    // Auto-dismiss bottom sheet if the currently selected parcel was cancelled
+    LaunchedEffect(riderAssignments) {
+        val current = selectedParcelForUpdate
+        if (current != null) {
+            val latest = riderAssignments.find { it.id == current.id }
+            if (latest == null || latest.status == ParcelStatus.CANCELLED) {
+                showUpdateBottomSheet = false
+                selectedParcelForUpdate = null
+            }
+        }
+    }
+
     val activeCount = remember(riderAssignments) {
         riderAssignments.filter {
             it.status != ParcelStatus.DELIVERED &&
@@ -134,6 +147,13 @@ fun RiderDashboardScreen(
             it.status != ParcelStatus.RETURNED &&
             it.status != ParcelStatus.HANDOVER_VERIFIED
         }.size
+    }
+
+    // Automatically switch to "Active" tab when active assignments exist so courier is never stuck on empty Available
+    LaunchedEffect(activeCount) {
+        if (activeCount > 0 && selectedFilter == "Available") {
+            selectedFilter = "Active"
+        }
     }
     val deliveredCount = remember(riderAssignments) {
         riderAssignments.filter { it.status == ParcelStatus.DELIVERED || it.status == ParcelStatus.HANDOVER_VERIFIED }.size
@@ -146,7 +166,10 @@ fun RiderDashboardScreen(
     val fleetRank by viewModel.riderFleetRank.collectAsState()
 
     val arrivedParcel = remember(riderAssignments) {
-        riderAssignments.firstOrNull { it.status == ParcelStatus.ARRIVED || it.status == ParcelStatus.HANDOVER_VERIFIED }
+        riderAssignments.firstOrNull { 
+            (it.status == ParcelStatus.ARRIVED || it.status == ParcelStatus.HANDOVER_VERIFIED) &&
+            it.status != ParcelStatus.CANCELLED
+        }
     }
 
     val density = LocalDensity.current
@@ -760,7 +783,21 @@ fun RiderDashboardScreen(
                                 }
                                 Switch(
                                     checked = isOnlineState,
-                                    onCheckedChange = { viewModel.setRiderOnlineStatus(it) },
+                                    onCheckedChange = { targetState ->
+                                        if (targetState) {
+                                            val hasFineLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+                                                context,
+                                                android.Manifest.permission.ACCESS_FINE_LOCATION
+                                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                            if (!hasFineLocation) {
+                                                showPermissionReadinessDialog = true
+                                            } else {
+                                                viewModel.setRiderOnlineStatus(true)
+                                            }
+                                        } else {
+                                            viewModel.setRiderOnlineStatus(false)
+                                        }
+                                    },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = Obsidian,
                                         checkedTrackColor = Gold,
@@ -1062,7 +1099,21 @@ fun RiderDashboardScreen(
                             )
                             Switch(
                                 checked = isOnlineState,
-                                onCheckedChange = { viewModel.setRiderOnlineStatus(it) },
+                                onCheckedChange = { targetState ->
+                                    if (targetState) {
+                                        val hasFineLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+                                            context,
+                                            android.Manifest.permission.ACCESS_FINE_LOCATION
+                                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                        if (!hasFineLocation) {
+                                            showPermissionReadinessDialog = true
+                                        } else {
+                                            viewModel.setRiderOnlineStatus(true)
+                                        }
+                                    } else {
+                                        viewModel.setRiderOnlineStatus(false)
+                                    }
+                                },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Obsidian,
                                     checkedTrackColor = Gold,
@@ -1134,6 +1185,20 @@ fun RiderDashboardScreen(
     }
     if (showMaintenanceDialog) {
         VehicleMaintenanceDialog(viewModel = viewModel, bikeNumber = bikeNumber, onDismiss = { showMaintenanceDialog = false })
+    }
+    if (showPermissionReadinessDialog) {
+        RiderPermissionReadinessDialog(
+            onDismiss = {
+                showPermissionReadinessDialog = false
+                val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (granted) {
+                    viewModel.setRiderOnlineStatus(true)
+                }
+            }
+        )
     }
 }
 
@@ -1571,6 +1636,13 @@ fun RiderUpdateBottomSheetContent(
     var isSubmitting by remember { mutableStateOf(false) }
     var otpInput by remember { mutableStateOf("") }
 
+    LaunchedEffect(parcel.status) {
+        if (parcel.status == ParcelStatus.CANCELLED) {
+            Toast.makeText(context, "This shipment was cancelled.", Toast.LENGTH_LONG).show()
+            onDismiss()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1628,50 +1700,19 @@ fun RiderUpdateBottomSheetContent(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        if ((parcel.status == ParcelStatus.TRANSIT && parcel.progress > 0.35f) || parcel.status == ParcelStatus.OUT_FOR_DELIVERY) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = if (isDark) Charcoal else GoldenWhiteLight,
-                border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(SuccessGreen)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "LIVE FLEET TELEMETRY",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Gold
-                            )
-                            Text(
-                                text = "Live Fleet Coordinate Sync • Benin City Sector",
-                                fontSize = 11.sp,
-                                color = TextGray
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.Default.MyLocation,
-                        contentDescription = "GPS Active",
-                        tint = SuccessGreen,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+        if (parcel.status != ParcelStatus.DELIVERED && parcel.status != ParcelStatus.CANCELLED) {
+            RiderLiveGpsTelemetryCard(
+                parcelId = parcel.id,
+                pickupAddress = parcel.pickupAddress,
+                deliveryAddress = parcel.deliveryAddress,
+                status = parcel.status,
+                viewModel = viewModel,
+                isDark = isDark,
+                pickupLat = parcel.pickupLat,
+                pickupLng = parcel.pickupLng,
+                deliveryLat = parcel.deliveryLat,
+                deliveryLng = parcel.deliveryLng
+            )
             Spacer(modifier = Modifier.height(10.dp))
         }
 
@@ -2023,6 +2064,38 @@ fun RiderUpdateBottomSheetContent(
                     }
                 }
             }
+        } else if (parcel.status == ParcelStatus.CANCELLED) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFD32F2F).copy(alpha = 0.15f),
+                border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Cancel, contentDescription = null, tint = Color(0xFFEF5350), modifier = Modifier.size(22.dp))
+                    Text(
+                        text = "This shipment has been cancelled by the customer or dispatcher. No further action is required.",
+                        color = Color(0xFFFF8A80),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Charcoal, contentColor = Color.White),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("CLOSE", fontWeight = FontWeight.Bold)
+            }
         } else {
             // Arrived / Handover -> Capture arrival photo (optional) & PIN Verification
             Surface(
@@ -2112,8 +2185,24 @@ fun RiderUpdateBottomSheetContent(
 }
 
 private fun geocodeAddressToLatLng(context: android.content.Context, address: String): Pair<Double, Double> {
+    if (address.isBlank()) return Pair(6.3350, 5.6037)
     val dbCoord = com.esdispatch.data.AddressDatabase.getCoordinates(address)
     if (dbCoord != null) return dbCoord
+
+    try {
+        if (android.location.Geocoder.isPresent()) {
+            val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+            val query = if (address.contains("Benin", ignoreCase = true)) address else "$address, Benin City, Nigeria"
+            @Suppress("DEPRECATION")
+            val addresses = geocoder.getFromLocationName(query, 1)
+            if (!addresses.isNullOrEmpty()) {
+                val addr = addresses[0]
+                if (addr.latitude in 6.1..6.5 && addr.longitude in 5.4..5.8) {
+                    return Pair(addr.latitude, addr.longitude)
+                }
+            }
+        }
+    } catch (_: Exception) {}
 
     val lower = address.lowercase()
     return when {
@@ -2128,429 +2217,176 @@ private fun geocodeAddressToLatLng(context: android.content.Context, address: St
         lower.contains("evboekhae") || lower.contains("evboekhae road") -> Pair(6.3380, 5.6020)
         lower.contains("ogida") || lower.contains("ogida quarter") -> Pair(6.3280, 5.5980)
         lower.contains("benin") || lower.contains("benin city") -> Pair(6.3350, 5.6037)
-        lower.contains("edo") -> Pair(6.3400, 5.6100)
-        else -> {
-            val hash = Math.abs(address.hashCode())
-            val lat = 6.3350 + ((hash % 150) / 1000.0)
-            val lng = 5.6037 + (((hash / 150) % 150) / 1000.0)
-            Pair(lat, lng)
-        }
+        else -> Pair(6.3350, 5.6037)
     }
 }
 
 @Composable
-fun GpsMovementSimulator(
+fun RiderLiveGpsTelemetryCard(
     parcelId: String,
     pickupAddress: String,
     deliveryAddress: String,
+    status: ParcelStatus,
     viewModel: DeliveryViewModel,
-    isDark: Boolean
+    isDark: Boolean,
+    pickupLat: Double? = null,
+    pickupLng: Double? = null,
+    deliveryLat: Double? = null,
+    deliveryLng: Double? = null
 ) {
-    var isSimulating by remember { mutableStateOf(false) }
-    var isPaused by remember { mutableStateOf(false) }
-    var currentStep by remember { mutableStateOf(0) }
-    var totalSteps by remember { mutableStateOf(50) }
-    var routeCoords by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
-    var isRouteLoading by remember { mutableStateOf(false) }
-    var simulationSpeed by remember { mutableIntStateOf(1) }
-    var showArrivedDialog by remember { mutableStateOf(false) }
-    var distanceRemaining by remember { mutableDoubleStateOf(0.0) }
-    var totalDistance by remember { mutableDoubleStateOf(0.0) }
-    var currentSpeed by remember { mutableDoubleStateOf(0.0) }
-    var statusMessage by remember { mutableStateOf("Ready") }
-    val progressPercent by remember(currentStep, routeCoords, totalSteps) {
-        val total = if (routeCoords.isNotEmpty()) routeCoords.size else totalSteps
-        mutableStateOf(((currentStep * 100) / total.coerceAtLeast(1)).coerceAtMost(100))
-    }
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val job = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val liveLoc by com.esdispatch.util.LocationService.liveLocationFlow.collectAsState()
+    var deliveryCoords by remember(deliveryLat, deliveryLng) {
+        mutableStateOf(
+            if (deliveryLat != null && deliveryLng != null && deliveryLat != 0.0 && deliveryLng != 0.0) {
+                Pair(deliveryLat, deliveryLng)
+            } else {
+                Pair(6.3450, 5.6250)
+            }
+        )
+    }
+    var pickupCoords by remember(pickupLat, pickupLng) {
+        mutableStateOf(
+            if (pickupLat != null && pickupLng != null && pickupLat != 0.0 && pickupLng != 0.0) {
+                Pair(pickupLat, pickupLng)
+            } else {
+                Pair(6.3350, 5.6037)
+            }
+        )
+    }
 
-    var pickupCoords by remember { mutableStateOf(Pair(0.0, 0.0)) }
-    var deliveryCoords by remember { mutableStateOf(Pair(0.0, 0.0)) }
-    LaunchedEffect(pickupAddress) {
-        withContext(Dispatchers.IO) {
-            pickupCoords = geocodeAddressToLatLng(context, pickupAddress)
+    LaunchedEffect(deliveryAddress, deliveryLat, deliveryLng) {
+        if (deliveryLat == null || deliveryLng == null || deliveryLat == 0.0 || deliveryLng == 0.0) {
+            withContext(Dispatchers.IO) {
+                deliveryCoords = geocodeAddressToLatLng(context, deliveryAddress)
+            }
         }
     }
-    LaunchedEffect(deliveryAddress) {
-        withContext(Dispatchers.IO) {
-            deliveryCoords = geocodeAddressToLatLng(context, deliveryAddress)
+    LaunchedEffect(pickupAddress, pickupLat, pickupLng) {
+        if (pickupLat == null || pickupLng == null || pickupLat == 0.0 || pickupLng == 0.0) {
+            withContext(Dispatchers.IO) {
+                pickupCoords = geocodeAddressToLatLng(context, pickupAddress)
+            }
         }
     }
-    val pickupLat = pickupCoords.first
-    val pickupLng = pickupCoords.second
-    val deliveryLat = deliveryCoords.first
-    val deliveryLng = deliveryCoords.second
 
-    val speedOptions = listOf(1, 2, 5, 10)
-
-    fun formatDistance(meters: Double): String {
-        return if (meters >= 1000) "%.1f km".format(meters / 1000) else "%.0f m".format(meters)
+    val targetCoords = if (status == ParcelStatus.TRANSIT || status == ParcelStatus.OUT_FOR_DELIVERY || status == ParcelStatus.ARRIVED) {
+        deliveryCoords
+    } else {
+        pickupCoords
     }
 
-    Column(
+    val targetLabel = if (status == ParcelStatus.TRANSIT || status == ParcelStatus.OUT_FOR_DELIVERY || status == ParcelStatus.ARRIVED) {
+        "Recipient"
+    } else {
+        "Pickup"
+    }
+
+    val distanceMeters = remember(liveLoc, targetCoords) {
+        liveLoc?.let { loc ->
+            calculateDistanceMeters(loc.latitude, loc.longitude, targetCoords.first, targetCoords.second)
+        }
+    }
+
+    val isNearDestination = (distanceMeters != null && distanceMeters <= 50.0)
+
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (isDark) Charcoal else GoldenWhiteLight, RoundedCornerShape(16.dp))
-            .border(BorderStroke(1.dp, Gold.copy(alpha = 0.2f)), RoundedCornerShape(16.dp))
-            .padding(14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (isDark) Charcoal else GoldenWhiteLight,
+        border = BorderStroke(1.2.dp, if (isNearDestination) Gold else Gold.copy(alpha = 0.35f))
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.NearMe,
-                    contentDescription = "GPS",
-                    tint = if (isSimulating) SuccessGreen else Gold,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Live GPS Tracking",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isDark) Color.White else Obsidian
-                )
-            }
-            if (isSimulating) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (isPaused) Gold.copy(alpha = 0.15f) else SuccessGreen.copy(alpha = 0.15f)
-                ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(if (liveLoc != null) SuccessGreen else Color(0xFFFF9500))
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (isPaused) "PAUSED" else "TRANSMITTING",
-                        fontSize = 8.sp,
+                        text = if (liveLoc != null) "HARDWARE GPS ACTIVE" else "ACQUIRING GPS FIX...",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
-                        color = if (isPaused) Gold else SuccessGreen,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        color = Gold,
+                        letterSpacing = 0.5.sp
                     )
                 }
-            } else {
-                Text(
-                    text = "Standby",
-                    fontSize = 10.sp,
-                    color = TextGray,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(CircleShape)
-                .background(if (isDark) LuxuryBlack else Slate)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(
-                        if (isSimulating && currentStep > 0 && routeCoords.isNotEmpty())
-                            ((currentStep + 1).toFloat() / routeCoords.size)
-                        else if (isSimulating && currentStep > 0)
-                            ((currentStep + 1).toFloat() / totalSteps)
-                        else 0f
+                if (liveLoc != null) {
+                    Text(
+                        text = "±${liveLoc!!.accuracy.toInt()}m accuracy",
+                        fontSize = 10.sp,
+                        color = TextGray
                     )
-                    .background(Gold)
-            )
-        }
+                }
+            }
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-        if (isSimulating && !isRouteLoading) {
-            Text(
-                text = statusMessage,
-                fontSize = 11.sp,
-                color = TextGray,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "${formatDistance(totalDistance - distanceRemaining)} traveled",
-                    fontSize = 9.sp,
-                    color = Gold,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "${formatDistance(distanceRemaining)} remaining",
-                    fontSize = 9.sp,
-                    color = TextGray,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        } else if (isRouteLoading) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    color = Gold,
-                    strokeWidth = 2.dp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Calculating route from OSRM...",
-                    fontSize = 10.sp,
-                    color = TextGray,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        } else {
-            Text(
-                text = "Press start to broadcast live GPS coordinates to the customer tracking portal.",
-                fontSize = 10.sp,
-                color = TextGray,
-                textAlign = TextAlign.Center
-            )
-        }
-
-        if (isSimulating && !isPaused && !isRouteLoading && currentStep > 0) {
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column {
+                    Text("SPEED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
                     Text(
-                        text = "%.1f km/h".format(currentSpeed),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDark) Color.White else Obsidian
+                        text = if (liveLoc != null) String.format(java.util.Locale.US, "%.1f km/h", liveLoc!!.speed * 3.6f) else "-- km/h",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        color = AppTextColor
                     )
-                    Text("Speed", fontSize = 8.sp, color = TextGray)
                 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column {
+                    Text("DISTANCE TO $targetLabel", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
                     Text(
-                        text = "×$simulationSpeed",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Gold
-                    )
-                    Text("Speed Multiplier", fontSize = 8.sp, color = TextGray)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "$progressPercent%",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDark) Color.White else Obsidian
-                    )
-                    Text("Progress", fontSize = 8.sp, color = TextGray)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        if (isSimulating) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (isPaused) {
-                    Button(
-                        onClick = { isPaused = false },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen, contentColor = Color.White),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = "Resume", modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("RESUME", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Button(
-                        onClick = {
-                            job.value?.cancel()
-                            isSimulating = false
-                            isPaused = false
-                            currentStep = 0
-                            viewModel.stopRealTimeGpsTracking(parcelId)
-                            Toast.makeText(context, "GPS transmission stopped", Toast.LENGTH_SHORT).show()
+                        text = when {
+                            distanceMeters == null -> "Calculating..."
+                            distanceMeters >= 1000 -> String.format(java.util.Locale.US, "%.1f km", distanceMeters / 1000)
+                            else -> "${distanceMeters.toInt()} m"
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252), contentColor = Color.White),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("STOP", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    speedOptions.forEach { speed ->
-                        val isActive = simulationSpeed == speed
-                        Button(
-                            onClick = { simulationSpeed = speed },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isActive) Gold else if (isDark) LuxuryBlack else Slate,
-                                contentColor = if (isActive) Obsidian else TextGray
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(vertical = 6.dp)
-                        ) {
-                            Text("×$speed", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isNearDestination) Gold else AppTextColor
+                    )
+                }
+                Column {
+                    Text("HEADING", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
+                    Text(
+                        text = if (liveLoc != null && liveLoc!!.hasBearing()) "${liveLoc!!.bearing.toInt()}°" else "--",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        color = AppTextColor
+                    )
                 }
             }
-            Spacer(modifier = Modifier.height(6.dp))
-            Button(
-                onClick = {
-                    isPaused = !isPaused
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isPaused) Gold else Color(0xFFFF5252),
-                    contentColor = if (isPaused) Obsidian else Color.White
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Icon(
-                    imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                    contentDescription = if (isPaused) "Resume" else "Pause",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (isPaused) "RESUME TRANSMISSION" else "PAUSE TRANSMISSION",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        } else {
-            Button(
-                onClick = {
-                    if (isSimulating) return@Button
-                    isSimulating = true
-                    isPaused = false
-                    currentStep = 0
-                    distanceRemaining = calculateDistanceMeters(pickupLat, pickupLng, deliveryLat, deliveryLng)
-                    totalDistance = distanceRemaining
-                    statusMessage = "Initializing GPS transmission..."
-                    isRouteLoading = true
-                    scope.launch {
-                        try {
-                            val dirUrl = "https://router.project-osrm.org/route/v1/driving/$pickupLng,$pickupLat;$deliveryLng,$deliveryLat?geometries=geojson&overview=full"
-                            val url = java.net.URL(dirUrl)
-                            val conn = url.openConnection() as java.net.HttpURLConnection
-                            conn.connectTimeout = 10000
-                            conn.readTimeout = 10000
-                            conn.requestMethod = "GET"
-                            val response = conn.inputStream.bufferedReader().readText()
-                            conn.disconnect()
 
-                            val json = org.json.JSONObject(response)
-                            if (json.has("routes") && json.getJSONArray("routes").length() > 0) {
-                                val route = json.getJSONArray("routes").getJSONObject(0)
-                                val geometry = route.getJSONObject("geometry")
-                                val coordsArray = geometry.getJSONArray("coordinates")
-                                val coords = mutableListOf<Pair<Double, Double>>()
-                                for (i in 0 until coordsArray.length()) {
-                                    val point = coordsArray.getJSONArray(i)
-                                    coords.add(Pair(point.getDouble(1), point.getDouble(0)))
-                                }
-                                if (coords.size > 2) {
-                                    routeCoords = coords
-                                    totalSteps = coords.size
-                                    statusMessage = "Route loaded: ${coords.size} waypoints"
-                                    isRouteLoading = false
-                                } else {
-                                    throw Exception("Too few route points")
-                                }
-                            } else {
-                                throw Exception("No route found")
+            if (isNearDestination && (status == ParcelStatus.TRANSIT || status == ParcelStatus.OUT_FOR_DELIVERY)) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        viewModel.updateParcelStatusByRider(parcelId, ParcelStatus.ARRIVED, 0.90f) { success, _ ->
+                            if (success) {
+                                Toast.makeText(context, "Marked as arrived! Recipient notified.", Toast.LENGTH_SHORT).show()
                             }
-                        } catch (e: Exception) {
-                            android.util.Log.e("GpsMovementSimulator", "OSRM route fetch failed: ${e.message}")
-                            routeCoords = emptyList()
-                            totalSteps = 50
-                            isRouteLoading = false
-                            statusMessage = "Transmitting GPS coordinates..."
                         }
-
-                        val hasLocationPermission = androidx.core.content.PermissionChecker.checkSelfPermission(
-                            context,
-                            android.Manifest.permission.ACCESS_FINE_LOCATION
-                        ) == androidx.core.content.PermissionChecker.PERMISSION_GRANTED
-
-                        if (hasLocationPermission) {
-                            statusMessage = "Live GPS Active • Hardware Telemetry Connected"
-                            viewModel.startRealTimeGpsTracking(parcelId) { lat, lng ->
-                                android.util.Log.d("GpsTelemetry", "Hardware GPS: Lat $lat, Lng $lng")
-                                viewModel.updateCourierLocationByRider(parcelId, lat, lng) { _, _ -> }
-                                val dist = calculateDistanceMeters(lat, lng, deliveryLat, deliveryLng)
-                                distanceRemaining = dist
-                                statusMessage = "Broadcasting GPS • ${formatDistance(dist)} to destination"
-                                if (dist <= 50.0) {
-                                    showArrivedDialog = true
-                                }
-                            }
-                            Toast.makeText(context, "Hardware GPS tracking started.", Toast.LENGTH_SHORT).show()
-                        } else {
-                            statusMessage = "Location permission required for live GPS"
-                            Toast.makeText(context, "Please grant Location permission in Settings.", Toast.LENGTH_LONG).show()
-                            isSimulating = false
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Gold,
-                    contentColor = Obsidian
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Icon(Icons.Default.NearMe, contentDescription = "Start", modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "START LIVE GPS TRANSMISSION",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        if (showArrivedDialog) {
-            AlertDialog(
-                onDismissRequest = { showArrivedDialog = false },
-                containerColor = Charcoal,
-                titleContentColor = AppTextColor,
-                textContentColor = AppTextColor,
-                title = { Text("Near Recipient (Within 50m)", fontWeight = FontWeight.Bold) },
-                text = { Text("GPS proximity telemetry has detected you are within 50 meters of $deliveryAddress. Update status to ARRIVED?") },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showArrivedDialog = false
-                            viewModel.updateParcelStatusByRider(parcelId, ParcelStatus.ARRIVED, 0.95f) { success, _ ->
-                                if (success) {
-                                    Toast.makeText(context, "Status updated to ARRIVED! Awaiting OTP validation.", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
-                    ) {
-                        Text("SET ARRIVED", fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showArrivedDialog = false }) {
-                        Text("DISMISS", color = TextGray)
-                    }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Place, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("ARRIVED AT DESTINATION (<50m)", fontWeight = FontWeight.Black, fontSize = 11.sp)
                 }
-            )
+            }
         }
     }
 }
@@ -3540,6 +3376,211 @@ fun RiderWaybillBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+fun RiderPermissionReadinessDialog(
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
+
+    var fineGranted by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    var backgroundGranted by remember {
+        mutableStateOf(
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else true
+        )
+    }
+
+    val powerManager = remember { context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager }
+    var batteryOptimized by remember {
+        mutableStateOf(
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
+            } else true
+        )
+    }
+
+    var cameraGranted by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.CAMERA
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val fineLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { map ->
+        fineGranted = map[android.Manifest.permission.ACCESS_FINE_LOCATION] == true
+    }
+
+    val bgLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        backgroundGranted = granted
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        cameraGranted = granted
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = if (isDark) Charcoal else Color.White,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Security, contentDescription = null, tint = Gold, modifier = Modifier.size(22.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Dispatch Telemetry Readiness",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) GoldLight else Obsidian
+                )
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                Text(
+                    text = "To guarantee real-time tracking during delivery journeys and prevent GPS interruptions when your screen locks, ensure these settings are enabled.",
+                    fontSize = 12.sp,
+                    color = TextGray,
+                    lineHeight = 17.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Fine Location
+                PermissionStatusRow(
+                    title = "Precise Hardware GPS",
+                    desc = "Required to calculate real routes and broadcast live location.",
+                    isGranted = fineGranted,
+                    onGrant = {
+                        fineLauncher.launch(
+                            arrayOf(
+                                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                android.Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Background Location
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    PermissionStatusRow(
+                        title = "Background Location",
+                        desc = "Allows continuous tracking while phone screen is locked in transit.",
+                        isGranted = backgroundGranted,
+                        onGrant = {
+                            if (!fineGranted) {
+                                Toast.makeText(context, "Please grant Precise Location first.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                bgLauncher.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                // Battery Optimization
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    PermissionStatusRow(
+                        title = "Battery Optimization Exemption",
+                        desc = "Prevents OS from putting the dispatch service into deep sleep.",
+                        isGranted = batteryOptimized,
+                        onGrant = {
+                            try {
+                                val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = android.net.Uri.parse("package:${context.packageName}")
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                try {
+                                    context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                                } catch (ex: Exception) {
+                                    Toast.makeText(context, "Open Settings > Battery > Optimize battery usage", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                // Camera
+                PermissionStatusRow(
+                    title = "Camera Access",
+                    desc = "Required to capture mandatory handover proof of delivery.",
+                    isGranted = cameraGranted,
+                    onGrant = {
+                        cameraLauncher.launch(android.Manifest.permission.CAMERA)
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("DONE", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
+@Composable
+private fun PermissionStatusRow(
+    title: String,
+    desc: String,
+    isGranted: Boolean,
+    onGrant: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Charcoal.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+            .border(BorderStroke(1.dp, if (isGranted) SuccessGreen.copy(alpha = 0.4f) else Gold.copy(alpha = 0.3f)), RoundedCornerShape(10.dp))
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+            Text(desc, fontSize = 10.sp, color = TextGray, lineHeight = 13.sp)
+        }
+        if (isGranted) {
+            Surface(
+                shape = CircleShape,
+                color = SuccessGreen.copy(alpha = 0.15f),
+                modifier = Modifier.size(28.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Check, contentDescription = "Granted", tint = SuccessGreen, modifier = Modifier.size(16.dp))
+                }
+            }
+        } else {
+            Button(
+                onClick = onGrant,
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.height(30.dp)
+            ) {
+                Text("ENABLE", fontSize = 10.sp, fontWeight = FontWeight.Black)
+            }
         }
     }
 }

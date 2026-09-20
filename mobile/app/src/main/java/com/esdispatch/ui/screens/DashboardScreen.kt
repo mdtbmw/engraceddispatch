@@ -957,9 +957,9 @@ fun DashboardScreen(
                             quickViewParcel = parcel
                         },
                         onRebook = {
-                            viewModel.populateDraftFromParcel(parcel)
-                            viewModel.saveDraftToPrefs(context)
-                            onNavigate("BookingForm")
+                            viewModel.rebookParcel(parcel) { route ->
+                                onNavigate(route)
+                            }
                         },
                         onViewReceipt = {
                             quickViewParcel = parcel

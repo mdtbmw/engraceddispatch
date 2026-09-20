@@ -13,6 +13,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -313,12 +316,6 @@ fun ActiveTrackingScreen(
         }
     }
 
-    LaunchedEffect(selectedParcel?.id) {
-        selectedParcel?.id?.let { id ->
-            viewModel.startRealTimeTrackingListener(id)
-        }
-    }
-
     val userParcels by viewModel.parcels.collectAsState()
     val riderAssignments by viewModel.riderAssignments.collectAsState()
     val userRole by viewModel.userRole.collectAsState()
@@ -336,6 +333,36 @@ fun ActiveTrackingScreen(
     val activeParcel = remember(selectedParcel, activeParcels) {
         val activeSelected = selectedParcel?.takeIf { it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.DELIVERED }
         activeSelected ?: activeParcels.firstOrNull()
+    }
+
+    val trackingTargetId = activeParcel?.id ?: selectedParcel?.id
+    LaunchedEffect(trackingTargetId) {
+        trackingTargetId?.takeIf { it.isNotBlank() }?.let { id ->
+            viewModel.startRealTimeTrackingListener(id)
+        }
+    }
+
+    val serviceLiveLocation by com.esdispatch.util.LocationService.liveLocationFlow.collectAsState()
+    LaunchedEffect(serviceLiveLocation) {
+        serviceLiveLocation?.let { loc ->
+            userCoords = Pair(loc.latitude, loc.longitude)
+        }
+    }
+
+    LaunchedEffect(isRider, activeParcel?.id) {
+        if (isRider) {
+            val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (fineGranted) {
+                com.esdispatch.util.LocationService.start(
+                    context = context,
+                    parcelId = activeParcel?.id,
+                    batchId = activeParcel?.batchId
+                )
+            }
+        }
     }
 
     val previewParcel = remember {
@@ -479,18 +506,74 @@ fun ActiveTrackingScreen(
     }
     var isGoingUp by remember { mutableStateOf(true) }
 
+    val density = androidx.compose.ui.platform.LocalDensity.current
     val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
-    val dynamicExpandedHeight = (screenHeight * 0.70f).coerceIn(320.dp, 560.dp)
+    val dynamicExpandedHeight = (screenHeight * 0.72f).coerceIn(340.dp, 580.dp)
     val dynamicCollapsedHeight = (screenHeight * 0.42f).coerceIn(220.dp, 360.dp)
+    val dynamicClosedHeight = if (hasNoBooking) 48.dp else 76.dp
+
+    var dragOffsetDp by remember { mutableStateOf(0.dp) }
+
+    val baseTargetHeight = when (drawerState) {
+        DrawerState.CLOSED -> dynamicClosedHeight
+        DrawerState.COLLAPSED -> if (hasNoBooking) 140.dp else dynamicCollapsedHeight
+        DrawerState.EXPANDED -> if (hasNoBooking) 140.dp else dynamicExpandedHeight
+    }
 
     val bottomCardHeight by animateDpAsState(
-        targetValue = when (drawerState) {
-            DrawerState.CLOSED -> if (hasNoBooking) 48.dp else 76.dp
-            DrawerState.COLLAPSED -> if (hasNoBooking) 140.dp else dynamicCollapsedHeight
-            DrawerState.EXPANDED -> if (hasNoBooking) 140.dp else dynamicExpandedHeight
-        },
+        targetValue = (baseTargetHeight + dragOffsetDp).coerceIn(
+            dynamicClosedHeight,
+            if (hasNoBooking) 140.dp else dynamicExpandedHeight
+        ),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
         label = "bottomCardHeight"
     )
+
+    val drawerDragModifier = Modifier.pointerInput(hasNoBooking, baseTargetHeight, dynamicCollapsedHeight, dynamicExpandedHeight, dynamicClosedHeight) {
+        detectVerticalDragGestures(
+            onDragStart = {
+                dragOffsetDp = 0.dp
+            },
+            onVerticalDrag = { change, dragAmount ->
+                change.consume()
+                val deltaDp = -dragAmount / density.density
+                dragOffsetDp = (dragOffsetDp + deltaDp.dp).coerceIn(
+                    -(baseTargetHeight - dynamicClosedHeight),
+                    (dynamicExpandedHeight - baseTargetHeight)
+                )
+            },
+            onDragEnd = {
+                val currentEffectiveHeight = baseTargetHeight + dragOffsetDp
+                dragOffsetDp = 0.dp
+                if (hasNoBooking) {
+                    drawerState = if (currentEffectiveHeight > 94.dp) DrawerState.COLLAPSED else DrawerState.CLOSED
+                } else {
+                    val midExpanded = (dynamicCollapsedHeight + dynamicExpandedHeight) / 2
+                    val midCollapsed = (dynamicClosedHeight + dynamicCollapsedHeight) / 2
+                    drawerState = when {
+                        currentEffectiveHeight >= midExpanded -> {
+                            isGoingUp = false
+                            DrawerState.EXPANDED
+                        }
+                        currentEffectiveHeight >= midCollapsed -> {
+                            isGoingUp = true
+                            DrawerState.COLLAPSED
+                        }
+                        else -> {
+                            isGoingUp = true
+                            DrawerState.CLOSED
+                        }
+                    }
+                }
+            },
+            onDragCancel = {
+                dragOffsetDp = 0.dp
+            }
+        )
+    }
 
     // Dynamic Weather state and AI Mode (Points 11 & 12)
     var currentWeather by remember { mutableStateOf("Clear (29°C)") }
@@ -669,6 +752,10 @@ fun ActiveTrackingScreen(
     Scaffold(
         containerColor = headerBgColor
     ) { innerPadding ->
+        androidx.activity.compose.BackHandler {
+            onNavigate("Dashboard")
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -774,14 +861,21 @@ fun ActiveTrackingScreen(
                     onMapTypeToggled = { isSat ->
                         isSatelliteMode = isSat
                     },
-                    courierLatitude = parcel.courierLatitude,
-                    courierLongitude = parcel.courierLongitude,
+                    courierLatitude = if (isRider) (userCoords?.first ?: parcel.courierLatitude) else parcel.courierLatitude,
+                    courierLongitude = if (isRider) (userCoords?.second ?: parcel.courierLongitude) else parcel.courierLongitude,
+                    courierBearing = if (isRider) (serviceLiveLocation?.bearing ?: parcel.courierBearing) else parcel.courierBearing,
                     userAvatar = userAvatar,
                     hasNoBooking = hasNoBooking,
                     followUser = followUser,
                     userCoords = userCoords,
                     isRider = isRider,
-                    parcelStatus = parcel.status
+                    parcelStatus = parcel.status,
+                    parcelPickupLat = parcel.pickupLat,
+                    parcelPickupLng = parcel.pickupLng,
+                    parcelDeliveryLat = parcel.deliveryLat,
+                    parcelDeliveryLng = parcel.deliveryLng,
+                    courierName = resolvedCourierName,
+                    courierPhone = resolvedCourierPhone
                 )
             }
 
@@ -1134,7 +1228,9 @@ fun ActiveTrackingScreen(
                             .zIndex(20f)
                     ) {
                         Card(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(drawerDragModifier),
                             shape = if (isDrawerClosed) RoundedCornerShape(24.dp) else RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isDrawerClosed) (if (isDark) Obsidian else Color(0xFF18181B)) else (if (isDark) Obsidian else GoldenWhiteLight)
@@ -1790,14 +1886,14 @@ fun ActiveTrackingScreen(
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Filled.CheckCircle,
-                                                        contentDescription = "Battery Optimized",
+                                                        imageVector = Icons.Filled.GpsFixed,
+                                                        contentDescription = "Live Telemetry",
                                                         tint = Color(0xFF4CAF50),
                                                         modifier = Modifier.size(16.dp)
                                                     )
                                                     Spacer(modifier = Modifier.width(6.dp))
                                                     Text(
-                                                        text = "Location tracking optimized (2.1% / hr battery impact)",
+                                                        text = "Live dispatch GPS telemetry active",
                                                         fontSize = 11.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = Color(0xFF4CAF50)
@@ -1939,61 +2035,6 @@ fun ActiveTrackingScreen(
                                                 }
 
                                                 if (isRider) {
-                                                    // Rider Navigation & Client Contact Row
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                                    ) {
-                                                        Button(
-                                                            onClick = {
-                                                                val dest = if (parcel.status == ParcelStatus.ASSIGNED) parcel.pickupAddress else parcel.deliveryAddress
-                                                                val uri = Uri.parse("google.navigation:q=" + Uri.encode(dest))
-                                                                val mapIntent = Intent(Intent.ACTION_VIEW, uri).apply {
-                                                                    setPackage("com.google.android.apps.maps")
-                                                                }
-                                                                try {
-                                                                    context.startActivity(mapIntent)
-                                                                } catch (e: Exception) {
-                                                                    val webUri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" + Uri.encode(dest))
-                                                                    context.startActivity(Intent(Intent.ACTION_VIEW, webUri))
-                                                                }
-                                                            },
-                                                            modifier = Modifier.weight(1f).height(44.dp).tactilePress(scaleDown = 0.94f),
-                                                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Obsidian else Gold),
-                                                            shape = RoundedCornerShape(12.dp),
-                                                            border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.3f))
-                                                        ) {
-                                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                                                                Icon(Icons.Filled.Navigation, "Navigate", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
-                                                                Spacer(modifier = Modifier.width(6.dp))
-                                                                Text("Directions", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) Gold else Obsidian)
-                                                            }
-                                                        }
-
-                                                        OutlinedButton(
-                                                            onClick = {
-                                                                val phone = if (parcel.status == ParcelStatus.ASSIGNED) parcel.senderPhone else parcel.receiverPhone
-                                                                val cleanPhone = phone.filter { it.isDigit() || it == '+' }
-                                                                if (cleanPhone.isNotBlank()) {
-                                                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanPhone"))
-                                                                    context.startActivity(intent)
-                                                                } else {
-                                                                    Toast.makeText(context, "No contact phone available", Toast.LENGTH_SHORT).show()
-                                                                }
-                                                            },
-                                                            modifier = Modifier.weight(1f).height(44.dp).tactilePress(scaleDown = 0.94f),
-                                                            shape = RoundedCornerShape(12.dp),
-                                                            border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.3f)),
-                                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isDark) Gold else Obsidian)
-                                                        ) {
-                                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                                                                Icon(Icons.Filled.Call, "Call", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(16.dp))
-                                                                Spacer(modifier = Modifier.width(6.dp))
-                                                                Text("Call Client", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                                            }
-                                                        }
-                                                    }
-
                                                     // Rider Milestone Progression Action Button
                                                     Spacer(modifier = Modifier.height(10.dp))
                                                     when (parcel.status) {
@@ -2254,33 +2295,19 @@ fun ActiveTrackingScreen(
                                                             )
                                                         }
                                                         
-                                                        // Realistic dynamic status timestamp
-                                                         val baseTime = remember(parcel.id, parcel.dateString) {
-                                                             val hash = kotlin.math.abs(parcel.id.hashCode())
-                                                             val hour = (hash % 12).coerceAtLeast(1)
-                                                             val min = (hash % 50)
-                                                             Pair(hour, min)
-                                                         }
+                                                         val timeFormat = remember { java.text.SimpleDateFormat("h:mm a", java.util.Locale.US) }
                                                          val timestampText = when (index) {
-                                                             0 -> String.format(java.util.Locale.US, "%d:%02d AM", baseTime.first, baseTime.second)
-                                                             1 -> if (timelineSteps[1].third) {
-                                                                 String.format(java.util.Locale.US, "%d:%02d AM", baseTime.first, (baseTime.second + 8) % 60)
-                                                             } else "--:--"
+                                                             0 -> if (parcel.createdAt > 0L) timeFormat.format(java.util.Date(parcel.createdAt)) else "--:--"
+                                                             1 -> if (timelineSteps[1].third && parcel.createdAt > 0L) timeFormat.format(java.util.Date(parcel.createdAt)) else "--:--"
                                                              2 -> if (timelineSteps[2].third) {
-                                                                 val transitHour = if (baseTime.second + 25 >= 60) (baseTime.first % 12) + 1 else baseTime.first
-                                                                 val amPm = if (transitHour >= 12) "PM" else "AM"
-                                                                 String.format(java.util.Locale.US, "%d:%02d %s", transitHour, (baseTime.second + 25) % 60, amPm)
+                                                                 val ts = if (parcel.transitTimestamp > 0L) parcel.transitTimestamp else parcel.pickupTimestamp
+                                                                 if (ts > 0L) timeFormat.format(java.util.Date(ts)) else "--:--"
                                                              } else "--:--"
                                                              3 -> if (timelineSteps[3].third) {
-                                                                 val arrHour = if (baseTime.second + 45 >= 60) (baseTime.first % 12) + 1 else baseTime.first
-                                                                 val amPm = if (arrHour >= 12) "PM" else "AM"
-                                                                 String.format(java.util.Locale.US, "%d:%02d %s", arrHour, (baseTime.second + 45) % 60, amPm)
+                                                                 val ts = if (parcel.estimatedArrivalAt > 0L) parcel.estimatedArrivalAt else parcel.deliveryTimestamp
+                                                                 if (ts > 0L) timeFormat.format(java.util.Date(ts)) else "--:--"
                                                              } else "--:--"
-                                                             4 -> if (timelineSteps[4].third) {
-                                                                 val delivHour = if (baseTime.second + 55 >= 60) (baseTime.first % 12) + 1 else baseTime.first
-                                                                 val amPm = if (delivHour >= 12) "PM" else "AM"
-                                                                 String.format(java.util.Locale.US, "%d:%02d %s", delivHour, (baseTime.second + 55) % 60, amPm)
-                                                             } else "--:--"
+                                                             4 -> if (timelineSteps[4].third && parcel.deliveryTimestamp > 0L) timeFormat.format(java.util.Date(parcel.deliveryTimestamp)) else "--:--"
                                                              else -> ""
                                                          }
                                                          Text(
@@ -2619,15 +2646,20 @@ fun ActiveTrackingScreen(
                                                         )
                                                     }
                                                     Spacer(modifier = Modifier.width(12.dp))
-                                                    Column {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
                                                             Text(
                                                                 text = contactName,
                                                                 fontWeight = FontWeight.ExtraBold,
                                                                 fontSize = 15.sp,
                                                                 color = Color.White,
                                                                 maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis
+                                                                modifier = Modifier
+                                                                    .weight(1f, fill = false)
+                                                                    .basicMarquee()
                                                             )
                                                             Spacer(modifier = Modifier.width(6.dp))
                                                             Surface(
@@ -2681,18 +2713,6 @@ fun ActiveTrackingScreen(
                                                     ) {
                                                         Icon(Icons.Filled.Call, contentDescription = "Call $contactRole", tint = Obsidian, modifier = Modifier.size(18.dp))
                                                     }
-
-                                                    // Chat Trigger
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(44.dp)
-                                                            .clip(CircleShape)
-                                                            .background(Gold)
-                                                            .clickable { showChatSheet = true },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(Icons.Filled.Chat, contentDescription = "Chat with $contactRole", tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                    }
                                                 }
                                             }
                                         } else if (isCourierAssigned) {
@@ -2738,12 +2758,14 @@ fun ActiveTrackingScreen(
                                                             borderWidth = 2.dp
                                                         )
                                                         Spacer(modifier = Modifier.width(12.dp))
-                                                        Column {
+                                                        Column(modifier = Modifier.weight(1f, fill = false)) {
                                                             Text(
                                                                 text = resolvedCourierName,
                                                                 fontWeight = FontWeight.ExtraBold,
                                                                 fontSize = 16.sp,
-                                                                color = Color.White
+                                                                color = Color.White,
+                                                                maxLines = 1,
+                                                                modifier = Modifier.basicMarquee()
                                                             )
                                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                                 Icon(
@@ -2786,18 +2808,6 @@ fun ActiveTrackingScreen(
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         Icon(Icons.Filled.Call, null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                    }
-
-                                                    // Chat Trigger (Obsidian icon on Gold circle)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(44.dp)
-                                                            .clip(CircleShape)
-                                                            .background(Gold)
-                                                            .clickable { showChatSheet = true },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(Icons.Filled.Chat, null, tint = Obsidian, modifier = Modifier.size(18.dp))
                                                     }
                                                 }
                                             }
@@ -2882,51 +2892,61 @@ fun ActiveTrackingScreen(
                 }
             }
 
-                        // Collapsible drawer arrow button overlapping the top center edge (only when not CLOSED)
+                        // Sleek fluid draggable handle overlapping top center edge (only when not CLOSED)
                         if (drawerState != DrawerState.CLOSED) {
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(16.dp),
                                 color = AppSurface,
-                                border = BorderStroke(1.dp, if (isLight) Slate else Gold.copy(alpha = 0.3f)),
-                                onClick = {
-                                    if (hasNoBooking) {
-                                        // Only two states: CLOSED and COLLAPSED
-                                        drawerState = if (drawerState == DrawerState.CLOSED) {
-                                            DrawerState.COLLAPSED
-                                        } else {
-                                            DrawerState.CLOSED
-                                        }
-                                    } else {
-                                        when (drawerState) {
-                                            DrawerState.CLOSED -> {
-                                                drawerState = DrawerState.COLLAPSED
-                                                isGoingUp = true
-                                            }
-                                            DrawerState.COLLAPSED -> {
-                                                if (isGoingUp) {
-                                                    drawerState = DrawerState.EXPANDED
-                                                    isGoingUp = false
-                                                } else {
-                                                    drawerState = DrawerState.CLOSED
-                                                    isGoingUp = true
-                                                }
-                                            }
-                                            DrawerState.EXPANDED -> {
-                                                drawerState = DrawerState.COLLAPSED
-                                                isGoingUp = false
-                                            }
-                                        }
-                                    }
-                                },
+                                border = BorderStroke(1.dp, if (isLight) Slate else Gold.copy(alpha = 0.4f)),
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .offset(y = (-18).dp)
                                     .zIndex(30f)
+                                    .then(drawerDragModifier)
+                                    .clickable {
+                                        if (hasNoBooking) {
+                                            // Only two states: CLOSED and COLLAPSED
+                                            drawerState = if (drawerState == DrawerState.CLOSED) {
+                                                DrawerState.COLLAPSED
+                                            } else {
+                                                DrawerState.CLOSED
+                                            }
+                                        } else {
+                                            when (drawerState) {
+                                                DrawerState.CLOSED -> {
+                                                    drawerState = DrawerState.COLLAPSED
+                                                    isGoingUp = true
+                                                }
+                                                DrawerState.COLLAPSED -> {
+                                                    if (isGoingUp) {
+                                                        drawerState = DrawerState.EXPANDED
+                                                        isGoingUp = false
+                                                    } else {
+                                                        drawerState = DrawerState.CLOSED
+                                                        isGoingUp = true
+                                                    }
+                                                }
+                                                DrawerState.EXPANDED -> {
+                                                    drawerState = DrawerState.COLLAPSED
+                                                    isGoingUp = false
+                                                }
+                                            }
+                                        }
+                                    }
                             ) {
-                                Box(
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                                    contentAlignment = Alignment.Center
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
+                                    // Sleek fluid drag pill handle bar
+                                    Box(
+                                        modifier = Modifier
+                                            .width(36.dp)
+                                            .height(4.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isLight) Slate else Gold.copy(alpha = 0.5f))
+                                    )
                                     Icon(
                                         imageVector = if (hasNoBooking) {
                                             if (drawerState == DrawerState.CLOSED) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown
@@ -2939,7 +2959,7 @@ fun ActiveTrackingScreen(
                                         },
                                         contentDescription = "Toggle Drawer",
                                         tint = if (isLight) Obsidian else Gold,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
@@ -2983,7 +3003,8 @@ class LeafletJavascriptInterface(
     private val onMarkerPlacedCallback: (String, Double, Double) -> Unit,
     private val onTrackingUpdatedCallback: (Double, Double) -> Unit,
     private val onMapTypeToggledCallback: (Boolean) -> Unit,
-    private val onUserInteractedCallback: () -> Unit = {}
+    private val onUserInteractedCallback: () -> Unit = {},
+    private val onRouteTelemetryCallback: (Double, Double) -> Unit = { _, _ -> }
 ) {
     @android.webkit.JavascriptInterface
     fun onMapClick(lat: Double, lng: Double) {
@@ -3003,6 +3024,13 @@ class LeafletJavascriptInterface(
     fun onTrackingUpdated(lat: Double, lng: Double) {
         (context as? android.app.Activity)?.runOnUiThread {
             onTrackingUpdatedCallback(lat, lng)
+        }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onRouteTelemetry(distanceMeters: Double, durationSeconds: Double) {
+        (context as? android.app.Activity)?.runOnUiThread {
+            onRouteTelemetryCallback(distanceMeters, durationSeconds)
         }
     }
 
@@ -3085,11 +3113,8 @@ private fun geocodeAddressToLatLng(context: android.content.Context, address: St
         android.util.Log.e("Geocoder", "System Geocoder failed: ${e.message}")
     }
 
-    // 3. Hash-based deterministic coordinate strictly within Benin City boundary
-    val hash = address.hashCode().toLong()
-    val latOffset = ((Math.abs(hash) % 80) - 40) / 1000.0
-    val lngOffset = ((Math.abs(hash / 100) % 80) - 40) / 1000.0
-    return Pair(6.3350 + latOffset, 5.6037 + lngOffset)
+    // 3. Reliable central Benin City fallback (Ring Road / King's Square)
+    return Pair(6.3350, 5.6037)
 }
 
 @Composable
@@ -3106,26 +3131,42 @@ fun LiveMapView(
     onMapTypeToggled: (Boolean) -> Unit,
     courierLatitude: Double? = null,
     courierLongitude: Double? = null,
+    courierBearing: Float = 0f,
     userAvatar: String = "",
     hasNoBooking: Boolean = false,
     followUser: Boolean = true,
     userCoords: Pair<Double, Double>? = null,
     isRider: Boolean = false,
-    parcelStatus: ParcelStatus = ParcelStatus.PENDING
+    parcelStatus: ParcelStatus = ParcelStatus.PENDING,
+    parcelPickupLat: Double? = null,
+    parcelPickupLng: Double? = null,
+    parcelDeliveryLat: Double? = null,
+    parcelDeliveryLng: Double? = null,
+    courierName: String = "Courier",
+    courierPhone: String = "",
+    onRouteTelemetry: (Double, Double) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
-    val pickupCoords = remember(pickupAddress, hasNoBooking, userCoords) {
-        if (hasNoBooking && userCoords != null) {
-            userCoords
-        } else {
+    val pickupCoords = remember(pickupAddress, parcelPickupLat, parcelPickupLng, hasNoBooking) {
+        if (hasNoBooking) {
+            null
+        } else if (parcelPickupLat != null && parcelPickupLng != null && parcelPickupLat != 0.0 && parcelPickupLng != 0.0) {
+            Pair(parcelPickupLat, parcelPickupLng)
+        } else if (pickupAddress.isNotBlank()) {
             geocodeAddressToLatLng(context, pickupAddress)
+        } else {
+            null
         }
     }
-    val deliveryCoords = remember(deliveryAddress, hasNoBooking, userCoords) {
-        if (hasNoBooking && userCoords != null) {
-            userCoords
-        } else {
+    val deliveryCoords = remember(deliveryAddress, parcelDeliveryLat, parcelDeliveryLng, hasNoBooking) {
+        if (hasNoBooking) {
+            null
+        } else if (parcelDeliveryLat != null && parcelDeliveryLng != null && parcelDeliveryLat != 0.0 && parcelDeliveryLng != 0.0) {
+            Pair(parcelDeliveryLat, parcelDeliveryLng)
+        } else if (deliveryAddress.isNotBlank()) {
             geocodeAddressToLatLng(context, deliveryAddress)
+        } else {
+            null
         }
     }
     val isDarkTheme = MaterialTheme.colorScheme.background == BackgroundDark
@@ -3213,7 +3254,8 @@ fun LiveMapView(
                     },
                     onUserInteractedCallback = {
                         userHasPanned = true
-                    }
+                    },
+                    onRouteTelemetryCallback = onRouteTelemetry
                 ),
                 "AndroidMap"
             )
@@ -3256,48 +3298,83 @@ fun LiveMapView(
                 .dark-tiles {
                     filter: invert(100%) hue-rotate(180deg) brightness(88%) contrast(105%);
                 }
-                .solid-courier {
-                    border-radius: 50%;
-                }
-                @keyframes stop-pulse {
-                    0% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.6); }
-                    70% { transform: scale(1.04); box-shadow: 0 0 0 8px rgba(255, 184, 0, 0); }
-                    100% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0); }
-                }
-                .active-stop-pulse {
-                    animation: stop-pulse 2s infinite ease-in-out;
-                    border-radius: 50%;
-                }
-                @keyframes beacon-expand {
-                    0% { transform: scale(0.4); opacity: 0.9; }
-                    50% { transform: scale(1.6); opacity: 0.4; }
-                    100% { transform: scale(2.4); opacity: 0; }
-                }
-                .arrival-beacon-wrap {
+
+                /* Rider Marker: Compact 26px badge with rotating directional chevron */
+                .rider-marker-wrap {
                     position: relative;
-                    width: 60px;
-                    height: 60px;
+                    width: 32px;
+                    height: 32px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    pointer-events: none;
                 }
-                .arrival-beacon-ring {
+                .rider-marker-beacon {
                     position: absolute;
-                    width: 60px;
-                    height: 60px;
+                    width: 32px;
+                    height: 32px;
                     border-radius: 50%;
-                    background: rgba(255, 184, 0, 0.35);
+                    background: rgba(255, 184, 0, 0.25);
+                    animation: rider-pulse 2s infinite ease-out;
+                }
+                @keyframes rider-pulse {
+                    0% { transform: scale(0.8); opacity: 1; }
+                    100% { transform: scale(1.6); opacity: 0; }
+                }
+                .rider-marker-core {
+                    position: relative;
+                    width: 26px;
+                    height: 26px;
+                    border-radius: 50%;
+                    background-color: #0E0E10;
                     border: 2px solid #FFB800;
-                    animation: beacon-expand 1.6s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+                    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
                 }
-                .arrival-beacon-core {
-                    width: 12px;
-                    height: 12px;
+                .rider-arrow {
+                    width: 14px;
+                    height: 14px;
+                    fill: #FFB800;
+                }
+
+                /* Stop Badges: Compact 22px circular indicators */
+                .stop-badge {
+                    width: 22px;
+                    height: 22px;
                     border-radius: 50%;
-                    background: #FFB800;
-                    box-shadow: 0 0 8px #FFB800;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 11px;
+                    font-weight: 900;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                    transition: all 0.3s ease;
                 }
+                .stop-active {
+                    background-color: #FFB800;
+                    color: #0E0E10;
+                    border: 2px solid #0E0E10;
+                    animation: stop-pulse 2s infinite ease-in-out;
+                }
+                .stop-waiting {
+                    background-color: #1A1A1F;
+                    color: #8E8E93;
+                    border: 1.5px solid #3A3A3C;
+                }
+                .stop-completed {
+                    background-color: #10B981;
+                    color: #FFFFFF;
+                    border: 2px solid #0E0E10;
+                }
+                @keyframes stop-pulse {
+                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.7); }
+                    70% { transform: scale(1.08); box-shadow: 0 0 0 10px rgba(255, 184, 0, 0); }
+                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0); }
+                }
+
+                /* Tooltip Badges */
                 .clean-map-badge {
                     background: transparent !important;
                     border: none !important;
@@ -3307,32 +3384,77 @@ fun LiveMapView(
                 .clean-map-badge:before {
                     display: none !important;
                 }
-                .map-badge-pickup {
-                    background: #121214;
-                    color: #FFB800;
-                    border: 1.5px solid #FFB800;
-                    font-size: 10px;
-                    font-weight: 900;
-                    letter-spacing: 0.6px;
-                    padding: 4px 8px;
-                    border-radius: 12px;
-                    text-transform: uppercase;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-                    white-space: nowrap;
-                }
-                .map-badge-delivery {
+                .badge-label-active {
                     background: #FFB800;
-                    color: #121214;
-                    border: 1.5px solid #121214;
-                    font-size: 10px;
+                    color: #0E0E10;
+                    border: 1.5px solid #0E0E10;
+                    font-size: 9px;
                     font-weight: 900;
-                    letter-spacing: 0.6px;
-                    padding: 4px 8px;
-                    border-radius: 12px;
+                    letter-spacing: 0.5px;
+                    padding: 2px 6px;
+                    border-radius: 10px;
                     text-transform: uppercase;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
                     white-space: nowrap;
                 }
+                .badge-label-waiting {
+                    background: #1A1A1F;
+                    color: #8E8E93;
+                    border: 1px solid #3A3A3C;
+                    font-size: 9px;
+                    font-weight: 700;
+                    letter-spacing: 0.5px;
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    text-transform: uppercase;
+                    white-space: nowrap;
+                }
+                .badge-label-completed {
+                    background: #10B981;
+                    color: #FFFFFF;
+                    border: 1.5px solid #0E0E10;
+                    font-size: 9px;
+                    font-weight: 900;
+                    letter-spacing: 0.5px;
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    text-transform: uppercase;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                    white-space: nowrap;
+                }
+
+                /* Proximity Arrival Beacon */
+                @keyframes beacon-expand {
+                    0% { transform: scale(0.4); opacity: 0.9; }
+                    50% { transform: scale(1.6); opacity: 0.4; }
+                    100% { transform: scale(2.4); opacity: 0; }
+                }
+                .arrival-beacon-wrap {
+                    position: relative;
+                    width: 50px;
+                    height: 50px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    pointer-events: none;
+                }
+                .arrival-beacon-ring {
+                    position: absolute;
+                    width: 50px;
+                    height: 50px;
+                    border-radius: 50%;
+                    background: rgba(255, 184, 0, 0.35);
+                    border: 2px solid #FFB800;
+                    animation: beacon-expand 1.6s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
+                }
+                .arrival-beacon-core {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 50%;
+                    background: #FFB800;
+                }
+
+                /* Map Style Controls */
                 .map-controls {
                     position: absolute;
                     top: 16px;
@@ -3362,66 +3484,35 @@ fun LiveMapView(
                     color: #121212;
                     font-weight: 900;
                 }
-                .user-pointer-container {
+
+                /* User Location Pin (Clean, compact 20px) */
+                .user-dot-wrap {
+                    width: 20px;
+                    height: 20px;
                     position: relative;
-                    width: 60px;
-                    height: 75px;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                }
-                .user-pointer-pulse {
-                    position: absolute;
-                    bottom: 2px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    width: 24px;
-                    height: 10px;
-                    background: rgba(255, 184, 0, 0.35);
-                    border-radius: 50%;
-                    z-index: 1;
-                    animation: user-ripple 1.8s infinite ease-out;
-                }
-                @keyframes user-ripple {
-                    0% { transform: translateX(-50%) scale(0.5); opacity: 1; }
-                    100% { transform: translateX(-50%) scale(2.8); opacity: 0; }
-                }
-                .user-pointer-pin {
-                    position: absolute;
-                    top: 4px;
-                    width: 44px;
-                    height: 44px;
-                    border-radius: 50% 50% 50% 0;
-                    background: #121212;
-                    border: 3px solid #FFB800;
-                    transform: rotate(-45deg);
-                    box-shadow: none;
-                    z-index: 2;
-                    overflow: hidden;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                 }
-                .user-pointer-avatar {
-                    width: 38px;
-                    height: 38px;
-                    border-radius: 50%;
-                    transform: rotate(45deg);
-                    background-size: cover;
-                    background-position: center;
-                    background-color: #1A1A1A;
-                    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23FFB800'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E");
-                }
-                .user-pointer-dot {
+                .user-dot-pulse {
                     position: absolute;
-                    bottom: 8px;
-                    width: 8px;
-                    height: 8px;
-                    background: #FFB800;
+                    width: 20px;
+                    height: 20px;
                     border-radius: 50%;
-                    z-index: 3;
-                    border: 1.5px solid #121212;
+                    background: rgba(0, 122, 255, 0.3);
+                    animation: user-pulse 2s infinite ease-out;
+                }
+                @keyframes user-pulse {
+                    0% { transform: scale(0.6); opacity: 1; }
+                    100% { transform: scale(1.8); opacity: 0; }
+                }
+                .user-dot-core {
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    background: #007AFF;
+                    border: 2px solid #FFFFFF;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
                 }
             </style>
             <script>
@@ -3435,31 +3526,38 @@ fun LiveMapView(
                 <button class="control-btn" id="satelliteBtn" onclick="onToggleClick(true)">SATELLITE</button>
             </div>
             <script>
-                var pickupLoc = [6.3350, 5.6037];
-                var deliveryLoc = [6.3450, 5.6250];
+                var pickupLoc = null;
+                var deliveryLoc = null;
+                var pickupAddressStr = '';
+                var deliveryAddressStr = '';
+                var courierInfoStr = '';
                 var userLoc = null;
+                var courierLoc = null;
+                var prevCourierLoc = null;
+                var traveledCoords = [];
+                var traveledRouteLine = null;
+                var lastRouteOrigin = null;
+                var currentStatus = 'PENDING';
+                var currentBearing = 0;
                 var isDarkTheme = true;
                 var isSatelliteMode = false;
-                var followMode = 'courier';
                 var userInteracted = false;
-                var hasBooking = true;
+                var hasBooking = false;
                 var isRiderMode = false;
 
                 var map = null;
-                var passedRouteLine = null;
                 var activeRouteLine = null;
                 var courierMarker = null;
                 var pickupMarker = null;
                 var deliveryMarker = null;
                 var liveUserMarker = null;
                 var arrivalBeaconCircle = null;
-                var routeGeometryCoordinates = [];
 
                 var googleStreetTiles = null;
                 var darkStreetTiles = null;
                 var satelliteTiles = null;
+                var esriTransportationTiles = null;
                 var osmTiles = null;
-                var currentProgress = 0.0;
 
                 function initMapContainer() {
                     var container = document.getElementById('map');
@@ -3544,113 +3642,168 @@ fun LiveMapView(
                     return R * c;
                 }
 
-                function distanceBetween(p1, p2) {
-                    var dy = p1[0] - p2[0];
-                    var dx = p1[1] - p2[1];
-                    return Math.sqrt(dx * dx + dy * dy);
-                }
-
-                function calculateBearing(startLat, startLng, destLat, destLng) {
-                    var startLatRad = startLat * Math.PI / 180;
-                    var startLngRad = startLng * Math.PI / 180;
-                    var destLatRad = destLat * Math.PI / 180;
-                    var destLngRad = destLng * Math.PI / 180;
-                    var y = Math.sin(destLngRad - startLngRad) * Math.cos(destLatRad);
-                    var x = Math.cos(startLatRad) * Math.sin(destLatRad) -
-                            Math.sin(startLatRad) * Math.cos(destLatRad) * Math.cos(destLngRad - startLngRad);
+                function calculateBearing(lat1, lon1, lat2, lon2) {
+                    var dLon = (lon2 - lon1) * Math.PI / 180;
+                    var y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+                    var x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+                            Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
                     var brng = Math.atan2(y, x) * 180 / Math.PI;
                     return (brng + 360) % 360;
                 }
 
-                function getCoordinateAlongRoute(coords, fraction) {
-                    if (!coords || coords.length === 0) return null;
-                    if (fraction <= 0) return coords[0];
-                    if (fraction >= 1) return coords[coords.length - 1];
-                    
-                    var totalDistance = 0;
-                    var segmentDistances = [];
-                    for (var i = 0; i < coords.length - 1; i++) {
-                        var d = distanceBetween(coords[i], coords[i+1]);
-                        segmentDistances.push(d);
-                        totalDistance += d;
-                    }
-                    if (totalDistance === 0) return coords[0];
-                    var targetDistance = fraction * totalDistance;
-                    var accumulatedDistance = 0;
-                    for (var i = 0; i < segmentDistances.length; i++) {
-                        if (accumulatedDistance + segmentDistances[i] >= targetDistance) {
-                            var segFraction = (targetDistance - accumulatedDistance) / segmentDistances[i];
-                            var p1 = coords[i];
-                            var p2 = coords[i+1];
-                            return [
-                                p1[0] + (p2[0] - p1[0]) * segFraction,
-                                p1[1] + (p2[1] - p1[1]) * segFraction
-                            ];
-                        }
-                        accumulatedDistance += segmentDistances[i];
-                    }
-                    return coords[coords.length - 1];
+                function setRiderMode(isRider) {
+                    isRiderMode = !!isRider;
                 }
 
                 function setPickupLocation(lat, lng, addr) {
                     if (!lat || !lng) return;
                     pickupLoc = [lat, lng];
-                    if (!map) return;
-                    var goldCircleIcon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: "<div style='width: 26px; height: 26px; border-radius: 50%; background-color: #FFB800; border: 2px solid #0E0E10; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #0E0E10; box-shadow: 0 2px 5px rgba(0,0,0,0.5);'>P</div>",
-                        iconSize: [26, 26],
-                        iconAnchor: [13, 13]
-                    });
-                    if (pickupMarker) {
-                        pickupMarker.setLatLng(pickupLoc);
-                    } else {
-                        pickupMarker = L.marker(pickupLoc, { icon: goldCircleIcon }).addTo(map);
-                        pickupMarker.bindTooltip("<div class='map-badge-pickup'>PICKUP</div>", {
-                            permanent: true,
-                            direction: 'top',
-                            className: 'clean-map-badge',
-                            offset: [0, -14]
-                        });
-                    }
+                    if (addr) pickupAddressStr = addr;
+                    hasBooking = true;
+                    refreshStopMarkers();
                     fetchOSRMRoute();
                 }
 
                 function setDeliveryLocation(lat, lng, addr) {
                     if (!lat || !lng) return;
                     deliveryLoc = [lat, lng];
-                    if (!map) return;
-                    var darkCircleIcon = L.divIcon({
-                        className: 'active-stop-pulse',
-                        html: "<div style='width: 26px; height: 26px; border-radius: 50%; background-color: #0E0E10; border: 2px solid #FFB800; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #FFB800; box-shadow: 0 2px 5px rgba(0,0,0,0.5);'>D</div>",
-                        iconSize: [26, 26],
-                        iconAnchor: [13, 13]
-                    });
-                    if (deliveryMarker) {
-                        deliveryMarker.setLatLng(deliveryLoc);
-                    } else {
-                        deliveryMarker = L.marker(deliveryLoc, { icon: darkCircleIcon }).addTo(map);
-                        deliveryMarker.bindTooltip("<div class='map-badge-delivery'>DELIVERY</div>", {
-                            permanent: true,
-                            direction: 'top',
-                            className: 'clean-map-badge',
-                            offset: [0, -14]
-                        });
-                    }
+                    if (addr) deliveryAddressStr = addr;
+                    hasBooking = true;
+                    refreshStopMarkers();
                     fetchOSRMRoute();
                 }
 
-                function setArrivalBeacon(active) {
-                    if (!map || !deliveryLoc) return;
-                    if (active) {
+                function setCourierDetails(name, phone) {
+                    courierInfoStr = (name || 'Courier') + (phone ? ' • ' + phone : '');
+                }
+
+                function updateDeliveryStatus(statusStr) {
+                    currentStatus = (statusStr || 'PENDING').toUpperCase();
+                    refreshStopMarkers();
+                    fetchOSRMRoute();
+                }
+
+                function refreshStopMarkers() {
+                    if (!map) return;
+                    var isPickupCompleted = (currentStatus === 'PICKED_UP' || currentStatus === 'PARCEL_COLLECTED' || currentStatus === 'IN_TRANSIT' || currentStatus === 'TRANSIT' || currentStatus === 'OUT_FOR_DELIVERY' || currentStatus === 'ARRIVED' || currentStatus === 'HANDOVER_VERIFIED' || currentStatus === 'DELIVERED');
+                    var isPickupActive = (currentStatus === 'PENDING' || currentStatus === 'QUEUED' || currentStatus === 'OFFERED' || currentStatus === 'ASSIGNED' || currentStatus === 'CONFIRMED' || currentStatus === 'ARRIVED_PICKUP' || currentStatus === 'RESERVED_NEXT');
+                    var isDeliveryActive = (currentStatus === 'PICKED_UP' || currentStatus === 'PARCEL_COLLECTED' || currentStatus === 'IN_TRANSIT' || currentStatus === 'TRANSIT' || currentStatus === 'OUT_FOR_DELIVERY' || currentStatus === 'ARRIVED');
+                    var isDeliveryCompleted = (currentStatus === 'DELIVERED');
+
+                    // Pickup Marker
+                    if (pickupLoc && hasBooking) {
+                        var pickupHtml = '';
+                        var pickupLabelClass = '';
+                        var pickupLabelText = 'PICKUP';
+
+                        if (isPickupCompleted) {
+                            pickupHtml = "<div class='stop-badge stop-completed'>✓</div>";
+                            pickupLabelClass = 'badge-label-completed';
+                            pickupLabelText = 'COLLECTED';
+                        } else if (isPickupActive) {
+                            pickupHtml = "<div class='stop-badge stop-active'>P</div>";
+                            pickupLabelClass = 'badge-label-active';
+                            pickupLabelText = 'PICKUP';
+                        } else {
+                            pickupHtml = "<div class='stop-badge stop-waiting'>P</div>";
+                            pickupLabelClass = 'badge-label-waiting';
+                            pickupLabelText = 'PICKUP';
+                        }
+
+                        var pickupIcon = L.divIcon({
+                            className: 'clean-map-badge',
+                            html: pickupHtml,
+                            iconSize: [22, 22],
+                            iconAnchor: [11, 11]
+                        });
+
+                        if (pickupMarker) {
+                            pickupMarker.setLatLng(pickupLoc);
+                            pickupMarker.setIcon(pickupIcon);
+                        } else {
+                            pickupMarker = L.marker(pickupLoc, { icon: pickupIcon }).addTo(map);
+                        }
+                        pickupMarker.bindTooltip("<div class='" + pickupLabelClass + "'>" + pickupLabelText + "</div>", {
+                            permanent: true,
+                            direction: 'top',
+                            className: 'clean-map-badge',
+                            offset: [0, -12]
+                        });
+                        var pickupPopup = "<div style='font-size:12px;font-weight:700;color:#111;padding:4px;'><b>" + (isPickupCompleted ? "Pickup (Collected)" : "Pickup Location") + "</b><br/><span style='font-size:10px;color:#555;font-weight:500;'>" + (pickupAddressStr || "Benin City") + "</span></div>";
+                        pickupMarker.bindPopup(pickupPopup);
+                    } else if (pickupMarker) {
+                        try { map.removeLayer(pickupMarker); } catch(e){}
+                        pickupMarker = null;
+                    }
+
+                    // Delivery Marker
+                    if (deliveryLoc && hasBooking) {
+                        var delivHtml = '';
+                        var delivLabelClass = '';
+                        var delivLabelText = 'DELIVERY';
+
+                        if (isDeliveryCompleted) {
+                            delivHtml = "<div class='stop-badge stop-completed'>✓</div>";
+                            delivLabelClass = 'badge-label-completed';
+                            delivLabelText = 'DELIVERED';
+                        } else if (isDeliveryActive) {
+                            delivHtml = "<div class='stop-badge stop-active'>D</div>";
+                            delivLabelClass = 'badge-label-active';
+                            delivLabelText = (currentStatus === 'ARRIVED') ? 'ARRIVED' : 'DELIVERY';
+                        } else {
+                            delivHtml = "<div class='stop-badge stop-waiting'>D</div>";
+                            delivLabelClass = 'badge-label-waiting';
+                            delivLabelText = 'DELIVERY';
+                        }
+
+                        var delivIcon = L.divIcon({
+                            className: 'clean-map-badge',
+                            html: delivHtml,
+                            iconSize: [22, 22],
+                            iconAnchor: [11, 11]
+                        });
+
+                        if (deliveryMarker) {
+                            deliveryMarker.setLatLng(deliveryLoc);
+                            deliveryMarker.setIcon(delivIcon);
+                        } else {
+                            deliveryMarker = L.marker(deliveryLoc, { icon: delivIcon }).addTo(map);
+                        }
+                        deliveryMarker.bindTooltip("<div class='" + delivLabelClass + "'>" + delivLabelText + "</div>", {
+                            permanent: true,
+                            direction: 'top',
+                            className: 'clean-map-badge',
+                            offset: [0, -12]
+                        });
+                        var delivPopup = "<div style='font-size:12px;font-weight:700;color:#111;padding:4px;'><b>" + (isDeliveryCompleted ? "Delivery (Completed)" : "Delivery Destination") + "</b><br/><span style='font-size:10px;color:#555;font-weight:500;'>" + (deliveryAddressStr || "Benin City") + "</span></div>";
+                        deliveryMarker.bindPopup(delivPopup);
+                    } else if (deliveryMarker) {
+                        try { map.removeLayer(deliveryMarker); } catch(e){}
+                        deliveryMarker = null;
+                    }
+                }
+
+                function getActiveStopCoords() {
+                    var isPickupActive = (currentStatus === 'PENDING' || currentStatus === 'QUEUED' || currentStatus === 'OFFERED' || currentStatus === 'ASSIGNED' || currentStatus === 'CONFIRMED' || currentStatus === 'ARRIVED_PICKUP');
+                    if (isPickupActive) return pickupLoc || deliveryLoc;
+                    var isDeliveryActive = (currentStatus === 'PICKED_UP' || currentStatus === 'PARCEL_COLLECTED' || currentStatus === 'IN_TRANSIT' || currentStatus === 'TRANSIT' || currentStatus === 'OUT_FOR_DELIVERY' || currentStatus === 'ARRIVED' || currentStatus === 'HANDOVER_VERIFIED');
+                    if (isDeliveryActive) return deliveryLoc || pickupLoc;
+                    return deliveryLoc || pickupLoc;
+                }
+
+                function setArrivalBeacon(active, coords) {
+                    if (!map) return;
+                    if (active && coords) {
                         if (!arrivalBeaconCircle) {
                             var beaconIcon = L.divIcon({
                                 className: 'arrival-beacon-wrap',
                                 html: "<div class='arrival-beacon-ring'></div><div class='arrival-beacon-core'></div>",
-                                iconSize: [60, 60],
-                                iconAnchor: [30, 30]
+                                iconSize: [50, 50],
+                                iconAnchor: [25, 25]
                             });
-                            arrivalBeaconCircle = L.marker(deliveryLoc, { icon: beaconIcon, zIndexOffset: -100 }).addTo(map);
+                            arrivalBeaconCircle = L.marker(coords, { icon: beaconIcon, zIndexOffset: -100 }).addTo(map);
+                        } else {
+                            arrivalBeaconCircle.setLatLng(coords);
                         }
                     } else {
                         if (arrivalBeaconCircle) {
@@ -3661,104 +3814,172 @@ fun LiveMapView(
                 }
 
                 function fetchOSRMRoute() {
-                    if (!pickupLoc || !deliveryLoc || !map) return;
+                    if (!map) return;
+                    var origin = null;
+                    var targetStop = null;
+
+                    var isPrePickup = (currentStatus === 'PENDING' || currentStatus === 'QUEUED' || currentStatus === 'OFFERED' || currentStatus === 'ASSIGNED' || currentStatus === 'CONFIRMED');
+
+                    if (courierLoc && (courierLoc[0] !== 0.0 || courierLoc[1] !== 0.0)) {
+                        origin = courierLoc;
+                        if (isPrePickup) {
+                            targetStop = pickupLoc || deliveryLoc;
+                        } else {
+                            targetStop = deliveryLoc || pickupLoc;
+                        }
+                    } else {
+                        // Courier not moving / static view: always show complete route between pickup and delivery
+                        origin = pickupLoc;
+                        targetStop = deliveryLoc;
+                    }
+
+                    if (!origin && !targetStop) return;
+                    if (!origin) origin = targetStop;
+                    if (!targetStop) targetStop = origin;
+
+                    lastRouteOrigin = [origin[0], origin[1]];
+
+                    // If origin and target are practically identical, skip network call
+                    if (Math.abs(origin[0] - targetStop[0]) < 0.0001 && Math.abs(origin[1] - targetStop[1]) < 0.0001) return;
+
                     var url = 'https://router.project-osrm.org/route/v1/driving/' + 
-                        pickupLoc[1] + ',' + pickupLoc[0] + ';' + 
-                        deliveryLoc[1] + ',' + deliveryLoc[0] + 
+                        origin[1] + ',' + origin[0] + ';' + 
+                        targetStop[1] + ',' + targetStop[0] + 
                         '?overview=full&geometries=geojson';
-                    fetch(url)
+
+                    var controller = null;
+                    try {
+                        controller = new AbortController();
+                        setTimeout(function() { controller.abort(); }, 4500);
+                    } catch(e){}
+
+                    fetch(url, controller ? { signal: controller.signal } : {})
                         .then(function(res) { return res.json(); })
                         .then(function(data) {
                             if (data && data.routes && data.routes.length > 0) {
-                                var coords = data.routes[0].geometry.coordinates;
-                                routeGeometryCoordinates = coords.map(function(c) { return [c[1], c[0]]; });
-                                
-                                if (!passedRouteLine) {
-                                    passedRouteLine = L.polyline([], {
-                                        color: '#71717A',
-                                        weight: 4.5,
-                                        opacity: 0.8,
-                                        lineCap: 'round',
-                                        lineJoin: 'round'
-                                    }).addTo(map);
-                                }
-                                
+                                var route = data.routes[0];
+                                var coords = route.geometry.coordinates;
+                                var latLngs = coords.map(function(c) { return [c[1], c[0]]; });
+
                                 if (!activeRouteLine) {
-                                    activeRouteLine = L.polyline(routeGeometryCoordinates, {
+                                    activeRouteLine = L.polyline(latLngs, {
                                         color: '#FFB800',
-                                        weight: 5.5,
-                                        opacity: 1.0,
+                                        weight: 5,
+                                        opacity: 0.95,
                                         lineCap: 'round',
                                         lineJoin: 'round'
                                     }).addTo(map);
                                 } else {
-                                    activeRouteLine.setLatLngs(routeGeometryCoordinates);
+                                    activeRouteLine.setLatLngs(latLngs);
                                 }
 
-                                sliceRouteAtProgress(currentProgress);
+                                if (window.AndroidMap && window.AndroidMap.onRouteTelemetry) {
+                                    window.AndroidMap.onRouteTelemetry(route.distance || 0, route.duration || 0);
+                                }
 
-                                if (!userInteracted) {
+                                if (!userInteracted && latLngs.length > 0) {
                                     try {
-                                        var bounds = L.latLngBounds(routeGeometryCoordinates);
-                                        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                                        var bounds = L.latLngBounds(latLngs);
+                                        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 17 });
                                     } catch(e) {}
                                 }
+                            } else {
+                                throw new Error('Empty OSRM route response');
                             }
                         })
                         .catch(function(err) {
-                            console.error("OSRM directions error:", err);
+                            console.warn("OSRM route fallback activated:", err);
+                            // Resilient fallback: draw high-visibility direct route connecting origin and target
+                            if (!activeRouteLine) {
+                                activeRouteLine = L.polyline([origin, targetStop], {
+                                    color: '#FFB800',
+                                    weight: 4,
+                                    dashArray: '8, 8',
+                                    opacity: 0.9
+                                }).addTo(map);
+                            } else {
+                                activeRouteLine.setLatLngs([origin, targetStop]);
+                            }
                         });
                 }
 
-                function sliceRouteAtProgress(prog) {
-                    currentProgress = prog;
-                    if (!routeGeometryCoordinates || routeGeometryCoordinates.length === 0) return;
-                    var totalPoints = routeGeometryCoordinates.length;
-                    var targetIdx = Math.min(totalPoints - 1, Math.max(0, Math.floor(prog * (totalPoints - 1))));
-                    var curCoord = getCoordinateAlongRoute(routeGeometryCoordinates, prog);
-
-                    var passed = routeGeometryCoordinates.slice(0, targetIdx + 1);
-                    if (curCoord) passed.push(curCoord);
-
-                    var active = [];
-                    if (curCoord) active.push(curCoord);
-                    active = active.concat(routeGeometryCoordinates.slice(targetIdx + 1));
-
-                    if (passedRouteLine) passedRouteLine.setLatLngs(passed);
-                    if (activeRouteLine) activeRouteLine.setLatLngs(active);
-                }
-
-                function updateCourierLocation(lat, lng, bearing) {
-                    if (isRiderMode) return;
+                function updateCourierLocation(lat, lng, bearing, speed) {
                     if (!lat || !lng || (lat === 0.0 && lng === 0.0)) return;
+                    courierLoc = [lat, lng];
+                    if (bearing !== undefined && bearing !== null && !isNaN(bearing) && bearing !== 0) {
+                        currentBearing = bearing;
+                    } else if (prevCourierLoc) {
+                        var dist = distanceBetweenCoords(prevCourierLoc[0], prevCourierLoc[1], lat, lng);
+                        if (dist > 0.005) {
+                            currentBearing = calculateBearing(prevCourierLoc[0], prevCourierLoc[1], lat, lng);
+                        }
+                    } else {
+                        var activeStop = getActiveStopCoords();
+                        if (activeStop) {
+                            currentBearing = calculateBearing(lat, lng, activeStop[0], activeStop[1]);
+                        }
+                    }
+                    prevCourierLoc = [lat, lng];
+
+                    traveledCoords.push([lat, lng]);
+                    if (traveledCoords.length > 1 && map) {
+                        if (!traveledRouteLine) {
+                            traveledRouteLine = L.polyline(traveledCoords, {
+                                color: '#6B7280',
+                                weight: 4,
+                                opacity: 0.7,
+                                dashArray: '4, 6',
+                                lineCap: 'round',
+                                lineJoin: 'round'
+                            }).addTo(map);
+                        } else {
+                            traveledRouteLine.setLatLngs(traveledCoords);
+                        }
+                    }
+
                     if (!map) return;
 
-                    var courierIcon = L.divIcon({
-                        className: 'solid-courier',
-                        html: "<div style='width: 30px; height: 30px; border-radius: 50%; border: 2px solid #FFB800; background-color: #0E0E10; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.5);'>" +
-                            "<svg width='16' height='16' viewBox='0 0 24 24' fill='%23FFB800'><path d='M15.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM5 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm14-8.5c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zM10.8 10.5l2.4-2.4 1.8 1.8c1.1 1.1 2.6 1.8 4.2 1.8v-2c-1.1 0-2.2-.5-3-1.3l-1.9-1.9c-.4-.4-.9-.7-1.5-.7-.6 0-1.1.2-1.5.6L7.5 9.8 4.2 8.7 3.5 10.6l4.5 1.5 2.8-1.6z'/></svg>" +
-                            "</div>",
-                        iconSize: [30, 30],
-                        iconAnchor: [15, 15]
+                    var riderHtml = "<div class='rider-marker-wrap'>" +
+                        "<div class='rider-marker-beacon'></div>" +
+                        "<div class='rider-marker-core' style='transform: rotate(" + Math.round(currentBearing) + "deg);'>" +
+                        "<svg class='rider-arrow' viewBox='0 0 24 24'><polygon points='12,2 22,22 12,17 2,22'/></svg>" +
+                        "</div></div>";
+
+                    var riderIcon = L.divIcon({
+                        className: 'clean-map-badge',
+                        html: riderHtml,
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 16]
                     });
 
                     if (courierMarker) {
-                        courierMarker.setLatLng([lat, lng]);
-                        var el = courierMarker.getElement ? courierMarker.getElement() : null;
-                        if (el && bearing !== 0) {
-                            el.style.transform = (el.style.transform || '').replace(/rotate\(.*?\)/, '') + ' rotate(' + bearing + 'deg)';
-                        }
+                        courierMarker.setLatLng(courierLoc);
+                        courierMarker.setIcon(riderIcon);
                     } else {
-                        courierMarker = L.marker([lat, lng], { icon: courierIcon }).addTo(map);
+                        courierMarker = L.marker(courierLoc, { icon: riderIcon, zIndexOffset: 500 }).addTo(map);
                     }
 
-                    if (deliveryLoc) {
-                        var distKm = distanceBetweenCoords(lat, lng, deliveryLoc[0], deliveryLoc[1]);
-                        setArrivalBeacon(distKm <= 0.05);
+                    var courierPopup = "<div style='font-size:12px;font-weight:700;color:#111;padding:4px;'><b>" + (isRiderMode ? "Your Position (Rider)" : "Courier Location") + "</b><br/><span style='font-size:10px;color:#555;font-weight:500;'>" + (courierInfoStr || "On Active Mission") + "</span></div>";
+                    courierMarker.bindPopup(courierPopup);
+                    courierMarker.bindTooltip("<div class='badge-label-active'>" + (isRiderMode ? "YOU (RIDER)" : "COURIER") + "</div>", {
+                        permanent: false,
+                        direction: 'top',
+                        className: 'clean-map-badge',
+                        offset: [0, -16]
+                    });
+
+                    var activeStop = getActiveStopCoords();
+                    if (activeStop) {
+                        var distToStopKm = distanceBetweenCoords(lat, lng, activeStop[0], activeStop[1]);
+                        setArrivalBeacon(distToStopKm <= 0.05, activeStop);
                     }
 
-                    if (!userInteracted && followMode === 'courier') {
-                        map.panTo([lat, lng], { animate: true, duration: 0.8 });
+                    if (!lastRouteOrigin || distanceBetweenCoords(lat, lng, lastRouteOrigin[0], lastRouteOrigin[1]) > 0.025) {
+                        fetchOSRMRoute();
+                    }
+
+                    if (!userInteracted) {
+                        map.panTo(courierLoc, { animate: true, duration: 0.6 });
                     }
 
                     if (window.AndroidMap && window.AndroidMap.onTrackingUpdated) {
@@ -3766,49 +3987,32 @@ fun LiveMapView(
                     }
                 }
 
-                function updateCourierProgress(progressVal) {
-                    var lat, lng;
-                    var bearing = 0;
-                    if (routeGeometryCoordinates && routeGeometryCoordinates.length > 0) {
-                        var coord = getCoordinateAlongRoute(routeGeometryCoordinates, progressVal);
-                        lat = coord[0];
-                        lng = coord[1];
-                        var nextCoord = getCoordinateAlongRoute(routeGeometryCoordinates, Math.min(1.0, progressVal + 0.02));
-                        if (nextCoord) {
-                            bearing = calculateBearing(lat, lng, nextCoord[0], nextCoord[1]);
-                        }
-                    } else {
-                        lat = pickupLoc[0] + (deliveryLoc[0] - pickupLoc[0]) * progressVal;
-                        lng = pickupLoc[1] + (deliveryLoc[1] - pickupLoc[1]) * progressVal;
-                        bearing = calculateBearing(pickupLoc[0], pickupLoc[1], deliveryLoc[0], deliveryLoc[1]);
-                    }
-                    sliceRouteAtProgress(progressVal);
-                    updateCourierLocation(lat, lng, bearing);
-                }
-
-                function updateCourierCoordinates(lat, lng) {
-                    updateCourierLocation(lat, lng, 0);
-                }
-
                 function setUserLocation(lat, lng) {
+                    if (!lat || !lng) return;
                     userLoc = [lat, lng];
+                    if (isRiderMode && !courierLoc) {
+                        updateCourierLocation(lat, lng, currentBearing, 0);
+                        return;
+                    }
                     if (!map) return;
-                    try {
-                        if (liveUserMarker) {
-                            liveUserMarker.setLatLng([lat, lng]);
-                        } else {
-                            var userIcon = L.divIcon({
-                                className: 'user-pointer-container',
-                                html: '<div class="user-pointer-pulse"></div><div class="user-pointer-pin"><div class="user-pointer-avatar"></div></div><div class="user-pointer-dot"></div>',
-                                iconSize: [40, 40],
-                                iconAnchor: [20, 40]
-                            });
-                            liveUserMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
-                        }
-                        if (!userInteracted && followMode === 'user') {
-                            map.panTo([lat, lng], { animate: true, duration: 0.8 });
-                        }
-                    } catch(err) {}
+                    var userIcon = L.divIcon({
+                        className: 'clean-map-badge',
+                        html: "<div class='user-dot-wrap'><div class='user-dot-pulse'></div><div class='user-dot-core'></div></div>",
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    if (liveUserMarker) {
+                        liveUserMarker.setLatLng(userLoc);
+                    } else {
+                        liveUserMarker = L.marker(userLoc, { icon: userIcon, zIndexOffset: 400 }).addTo(map);
+                    }
+                    liveUserMarker.bindPopup("<div style='font-size:12px;font-weight:700;color:#111;padding:4px;'><b>Your Location</b><br/><span style='font-size:10px;color:#555;font-weight:500;'>Current GPS position</span></div>");
+                    liveUserMarker.bindTooltip("<div class='badge-label-waiting'>YOU</div>", {
+                        permanent: false,
+                        direction: 'top',
+                        className: 'clean-map-badge',
+                        offset: [0, -10]
+                    });
                 }
 
                 function updateMapType(isSat) {
@@ -3852,9 +4056,9 @@ fun LiveMapView(
                     if (!map) return;
                     if (courierMarker && hasBooking) {
                         map.panTo(courierMarker.getLatLng(), { animate: true, duration: 0.8 });
-                    } else if (routeGeometryCoordinates && routeGeometryCoordinates.length > 0) {
-                        var bounds = L.latLngBounds(routeGeometryCoordinates);
-                        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                    } else if (activeRouteLine) {
+                        var bounds = activeRouteLine.getBounds();
+                        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
                     } else if (liveUserMarker) {
                         map.panTo(liveUserMarker.getLatLng(), { animate: true, duration: 0.8 });
                     } else if (pickupLoc && deliveryLoc) {
@@ -3879,21 +4083,24 @@ fun LiveMapView(
                         try { map.removeLayer(courierMarker); } catch(e){}
                         courierMarker = null;
                     }
-                    if (passedRouteLine) {
-                        try { map.removeLayer(passedRouteLine); } catch(e){}
-                        passedRouteLine = null;
-                    }
                     if (activeRouteLine) {
                         try { map.removeLayer(activeRouteLine); } catch(e){}
                         activeRouteLine = null;
+                    }
+                    if (traveledRouteLine) {
+                        try { map.removeLayer(traveledRouteLine); } catch(e){}
+                        traveledRouteLine = null;
                     }
                     if (arrivalBeaconCircle) {
                         try { map.removeLayer(arrivalBeaconCircle); } catch(e){}
                         arrivalBeaconCircle = null;
                     }
-                    routeGeometryCoordinates = [];
                     pickupLoc = null;
                     deliveryLoc = null;
+                    courierLoc = null;
+                    prevCourierLoc = null;
+                    traveledCoords = [];
+                    lastRouteOrigin = null;
                     if (liveUserMarker) {
                         map.setView(liveUserMarker.getLatLng(), 15);
                     } else {
@@ -3922,22 +4129,51 @@ fun LiveMapView(
                 if (userCoords != null) {
                     webView.evaluateJavascript("setUserLocation(${userCoords.first}, ${userCoords.second})", null)
                 }
+                if (isRider) {
+                    val effectiveLat = userCoords?.first ?: courierLatitude
+                    val effectiveLng = userCoords?.second ?: courierLongitude
+                    if (effectiveLat != null && effectiveLng != null && effectiveLat != 0.0 && effectiveLng != 0.0) {
+                        webView.evaluateJavascript("updateCourierLocation($effectiveLat, $effectiveLng, $courierBearing, 0)", null)
+                    }
+                }
             } else {
-                val safePickup = pickupCoords ?: Pair(6.3350, 5.6037)
-                val safeDelivery = deliveryCoords ?: Pair(6.3450, 5.6250)
-                val safePickupAddr = pickupAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
-                val safeDeliveryAddr = deliveryAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
-                webView.evaluateJavascript("setPickupLocation(${safePickup.first}, ${safePickup.second}, \"$safePickupAddr\")", null)
-                webView.evaluateJavascript("setDeliveryLocation(${safeDelivery.first}, ${safeDelivery.second}, \"$safeDeliveryAddr\")", null)
+                val safeCourierName = courierName.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+                val safeCourierPhone = courierPhone.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+                webView.evaluateJavascript("setCourierDetails(\"$safeCourierName\", \"$safeCourierPhone\")", null)
+                webView.evaluateJavascript("setRiderMode($isRider)", null)
+                if (pickupCoords != null) {
+                    val safePickupAddr = pickupAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+                    webView.evaluateJavascript("setPickupLocation(${pickupCoords.first}, ${pickupCoords.second}, \"$safePickupAddr\")", null)
+                }
+                if (deliveryCoords != null) {
+                    val safeDeliveryAddr = deliveryAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+                    webView.evaluateJavascript("setDeliveryLocation(${deliveryCoords.first}, ${deliveryCoords.second}, \"$safeDeliveryAddr\")", null)
+                }
+                webView.evaluateJavascript("updateDeliveryStatus('${parcelStatus.name}')", null)
                 webView.evaluateJavascript("updateMapType($isSatellite)", null)
                 if (userCoords != null) {
                     webView.evaluateJavascript("setUserLocation(${userCoords.first}, ${userCoords.second})", null)
                 }
-                if (courierLatitude != null && courierLongitude != null) {
-                    webView.evaluateJavascript("updateCourierCoordinates($courierLatitude, $courierLongitude)", null)
+                val effectiveLat = if (isRider) (userCoords?.first ?: courierLatitude) else courierLatitude
+                val effectiveLng = if (isRider) (userCoords?.second ?: courierLongitude) else courierLongitude
+                if (effectiveLat != null && effectiveLng != null && effectiveLat != 0.0 && effectiveLng != 0.0) {
+                    webView.evaluateJavascript("updateCourierLocation($effectiveLat, $effectiveLng, $courierBearing, 0)", null)
                 }
-                webView.evaluateJavascript("updateCourierProgress($progress)", null)
             }
+        }
+    }
+
+    LaunchedEffect(courierName, courierPhone, isPageLoaded) {
+        if (isPageLoaded) {
+            val safeCourierName = courierName.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+            val safeCourierPhone = courierPhone.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+            webView.evaluateJavascript("setCourierDetails(\"$safeCourierName\", \"$safeCourierPhone\")", null)
+        }
+    }
+
+    LaunchedEffect(parcelStatus, isPageLoaded) {
+        if (isPageLoaded && !hasNoBooking) {
+            webView.evaluateJavascript("updateDeliveryStatus('${parcelStatus.name}')", null)
         }
     }
 
@@ -3953,15 +4189,13 @@ fun LiveMapView(
         }
     }
 
-    LaunchedEffect(progress, isPageLoaded, hasNoBooking) {
-        if (isPageLoaded && !hasNoBooking) {
-            webView.evaluateJavascript("updateCourierProgress($progress)", null)
-        }
-    }
-
-    LaunchedEffect(courierLatitude, courierLongitude, isPageLoaded, hasNoBooking) {
-        if (isPageLoaded && !hasNoBooking && courierLatitude != null && courierLongitude != null) {
-            webView.evaluateJavascript("updateCourierCoordinates($courierLatitude, $courierLongitude)", null)
+    LaunchedEffect(courierLatitude, courierLongitude, courierBearing, userCoords, isPageLoaded, hasNoBooking, isRider) {
+        if (isPageLoaded && (!hasNoBooking || isRider)) {
+            val effectiveLat = if (isRider) (userCoords?.first ?: courierLatitude) else courierLatitude
+            val effectiveLng = if (isRider) (userCoords?.second ?: courierLongitude) else courierLongitude
+            if (effectiveLat != null && effectiveLng != null && effectiveLat != 0.0 && effectiveLng != 0.0) {
+                webView.evaluateJavascript("updateCourierLocation($effectiveLat, $effectiveLng, $courierBearing, 0)", null)
+            }
         }
     }
 
@@ -4062,7 +4296,7 @@ fun DeliveryEstimationCard(
                 "$minRange–$maxRange mins"
             }
         }
-        ParcelStatus.ARRIVED -> "Arriving soon"
+        ParcelStatus.ARRIVED -> "Courier has arrived!"
         ParcelStatus.HANDOVER_VERIFIED -> "Verifying delivery"
         ParcelStatus.DELIVERED -> "Delivered"
         ParcelStatus.CANCELLED -> "Cancelled"

@@ -1134,7 +1134,7 @@ fun BatchBookingScreen(
                 amount = pendingAmount,
                 onPaymentComplete = { reference ->
                     showPaystackSheet = false
-                    viewModel.topUpWallet(pendingAmount)
+                    viewModel.topUpWallet(pendingAmount, reference)
                     val finalizedStops = batchStops.map { stop ->
                         stop.copy(
                             pickupAddress = if (useSamePickupLocation || stop.pickupAddress.isBlank()) pickup else stop.pickupAddress,

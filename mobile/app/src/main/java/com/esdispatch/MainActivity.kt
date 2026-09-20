@@ -149,6 +149,27 @@ class MainActivity : FragmentActivity() {
         super.onResume()
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: android.content.Intent?) {
+        val shortcutRoute = intent?.getStringExtra("shortcut_route")
+        if (shortcutRoute != null) {
+            viewModel.setPendingShortcutRoute(shortcutRoute)
+        }
+        val action = intent?.getStringExtra("action")
+        val notifParcelId = intent?.getStringExtra("parcelId")
+        if (action == "rider_manifest" || notifParcelId == "DISPATCH") {
+            viewModel.setPendingShortcutRoute("RiderDashboard")
+        } else if (!notifParcelId.isNullOrBlank() && notifParcelId != "GIFT" && notifParcelId != "OTP") {
+            viewModel.selectParcelForTracking(notifParcelId)
+            viewModel.setPendingShortcutRoute("Tracking")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -157,15 +178,7 @@ class MainActivity : FragmentActivity() {
 
         showPendingCrashReport()
 
-        val shortcutRoute = intent?.getStringExtra("shortcut_route")
-        if (shortcutRoute != null) {
-            viewModel.setPendingShortcutRoute(shortcutRoute)
-        }
-        val notifParcelId = intent?.getStringExtra("parcelId")
-        if (!notifParcelId.isNullOrBlank() && notifParcelId != "GIFT" && notifParcelId != "OTP") {
-            viewModel.selectParcelForTracking(notifParcelId)
-            viewModel.setPendingShortcutRoute("Tracking")
-        }
+        handleIncomingIntent(intent)
 
         val permsToRequest = mutableListOf<String>()
         if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -198,21 +211,20 @@ class MainActivity : FragmentActivity() {
             LaunchedEffect(Unit) {
                 viewModel.initializeDatabase(context)
             }
-            LaunchedEffect(Unit) {
-                // Register the initial FCM token once so server push targeting works even
-                // when onNewToken is never fired (fresh installs with cached tokens).
-                try {
-                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token
-                        .addOnSuccessListener { token ->
-                            val uid = com.esdispatch.data.FirebaseManager.auth?.uid
-                            if (uid != null && token.isNotBlank()) {
-                                com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                                    .collection("users").document(uid)
-                                    .update("fcmToken", token)
+            val currentAuthUid by viewModel.firebaseUserId.collectAsState()
+            LaunchedEffect(currentAuthUid) {
+                val uid = currentAuthUid
+                if (!uid.isNullOrBlank() && !uid.startsWith("local_user_")) {
+                    try {
+                        com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                            .addOnSuccessListener { token ->
+                                if (token.isNotBlank()) {
+                                    com.esdispatch.data.FirebaseManager.updateFcmTokenInFirestore(uid, token)
+                                }
                             }
-                        }
-                } catch (e: Exception) {
-                    android.util.Log.w("MainActivity", "FCM initial token fetch failed: ${e.message}")
+                    } catch (e: Exception) {
+                        android.util.Log.w("MainActivity", "FCM initial token fetch failed: ${e.message}")
+                    }
                 }
             }
             LaunchedEffect(Unit) {
@@ -280,11 +292,16 @@ class MainActivity : FragmentActivity() {
                                     }
                                 }
                             }
+                            "PaymentSuccess" -> {
+                                navController.navigate("PaymentSuccess") {
+                                    popUpTo("Dashboard") { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
                             "Tracking", "ActiveTracking" -> {
-                                if (!navController.popBackStack("ActiveTracking", false)) {
-                                    navController.navigate("ActiveTracking") {
-                                        launchSingleTop = true
-                                    }
+                                navController.navigate("ActiveTracking") {
+                                    popUpTo("Dashboard") { inclusive = false }
+                                    launchSingleTop = true
                                 }
                             }
                             else -> {
@@ -465,7 +482,7 @@ class MainActivity : FragmentActivity() {
                         MultiBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BookingForm") {
-                        BookingFormScreen(viewModel = viewModel, onNavigate = handleNavigation)
+                        BookingSelectionScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BookingDetails") {
                         BookingDetails(viewModel = viewModel, onNavigate = handleNavigation)
@@ -749,20 +766,6 @@ class MainActivity : FragmentActivity() {
 }
 }
 }
-
-    override fun onNewIntent(intent: android.content.Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        val shortcutRoute = intent.getStringExtra("shortcut_route")
-        if (shortcutRoute != null) {
-            viewModel.setPendingShortcutRoute(shortcutRoute)
-        }
-        val notifParcelId = intent.getStringExtra("parcelId")
-        if (!notifParcelId.isNullOrBlank() && notifParcelId != "GIFT" && notifParcelId != "OTP") {
-            viewModel.selectParcelForTracking(notifParcelId)
-            viewModel.setPendingShortcutRoute("Tracking")
-        }
-    }
 
     private fun setupShortcuts() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N_MR1) {

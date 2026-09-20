@@ -38,24 +38,16 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(remoteMessage)
         Log.d(TAG, "From: ${remoteMessage.from}")
 
-        // Check if message contains data payload
-        if (remoteMessage.data.isNotEmpty()) {
-            val title = remoteMessage.data["title"] ?: "ESDispatch Status Update"
-            val message = remoteMessage.data["message"] ?: "Your parcel status has changed."
-            val parcelId = remoteMessage.data["parcelId"]
-            val status = remoteMessage.data["status"]
-            
-            showNotification(applicationContext, title, message, parcelId, status)
-            com.esdispatch.data.FirebaseManager.triggerFcmNotification(title, message)
-        }
+        val data = remoteMessage.data
+        val notif = remoteMessage.notification
 
-        // Check if message contains notification payload
-        remoteMessage.notification?.let {
-            val title = it.title ?: "ESDispatch Status Update"
-            val body = it.body ?: "Your parcel status has changed."
-            showNotification(applicationContext, title, body, null, null)
-            com.esdispatch.data.FirebaseManager.triggerFcmNotification(title, body)
-        }
+        val title = data["title"] ?: notif?.title ?: "ESDispatch Alert"
+        val message = data["message"] ?: data["body"] ?: notif?.body ?: "New logistics update available."
+        val parcelId = data["parcelId"] ?: data["deliveryId"]
+        val status = data["status"] ?: data["type"]
+
+        showNotification(applicationContext, title, message, parcelId, status)
+        com.esdispatch.data.FirebaseManager.triggerFcmNotification(title, message)
     }
 
     companion object {
@@ -182,9 +174,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val st = status?.uppercase() ?: ""
             val lower = "$title $message".lowercase()
 
+            val isRiderAlert = lower.contains("dispatch available") || lower.contains("trip assigned") || lower.contains("new dispatch") || lower.contains("assigned") || lower.contains("new delivery") || lower.contains("new parcel") || parcelId == "DISPATCH" || st == "OFFERED" || st == "ASSIGNED"
+
             // Select channel & sound based on stage
             val (channelId, soundName) = when {
-                lower.contains("dispatch available") || lower.contains("trip assigned") || lower.contains("new dispatch") || parcelId == "DISPATCH" ->
+                isRiderAlert ->
                     Pair(CHANNEL_DISPATCH, "es_dispatch_alert")
                 st.contains("ARRIVED") || lower.contains("arrived") ->
                     Pair(CHANNEL_ARRIVAL, "es_arrived_alert")
@@ -200,7 +194,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 if (parcelId != null) {
                     putExtra("parcelId", parcelId)
-                    putExtra("action", "track")
+                    putExtra("action", if (isRiderAlert) "rider_manifest" else "track")
+                } else if (isRiderAlert) {
+                    putExtra("action", "rider_manifest")
                 }
             }
 
@@ -245,10 +241,10 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             }
 
             // Interactive Quick Action: Track Live / View Dispatch
-            val actionTitle = if (lower.contains("dispatch") || lower.contains("assigned")) "View Dispatch" else "Track Live"
+            val actionTitle = if (isRiderAlert) "View Dispatch" else "Track Live"
             val trackIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                putExtra("action", "track")
+                putExtra("action", if (isRiderAlert) "rider_manifest" else "track")
                 if (parcelId != null) {
                     putExtra("parcelId", parcelId)
                 }

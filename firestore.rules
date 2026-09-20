@@ -13,30 +13,21 @@ service cloud.firestore {
     function isSuperAdmin() {
       return isAuth() && (
         ('email' in request.auth.token && request.auth.token.email != null && (
-          request.auth.token.email.matches('(?i).*admin.*') ||
-          request.auth.token.email.matches('(?i).*@engraced\\.com') ||
-          request.auth.token.email.matches('(?i).*@esdispatch\\.com') ||
-          request.auth.token.email.matches('(?i).*engraced.*') ||
-          request.auth.token.email.matches('(?i).*esdispatch.*')
+          request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@engraced\\.com$') ||
+          request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@engraceddispatch\\.com$') ||
+          request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@esdispatch\\.com$')
         )) ||
         (request.auth.token.keys().hasAny(['admin']) && request.auth.token.admin == true) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'admin', 'Admin'] ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userRole in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'admin', 'Admin']
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin'] ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userRole in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin']
         ))
       );
     }
 
     function isAdmin() {
       return isAuth() && (
-        ('email' in request.auth.token && request.auth.token.email != null && (
-          request.auth.token.email.matches('(?i).*admin.*') ||
-          request.auth.token.email.matches('(?i).*@engraced\\.com') ||
-          request.auth.token.email.matches('(?i).*@esdispatch\\.com') ||
-          request.auth.token.email.matches('(?i).*engraced.*') ||
-          request.auth.token.email.matches('(?i).*esdispatch.*')
-        )) ||
-        (request.auth.token.keys().hasAny(['admin']) && request.auth.token.admin == true) ||
+        isSuperAdmin() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner'] ||
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userRole in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner']

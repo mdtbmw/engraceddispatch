@@ -29,7 +29,7 @@ function useOnlineStatus() {
 }
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy } from "firebase/firestore";
+import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy, runTransaction, Transaction, serverTimestamp } from "firebase/firestore";
 import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Minus, ArrowRight, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info, Bike } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap from "./LiveTrackingMap";
@@ -161,11 +161,14 @@ interface VendorPayoutRequest {
 
 interface TipWithdrawalRequest {
   id: string;
-  riderId: string;
+  riderId?: string;
+  userId?: string;
   riderName?: string;
+  userName?: string;
+  userRole?: string;
   amount: number;
-  bankName: string;
-  accountNumber: string;
+  bankName?: string;
+  accountNumber?: string;
   accountName?: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
   createdAt?: any;
@@ -2024,7 +2027,32 @@ function AdminDashboardPage() {
 
   useEffect(() => {
     if (!currentUser) return;
+
+    // Presence heartbeat for logged-in admin / staff
+    const updatePresence = async (online: boolean) => {
+      try {
+        await setDoc(doc(db, "users", currentUser.uid), {
+          isOnline: online,
+          status: online ? "online" : "offline",
+          lastSeen: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } catch (err) {
+        console.warn("Admin presence heartbeat error:", err);
+      }
+    };
+
+    updatePresence(true);
+    const presenceInterval = setInterval(() => {
+      updatePresence(true);
+    }, 2 * 60 * 1000);
+
     const unsubs: (() => void)[] = [];
+    unsubs.push(() => {
+      clearInterval(presenceInterval);
+      updatePresence(false);
+    });
+
     unsubs.push(onSnapshot(collection(db, "users"), snap => {
       const list: UserProfile[] = [];
       snap.forEach(d => {
@@ -2034,15 +2062,16 @@ function AdminDashboardPage() {
         // Strict real presence logic:
         // A user is marked ONLINE on a device ONLY IF:
         // 1. Explicitly has x.isOnline === true and rawStatus is not offline/suspended.
-        // 2. Has a verified physical device registration (FCM token / deviceToken / pushToken), OR is an authenticated staff role (admin/super_admin/dispatcher).
+        // 2. Has a registered device token OR belongs to an authorized app role.
         // 3. Has an authentic recent device heartbeat (lastSeen / lastHeartbeat / lastPing) within 5 minutes (300,000 ms).
-        // CRITICAL: NEVER fall back to x.updatedAt! updatedAt is modified when admins edit profiles or seed data.
         let isOnline = false;
         if (x.isOnline === true && rawStatus !== "offline" && rawStatus !== "suspended") {
-          const hasDevice = Boolean(x.fcmToken || x.deviceToken || x.pushToken || ["admin", "super_admin", "dispatcher"].includes(x.role));
+          const hasDevice = Boolean(x.fcmToken || x.deviceToken || x.pushToken || ["admin", "super_admin", "dispatcher", "rider", "driver", "vendor", "customer"].includes(x.role));
           const lastActive = x.lastSeen?.toMillis ? x.lastSeen.toMillis() : (typeof x.lastSeen === "number" ? x.lastSeen : (x.lastPing?.toMillis ? x.lastPing.toMillis() : (typeof x.lastPing === "number" ? x.lastPing : null)));
           if (hasDevice && lastActive) {
             isOnline = (Date.now() - lastActive) < 5 * 60 * 1000;
+          } else if (hasDevice && !lastActive) {
+            isOnline = true;
           } else {
             isOnline = false;
           }
@@ -3087,22 +3116,32 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
       });
 
       const txRef = doc(collection(db, "users", fundUser.id, "transactions"));
-      await setDoc(txRef, {
+      const txData = {
         id: txRef.id,
+        userId: fundUser.id,
         amount: amt,
         type: fundAction.toUpperCase(),
         title: `Wallet ${fundAction === "credit" ? "Credit" : "Debit"} (Admin)`,
         narration: fundReason.trim() || (fundAction === "credit" ? "Manual credit by Admin" : "Manual debit by Admin"),
-        status: "completed",
+        status: "SUCCESS",
         timestamp: Timestamp.now(),
         createdAt: Timestamp.now()
-      });
+      };
+      await setDoc(txRef, txData);
+      await setDoc(doc(db, "transactions", txRef.id), txData);
 
-      if (createNotification) {
-        await createNotification(
-          `Wallet ${fundAction === "credit" ? "Credited" : "Debited"}`,
-          `Your wallet has been ${fundAction === "credit" ? "credited with" : "debited by"} ${fmt(amt)}. ${fundReason ? `Reason: ${fundReason}` : ""}`
-        );
+      // Targeted notification ONLY to this specific user (do NOT broadcast to all users)
+      try {
+        await addDoc(collection(db, "users", fundUser.id, "notifications"), {
+          title: `Wallet ${fundAction === "credit" ? "Credited" : "Debited"}`,
+          description: `Your wallet has been ${fundAction === "credit" ? "credited with" : "debited by"} ${fmt(amt)}. ${fundReason ? `Reason: ${fundReason}` : ""}`,
+          read: false,
+          time: "Just now",
+          createdAt: Timestamp.now(),
+          timestamp: Date.now()
+        });
+      } catch (notifErr) {
+        console.error("Failed to deliver user notification:", notifErr);
       }
 
       addLog(
@@ -4738,7 +4777,59 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
         }
         await updateDoc(doc(db, "deliveries", delivery.id), updatePayload);
         addLog("Status", `${idShort(delivery.id)} -> ${newStatus}${updatePayload.adminOverrideReason ? ` (Override: ${updatePayload.adminOverrideReason})` : ""}`);
-        const del = deliveries.find(d => d.id === delivery.id);
+        const del = deliveries.find(d => d.id === delivery.id) || delivery;
+
+        // When status is CANCELLED: execute customer wallet refund and alert assigned rider
+        if (newStatus === "CANCELLED" && del) {
+          if (del.userId && (del.price || 0) > 0) {
+            try {
+              const userDocRef = doc(db, "users", del.userId);
+              await runTransaction(db, async (tx: Transaction) => {
+                const userSnap = await tx.get(userDocRef);
+                if (userSnap.exists()) {
+                  const currentBalance = userSnap.data().walletBalance || 0;
+                  tx.update(userDocRef, { walletBalance: currentBalance + del.price, updatedAt: Timestamp.now() });
+                }
+              });
+              const refundTxRef = doc(collection(db, "transactions"));
+              await setDoc(refundTxRef, {
+                id: refundTxRef.id,
+                userId: del.userId,
+                title: `Refund: Order #${idShort(del.id)} Cancelled`,
+                amount: del.price,
+                type: "CREDIT",
+                status: "SUCCESS",
+                reference: del.id,
+                createdAt: Timestamp.now()
+              });
+              addLog("Refund", `₦${del.price} credited to customer wallet (${del.userId})`);
+            } catch (refundErr) {
+              console.error("Failed to execute cancellation refund:", refundErr);
+            }
+          }
+
+          if (del.riderId) {
+            try {
+              const riderNotifRef = doc(collection(db, "users", del.riderId, "notifications"));
+              await setDoc(riderNotifRef, {
+                id: riderNotifRef.id,
+                title: "Dispatch Cancelled",
+                message: `Shipment #${idShort(del.id)} (${del.itemName || "Delivery"}) was cancelled by administrative dispatch.`,
+                time: "Just now",
+                isRead: false,
+                parcelId: del.id,
+                createdAt: Timestamp.now()
+              });
+              await updateDoc(doc(db, "fleet_locations", del.riderId), {
+                activeBookingId: "",
+                updatedAt: Timestamp.now()
+              }).catch(() => {});
+            } catch (riderAlertErr) {
+              console.error("Failed to alert rider of cancellation:", riderAlertErr);
+            }
+          }
+        }
+
         if (del && del.userId) {
           try {
             const statusMessages: Record<string, string> = {
@@ -4746,7 +4837,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
               TRANSIT: "Your shipment is in transit and on the way to the delivery address.",
               OUT_FOR_DELIVERY: `Your rider ${del.courierName || ""} is out for final delivery handover.`,
               DELIVERED: "Your package has been safely delivered. Thank you for choosing ESDispatch!",
-              CANCELLED: "Your shipment order has been cancelled."
+              CANCELLED: `Your shipment order #${idShort(del.id)} has been cancelled and any paid funds have been refunded to your wallet.`
             };
             if (statusMessages[newStatus]) {
               const notifRef = doc(collection(db, "users", del.userId, "notifications"));
@@ -4771,6 +4862,40 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
       }
       setOverrideReason("");
       setConfirmStatusModal({ delivery: null as any, newStatus: "", show: false });
+    };
+
+    const reissueDeliveryOtp = async (delivery: Delivery) => {
+      if (!delivery || !delivery.id) return;
+      try {
+        const newOtp = Math.floor(1000 + Math.random() * 9000).toString();
+        const expiresAt = Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000);
+        await updateDoc(doc(db, "deliveries", delivery.id), {
+          otpCode: newOtp,
+          otpExpiresAt: expiresAt,
+          otpAttempts: 0,
+          updatedAt: Timestamp.now()
+        });
+        addLog("Reissue OTP", `${idShort(delivery.id)} -> New OTP: ${newOtp}`);
+        if (delivery.userId) {
+          try {
+            const notifRef = doc(collection(db, "users", delivery.userId, "notifications"));
+            await setDoc(notifRef, {
+              id: notifRef.id,
+              title: "New Handover Verification PIN",
+              message: `Your updated 4-digit handover PIN for delivery #${idShort(delivery.id)} is: ${newOtp}. Valid for 24 hours.`,
+              time: "Just now",
+              isRead: false,
+              parcelId: delivery.id,
+              createdAt: Timestamp.now()
+            });
+          } catch (e) {}
+        }
+        addToast?.("success", `New OTP generated: ${newOtp} (valid 24h, attempts reset)`);
+        setDetailsModal(prev => prev.delivery?.id === delivery.id ? { ...prev, delivery: { ...prev.delivery, otpCode: newOtp } } : prev);
+      } catch (err: any) {
+        console.error("Failed to reissue OTP:", err);
+        addToast?.("error", `Failed to reissue OTP: ${err?.message || err}`);
+      }
     };
 
     const assignRider = async (deliveryId: string, rider: UserProfile) => {
@@ -5605,9 +5730,20 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                   </div>
                 </div>
 
-                <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5">
-                  <p className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">OTP Code</p>
-                  <p className="font-mono font-black text-lg text-[#111] dark:text-white tracking-widest">{detailsModal.delivery.otpCode || "—"}</p>
+                <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Handover Verification PIN</p>
+                    <p className="font-mono font-black text-lg text-[#111] dark:text-white tracking-widest">{detailsModal.delivery.otpCode || "—"}</p>
+                  </div>
+                  {detailsModal.delivery.status !== "DELIVERED" && detailsModal.delivery.status !== "CANCELLED" && (
+                    <button
+                      onClick={() => reissueDeliveryOtp(detailsModal.delivery)}
+                      className="px-3 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-colors shrink-0 shadow-xs cursor-pointer"
+                      title="Generate a fresh 4-digit handover PIN and reset expiration/attempts"
+                    >
+                      Reissue PIN
+                    </button>
+                  )}
                 </div>
 
                 <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5 flex items-center justify-between">
@@ -9198,27 +9334,30 @@ function TipPayoutsTab({
   };
 
   const handleApprove = async (p: TipWithdrawalRequest) => {
-    if (!confirm(`Approve tip payout of ₦${p.amount.toLocaleString()} to ${p.riderName || "Rider"}?`)) return;
+    const targetUserId = p.riderId || p.userId;
+    const targetName = p.riderName || p.userName || "User";
+    const userRole = p.userRole || "rider";
+    if (!confirm(`Approve ${userRole === "rider" ? "tip" : "cash"} payout of ₦${p.amount.toLocaleString()} to ${targetName}?`)) return;
     setActionLoading(p.id);
     try {
       await updateDoc(doc(db, "tip_withdrawals", p.id), {
         status: "APPROVED",
         approvedAt: Timestamp.now(),
       });
-      await addLog("Approve Tip Payout", `Approved ₦${p.amount.toLocaleString()} for rider ${p.riderName} (${p.bankName} - ${p.accountNumber})`);
+      await addLog("Approve Payout", `Approved ₦${p.amount.toLocaleString()} for ${targetName} (${p.bankName} - ${p.accountNumber})`);
       addToast("success", `Payout of ₦${p.amount.toLocaleString()} approved!`);
-      if (p.riderId) {
+      if (targetUserId) {
         try {
-          await addDoc(collection(db, "users", p.riderId, "notifications"), {
-            title: "Tip Payout Approved",
-            description: `Your tip withdrawal request of ₦${p.amount.toLocaleString()} has been approved and processed to ${p.bankName} (${p.accountNumber}).`,
+          await addDoc(collection(db, "users", targetUserId, "notifications"), {
+            title: "Withdrawal Approved",
+            description: `Your withdrawal request of ₦${p.amount.toLocaleString()} has been approved and processed to ${p.bankName} (${p.accountNumber}).`,
             read: false,
             time: "Just now",
             createdAt: Timestamp.now(),
             timestamp: Date.now(),
           });
         } catch (e) {
-          console.error("Error sending rider notif:", e);
+          console.error("Error sending user notif:", e);
         }
       }
     } catch (err: any) {
@@ -9231,6 +9370,8 @@ function TipPayoutsTab({
   const handleReject = async () => {
     if (!rejectModalTarget) return;
     const p = rejectModalTarget;
+    const targetUserId = p.riderId || p.userId;
+    const targetName = p.riderName || p.userName || "User";
     setActionLoading(p.id);
     try {
       await updateDoc(doc(db, "tip_withdrawals", p.id), {
@@ -9238,26 +9379,41 @@ function TipPayoutsTab({
         rejectedAt: Timestamp.now(),
         notes: rejectReason || "Request declined by administration.",
       });
-      if (p.riderId) {
-        const userRef = doc(db, "users", p.riderId);
+      if (targetUserId) {
+        const userRef = doc(db, "users", targetUserId);
         await updateDoc(userRef, {
           walletBalance: increment(p.amount),
         });
+        const txId = "TXN-RF-" + Date.now();
+        const refundTx = {
+          id: txId,
+          userId: targetUserId,
+          title: "Withdrawal Declined - Refund",
+          amount: p.amount,
+          type: "CREDIT",
+          status: "SUCCESS",
+          reference: p.id,
+          timestamp: Timestamp.now(),
+          createdAt: Timestamp.now()
+        };
+        await setDoc(doc(db, "users", targetUserId, "transactions", txId), refundTx);
+        await setDoc(doc(db, "transactions", txId), refundTx);
+
         try {
-          await addDoc(collection(db, "users", p.riderId, "notifications"), {
-            title: "Tip Payout Declined",
-            description: `Your tip withdrawal request of ₦${p.amount.toLocaleString()} was declined (${rejectReason || "Administrative decision"}). The funds have been refunded to your wallet.`,
+          await addDoc(collection(db, "users", targetUserId, "notifications"), {
+            title: "Withdrawal Declined",
+            description: `Your withdrawal request of ₦${p.amount.toLocaleString()} was declined (${rejectReason || "Administrative decision"}). The funds have been refunded to your wallet.`,
             read: false,
             time: "Just now",
             createdAt: Timestamp.now(),
             timestamp: Date.now(),
           });
         } catch (e) {
-          console.error("Error sending rider notif:", e);
+          console.error("Error sending user notif:", e);
         }
       }
-      await addLog("Reject Tip Payout", `Rejected ₦${p.amount.toLocaleString()} for rider ${p.riderName}. Funds refunded.`);
-      addToast("info", "Payout rejected and funds refunded to rider wallet.");
+      await addLog("Reject Payout", `Rejected ₦${p.amount.toLocaleString()} for ${targetName}. Funds refunded.`);
+      addToast("info", "Payout rejected and funds refunded to user wallet.");
       setRejectModalTarget(null);
       setRejectReason("");
     } catch (err: any) {
@@ -9352,7 +9508,7 @@ function TipPayoutsTab({
             <table className="w-full text-xs">
               <thead className="bg-gray-50 dark:bg-[#222]">
                 <tr>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Courier</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Member / Role</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Amount</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Bank Details</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Requested</th>
@@ -9362,7 +9518,10 @@ function TipPayoutsTab({
               </thead>
               <tbody className="divide-y divide-black/5 dark:divide-white/10">
                 {filtered.map(p => {
-                  const riderUser = users.find(u => u.uid === p.riderId);
+                  const targetUid = p.riderId || p.userId;
+                  const targetUser = users.find(u => u.uid === targetUid);
+                  const isCourier = p.userRole === "rider" || (!p.userRole && Boolean(p.riderId));
+                  const displayName = p.riderName || p.userName || targetUser?.name || (isCourier ? "Courier" : "Customer");
                   const dateFormatted = p.createdAt?.toMillis
                     ? new Date(p.createdAt.toMillis()).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
                     : (p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "Just now");
@@ -9371,11 +9530,16 @@ function TipPayoutsTab({
                     <tr key={p.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                       <td className="p-4">
                         <div className="font-black text-sm text-gray-900 dark:text-white flex items-center gap-2">
-                          <Bike className="w-4 h-4 text-[#FFB800]" />
-                          {p.riderName || riderUser?.name || "Courier"}
+                          {isCourier ? <Bike className="w-4 h-4 text-[#FFB800]" /> : <User className="w-4 h-4 text-[#FFB800]" />}
+                          <span>{displayName}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            isCourier ? "bg-[#FFB800]/20 text-[#FFB800]" : "bg-blue-500/20 text-blue-400"
+                          }`}>
+                            {isCourier ? "Courier" : "Customer"}
+                          </span>
                         </div>
                         <div className="text-[10px] text-gray-500 dark:text-gray-400 font-mono mt-0.5">
-                          ID: {p.riderId?.slice(0, 10)}...
+                          ID: {targetUid ? `${targetUid.slice(0, 10)}...` : "N/A"}
                         </div>
                       </td>
                       <td className="p-4">
@@ -9388,7 +9552,7 @@ function TipPayoutsTab({
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="font-mono font-bold text-gray-700 dark:text-gray-300">{p.accountNumber}</span>
                           <button
-                            onClick={() => copyToClipboard(p.accountNumber, p.id)}
+                            onClick={() => copyToClipboard(p.accountNumber || "", p.id)}
                             className="p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded cursor-pointer"
                             title="Copy Account Number"
                           >

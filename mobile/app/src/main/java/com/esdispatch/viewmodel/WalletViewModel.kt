@@ -39,7 +39,7 @@ open class WalletViewModel : AuthViewModel() {
         val isTopUp = amount > 0
         val title = if (isTopUp) "Wallet Top Up (Paystack)" else "Cash Withdrawal"
         val displayAmt = if (amount < 0) -amount else amount
-        val txRef = reference ?: "TX-PAY-${System.currentTimeMillis()}"
+        val txRef = if (!reference.isNullOrBlank()) reference else "TX-PAY-${System.currentTimeMillis()}"
 
         com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, amount) { success, newBalance ->
             if (success) {
@@ -52,8 +52,10 @@ open class WalletViewModel : AuthViewModel() {
                     date = "Today",
                     amount = displayAmt,
                     isTopUp = isTopUp,
-                    userId = uid,
-                    reference = txRef
+                    type = if (isTopUp) "CREDIT" else "DEBIT",
+                    status = "SUCCESS",
+                    reference = txRef,
+                    userId = uid
                 )
                 _transactions.value = listOf(localTx) + _transactions.value
 
@@ -62,7 +64,8 @@ open class WalletViewModel : AuthViewModel() {
                     amount = amount,
                     title = title,
                     isTopUp = isTopUp,
-                    reference = txRef
+                    reference = txRef,
+                    status = "SUCCESS"
                 ) { _ -> }
 
                 val notifTitle = if (isTopUp) "Wallet Credited" else "Wallet Debited"
@@ -97,41 +100,72 @@ open class WalletViewModel : AuthViewModel() {
         }
     }
 
-    fun adminFundUserWallet(userId: String, userName: String, amount: Double, onResult: (Boolean, String) -> Unit) {
-            if (amount <= 0) { onResult(false, "Amount must be positive"); return }
-            val db = com.esdispatch.data.FirebaseManager.firestore ?: run {
-                onResult(false, "Firestore unavailable"); return
+    fun requestWithdrawal(
+        amount: Double,
+        bankName: String,
+        accountNumber: String,
+        accountName: String,
+        userRole: String = "customer",
+        onComplete: (Boolean, String?) -> Unit = { _, _ -> }
+    ) {
+        val uid = _firebaseUserId.value
+        if (uid == null) {
+            onComplete(false, "User must be signed in to perform withdrawal.")
+            return
+        }
+        if (amount <= 0.0) {
+            onComplete(false, "Invalid withdrawal amount.")
+            return
+        }
+        if (amount > _walletBalance.value) {
+            onComplete(false, "Insufficient wallet balance.")
+            return
+        }
+        com.esdispatch.data.FirebaseManager.submitWithdrawalRequest(
+            userId = uid,
+            userRole = userRole,
+            userName = _userName.value.ifBlank { "Member" },
+            amount = amount,
+            bankName = bankName,
+            accountNumber = accountNumber,
+            accountName = accountName
+        ) { success, errorMsg ->
+            if (success) {
+                val newBal = (_walletBalance.value - amount).coerceAtLeast(0.0)
+                _walletBalance.value = newBal
+                savePref("wallet_balance", newBal)
+                val notifTitle = "Withdrawal Submitted"
+                val notifMsg = "Your withdrawal request of ₦${String.format("%,.2f", amount)} has been submitted for admin processing."
+                addNotification(notifTitle, notifMsg)
+                onComplete(true, null)
+            } else {
+                onComplete(false, errorMsg)
             }
-            viewModelScope.launch {
-                try {
-                    db.collection("users").document(userId).get().addOnSuccessListener { snap ->
-                        val currentBalance = (snap.get("walletBalance") as? Number)?.toDouble() ?: 0.0
-                        val newBalance = currentBalance + amount
-                        db.collection("users").document(userId).update("walletBalance", newBalance)
-                        val txRef = "ESD-ADMIN-${System.currentTimeMillis()}"
-                        val txMap = hashMapOf(
-                            "id" to txRef, "title" to "Admin Credit",
-                            "date" to "Today", "amount" to amount,
-                            "isTopUp" to true, "timestamp" to System.currentTimeMillis()
-                        )
-                        db.collection("users").document(userId).collection("transactions").document(txRef).set(txMap)
-                        com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
-                            userId = userId,
-                            amount = amount,
-                            title = "Admin Credit",
-                            isTopUp = true,
-                            reference = txRef
-                        ) { _ -> }
-                        logAdminActivity("Wallet Credit", "Credited $amount to $userName ($userId)")
-                        onResult(true, "Wallet credited successfully")
-                    }.addOnFailureListener { e ->
-                        onResult(false, e.message ?: "Failed to fetch user")
-                    }
-                } catch (e: Exception) {
-                    onResult(false, e.message ?: "Unknown error")
+        }
+    }
+
+    fun adminFundUserWallet(userId: String, userName: String, amount: Double, onResult: (Boolean, String) -> Unit) {
+        if (amount <= 0) { onResult(false, "Amount must be positive"); return }
+        viewModelScope.launch {
+            com.esdispatch.data.FirebaseManager.updateUserWalletBalance(userId, amount) { success, newBalance ->
+                if (success) {
+                    val txRef = "ESD-ADMIN-${System.currentTimeMillis()}"
+                    com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
+                        userId = userId,
+                        amount = amount,
+                        title = "Admin Credit",
+                        isTopUp = true,
+                        reference = txRef,
+                        status = "SUCCESS"
+                    ) { _ -> }
+                    logAdminActivity("Wallet Credit", "Credited ₦$amount to $userName ($userId)")
+                    onResult(true, "Wallet credited successfully. New balance: ₦${String.format("%,.2f", newBalance)}")
+                } else {
+                    onResult(false, "Failed to update user wallet balance")
                 }
             }
         }
+    }
 
 
     fun addPaymentCard(card: CardInfo, onResult: (Boolean) -> Unit) {

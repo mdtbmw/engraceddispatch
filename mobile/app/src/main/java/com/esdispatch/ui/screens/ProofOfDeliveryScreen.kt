@@ -90,13 +90,30 @@ fun ProofOfDeliveryScreen(
         }
     }
 
-    val cameraController = remember(hasCameraPermission) {
+    val cameraController = remember(context) {
+        LifecycleCameraController(context).apply {
+            cameraSelector = androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
+        }
+    }
+
+    LaunchedEffect(hasCameraPermission, lifecycleOwner) {
         if (hasCameraPermission) {
-            LifecycleCameraController(context).apply {
-                bindToLifecycle(lifecycleOwner)
+            try {
+                cameraController.unbind()
+                cameraController.bindToLifecycle(lifecycleOwner)
+            } catch (e: Exception) {
+                Log.e("POD", "Failed to bind camera: ${e.message}")
             }
-        } else {
-            null
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        onDispose {
+            try {
+                cameraController.unbind()
+            } catch (e: Exception) {
+                Log.e("POD", "Failed to unbind camera on dispose: ${e.message}")
+            }
         }
     }
 
@@ -339,11 +356,17 @@ fun ProofOfDeliveryScreen(
                         .background(Color.Black)
                         .border(1.5.dp, Gold.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                 ) {
-                    if (hasCameraPermission && cameraController != null) {
+                    if (hasCameraPermission) {
                         AndroidView(
                             factory = { ctx ->
                                 PreviewView(ctx).apply {
-                                    this.controller = cameraController
+                                    layoutParams = android.view.ViewGroup.LayoutParams(
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                    )
+                                    implementationMode = PreviewView.ImplementationMode.PERFORMANCE
+                                    scaleType = PreviewView.ScaleType.FILL_CENTER
+                                    controller = cameraController
                                 }
                             },
                             modifier = Modifier.fillMaxSize()

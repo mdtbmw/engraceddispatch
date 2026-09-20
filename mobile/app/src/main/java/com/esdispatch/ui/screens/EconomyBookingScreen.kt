@@ -1230,7 +1230,7 @@ fun EconomyBookingScreen(
                 amount = pendingAmount,
                 onPaymentComplete = { reference ->
                     showPaystackSheet = false
-                    viewModel.topUpWallet(pendingAmount)
+                    viewModel.topUpWallet(pendingAmount, reference)
                     viewModel.updateDraftPickup(pickup)
                     viewModel.updateDraftDelivery(delivery)
                     viewModel.updateDraftSenderInfo(sName, sPhone)

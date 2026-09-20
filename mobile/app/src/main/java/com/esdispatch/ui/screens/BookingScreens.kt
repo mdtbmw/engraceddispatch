@@ -83,13 +83,14 @@ fun SendParcelScreen(
         coroutineScope.launch {
             Toast.makeText(context, "Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
             val detected = withContext(Dispatchers.IO) {
-                detectUserLocation(context)
+                detectUserLocationDetailed(context)
             }
-            pickup = detected
+            pickup = detected.address
+            viewModel.updateDraftPickup(detected.address, detected.lat, detected.lng)
             if (granted) {
-                Toast.makeText(context, "Location updated: $detected", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Location updated: ${detected.address}", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(context, "GPS permission denied. Estimated location: $detected", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "GPS permission denied. Estimated location: ${detected.address}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -131,10 +132,11 @@ fun SendParcelScreen(
     LaunchedEffect(Unit) {
         if (pickup.isBlank()) {
             val detected = withContext(Dispatchers.IO) {
-                detectUserLocation(context)
+                detectUserLocationDetailed(context)
             }
             if (pickup.isBlank()) {
-                pickup = detected
+                pickup = detected.address
+                viewModel.updateDraftPickup(detected.address, detected.lat, detected.lng)
             }
         }
     }
@@ -246,93 +248,6 @@ fun SendParcelScreen(
                         .padding(horizontal = 24.dp, vertical = 24.dp)
                         .padding(bottom = 120.dp) // space for bottom CTA button
                 ) {
-                // 1. Smart "Book Again" from History Row
-                if (allParcels.isNotEmpty()) {
-                    Column(modifier = Modifier.padding(bottom = 20.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Smart 'Book Again' (Recent)",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Gold
-                            )
-                            Text(
-                                text = "${allParcels.size} available",
-                                fontSize = 11.sp,
-                                color = TextGray
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(allParcels.take(5)) { p ->
-                                Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = Charcoal,
-                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f)),
-                                    modifier = Modifier
-                                        .width(220.dp)
-                                        .height(94.dp)
-                                        .clickable {
-                                            viewModel.bookAgainFromParcel(p)
-                                            pickup = p.pickupAddress
-                                            delivery = p.deliveryAddress
-                                            Toast.makeText(context, "Loaded delivery history for ${p.itemName}!", Toast.LENGTH_SHORT).show()
-                                        }
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(10.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = p.itemName,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isDark) Color.White else Obsidian,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "To: ${p.deliveryAddress}",
-                                            fontSize = 10.sp,
-                                            color = TextGray,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(text = "₦${String.format("%,.0f", p.price)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Gold)
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = Gold.copy(alpha = 0.2f)
-                                            ) {
-                                                Text(
-                                                    text = "Rebook",
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Gold,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 // Addresses Card
                 Surface(
                     shape = RoundedCornerShape(24.dp),
@@ -942,11 +857,19 @@ fun BookingSelectionScreen(
     var deliveryCoords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var isGeocoding by remember { mutableStateOf(false) }
 
-    LaunchedEffect(draft.pickupAddress, draft.deliveryAddress) {
+    LaunchedEffect(draft.pickupAddress, draft.deliveryAddress, draft.pickupLat, draft.pickupLng, draft.deliveryLat, draft.deliveryLng) {
         if (draft.pickupAddress.isNotBlank() && draft.deliveryAddress.isNotBlank()) {
             isGeocoding = true
-            pickupCoords = viewModel.geocodeAddress(draft.pickupAddress)
-            deliveryCoords = viewModel.geocodeAddress(draft.deliveryAddress)
+            pickupCoords = if (draft.pickupLat != null && draft.pickupLng != null && draft.pickupLat != 0.0 && draft.pickupLng != 0.0) {
+                Pair(draft.pickupLat!!, draft.pickupLng!!)
+            } else {
+                viewModel.geocodeAddress(draft.pickupAddress)
+            }
+            deliveryCoords = if (draft.deliveryLat != null && draft.deliveryLng != null && draft.deliveryLat != 0.0 && draft.deliveryLng != 0.0) {
+                Pair(draft.deliveryLat!!, draft.deliveryLng!!)
+            } else {
+                viewModel.geocodeAddress(draft.deliveryAddress)
+            }
             isGeocoding = false
         }
     }
@@ -1542,7 +1465,9 @@ fun BookingSelectionScreen(
                 walletBalance = viewModel.walletBalance.collectAsState().value,
                 onConfirmWalletPayment = {
                     showCheckoutSheet = false
-                    onPaymentSuccessAction?.invoke()
+                    val action = onPaymentSuccessAction
+                    onPaymentSuccessAction = null
+                    action?.invoke()
                 },
                 onFundRequired = { missingAmt ->
                     showCheckoutSheet = false
@@ -1558,8 +1483,10 @@ fun BookingSelectionScreen(
                 amount = fundingAmount,
                 onPaymentComplete = { reference ->
                     showPaystackSheet = false
-                    viewModel.topUpWallet(fundingAmount)
-                    onPaymentSuccessAction?.invoke()
+                    viewModel.topUpWallet(fundingAmount, reference)
+                    val action = onPaymentSuccessAction
+                    onPaymentSuccessAction = null
+                    action?.invoke()
                 },
                 onDismiss = { showPaystackSheet = false }
             )
@@ -1604,6 +1531,10 @@ fun PaymentSuccessScreen(
                 stiffness = Spring.StiffnessLow
             )
         )
+    }
+
+    androidx.activity.compose.BackHandler {
+        onNavigate("Dashboard")
     }
 
     Box(

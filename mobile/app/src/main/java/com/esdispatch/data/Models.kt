@@ -34,6 +34,10 @@ data class Parcel(
     val userId: String = "",
     val courierLatitude: Double? = null,
     val courierLongitude: Double? = null,
+    val courierBearing: Float = 0f,
+    val courierSpeed: Float = 0f,
+    val courierAccuracy: Float = 0f,
+    val courierLastUpdated: Long = 0L,
     val additionalStops: String = "",
     val riderId: String = "",
     val driverId: String = "",
@@ -148,6 +152,16 @@ data class BatchItem(
     val signatureUrl: String = "",
     val signatureEnabled: Boolean = false,
     val verificationStatus: String = "UNVERIFIED"
+)
+
+data class RiderTelemetry(
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val bearing: Float = 0f,
+    val speed: Float = 0f,
+    val accuracy: Float = 0f,
+    val timestamp: Long = 0L,
+    val activeBookingId: String = ""
 )
 
 data class BatchBooking(

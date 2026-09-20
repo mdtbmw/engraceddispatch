@@ -245,6 +245,32 @@ object AddressDatabase {
         }?.let { Pair(it.lat, it.lng) }
     }
 
+    /**
+     * Find the nearest verified Benin City landmark within maxDistKm (default 0.4km / 400 meters)
+     */
+    fun findNearest(lat: Double, lng: Double, maxDistKm: Double = 0.4): AddressEntry? {
+        if (lat !in 6.0..6.6 || lng !in 5.3..5.9) return null
+        return entries
+            .map { entry ->
+                val dist = distanceBetweenCoords(lat, lng, entry.lat, entry.lng)
+                Pair(entry, dist)
+            }
+            .filter { it.second <= maxDistKm }
+            .minByOrNull { it.second }
+            ?.first
+    }
+
+    private fun distanceBetweenCoords(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371.0 // km
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
+    }
+
     private fun expandTypos(query: String): String {
         val typoMap = mapOf(
             "airpt" to "airport", "arpt" to "airport", "airpot" to "airport",

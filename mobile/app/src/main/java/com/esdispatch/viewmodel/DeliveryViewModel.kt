@@ -240,6 +240,11 @@ class DeliveryViewModel : WalletViewModel() {
         _favoriteProductIds.value = savedFavs
         _marketplaceEnabled.value = prefs.getBoolean("marketplace_enabled", false)
         _pointsSystemEnabled.value = prefs.getBoolean("points_system_enabled", true)
+        val savedRiderOnline = prefs.getBoolean("rider_is_online", false)
+        _isOnline.value = savedRiderOnline
+        if (savedRiderOnline) {
+            _currentAttendanceStatus.value = "ON_DUTY"
+        }
         _isDynamicPricingEnabled.value = prefs.getBoolean("pricing_mode_dynamic", true)
         _tipSystemEnabled.value = prefs.getBoolean("tip_system_enabled", true)
         _emailVerificationRequired.value = prefs.getBoolean("email_verification_required", false)
@@ -852,6 +857,8 @@ class DeliveryViewModel : WalletViewModel() {
     fun setRiderOnlineStatus(online: Boolean) {
         _isOnline.value = online
         _currentAttendanceStatus.value = if (online) "ON_DUTY" else "OFF_DUTY"
+        appContext?.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
+            ?.edit()?.putBoolean("rider_is_online", online)?.apply()
         val uid = _firebaseUserId.value
         if (uid != null && !uid.startsWith("local_user_")) {
             com.esdispatch.data.FirebaseManager.updateRiderOnlineStatus(uid, online)
@@ -870,33 +877,47 @@ class DeliveryViewModel : WalletViewModel() {
             } catch (e: Exception) {
                 Log.e("DeliveryViewModel", "Failed to update driver doc online status: ${e.message}")
             }
+
+            // Sync FCM token to both users and drivers so server pushes reach the rider
+            val fcm = appContext?.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)?.getString("fcm_token", "") ?: ""
+            if (fcm.isNotBlank()) {
+                com.esdispatch.data.FirebaseManager.updateFcmTokenInFirestore(uid, fcm)
+            }
+        }
+
+        // When switching online, if available dispatches exist, alert the rider immediately
+        if (online) {
+            val pending = _availableDeliveries.value
+            if (pending.isNotEmpty()) {
+                com.esdispatch.util.SoundManager.playDispatchSweep()
+                val first = pending.first()
+                val notifTitle = if (first.category.equals("Express", ignoreCase = true)) "⚡ Express Dispatch Nearby!" else "New Dispatch Available Nearby!"
+                val notifMsg = "${first.itemName.ifBlank { "Parcel" }} • Pickup: ${first.pickupAddress.take(35)}... Tap to view."
+                addNotification(notifTitle, notifMsg)
+                showInAppNotification(notifTitle, notifMsg)
+            }
         }
         
         // Start or stop the LocationService for live GPS tracking
         appContext?.let { ctx ->
-            val intent = android.content.Intent(ctx, com.esdispatch.util.LocationService::class.java)
             if (online) {
                 val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
                 val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
                 if (hasFine || hasCoarse) {
-                    try {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                            ctx.startForegroundService(intent)
-                        } else {
-                            ctx.startService(intent)
-                        }
-                    } catch (e: Exception) {
-                        Log.e("DeliveryViewModel", "Failed to start LocationService: ${e.message}")
-                    }
+                    val activeParcel = _riderAssignments.value.find { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED }
+                    com.esdispatch.util.LocationService.start(
+                        context = ctx,
+                        parcelId = activeParcel?.id,
+                        batchId = activeParcel?.batchId?.takeIf { it.isNotBlank() },
+                        stopLat = if (activeParcel?.status == ParcelStatus.ASSIGNED || activeParcel?.status == ParcelStatus.PENDING) activeParcel?.pickupLat else activeParcel?.deliveryLat,
+                        stopLng = if (activeParcel?.status == ParcelStatus.ASSIGNED || activeParcel?.status == ParcelStatus.PENDING) activeParcel?.pickupLng else activeParcel?.deliveryLng,
+                        stopType = if (activeParcel?.status == ParcelStatus.ASSIGNED || activeParcel?.status == ParcelStatus.PENDING) "PICKUP" else "DELIVERY"
+                    )
                 } else {
                     Log.w("DeliveryViewModel", "Location permission missing, LocationService not started")
                 }
             } else {
-                try {
-                    ctx.stopService(intent)
-                } catch (e: Exception) {
-                    Log.e("DeliveryViewModel", "Failed to stop LocationService: ${e.message}")
-                }
+                com.esdispatch.util.LocationService.stop(ctx)
             }
         }
     }
@@ -918,9 +939,20 @@ class DeliveryViewModel : WalletViewModel() {
     private val _riderCurrentCoords = MutableStateFlow<Pair<Double, Double>?>(null)
     val riderCurrentCoords: StateFlow<Pair<Double, Double>?> = _riderCurrentCoords.asStateFlow()
 
+    private val _currentUserDeviceLocation = MutableStateFlow<Pair<Double, Double>?>(null)
+    val currentUserDeviceLocation: StateFlow<Pair<Double, Double>?> = _currentUserDeviceLocation.asStateFlow()
+
+    fun updateDeviceLocation(lat: Double, lng: Double) {
+        if (lat != 0.0 && lng != 0.0) {
+            _currentUserDeviceLocation.value = Pair(lat, lng)
+            _riderCurrentCoords.value = Pair(lat, lng)
+        }
+    }
+
     fun updateRiderCurrentLocation(lat: Double, lng: Double) {
         if (lat != 0.0 && lng != 0.0) {
             _riderCurrentCoords.value = Pair(lat, lng)
+            _currentUserDeviceLocation.value = Pair(lat, lng)
         }
     }
 
@@ -955,6 +987,7 @@ class DeliveryViewModel : WalletViewModel() {
 
     private var availableDeliveriesJob: kotlinx.coroutines.Job? = null
     private var riderAssignmentsJob: kotlinx.coroutines.Job? = null
+    private var riderLocationJob: kotlinx.coroutines.Job? = null
 
     fun setUserRole(role: String) {
         _userRole.value = role
@@ -987,7 +1020,11 @@ class DeliveryViewModel : WalletViewModel() {
     fun setActiveViewMode(mode: String) {
         _activeViewMode.value = mode
         savePref("active_view_mode", mode)
-        if (mode == "rider") {
+        if (mode == "rider" || mode == "driver") {
+            val uid = _firebaseUserId.value
+            if (uid != null && !uid.startsWith("local_user_")) {
+                startRiderListeners(uid)
+            }
             checkAndApplyWorkingDaysAutoOnline()
         }
     }
@@ -1011,16 +1048,36 @@ class DeliveryViewModel : WalletViewModel() {
     fun startRiderListeners(riderId: String) {
         availableDeliveriesJob?.cancel()
         riderAssignmentsJob?.cancel()
+        riderLocationJob?.cancel()
+
+        riderLocationJob = viewModelScope.launch {
+            com.esdispatch.util.LocationService.liveLocationFlow.collect { loc ->
+                if (loc != null && loc.latitude != 0.0 && loc.longitude != 0.0) {
+                    _riderCurrentCoords.value = Pair(loc.latitude, loc.longitude)
+                    _currentUserDeviceLocation.value = Pair(loc.latitude, loc.longitude)
+                }
+            }
+        }
 
         availableDeliveriesJob = viewModelScope.launch {
             var previousIds = emptySet<String>()
             com.esdispatch.data.FirebaseManager.listenToAvailableDeliveries().collect { list ->
+                val isFirstRun = previousIds.isEmpty()
                 val currentIds = list.map { it.id }.toSet()
                 val newDispatches = list.filter { it.id !in previousIds }
-                if (previousIds.isNotEmpty() && newDispatches.isNotEmpty() && (_isOnline.value || _currentAttendanceStatus.value == "ON_DUTY")) {
+                val isOnlineOrRider = _isOnline.value || _currentAttendanceStatus.value == "ON_DUTY" || _activeViewMode.value == "rider" || _userRole.value == "rider"
+
+                // On first connect, alert if any available dispatch was created recently (within last 30 mins); on subsequent emissions, alert for any new dispatch
+                val dispatchesToAlert = if (isFirstRun) {
+                    list.filter { it.createdAt > System.currentTimeMillis() - 30 * 60 * 1000L }
+                } else {
+                    newDispatches
+                }
+
+                if (dispatchesToAlert.isNotEmpty() && isOnlineOrRider) {
                     com.esdispatch.util.SoundManager.playDispatchSweep()
-                    val firstDispatch = newDispatches.first()
-                    val notifTitle = "New Dispatch Available Nearby!"
+                    val firstDispatch = dispatchesToAlert.first()
+                    val notifTitle = if (firstDispatch.category.equals("Express", ignoreCase = true)) "⚡ Express Dispatch Nearby!" else "New Dispatch Available Nearby!"
                     val notifMsg = "${firstDispatch.itemName.ifBlank { "Parcel" }} • Pickup: ${firstDispatch.pickupAddress.take(35)}... Tap to view."
                     addNotification(notifTitle, notifMsg)
                     showInAppNotification(notifTitle, notifMsg)
@@ -1037,10 +1094,10 @@ class DeliveryViewModel : WalletViewModel() {
                         try {
                             val vibrator = ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 250, 150, 250), -1))
+                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1))
                             } else {
                                 @Suppress("DEPRECATION")
-                                vibrator?.vibrate(400)
+                                vibrator?.vibrate(450)
                             }
                         } catch (_: Exception) {}
                     }
@@ -1053,12 +1110,18 @@ class DeliveryViewModel : WalletViewModel() {
         riderAssignmentsJob = viewModelScope.launch {
             var previousAssignedIds = emptySet<String>()
             com.esdispatch.data.FirebaseManager.listenToRiderAssignments(riderId).collect { list ->
+                val isFirstRun = previousAssignedIds.isEmpty()
                 val currentAssignedIds = list.map { it.id }.toSet()
-                val newlyAssigned = list.filter { it.id !in previousAssignedIds && it.status in listOf(com.esdispatch.data.ParcelStatus.ASSIGNED, com.esdispatch.data.ParcelStatus.RESERVED_NEXT) }
-                if (previousAssignedIds.isNotEmpty() && newlyAssigned.isNotEmpty()) {
+                val newlyAssigned = if (isFirstRun) {
+                    list.filter { it.status in listOf(com.esdispatch.data.ParcelStatus.ASSIGNED, com.esdispatch.data.ParcelStatus.RESERVED_NEXT) && it.createdAt > System.currentTimeMillis() - 30 * 60 * 1000L }
+                } else {
+                    list.filter { it.id !in previousAssignedIds && it.status in listOf(com.esdispatch.data.ParcelStatus.ASSIGNED, com.esdispatch.data.ParcelStatus.RESERVED_NEXT) }
+                }
+                if (newlyAssigned.isNotEmpty()) {
+                    com.esdispatch.util.SoundManager.playDispatchSweep()
                     val assignedItem = newlyAssigned.first()
                     val isReserved = assignedItem.status == com.esdispatch.data.ParcelStatus.RESERVED_NEXT
-                    val title = if (isReserved) "Trip Reserved Next!" else "New Trip Assigned!"
+                    val title = if (isReserved) "Trip Reserved Next!" else "⚡ New Trip Assigned!"
                     val msg = "Pickup: ${assignedItem.pickupAddress} • Dropoff: ${assignedItem.deliveryAddress}"
                     addNotification(title, msg)
                     showInAppNotification(title, msg)
@@ -1071,6 +1134,15 @@ class DeliveryViewModel : WalletViewModel() {
                                 parcelId = assignedItem.id,
                                 status = assignedItem.status.name
                             )
+                        } catch (_: Exception) {}
+                        try {
+                            val vibrator = ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 400, 200, 400), -1))
+                            } else {
+                                @Suppress("DEPRECATION")
+                                vibrator?.vibrate(500)
+                            }
                         } catch (_: Exception) {}
                     }
                 }
@@ -1086,6 +1158,7 @@ class DeliveryViewModel : WalletViewModel() {
     fun stopRiderListeners() {
         availableDeliveriesJob?.cancel()
         riderAssignmentsJob?.cancel()
+        riderLocationJob?.cancel()
     }
 
     // Rider actions
@@ -1101,7 +1174,18 @@ class DeliveryViewModel : WalletViewModel() {
             riderName = riderName,
             riderPhone = riderPhone,
             riderBikeNumber = riderBike,
-            onComplete = onComplete
+            onComplete = { success, err ->
+                if (success) {
+                    val p = _parcels.value.find { it.id == parcelId } ?: _riderAssignments.value.find { it.id == parcelId }
+                    com.esdispatch.util.LocationService.updateActiveStop(
+                        parcelId = parcelId,
+                        stopLat = p?.pickupLat,
+                        stopLng = p?.pickupLng,
+                        stopType = "PICKUP"
+                    )
+                }
+                onComplete(success, err)
+            }
         )
     }
 
@@ -1150,7 +1234,31 @@ class DeliveryViewModel : WalletViewModel() {
             parcelId = parcelId,
             nextStatus = nextStatus,
             progress = progress,
-            onComplete = onComplete
+            onComplete = { success, error ->
+                if (success) {
+                    val p = _parcels.value.find { it.id == parcelId } ?: _riderAssignments.value.find { it.id == parcelId }
+                    when (nextStatus) {
+                        ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+                            com.esdispatch.util.LocationService.updateActiveStop(
+                                parcelId = parcelId,
+                                stopLat = p?.deliveryLat,
+                                stopLng = p?.deliveryLng,
+                                stopType = "DELIVERY"
+                            )
+                        }
+                        ParcelStatus.DELIVERED, ParcelStatus.CANCELLED -> {
+                            com.esdispatch.util.LocationService.updateActiveStop(
+                                parcelId = "",
+                                stopLat = null,
+                                stopLng = null,
+                                stopType = "FINISHED"
+                            )
+                        }
+                        else -> {}
+                    }
+                }
+                onComplete(success, error)
+            }
         )
     }
 
@@ -1475,13 +1583,30 @@ class DeliveryViewModel : WalletViewModel() {
                 docRef.update(
                     mapOf(
                         "otpCode" to newOtp,
-                        "otpExpiresAt" to (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
+                        "otpExpiresAt" to (System.currentTimeMillis() + 24 * 60 * 60 * 1000L),
+                        "otpAttempts" to 0
                     )
                 ).addOnSuccessListener {
                     updateLocalParcelOtp(parcelId, newOtp)
                     onComplete?.invoke(newOtp)
                 }
             }
+        }
+    }
+
+    fun reissueDeliveryOtp(parcelId: String, onComplete: ((String) -> Unit)? = null) {
+        val db = com.esdispatch.data.FirebaseManager.firestore ?: return
+        val docRef = db.collection("deliveries").document(parcelId)
+        val newOtp = (1000..9999).random().toString()
+        docRef.update(
+            mapOf(
+                "otpCode" to newOtp,
+                "otpExpiresAt" to (System.currentTimeMillis() + 24 * 60 * 60 * 1000L),
+                "otpAttempts" to 0
+            )
+        ).addOnSuccessListener {
+            updateLocalParcelOtp(parcelId, newOtp)
+            onComplete?.invoke(newOtp)
         }
     }
 
@@ -2249,6 +2374,44 @@ class DeliveryViewModel : WalletViewModel() {
                 updateDynamicAnalytics(list)
             }
         }
+
+        // 2-minute foreground presence heartbeat updating users/{uid} and drivers/{uid}
+        viewModelScope.launch {
+            while (true) {
+                val uid = _firebaseUserId.value
+                if (uid != null && !uid.startsWith("local_user_")) {
+                    try {
+                        val firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        val now = System.currentTimeMillis()
+                        val userPresence = mapOf(
+                            "isOnline" to true,
+                            "lastSeen" to com.google.firebase.Timestamp.now(),
+                            "last_active" to now,
+                            "updatedAt" to now
+                        )
+                        firestore.collection("users").document(uid)
+                            .set(userPresence, com.google.firebase.firestore.SetOptions.merge())
+
+                        val isRider = _isOnline.value || _userRole.value.equals("rider", true) || _userRole.value.equals("driver", true) || _activeViewMode.value == "rider"
+                        if (isRider) {
+                            val driverPresence = mapOf(
+                                "isOnline" to _isOnline.value,
+                                "is_active" to _isOnline.value,
+                                "status" to (if (_isOnline.value) "available" else "offline"),
+                                "lastSeen" to com.google.firebase.Timestamp.now(),
+                                "last_active" to now,
+                                "updatedAt" to now
+                            )
+                            firestore.collection("drivers").document(uid)
+                                .set(driverPresence, com.google.firebase.firestore.SetOptions.merge())
+                        }
+                    } catch (e: Exception) {
+                        Log.e("DeliveryViewModel", "Presence heartbeat error: ${e.message}")
+                    }
+                }
+                delay(120_000L)
+            }
+        }
     }
 
     private fun seedAiRiders() {
@@ -2466,22 +2629,26 @@ class DeliveryViewModel : WalletViewModel() {
 
         // DYNAMIC WEEKLY PERFORMANCE TRENDS: Compute live weekly performance trends from actual database parcels
         val weekdays = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-        val baselineVolume = mapOf("Mon" to 340, "Tue" to 410, "Wed" to 380, "Thu" to 450, "Fri" to 520, "Sat" to 300, "Sun" to 240)
-        val baselineOnTime = mapOf("Mon" to 98.2, "Tue" to 97.5, "Wed" to 99.0, "Thu" to 96.8, "Fri" to 98.5, "Sat" to 99.4, "Sun" to 99.1)
-        val baselineCost = mapOf("Mon" to 4200.0, "Tue" to 3800.0, "Wed" to 4100.0, "Thu" to 3950.0, "Fri" to 4300.0, "Sat" to 4500.0, "Sun" to 4800.0)
+        val sdf = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
 
         _deliveryPerformanceTrends.value = weekdays.map { day ->
-            val realCount = list.count { parcel -> 
-                val hashDay = weekdays[Math.abs(parcel.id.hashCode()) % weekdays.size]
-                hashDay == day
+            val dayParcels = list.filter { parcel ->
+                if (parcel.createdAt > 0L) {
+                    try {
+                        sdf.format(java.util.Date(parcel.createdAt)) == day
+                    } catch (_: Exception) { false }
+                } else false
             }
-            val realOnTime = if (list.none { it.status == com.esdispatch.data.ParcelStatus.CANCELLED }) 100.0 else 94.2
-            
-            val finalVolume = (baselineVolume[day] ?: 300) + (realCount * 10)
-            val finalOnTime = ((baselineOnTime[day] ?: 98.0) + (if (realOnTime > 95) 0.5 else -1.0)).coerceIn(90.0, 100.0)
-            val finalCost = (baselineCost[day] ?: 4000.0) + (list.filter { weekdays[Math.abs(it.id.hashCode()) % weekdays.size] == day }.sumOf { it.price })
-            
-            DeliveryPerformanceTrend(day, finalVolume, finalOnTime, finalCost)
+            val volume = dayParcels.size
+            val delivered = dayParcels.count { it.status == com.esdispatch.data.ParcelStatus.DELIVERED }
+            val cancelled = dayParcels.count { it.status == com.esdispatch.data.ParcelStatus.CANCELLED }
+            val onTimeRate = if (volume == 0) 100.0 else {
+                val nonCancelled = volume - cancelled
+                if (nonCancelled <= 0) 0.0 else ((delivered.toDouble() / nonCancelled.toDouble()) * 100.0).coerceIn(0.0, 100.0)
+            }
+            val cost = dayParcels.sumOf { it.price }
+
+            DeliveryPerformanceTrend(day, volume, onTimeRate, cost)
         }
     }
 
@@ -2833,8 +3000,9 @@ class DeliveryViewModel : WalletViewModel() {
                             // 1. Listen to real-time transaction history from Firestore
                             launch {
                                 com.esdispatch.data.FirebaseManager.listenToUserTransactions(uid).collect { txList ->
+                                    _loadingTransactions.value = false
+                                    _transactions.value = txList
                                     if (txList.isNotEmpty()) {
-                                        _transactions.value = txList
                                         // Sync to offline database
                                         repository?.saveTransactions(txList)
                                     }
@@ -3869,7 +4037,27 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    fun hasActiveRiderMission(): Boolean {
+        val role = _userRole.value
+        val activeMode = _activeViewMode.value
+        val isRider = role.equals("rider", true) || role.equals("driver", true) || activeMode == "rider"
+        if (!isRider) return false
+        return _riderAssignments.value.any { parcel ->
+            parcel.status !in listOf(
+                com.esdispatch.data.ParcelStatus.DELIVERED,
+                com.esdispatch.data.ParcelStatus.CANCELLED
+            )
+        }
+    }
+
     fun logoutFirebase() {
+        if (hasActiveRiderMission()) {
+            com.esdispatch.util.CustomToastBridge.show(
+                "Cannot sign out while you have an active delivery mission. Please complete or reassign the delivery first.",
+                ToastType.WARNING
+            )
+            return
+        }
         val retiringUid = _firebaseUserId.value
         if (retiringUid != null && !retiringUid.startsWith("local_user_")) {
             com.esdispatch.data.FirebaseManager.updateUserPresence(retiringUid, false)
@@ -4109,34 +4297,22 @@ class DeliveryViewModel : WalletViewModel() {
             onComplete(false, "User not authenticated")
             return
         }
-        val db = FirebaseManager.firestore ?: run {
-            onComplete(false, "Firestore unavailable")
-            return
-        }
         if (amount <= 0.0) {
             onComplete(false, "Invalid withdrawal amount")
             return
         }
-        val reqId = "WD-${System.currentTimeMillis()}"
-        val data = hashMapOf(
-            "id" to reqId,
-            "riderId" to uid,
-            "riderName" to _userName.value,
-            "amount" to amount,
-            "bankName" to bankName,
-            "accountNumber" to accountNumber,
-            "accountName" to accountName,
-            "status" to "PENDING",
-            "createdAt" to System.currentTimeMillis()
+        if (amount > _walletBalance.value) {
+            onComplete(false, "Insufficient tip wallet balance")
+            return
+        }
+        requestWithdrawal(
+            amount = amount,
+            bankName = bankName,
+            accountNumber = accountNumber,
+            accountName = accountName,
+            userRole = "rider",
+            onComplete = onComplete
         )
-        db.collection("tip_withdrawals").document(reqId)
-            .set(data)
-            .addOnSuccessListener {
-                onComplete(true, null)
-            }
-            .addOnFailureListener { e ->
-                onComplete(false, e.message ?: "Failed to submit withdrawal request")
-            }
     }
 
     fun verifyUserPin(inputPin: String): Boolean {
@@ -4254,6 +4430,13 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun logout() {
+        if (hasActiveRiderMission()) {
+            com.esdispatch.util.CustomToastBridge.show(
+                "Cannot sign out while you have an active delivery mission. Please complete or reassign the delivery first.",
+                ToastType.WARNING
+            )
+            return
+        }
         val retiringUid = _firebaseUserId.value
         if (retiringUid != null && !retiringUid.startsWith("local_user_")) {
             com.esdispatch.data.FirebaseManager.updateUserPresence(retiringUid, false)
@@ -4292,8 +4475,6 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
-    private var riderLocationJob: kotlinx.coroutines.Job? = null
-
     fun startRealTimeTrackingListener(parcelId: String) {
         trackingJob?.cancel()
         riderLocationJob?.cancel()
@@ -4308,17 +4489,21 @@ class DeliveryViewModel : WalletViewModel() {
                     // Call Mapbox real-time traffic monitoring
                     checkRouteTrafficViaMapbox(updatedParcel.pickupAddress, updatedParcel.deliveryAddress)
 
-                    val rId = updatedParcel.riderId
+                    val rId = updatedParcel.riderId.ifEmpty { updatedParcel.driverId }
                     if (rId.isNotEmpty()) {
                         riderLocationJob?.cancel()
                         riderLocationJob = launch {
-                            com.esdispatch.data.FirebaseManager.listenToRiderLocation(rId).collect { coords ->
-                                if (coords != null) {
+                            com.esdispatch.data.FirebaseManager.listenToRiderTelemetry(rId).collect { telem ->
+                                if (telem != null) {
                                     val current = _selectedParcel.value
                                     if (current != null && current.id == updatedParcel.id) {
                                         val updatedWithCoords = current.copy(
-                                            courierLatitude = coords.first,
-                                            courierLongitude = coords.second
+                                            courierLatitude = telem.latitude,
+                                            courierLongitude = telem.longitude,
+                                            courierBearing = telem.bearing,
+                                            courierSpeed = telem.speed,
+                                            courierAccuracy = telem.accuracy,
+                                            courierLastUpdated = telem.timestamp
                                         )
                                         _selectedParcel.value = updatedWithCoords
                                     }
@@ -4536,12 +4721,30 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     // Draft Creation Setup
-    fun updateDraftPickup(address: String) {
-        _parcelDraft.update { it.copy(pickupAddress = address) }
+    fun updateDraftPickup(address: String, lat: Double? = null, lng: Double? = null) {
+        val resolvedCoords = if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+            Pair(lat, lng)
+        } else {
+            com.esdispatch.data.AddressDatabase.getCoordinates(address)
+        }
+        _parcelDraft.update {
+            val finalLat = resolvedCoords?.first ?: (if (it.pickupAddress.equals(address, ignoreCase = true)) it.pickupLat else null)
+            val finalLng = resolvedCoords?.second ?: (if (it.pickupAddress.equals(address, ignoreCase = true)) it.pickupLng else null)
+            it.copy(pickupAddress = address, pickupLat = finalLat, pickupLng = finalLng)
+        }
     }
 
-    fun updateDraftDelivery(address: String) {
-        _parcelDraft.update { it.copy(deliveryAddress = address) }
+    fun updateDraftDelivery(address: String, lat: Double? = null, lng: Double? = null) {
+        val resolvedCoords = if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+            Pair(lat, lng)
+        } else {
+            com.esdispatch.data.AddressDatabase.getCoordinates(address)
+        }
+        _parcelDraft.update {
+            val finalLat = resolvedCoords?.first ?: (if (it.deliveryAddress.equals(address, ignoreCase = true)) it.deliveryLat else null)
+            val finalLng = resolvedCoords?.second ?: (if (it.deliveryAddress.equals(address, ignoreCase = true)) it.deliveryLng else null)
+            it.copy(deliveryAddress = address, deliveryLat = finalLat, deliveryLng = finalLng)
+        }
     }
 
     fun updateDraftSpecs(quantity: Int, weight: Double, length: Int, width: Int, height: Int) {
@@ -4576,7 +4779,11 @@ class DeliveryViewModel : WalletViewModel() {
         _parcelDraft.update {
             it.copy(
                 pickupAddress = parcel.pickupAddress,
+                pickupLat = parcel.pickupLat,
+                pickupLng = parcel.pickupLng,
                 deliveryAddress = parcel.deliveryAddress,
+                deliveryLat = parcel.deliveryLat,
+                deliveryLng = parcel.deliveryLng,
                 senderName = parcel.senderName,
                 senderPhone = parcel.senderPhone,
                 receiverName = parcel.receiverName,
@@ -4945,7 +5152,13 @@ class DeliveryViewModel : WalletViewModel() {
         _parcelDraft.update { it.copy(selectedService = serviceType, price = basePrice) }
     }
 
+    private var isBookingSubmissionInProgress = false
+
     fun confirmBooking(onComplete: ((Boolean, String) -> Unit)? = null) {
+        if (isBookingSubmissionInProgress) {
+            onComplete?.invoke(false, "Booking is already in progress. Please wait.")
+            return
+        }
         val draft = _parcelDraft.value
         val rawCost = draft.price
         if (rawCost <= 0) {
@@ -4964,10 +5177,15 @@ class DeliveryViewModel : WalletViewModel() {
             return
         }
 
+        isBookingSubmissionInProgress = true
+
         val cost = applyPromoDiscount(rawCost)
         val uid = _firebaseUserId.value
 
         fun createBooking() {
+            val effectivePickupLat = draft.pickupLat ?: _currentUserDeviceLocation.value?.first
+            val effectivePickupLng = draft.pickupLng ?: _currentUserDeviceLocation.value?.second
+
             // Create new Parcel record
             val newParcel = Parcel(
                 id = "PC-${System.currentTimeMillis().toString().substring(8)}",
@@ -4992,8 +5210,8 @@ class DeliveryViewModel : WalletViewModel() {
                 otpCode = (1000..9999).random().toString(),
                 category = draft.selectedCategory.ifBlank { draft.selectedService.ifBlank { "Standard" } },
                 createdAt = System.currentTimeMillis(),
-                pickupLat = draft.pickupLat,
-                pickupLng = draft.pickupLng,
+                pickupLat = effectivePickupLat,
+                pickupLng = effectivePickupLng,
                 deliveryLat = draft.deliveryLat,
                 deliveryLng = draft.deliveryLng
             )
@@ -5046,11 +5264,14 @@ class DeliveryViewModel : WalletViewModel() {
             // Write directly to Room SQLite Database for offline-first resilience!
             savePref("wallet_balance", _walletBalance.value)
             com.esdispatch.util.SoundManager.playDispatchSweep()
+            isBookingSubmissionInProgress = false
+
             viewModelScope.launch {
                 repository?.saveParcel(newParcel)
                 repository?.saveTransaction(newTx)
                 repository?.saveNotification(notif)
                 syncParcel(newParcel)
+                com.esdispatch.data.FirebaseManager.broadcastNewDispatchAlert(newParcel)
                 val fUid = _firebaseUserId.value
                 if (fUid != null) {
                     com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
@@ -5067,6 +5288,7 @@ class DeliveryViewModel : WalletViewModel() {
 
         if (uid != null) {
             if (_walletBalance.value < cost) {
+                isBookingSubmissionInProgress = false
                 com.esdispatch.util.SoundManager.playErrorBuzz()
                 onComplete?.invoke(false, "Insufficient wallet balance (₦${String.format("%,.0f", cost)} needed).")
                 return
@@ -5074,17 +5296,9 @@ class DeliveryViewModel : WalletViewModel() {
             // Atomic debit; only when the server confirms do we create the booking, with offline-first fallback
             com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, -cost) { success, newBalance ->
                 if (!success) {
-                    val currentBal = _walletBalance.value
-                    if (currentBal >= cost) {
-                        val fallbackBal = (currentBal - cost).coerceAtLeast(0.0)
-                        _walletBalance.value = fallbackBal
-                        savePref("wallet_balance", fallbackBal)
-                        createBooking()
-                        onComplete?.invoke(true, "Booking confirmed")
-                        return@updateUserWalletBalance
-                    }
+                    isBookingSubmissionInProgress = false
                     com.esdispatch.util.SoundManager.playErrorBuzz()
-                    onComplete?.invoke(false, "Wallet debit failed — booking was NOT created. Please retry.")
+                    onComplete?.invoke(false, "Payment debit could not be verified. Please check your wallet balance and try again.")
                     return@updateUserWalletBalance
                 }
                 _walletBalance.value = newBalance
@@ -5095,6 +5309,7 @@ class DeliveryViewModel : WalletViewModel() {
         } else {
             // Unauthenticated / guest fallback: local-only booking (no wallet debit)
             if (_walletBalance.value < cost) {
+                isBookingSubmissionInProgress = false
                 com.esdispatch.util.SoundManager.playErrorBuzz()
                 onComplete?.invoke(false, "Insufficient wallet balance.")
                 return
@@ -5175,7 +5390,9 @@ class DeliveryViewModel : WalletViewModel() {
                     batchItemId = parcelId,
                     batchItemIndex = index,
                     batchTotalItems = stops.size,
-                    verificationStatus = "UNVERIFIED"
+                    verificationStatus = "UNVERIFIED",
+                    pickupLat = _currentUserDeviceLocation.value?.first,
+                    pickupLng = _currentUserDeviceLocation.value?.second
                 )
                 newParcels.add(parcel)
 
@@ -5201,6 +5418,11 @@ class DeliveryViewModel : WalletViewModel() {
                 userId = uid ?: ""
             )
 
+            if (uid == null) {
+                _walletBalance.value = (_walletBalance.value - totalCost).coerceAtLeast(0.0)
+                savePref("wallet_balance", _walletBalance.value)
+            }
+
             _parcels.value = newParcels + _parcels.value
             _selectedParcel.value = newParcels.firstOrNull()
             _notifications.value = newNotifications + _notifications.value
@@ -5212,7 +5434,10 @@ class DeliveryViewModel : WalletViewModel() {
                 repository?.saveParcels(newParcels)
                 newNotifications.forEach { repository?.saveNotification(it) }
                 repository?.saveTransaction(batchTx)
-                newParcels.forEach { syncParcel(it) }
+                newParcels.forEach { 
+                    syncParcel(it)
+                    com.esdispatch.data.FirebaseManager.broadcastNewDispatchAlert(it)
+                }
                 
                 // Record parent batch in Firestore
                 val batchDoc = hashMapOf<String, Any>(
@@ -5852,13 +6077,7 @@ class DeliveryViewModel : WalletViewModel() {
                 deliveryLng = parcel.deliveryLng
             )
         }
-        val targetRoute = when {
-            parcel.category.contains("Economy", ignoreCase = true) -> "EconomyBooking"
-            parcel.category.contains("Batch", ignoreCase = true) -> "BatchBooking"
-            parcel.category.contains("Multi", ignoreCase = true) -> "MultiBooking"
-            else -> "ExpressBooking"
-        }
-        onNavigate(targetRoute)
+        onNavigate("BookingSelection")
     }
 
     /**
@@ -5879,9 +6098,10 @@ class DeliveryViewModel : WalletViewModel() {
             return
         }
 
+        val uid = _firebaseUserId.value
         val newBalance = _walletBalance.value + refundAmount
         _walletBalance.value = newBalance
-        savePref("wallet_balance", newBalance.toFloat())
+        savePref("wallet_balance", newBalance)
 
         if (refundAmount > 0) {
             val feeNote = if (deductedFee > 0) " (₦${String.format("%,.0f", deductedFee)} dispatch fee deducted)" else ""
@@ -5893,9 +6113,26 @@ class DeliveryViewModel : WalletViewModel() {
                 type = "CREDIT",
                 status = "SUCCESS",
                 reference = parcel.id,
-                userId = _firebaseUserId.value ?: ""
+                userId = uid ?: ""
             )
             _transactions.value = listOf(refundTx) + _transactions.value
+
+            if (uid != null) {
+                com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, refundAmount) { ok, newBal ->
+                    if (ok) {
+                        _walletBalance.value = newBal
+                        savePref("wallet_balance", newBal)
+                    }
+                }
+                com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
+                    userId = uid,
+                    amount = refundAmount,
+                    title = "Refund: ${parcel.itemName}$feeNote",
+                    isTopUp = true,
+                    reference = parcel.id,
+                    status = "SUCCESS"
+                ) { _ -> }
+            }
         }
 
         val updatedParcel = parcel.copy(status = ParcelStatus.CANCELLED)
@@ -5906,6 +6143,16 @@ class DeliveryViewModel : WalletViewModel() {
 
         if (_selectedParcel.value?.id == parcelId) {
             _selectedParcel.value = null
+        }
+
+        _riderAssignments.update { current ->
+            current.map { if (it.id == parcelId) it.copy(status = ParcelStatus.CANCELLED) else it }
+        }
+        appContext?.let { ctx ->
+            val activeParcel = _riderAssignments.value.find { it.status != ParcelStatus.DELIVERED && it.status != ParcelStatus.CANCELLED }
+            if (activeParcel == null) {
+                com.esdispatch.util.LocationService.stop(ctx)
+            }
         }
 
         viewModelScope.launch {
@@ -5920,7 +6167,7 @@ class DeliveryViewModel : WalletViewModel() {
                     type = "CREDIT",
                     status = "SUCCESS",
                     reference = parcel.id,
-                    userId = _firebaseUserId.value ?: ""
+                    userId = uid ?: ""
                 )
                 repository?.saveTransaction(refundTx)
             }
@@ -5942,7 +6189,6 @@ class DeliveryViewModel : WalletViewModel() {
                     }.addOnFailureListener { e ->
                         android.util.Log.e("DeliveryViewModel", "Failed to update Firestore cancelled status: ${e.message}")
                     }
-                val uid = _firebaseUserId.value
                 if (uid != null) {
                     db.collection("users").document(uid).collection("deliveries").document(parcelId).update(updateData)
                 }

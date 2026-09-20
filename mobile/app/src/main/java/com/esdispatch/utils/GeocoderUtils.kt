@@ -14,10 +14,18 @@ data class SearchResultItem(
 ) {
     val displayInput: String
         get() {
-            if (title.isBlank() || title.equals("Current Location", ignoreCase = true) || title == fullAddress || fullAddress.startsWith(title)) {
-                return fullAddress
+            val t = title.trim()
+            val f = fullAddress.trim()
+            if (t.isBlank() || t.equals("Current Location", ignoreCase = true)) {
+                return f
             }
-            return "$title, $fullAddress"
+            if (f.isBlank()) {
+                return t
+            }
+            if (t.equals(f, ignoreCase = true) || f.contains(t, ignoreCase = true) || t.contains(f, ignoreCase = true)) {
+                return f
+            }
+            return "$t, $f"
         }
 }
 
@@ -128,7 +136,13 @@ object GeocoderUtils {
         if (query.isBlank() || query.length < 2) return@withContext emptyList()
         val results = mutableListOf<SearchResultItem>()
 
-        // 1. Proactive matching against Nigerian / Benin City Landmarks & Acronyms
+        // 1. Proactive matching against curated Benin City AddressDatabase
+        try {
+            val dbMatches = com.esdispatch.data.AddressDatabase.searchItems(query, 8)
+            results.addAll(dbMatches)
+        } catch (_: Exception) {}
+
+        // 2. Proactive matching against Nigerian / Benin City Landmarks & Acronyms
         val cleanQ = query.trim().lowercase()
         val matchingLandmarks = POPULAR_LANDMARKS.filter { lm ->
             lm.keywords.any { kw ->
@@ -145,9 +159,13 @@ object GeocoderUtils {
                 lng = it.lng
             )
         }
-        results.addAll(matchingLandmarks)
+        for (item in matchingLandmarks) {
+            if (results.none { it.displayInput.contains(item.title, ignoreCase = true) || item.title.contains(it.title, ignoreCase = true) }) {
+                results.add(item)
+            }
+        }
 
-        // 2. Mapbox Places Autocomplete query
+        // 3. Mapbox Places Autocomplete query
         try {
             val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
             if (!token.isNullOrBlank()) {
@@ -260,7 +278,16 @@ object GeocoderUtils {
         val cacheKey = String.format(java.util.Locale.US, "%.4f,%.4f", lat, lng)
         reverseGeocodeCache[cacheKey]?.let { return@withContext it }
 
-        // 1. High-Accuracy Mapbox Reverse Geocoding FIRST
+        // 1. Check verified Benin City landmarks FIRST for rich, detailed landmark titles (e.g. Ring Road (King's Square), City Center, Benin City)
+        try {
+            val nearestLandmark = com.esdispatch.data.AddressDatabase.findNearest(lat, lng, maxDistKm = 0.35)
+            if (nearestLandmark != null) {
+                reverseGeocodeCache[cacheKey] = nearestLandmark.displayName
+                return@withContext nearestLandmark.displayName
+            }
+        } catch (_: Exception) {}
+
+        // 2. High-Accuracy Mapbox Reverse Geocoding
         try {
             val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
             if (!token.isNullOrBlank()) {
@@ -301,7 +328,7 @@ object GeocoderUtils {
             android.util.Log.e("ReverseGeocode", "Mapbox reverse geocode error: ${e.message}")
         }
 
-        // 2. Android System Geocoder fallback
+        // 3. Android System Geocoder fallback
         try {
             val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
             val addrs = getFromLocationCompat(geocoder, lat, lng, 1)
@@ -324,7 +351,14 @@ object GeocoderUtils {
     suspend fun geocodeAddress(context: android.content.Context, address: String): Pair<Double, Double>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         if (address.isBlank()) return@withContext null
 
-        // Check if address matches a known landmark first for instant resolution
+        // 1. Check AddressDatabase coordinates first
+        try {
+            com.esdispatch.data.AddressDatabase.getCoordinates(address)?.let {
+                return@withContext it
+            }
+        } catch (_: Exception) {}
+
+        // 2. Check if address matches a known landmark for instant resolution
         val cleanA = address.trim().lowercase()
         POPULAR_LANDMARKS.firstOrNull { lm ->
             lm.keywords.any { it.equals(cleanA, ignoreCase = true) } || lm.title.equals(address.trim(), ignoreCase = true)

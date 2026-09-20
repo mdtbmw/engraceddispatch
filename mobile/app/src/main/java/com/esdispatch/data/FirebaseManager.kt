@@ -511,6 +511,12 @@ object FirebaseManager {
             val snapshot = transaction.get(userRef)
             val currentBalance = snapshot.getDouble("walletBalance") ?: 0.0
             val newBalance = currentBalance + amountDelta
+            if (newBalance < 0.0) {
+                throw com.google.firebase.firestore.FirebaseFirestoreException(
+                    "Insufficient wallet balance: current ₦$currentBalance, debit ₦${-amountDelta}",
+                    com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
+                )
+            }
             transaction.set(userRef, mapOf("walletBalance" to newBalance), com.google.firebase.firestore.SetOptions.merge())
             newBalance
         }.addOnSuccessListener { newBalance ->
@@ -524,6 +530,7 @@ object FirebaseManager {
 
     /**
      * Record a Double-Entry Ledger Transaction in Firestore.
+     * Mirrors to both user subcollection and root transactions collection for platform-wide auditing.
      */
     fun recordLedgerTransaction(
         userId: String,
@@ -556,9 +563,13 @@ object FirebaseManager {
             "timestamp" to System.currentTimeMillis()
         )
 
-        db.collection("users").document(userId)
-            .collection("transactions").document(transactionId)
-            .set(txnMap)
+        val batch = db.batch()
+        val userTxRef = db.collection("users").document(userId).collection("transactions").document(transactionId)
+        val rootTxRef = db.collection("transactions").document(transactionId)
+        batch.set(userTxRef, txnMap)
+        batch.set(rootTxRef, txnMap)
+
+        batch.commit()
             .addOnSuccessListener {
                 onComplete(true)
             }
@@ -566,6 +577,82 @@ object FirebaseManager {
                 Log.e(TAG, "Failed to record ledger transaction: ${e.message}")
                 onComplete(false)
             }
+    }
+
+    /**
+     * Submit a cash or tip withdrawal request with atomic balance deduction and escrow ledgering.
+     */
+    fun submitWithdrawalRequest(
+        userId: String,
+        userRole: String,
+        userName: String,
+        amount: Double,
+        bankName: String,
+        accountNumber: String,
+        accountName: String,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        val db = firestore ?: run {
+            onComplete(false, "Database connection unavailable")
+            return
+        }
+        if (amount <= 0.0) {
+            onComplete(false, "Invalid withdrawal amount")
+            return
+        }
+        val userRef = db.collection("users").document(userId)
+        val reqId = "WD-${System.currentTimeMillis()}-${(1000..9999).random()}"
+        val txId = "TXN-WD-${System.currentTimeMillis()}"
+
+        db.runTransaction { transaction ->
+            val snap = transaction.get(userRef)
+            val currentBalance = snap.getDouble("walletBalance") ?: 0.0
+            if (currentBalance < amount) {
+                throw com.google.firebase.firestore.FirebaseFirestoreException(
+                    "Insufficient wallet balance: ₦${String.format("%,.2f", currentBalance)} available",
+                    com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
+                )
+            }
+            val newBalance = currentBalance - amount
+            transaction.update(userRef, "walletBalance", newBalance)
+
+            val withdrawalData = hashMapOf(
+                "id" to reqId,
+                "riderId" to userId,
+                "userId" to userId,
+                "riderName" to userName,
+                "userName" to userName,
+                "userRole" to userRole,
+                "amount" to amount,
+                "bankName" to bankName,
+                "accountNumber" to accountNumber,
+                "accountName" to accountName,
+                "status" to "PENDING",
+                "createdAt" to System.currentTimeMillis()
+            )
+            transaction.set(db.collection("tip_withdrawals").document(reqId), withdrawalData)
+
+            val txnMap = hashMapOf(
+                "id" to txId,
+                "title" to if (userRole == "rider") "Courier Tip Withdrawal (Pending)" else "Cash Withdrawal (Pending)",
+                "date" to java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date()),
+                "amount" to amount,
+                "isTopUp" to false,
+                "type" to "DEBIT",
+                "status" to "PENDING",
+                "reference" to reqId,
+                "userId" to userId,
+                "timestamp" to System.currentTimeMillis()
+            )
+            transaction.set(userRef.collection("transactions").document(txId), txnMap)
+            transaction.set(db.collection("transactions").document(txId), txnMap)
+            newBalance
+        }.addOnSuccessListener { _ ->
+            onComplete(true, null)
+        }.addOnFailureListener { e ->
+            Log.e(TAG, "Withdrawal transaction failed: ${e.message}")
+            onComplete(false, e.message ?: "Withdrawal submission failed")
+        }
     }
 
     /**
@@ -601,7 +688,7 @@ object FirebaseManager {
             "riderId" to parcel.riderId,
             "riderBikeNumber" to parcel.riderBikeNumber,
             "otpCode" to parcel.otpCode,
-            "otpExpiresAt" to (System.currentTimeMillis() + 60 * 60 * 1000L),
+            "otpExpiresAt" to (System.currentTimeMillis() + 24 * 60 * 60 * 1000L),
             "otpVerified" to parcel.otpVerified,
             "isRated" to parcel.isRated,
             "customerRating" to parcel.customerRating,
@@ -677,6 +764,10 @@ object FirebaseManager {
         val dateString = doc.getString("dateString") ?: "Today"
         val courierLatitude = doc.getSafeDoubleNullable("courierLatitude")
         val courierLongitude = doc.getSafeDoubleNullable("courierLongitude")
+        val courierBearing = doc.getSafeDouble("courierBearing", 0.0).toFloat()
+        val courierSpeed = doc.getSafeDouble("courierSpeed", 0.0).toFloat()
+        val courierAccuracy = doc.getSafeDouble("courierAccuracy", 0.0).toFloat()
+        val courierLastUpdated = doc.getSafeLong("courierLastUpdated", 0L)
         val riderId = doc.getString("riderId")?.takeIf { it.isNotBlank() } ?: doc.getString("driverId") ?: ""
         val riderBikeNumber = doc.getString("riderBikeNumber") ?: ""
         val otpCode = doc.getString("otpCode") ?: ""
@@ -740,6 +831,10 @@ object FirebaseManager {
             userId = userId,
             courierLatitude = courierLatitude,
             courierLongitude = courierLongitude,
+            courierBearing = courierBearing,
+            courierSpeed = courierSpeed,
+            courierAccuracy = courierAccuracy,
+            courierLastUpdated = courierLastUpdated,
             additionalStops = additionalStops,
             riderId = riderId,
             riderBikeNumber = riderBikeNumber,
@@ -1092,7 +1187,22 @@ object FirebaseManager {
                             val date = doc.getString("date") ?: ""
                             val amount = doc.getSafeDouble("amount", 0.0)
                             val isTopUp = doc.getSafeBoolean("isTopUp", true)
-                            list.add(Transaction(id, title, date, amount, isTopUp))
+                            val type = doc.getString("type") ?: if (isTopUp) "CREDIT" else "DEBIT"
+                            val status = doc.getString("status") ?: "SUCCESS"
+                            val reference = doc.getString("reference") ?: ""
+                            list.add(
+                                Transaction(
+                                    id = id,
+                                    title = title,
+                                    date = date,
+                                    amount = amount,
+                                    isTopUp = isTopUp,
+                                    type = type,
+                                    status = status,
+                                    reference = reference,
+                                    userId = userId
+                                )
+                            )
                         } catch (e: Exception) {
                             Log.e(TAG, "Error parsing transaction doc: ${e.message}")
                         }
@@ -1452,16 +1562,45 @@ object FirebaseManager {
      */
     fun updateFcmTokenInFirestore(userId: String, token: String) {
         val db = firestore ?: return
+        if (userId.isBlank() || token.isBlank()) return
         db.collection("users").document(userId)
-            .update("fcmToken", token)
+            .set(hashMapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
             .addOnSuccessListener {
-                Log.d(TAG, "FCM token updated for user $userId in Firestore.")
+                Log.d(TAG, "FCM token updated for user $userId in users collection.")
             }
-            .addOnFailureListener { e ->
-                Log.w(TAG, "FCM token update failed, trying merge-set: ${e.message}")
-                db.collection("users").document(userId)
-                    .set(hashMapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
+        db.collection("drivers").document(userId)
+            .set(
+                hashMapOf(
+                    "fcmToken" to token,
+                    "token" to token,
+                    "updatedAt" to System.currentTimeMillis()
+                ),
+                com.google.firebase.firestore.SetOptions.merge()
+            )
+            .addOnSuccessListener {
+                Log.d(TAG, "FCM token updated for driver $userId in drivers collection.")
             }
+    }
+
+    /**
+     * Broadcast a newly created parcel shipment to the active fleet
+     */
+    fun broadcastNewDispatchAlert(parcel: Parcel) {
+        val db = firestore ?: return
+        val broadcastMap = hashMapOf(
+            "parcelId" to parcel.id,
+            "itemName" to parcel.itemName,
+            "service" to parcel.category,
+            "pickupAddress" to parcel.pickupAddress,
+            "deliveryAddress" to parcel.deliveryAddress,
+            "price" to parcel.price,
+            "pickupLat" to (parcel.pickupLat ?: 6.3350),
+            "pickupLng" to (parcel.pickupLng ?: 5.6037),
+            "createdAt" to System.currentTimeMillis(),
+            "status" to parcel.status.name
+        )
+        db.collection("fleet_broadcasts").document(parcel.id)
+            .set(broadcastMap, com.google.firebase.firestore.SetOptions.merge())
     }
 
     /**
@@ -1891,14 +2030,32 @@ object FirebaseManager {
     }
 
     /**
-     * Update real-time GPS courier coordinates during transit/delivery simulation
+     * Update real-time GPS courier coordinates during transit/delivery
      */
-    fun updateCourierLocationByRider(parcelId: String, lat: Double, lng: Double, onComplete: (Boolean, String?) -> Unit) {
+    fun updateCourierLocationByRider(
+        parcelId: String,
+        lat: Double,
+        lng: Double,
+        bearing: Float = 0f,
+        speed: Float = 0f,
+        accuracy: Float = 0f,
+        onComplete: (Boolean, String?) -> Unit = { _, _ -> }
+    ) {
         val db = firestore
         if (db == null) {
             onComplete(false, "Firestore not available")
             return
         }
+
+        val now = System.currentTimeMillis()
+        val updateMap = mutableMapOf<String, Any>(
+            "courierLatitude" to lat,
+            "courierLongitude" to lng,
+            "courierLastUpdated" to now
+        )
+        if (bearing != 0f) updateMap["courierBearing"] = bearing.toDouble()
+        if (speed != 0f) updateMap["courierSpeed"] = speed.toDouble()
+        if (accuracy != 0f) updateMap["courierAccuracy"] = accuracy.toDouble()
 
         val docRef = db.collection("deliveries").document(parcelId)
         docRef.get().addOnSuccessListener { snapshot ->
@@ -1906,17 +2063,11 @@ object FirebaseManager {
                 val parcelUserId = snapshot.getString("userId") ?: ""
                 
                 db.runTransaction { transaction ->
-                    transaction.update(docRef, "courierLatitude", lat)
-                    transaction.update(docRef, "courierLongitude", lng)
+                    updateMap.forEach { (k, v) -> transaction.update(docRef, k, v) }
                 }.addOnSuccessListener {
                     if (parcelUserId.isNotEmpty()) {
                         val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
-                        userDocRef.update(
-                            mapOf(
-                                "courierLatitude" to lat,
-                                "courierLongitude" to lng
-                            )
-                        )
+                        userDocRef.update(updateMap)
                     }
                     onComplete(true, null)
                 }.addOnFailureListener { e ->
@@ -1943,8 +2094,14 @@ object FirebaseManager {
         val docRef = db.collection("deliveries").document(parcelId)
         docRef.get().addOnSuccessListener { snapshot ->
             if (snapshot.exists()) {
+                val currentStatus = snapshot.getString("status") ?: ""
+                if (currentStatus == "CANCELLED" || currentStatus == "DELIVERED") {
+                    onComplete(false, "This shipment has already been ${currentStatus.lowercase()}.")
+                    return@addOnSuccessListener
+                }
+
                 val realOtp = snapshot.getString("otpCode") ?: ""
-                val otpExpiresAt = snapshot.getLong("otpExpiresAt") ?: (System.currentTimeMillis() + 60 * 60 * 1000L)
+                val otpExpiresAt = snapshot.getLong("otpExpiresAt") ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
                 val otpAttempts = snapshot.getLong("otpAttempts") ?: 0L
                 val isLocked = otpAttempts >= 5
                 val isExpired = System.currentTimeMillis() > otpExpiresAt
@@ -2501,6 +2658,49 @@ object FirebaseManager {
                 val lng = snapshot.getSafeDoubleNullable("lng") ?: snapshot.getSafeDoubleNullable("longitude")
                 if (lat != null && lng != null) {
                     trySend(Pair(lat, lng))
+                }
+            }
+        awaitClose { registration.remove() }
+    }
+
+    /**
+     * Real-time listener for a specific rider's complete GPS telemetry (coords, bearing, speed, accuracy, timestamp)
+     */
+    fun listenToRiderTelemetry(riderId: String): Flow<RiderTelemetry?> = callbackFlow {
+        val db = firestore
+        if (db == null || riderId.isEmpty()) {
+            trySend(null)
+            close()
+            return@callbackFlow
+        }
+        val registration = db.collection("fleet_locations").document(riderId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null || !snapshot.exists()) {
+                    trySend(null)
+                    return@addSnapshotListener
+                }
+                val lat = snapshot.getSafeDoubleNullable("latitude") ?: snapshot.getSafeDoubleNullable("lat")
+                val lng = snapshot.getSafeDoubleNullable("longitude") ?: snapshot.getSafeDoubleNullable("lng")
+                if (lat != null && lng != null) {
+                    val bearing = snapshot.getDouble("bearing")?.toFloat()
+                        ?: snapshot.getDouble("heading")?.toFloat() ?: 0f
+                    val speed = snapshot.getDouble("speed")?.toFloat() ?: 0f
+                    val accuracy = snapshot.getDouble("accuracy")?.toFloat() ?: 0f
+                    val timestamp = snapshot.getLong("timestamp") ?: snapshot.getLong("updatedAt") ?: 0L
+                    val activeBookingId = snapshot.getString("activeBookingId") ?: ""
+                    trySend(
+                        RiderTelemetry(
+                            latitude = lat,
+                            longitude = lng,
+                            bearing = bearing,
+                            speed = speed,
+                            accuracy = accuracy,
+                            timestamp = timestamp,
+                            activeBookingId = activeBookingId
+                        )
+                    )
+                } else {
+                    trySend(null)
                 }
             }
         awaitClose { registration.remove() }
