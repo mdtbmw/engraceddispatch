@@ -42,7 +42,58 @@ import { DispatchDecisionDrawer } from "@/components/design-system/DispatchDecis
 import { NotificationLifecycleManager } from "@/components/design-system/NotificationLifecycle";
 import { ShipmentMicroPage } from "@/components/design-system/ShipmentMicroPage";
 type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "broadcast" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support" | "payouts";
-interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; createdAt?: any; vendorBalance?: number; pin?: string; userPin?: string; securityPin?: string; }
+interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; lastPing?: any; lastHeartbeat?: any; lastActive?: any; createdAt?: any; vendorBalance?: number; pin?: string; userPin?: string; securityPin?: string; }
+
+/** Safely parse any Firestore Timestamp, millisecond/second number, or date string into ms */
+function getTimestampMs(val: any): number | null {
+  if (!val) return null;
+  if (typeof val?.toMillis === "function") return val.toMillis();
+  if (typeof val?.seconds === "number") return val.seconds * 1000 + (val.nanoseconds ? Math.floor(val.nanoseconds / 1e6) : 0);
+  if (typeof val === "number") {
+    return val < 1e11 ? val * 1000 : val;
+  }
+  if (typeof val === "string") {
+    const parsed = new Date(val).getTime();
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+/** 
+ * Strict presence checker:
+ * A user is strictly ONLINE ONLY IF:
+ * 1. Account is not marked deleted, suspended, offline, or disabled.
+ * 2. Has isOnline === true OR status === "online".
+ * 3. Has an authentic, verified device heartbeat timestamp within the last 4 minutes (240,000 ms).
+ * If no heartbeat exists or heartbeat is older than 4 minutes, they are STRICTLY OFFLINE.
+ */
+function checkUserOnline(u: { 
+  isOnline?: boolean; 
+  status?: string; 
+  isDeleted?: boolean; 
+  lastSeen?: any; 
+  lastPing?: any; 
+  lastHeartbeat?: any; 
+  lastActive?: any; 
+}): boolean {
+  if (u.isDeleted) return false;
+  const rawStatus = (u.status || "active").toLowerCase();
+  if (rawStatus === "offline" || rawStatus === "suspended" || rawStatus === "disabled") return false;
+  if (!u.isOnline && rawStatus !== "online") return false;
+
+  const ts = Math.max(
+    getTimestampMs(u.lastSeen) || 0,
+    getTimestampMs(u.lastHeartbeat) || 0,
+    getTimestampMs(u.lastPing) || 0,
+    getTimestampMs(u.lastActive) || 0
+  );
+
+  // Without a verified heartbeat timestamp, user is NEVER marked online
+  if (!ts || ts <= 0) return false;
+
+  const diff = Date.now() - ts;
+  return diff >= 0 && diff < 4 * 60 * 1000;
+}
 interface Delivery {
   id: string;
   status: string;
@@ -2059,23 +2110,15 @@ function AdminDashboardPage() {
         const x = d.data();
         const rawStatus = (x.status || "active").toLowerCase();
         
-        // Strict real presence logic:
-        // A user is marked ONLINE on a device ONLY IF:
-        // 1. Explicitly has x.isOnline === true and rawStatus is not offline/suspended.
-        // 2. Has a registered device token OR belongs to an authorized app role.
-        // 3. Has an authentic recent device heartbeat (lastSeen / lastHeartbeat / lastPing) within 5 minutes (300,000 ms).
-        let isOnline = false;
-        if (x.isOnline === true && rawStatus !== "offline" && rawStatus !== "suspended") {
-          const hasDevice = Boolean(x.fcmToken || x.deviceToken || x.pushToken || ["admin", "super_admin", "dispatcher", "rider", "driver", "vendor", "customer"].includes(x.role));
-          const lastActive = x.lastSeen?.toMillis ? x.lastSeen.toMillis() : (typeof x.lastSeen === "number" ? x.lastSeen : (x.lastPing?.toMillis ? x.lastPing.toMillis() : (typeof x.lastPing === "number" ? x.lastPing : null)));
-          if (hasDevice && lastActive) {
-            isOnline = (Date.now() - lastActive) < 5 * 60 * 1000;
-          } else if (hasDevice && !lastActive) {
-            isOnline = true;
-          } else {
-            isOnline = false;
-          }
-        }
+        const isOnline = checkUserOnline({
+          isOnline: x.isOnline,
+          status: rawStatus,
+          isDeleted: x.isDeleted,
+          lastSeen: x.lastSeen,
+          lastPing: x.lastPing,
+          lastHeartbeat: x.lastHeartbeat,
+          lastActive: x.lastActive
+        });
 
         list.push({
           id: d.id, uid: x.uid || d.id, name: x.name || "User", email: x.email || "", phone: x.phone || "",
@@ -2086,7 +2129,11 @@ function AdminDashboardPage() {
           walletBalance: x.walletBalance || x.balance || x.wallet_balance || 0,
           loyaltyPoints: x.loyaltyPoints || 0, photoUrl: x.photoUrl || "",
           bikeNumber: x.bikeNumber || "", staffId: x.staffId || "", lat: x.lat || x.latitude, lng: x.lng || x.longitude,
-          isDeleted: x.isDeleted || false, updatedAt: x.updatedAt, lastSeen: x.lastSeen,
+          isDeleted: x.isDeleted || false, updatedAt: x.updatedAt, 
+          lastSeen: x.lastSeen,
+          lastPing: x.lastPing,
+          lastHeartbeat: x.lastHeartbeat,
+          lastActive: x.lastActive,
         });
       });
       setUsers(list); setConnected(true); setRefreshT(new Date().toLocaleTimeString());
@@ -2412,7 +2459,22 @@ function AdminDashboardPage() {
   };
 
 
-  const activeUsers = users.filter(u => !u.isDeleted);
+  const [presenceTick, setPresenceTick] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPresenceTick(Date.now());
+    }, 30000); // Re-check presence freshness every 30 seconds
+    return () => clearInterval(timer);
+  }, []);
+
+  const activeUsers = useMemo(() => {
+    return users
+      .filter(u => !u.isDeleted)
+      .map(u => ({
+        ...u,
+        isOnline: checkUserOnline(u),
+      }));
+  }, [users, presenceTick]);
   const customers = activeUsers.filter(u => u.role === "customer" || u.role === "");
   const drivers = activeUsers
     .filter(u => u.role === "rider" || u.role === "driver" || u.role === "courier")
@@ -2623,7 +2685,7 @@ function AdminDashboardPage() {
             }}
             addToast={addToast}
           />}
-        {tab === "users" && <UsersTab activeUsers={activeUsers} deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} userRole={userRole} />}
+        {tab === "users" && <UsersTab activeUsers={activeUsers} deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} userRole={userRole} currentUser={currentUser} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} users={users} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
         {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
         {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
@@ -2652,7 +2714,7 @@ function getDynamicPassword(email: string, pin: string): string {
   return `${pin}${pin}_${hashStr}`;
 }
 
-function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addToast, createNotification, userRole = "admin" }: { 
+function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addToast, createNotification, userRole = "admin", currentUser }: { 
   activeUsers: UserProfile[]; 
   deliveries?: any[];
   searchQuery: string; 
@@ -2661,10 +2723,20 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
   addToast?: (type: Toast["type"], message: string) => void;
   createNotification?: (title: string, desc: string) => Promise<void>;
   userRole?: string;
+  currentUser?: any;
 }) {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [presenceFilter, setPresenceFilter] = useState<string>("ALL");
+
+  const isSelf = useCallback((u: UserProfile | { id?: string; uid?: string; email?: string } | null | undefined): boolean => {
+    if (!u || !currentUser) return false;
+    const currentUid = currentUser.uid;
+    const currentEmail = currentUser.email ? currentUser.email.toLowerCase().trim() : "";
+    if (currentUid && (u.id === currentUid || u.uid === currentUid)) return true;
+    if (currentEmail && u.email && u.email.toLowerCase().trim() === currentEmail) return true;
+    return false;
+  }, [currentUser]);
 
   const riderStatsMap = useMemo(() => {
     const map: Record<string, { totalRides: number; completedRides: number; totalTips: number; activeLoad: number }> = {};
@@ -2761,30 +2833,37 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
 
   useEffect(() => { setUPage(0); }, [search, searchQuery, roleFilter, presenceFilter]);
 
-  // Selection handlers
+  // Selection handlers - skips logged-in admin account
   const handleSelectAll = () => {
-    if (pagedUsers.length === 0) return;
-    const allSelectedOnPage = pagedUsers.every(u => selectedIds.has(u.id));
+    const selectable = pagedUsers.filter(u => !isSelf(u));
+    if (selectable.length === 0) return;
+    const allSelectedOnPage = selectable.every(u => selectedIds.has(u.id));
     const next = new Set(selectedIds);
     if (allSelectedOnPage) {
-      pagedUsers.forEach(u => next.delete(u.id));
+      selectable.forEach(u => next.delete(u.id));
     } else {
-      pagedUsers.forEach(u => next.add(u.id));
+      selectable.forEach(u => next.add(u.id));
     }
     setSelectedIds(next);
   };
 
   const handleSelectAllFiltered = () => {
-    if (filtered.length === 0) return;
-    const allSelected = filtered.every(u => selectedIds.has(u.id));
+    const selectable = filtered.filter(u => !isSelf(u));
+    if (selectable.length === 0) return;
+    const allSelected = selectable.every(u => selectedIds.has(u.id));
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filtered.map(u => u.id)));
+      setSelectedIds(new Set(selectable.map(u => u.id)));
     }
   };
 
   const handleToggleSelect = (id: string) => {
+    const target = visibleUsers.find(u => u.id === id);
+    if (target && isSelf(target)) {
+      addToast?.("info", "Your current administrative account cannot be selected for bulk actions");
+      return;
+    }
     const next = new Set(selectedIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -2796,17 +2875,22 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
     setSweepingPresence(true);
     try {
       const now = Date.now();
-      const threshold = 5 * 60 * 1000; // strict 5 minute freshness
+      const threshold = 4 * 60 * 1000; // strict 4 minute freshness
       let count = 0;
       const batch = writeBatch(db);
       visibleUsers.forEach(u => {
-        if (u.isOnline) {
-          const lastActive = u.lastSeen?.toMillis ? u.lastSeen.toMillis() : (typeof u.lastSeen === "number" ? u.lastSeen : null);
-          if (!lastActive || (now - lastActive > threshold)) {
+        const lastActive = Math.max(
+          getTimestampMs(u.lastSeen) || 0,
+          getTimestampMs(u.lastHeartbeat) || 0,
+          getTimestampMs(u.lastPing) || 0,
+          getTimestampMs(u.lastActive) || 0
+        );
+        if (!lastActive || (now - lastActive > threshold)) {
+          if (u.isOnline || u.status === "online") {
             batch.update(doc(db, "users", u.id), {
               isOnline: false,
               status: "offline",
-              updatedAt: Timestamp.now()
+              updatedAt: serverTimestamp()
             });
             count++;
           }
@@ -2815,7 +2899,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
       if (count > 0) {
         await batch.commit();
         addLog("Sweep Presence", `Reset ${count} stale account(s) without active device presence to offline`, "Users");
-        addToast?.("success", `Reset ${count} inactive account(s) to offline`);
+        addToast?.("success", `Reset ${count} inactive account(s) to offline in database`);
       } else {
         addToast?.("info", "All active presence states are fresh and verified");
       }
@@ -2830,11 +2914,20 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
     if (!showDeleteModal) return;
     setDeleting(true);
     try {
-      const ids = showDeleteModal.mode === "single" && showDeleteModal.user
+      const rawIds = showDeleteModal.mode === "single" && showDeleteModal.user
         ? [showDeleteModal.user.id]
         : Array.from(selectedIds);
 
+      // Strictly exclude current logged-in admin from deletion
+      const ids = rawIds.filter(id => {
+        const match = visibleUsers.find(u => u.id === id);
+        return !isSelf(match || { id });
+      });
+
       if (ids.length === 0) {
+        if (rawIds.length > 0) {
+          addToast?.("error", "Action blocked: You cannot delete your own administrative account.");
+        }
         setDeleting(false);
         setShowDeleteModal(null);
         return;
@@ -3305,13 +3398,13 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {selectedIds.size < filtered.length && (
+            {selectedIds.size < filtered.filter(u => !isSelf(u)).length && (
               <button
                 type="button"
                 onClick={handleSelectAllFiltered}
                 className="h-8 px-3 rounded-xl bg-white dark:bg-[#222] border border-[#FFB800]/40 text-xs font-bold text-gray-900 dark:text-white hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
               >
-                Select All Filtered ({filtered.length})
+                Select All Filtered ({filtered.filter(u => !isSelf(u)).length})
               </button>
             )}
             <button
@@ -3358,10 +3451,13 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                   <th className="p-3.5 w-10 text-center">
                     <input
                       type="checkbox"
-                      checked={pagedUsers.length > 0 && pagedUsers.every(u => selectedIds.has(u.id))}
+                      checked={
+                        pagedUsers.filter(u => !isSelf(u)).length > 0 && 
+                        pagedUsers.filter(u => !isSelf(u)).every(u => selectedIds.has(u.id))
+                      }
                       onChange={handleSelectAll}
                       className="w-4 h-4 rounded-md accent-[#FFB800] cursor-pointer"
-                      title="Select all on this page"
+                      title="Select all on this page (skips your account)"
                     />
                   </th>
                   <th className="p-3.5">User Details</th>
@@ -3378,22 +3474,35 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                     onClick={(e) => {
                       const target = e.target as HTMLElement;
                       if (target.closest('button') || target.closest('a') || target.closest('input')) return;
-                      handleToggleSelect(u.id);
+                      if (!isSelf(u)) {
+                        handleToggleSelect(u.id);
+                      }
                     }}
                     className={`transition-colors cursor-pointer group ${
                       selectedIds.has(u.id)
                         ? "bg-[#FFB800]/10 dark:bg-[#FFB800]/15"
+                        : isSelf(u)
+                        ? "bg-[#FFB800]/5 dark:bg-[#FFB800]/5"
                         : "hover:bg-black/5 dark:hover:bg-white/5"
                     }`}
                   >
                     {/* Checkbox */}
                     <td className="p-3.5 text-center" onClick={e => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(u.id)}
-                        onChange={() => handleToggleSelect(u.id)}
-                        className="w-4 h-4 rounded-md accent-[#FFB800] cursor-pointer"
-                      />
+                      {isSelf(u) ? (
+                        <div 
+                          className="w-4 h-4 rounded-md bg-gray-200 dark:bg-white/10 flex items-center justify-center cursor-not-allowed mx-auto"
+                          title="Your logged-in administrative account is protected and cannot be selected"
+                        >
+                          <Lock className="w-2.5 h-2.5 text-gray-500 dark:text-gray-400" />
+                        </div>
+                      ) : (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(u.id)}
+                          onChange={() => handleToggleSelect(u.id)}
+                          className="w-4 h-4 rounded-md accent-[#FFB800] cursor-pointer"
+                        />
+                      )}
                     </td>
 
                     {/* User Identity Column */}
@@ -3417,6 +3526,11 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-extrabold text-gray-900 dark:text-white truncate">{u.name}</span>
+                            {isSelf(u) && (
+                              <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-[#FFB800]/20 text-amber-900 dark:text-[#FFB800] border border-[#FFB800]/30">
+                                You
+                              </span>
+                            )}
                             {u.staffId && (
                               <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300">
                                 {u.staffId}
@@ -3585,13 +3699,22 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
-                        <button
-                          title="Permanently Delete User"
-                          onClick={() => setShowDeleteModal({ mode: "single", user: u })}
-                          className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-all cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {isSelf(u) ? (
+                          <span 
+                            title="You cannot delete your own administrative account"
+                            className="p-2 text-gray-400 dark:text-gray-600 cursor-not-allowed inline-flex items-center justify-center"
+                          >
+                            <Lock className="w-4 h-4" />
+                          </span>
+                        ) : (
+                          <button
+                            title="Permanently Delete User"
+                            onClick={() => setShowDeleteModal({ mode: "single", user: u })}
+                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -3667,6 +3790,10 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                 <p>
                   You are about to permanently remove <b>{showDeleteModal.count} selected user accounts</b> from the Firestore database. This action completely clears their documents and cannot be undone.
                 </p>
+              ) : isSelf(showDeleteModal.user) ? (
+                <p className="text-amber-800 dark:text-amber-400 font-bold">
+                  Protected Account: You are currently logged in as this administrator. Self-deletion is strictly prohibited by security policy.
+                </p>
               ) : (
                 <p>
                   Are you sure you want to permanently delete user <b>{showDeleteModal.user?.name}</b> ({showDeleteModal.user?.email || showDeleteModal.user?.phone || showDeleteModal.user?.id})? This will permanently wipe the record from Firestore.
@@ -3685,9 +3812,9 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
               </button>
               <button
                 type="button"
-                disabled={deleting}
+                disabled={deleting || (showDeleteModal.mode === "single" && isSelf(showDeleteModal.user))}
                 onClick={executePermanentDelete}
-                className="h-10 px-5 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white text-xs font-black flex items-center gap-2 shadow-md cursor-pointer"
+                className="h-10 px-5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-xs font-black flex items-center gap-2 shadow-md cursor-pointer"
               >
                 {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 <span>{deleting ? "Deleting from Database..." : "Delete Permanently"}</span>
