@@ -2825,6 +2825,16 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
   const [fundAmount, setFundAmount] = useState("");
   const [fundReason, setFundReason] = useState("");
   const [fundingWallet, setFundingWallet] = useState(false);
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const [purgeLog, setPurgeLog] = useState<string[]>([]);
+  const [purgeStats, setPurgeStats] = useState({
+    usersScanned: 0,
+    usersUpgraded: 0,
+    deliveriesSynced: 0,
+    loyaltyAwarded: 0,
+    pinsGenerated: 0
+  });
 
   useEffect(() => {
     if (!fundUser) return;
@@ -3298,6 +3308,188 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
     setFundingWallet(false);
   };
 
+  const runPurgeAndCleanUp = async () => {
+    setPurging(true);
+    setPurgeLog(["[START] Initiating full system purge, normalization and legacy account upgrade..."]);
+    const stats = { usersScanned: 0, usersUpgraded: 0, deliveriesSynced: 0, loyaltyAwarded: 0, pinsGenerated: 0 };
+    setPurgeStats({ ...stats });
+
+    try {
+      const now = Timestamp.now();
+      // 1. Fetch all users
+      setPurgeLog(prev => [...prev, "[SCAN] Querying all registered user profiles from Firestore..."]);
+      const userSnap = await getDocs(collection(db, "users"));
+      stats.usersScanned = userSnap.size;
+      setPurgeStats({ ...stats });
+      setPurgeLog(prev => [...prev, `[FOUND] Retrieved ${userSnap.size} user profile(s). Starting normalization...`]);
+
+      for (const uDoc of userSnap.docs) {
+        const uData = uDoc.data();
+        const uId = uDoc.id;
+        const updates: any = {};
+
+        // Check walletBalance
+        if (uData.walletBalance === undefined || uData.walletBalance === null || isNaN(Number(uData.walletBalance))) {
+          updates.walletBalance = 0.0;
+        }
+
+        // Check loyaltyPoints (default 350 for registered users)
+        if (uData.loyaltyPoints === undefined || uData.loyaltyPoints === null || isNaN(Number(uData.loyaltyPoints))) {
+          updates.loyaltyPoints = 350;
+        }
+
+        // Check deliveryCount
+        if (uData.deliveryCount === undefined || uData.deliveryCount === null || isNaN(Number(uData.deliveryCount))) {
+          updates.deliveryCount = 0;
+        }
+
+        // Check role
+        if (!uData.role || uData.role.trim() === "") {
+          updates.role = uData.userRole || "customer";
+        }
+
+        // Check status
+        if (!uData.status || uData.status.trim() === "") {
+          updates.status = "active";
+        }
+
+        // Check isOnline
+        if (uData.isOnline === undefined || uData.isOnline === null) {
+          updates.isOnline = false;
+        }
+
+        // Check rider specific fields
+        if (uData.role === "rider" || updates.role === "rider") {
+          if (uData.rating === undefined || uData.rating === null) updates.rating = 5.0;
+          if (uData.ratingCount === undefined || uData.ratingCount === null) updates.ratingCount = 1;
+          if (uData.tipsEarned === undefined || uData.tipsEarned === null) updates.tipsEarned = 0.0;
+          if (uData.totalTips === undefined || uData.totalTips === null) updates.totalTips = 0.0;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          updates.updatedAt = now;
+          await setDoc(doc(db, "users", uId), updates, { merge: true });
+          stats.usersUpgraded++;
+          setPurgeStats({ ...stats });
+          setPurgeLog(prev => [...prev, `[UPGRADE] User ${uData.name || uId} normalized: ${Object.keys(updates).filter(k => k !== 'updatedAt').join(", ")}`]);
+        }
+
+        // Reconcile user's deliveries subcollection
+        try {
+          const subDelSnap = await getDocs(collection(db, "users", uId, "deliveries"));
+          for (const dDoc of subDelSnap.docs) {
+            const dData = dDoc.data();
+            const dId = dDoc.id;
+            const curStatus = (dData.status || "").toUpperCase();
+            const subUpdates: any = {};
+
+            // Check PIN
+            if ((!dData.otpCode || dData.otpCode.trim() === "") && !["DELIVERED", "CANCELLED"].includes(curStatus)) {
+              subUpdates.otpCode = Math.floor(1000 + Math.random() * 9000).toString();
+              stats.pinsGenerated++;
+            }
+
+            // Check completed status
+            if (dData.completedTimestamp && curStatus !== "DELIVERED") {
+              subUpdates.status = "DELIVERED";
+              subUpdates.progress = 1.0;
+              subUpdates.otpVerified = true;
+            }
+
+            if (curStatus === "DELIVERED" && (dData.progress !== 1.0 || !dData.otpVerified)) {
+              subUpdates.progress = 1.0;
+              subUpdates.otpVerified = true;
+              if (!dData.completedTimestamp) subUpdates.completedTimestamp = Date.now();
+            }
+
+            if (Object.keys(subUpdates).length > 0) {
+              subUpdates.updatedAt = now;
+              await updateDoc(doc(db, "users", uId, "deliveries", dId), subUpdates);
+              stats.deliveriesSynced++;
+              setPurgeStats({ ...stats });
+
+              // Also mirror to root deliveries if root is missing them
+              try {
+                await updateDoc(doc(db, "deliveries", dId), subUpdates);
+              } catch (_) {}
+            }
+
+            // Ensure loyalty points awarded for delivered parcels
+            if (curStatus === "DELIVERED" || subUpdates.status === "DELIVERED") {
+              try {
+                const lRef = doc(db, "customer_loyalty_points", dId);
+                const lSnap = await getDoc(lRef);
+                if (!lSnap.exists()) {
+                  await setDoc(lRef, {
+                    parcelId: dId,
+                    userId: uId,
+                    pointsAwarded: 15,
+                    awardedAt: Date.now(),
+                    verified: true
+                  }, { merge: true });
+                  stats.loyaltyAwarded++;
+                  setPurgeStats({ ...stats });
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2. Also scan root deliveries to ensure all completed orders have progress 1.0 and PINs
+      setPurgeLog(prev => [...prev, "[SCAN] Auditing all active and completed root deliveries..."]);
+      const rootDelSnap = await getDocs(collection(db, "deliveries"));
+      for (const rDoc of rootDelSnap.docs) {
+        const rData = rDoc.data();
+        const rId = rDoc.id;
+        const curStatus = (rData.status || "").toUpperCase();
+        const rUpdates: any = {};
+
+        if ((!rData.otpCode || rData.otpCode.trim() === "") && !["DELIVERED", "CANCELLED"].includes(curStatus)) {
+          rUpdates.otpCode = Math.floor(1000 + Math.random() * 9000).toString();
+          stats.pinsGenerated++;
+        }
+
+        if (rData.completedTimestamp && curStatus !== "DELIVERED") {
+          rUpdates.status = "DELIVERED";
+          rUpdates.progress = 1.0;
+          rUpdates.otpVerified = true;
+        }
+
+        if (curStatus === "DELIVERED" && (rData.progress !== 1.0 || !rData.otpVerified)) {
+          rUpdates.progress = 1.0;
+          rUpdates.otpVerified = true;
+          if (!rData.completedTimestamp) rUpdates.completedTimestamp = Date.now();
+        }
+
+        if (Object.keys(rUpdates).length > 0) {
+          rUpdates.updatedAt = now;
+          await updateDoc(doc(db, "deliveries", rId), rUpdates);
+          stats.deliveriesSynced++;
+          setPurgeStats({ ...stats });
+
+          if (rData.userId) {
+            try {
+              await updateDoc(doc(db, "users", rData.userId, "deliveries", rId), rUpdates);
+            } catch (_) {}
+          }
+        }
+      }
+
+      setPurgeLog(prev => [
+        ...prev,
+        `[SUCCESS] Upgrade complete! ${stats.usersUpgraded} user(s) normalized, ${stats.deliveriesSynced} delivery record(s) aligned, ${stats.pinsGenerated} PIN(s) issued, ${stats.loyaltyAwarded} loyalty point reward(s) credited.`
+      ]);
+      addLog("Purge & Clean Up", `Upgraded ${stats.usersUpgraded} old user profiles, aligned ${stats.deliveriesSynced} deliveries, and issued ${stats.pinsGenerated} missing PINs.`, "Users");
+      addToast?.("success", `Purge & Clean Up complete: ${stats.usersUpgraded} users normalized, ${stats.deliveriesSynced} deliveries synchronized.`);
+    } catch (e: any) {
+      setPurgeLog(prev => [...prev, `[ERROR] Operation failed: ${e.message}`]);
+      addToast?.("error", "Purge & Clean Up failed: " + e.message);
+    } finally {
+      setPurging(false);
+    }
+  };
+
   const getInitials = (name?: string) => {
     if (!name) return "U";
     const parts = name.trim().split(" ");
@@ -3318,6 +3510,19 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
           </p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              setPurgeLog([]);
+              setShowPurgeModal(true);
+            }}
+            title="Purge & Clean Up old user accounts and subcollections so they experience all new updates"
+            className="h-10 px-3.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-800 dark:text-[#FFB800] rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-2xs cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#FFB800]" />
+            <span className="hidden sm:inline">Purge & Clean Up Old Users</span>
+            <span className="sm:hidden">Purge & Clean</span>
+          </button>
           <button
             type="button"
             onClick={handleSweepStalePresence}
@@ -3813,6 +4018,104 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
           </div>
         )}
       </div>
+
+      {/* Purge & Clean Up Old Users Modal */}
+      {showPurgeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-xl bg-white dark:bg-[#1a1a1a] border border-amber-500/30 rounded-3xl p-6 shadow-2xl animate-scale-in space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-[#FFB800] shrink-0">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                    Purge & Clean Up Old Users
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-0.5">
+                    Upgrade legacy schemas, normalize wallets & loyalty, and sync delivery subcollections
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={purging}
+                onClick={() => setShowPurgeModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer disabled:opacity-30"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-gray-700 dark:text-gray-300 space-y-2">
+              <p className="font-bold text-amber-900 dark:text-amber-400">
+                What this maintenance utility does:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-[11px] text-gray-600 dark:text-gray-400 font-medium">
+                <li>Normalizes legacy accounts with missing or null <code className="text-[#FFB800]">walletBalance</code> (sets to ₦0.0).</li>
+                <li>Initializes missing <code className="text-[#FFB800]">loyaltyPoints</code> (sets default 350 welcome points).</li>
+                <li>Standardizes user roles and statuses across all accounts.</li>
+                <li>Audits rider profiles: fixes missing tip counters, ratings, and attendance defaults.</li>
+                <li>Reconciles client delivery subcollections (<code className="text-[#FFB800]">{"users/{uid}/deliveries"}</code>) with root records.</li>
+                <li>Generates missing 4-digit handover PINs for in-flight deliveries and sets completed orders to 100% progress.</li>
+              </ul>
+            </div>
+
+            {/* Real-time stats grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
+                <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Scanned</span>
+                <span className="text-base font-black text-gray-900 dark:text-white block mt-0.5">{purgeStats.usersScanned}</span>
+                <span className="text-[10px] text-gray-500 dark:text-gray-400">User accounts</span>
+              </div>
+              <div className="p-3 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
+                <span className="text-[10px] uppercase font-extrabold text-emerald-700 dark:text-emerald-400 block">Upgraded</span>
+                <span className="text-base font-black text-emerald-600 dark:text-emerald-400 block mt-0.5">{purgeStats.usersUpgraded}</span>
+                <span className="text-[10px] text-gray-500 dark:text-gray-400">Profiles normalized</span>
+              </div>
+              <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20">
+                <span className="text-[10px] uppercase font-extrabold text-blue-700 dark:text-blue-400 block">Deliveries</span>
+                <span className="text-base font-black text-blue-600 dark:text-blue-400 block mt-0.5">{purgeStats.deliveriesSynced}</span>
+                <span className="text-[10px] text-gray-500 dark:text-gray-400">Mirrors synced</span>
+              </div>
+              <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                <span className="text-[10px] uppercase font-extrabold text-amber-800 dark:text-[#FFB800] block">New PINs</span>
+                <span className="text-base font-black text-amber-800 dark:text-[#FFB800] block mt-0.5">{purgeStats.pinsGenerated}</span>
+                <span className="text-[10px] text-gray-500 dark:text-gray-400">Codes issued</span>
+              </div>
+            </div>
+
+            {/* Interactive log terminal */}
+            {purgeLog.length > 0 && (
+              <div className="p-3 rounded-2xl bg-black/90 text-[11px] font-mono text-emerald-400 max-h-48 overflow-y-auto space-y-1 border border-white/10">
+                {purgeLog.map((log, idx) => (
+                  <div key={idx} className="leading-tight">{log}</div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={purging}
+                onClick={() => setShowPurgeModal(false)}
+                className="h-10 px-4 rounded-xl border border-gray-200 dark:border-white/10 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer disabled:opacity-40"
+              >
+                {purgeLog.length > 0 && !purging ? "Close" : "Cancel"}
+              </button>
+              <button
+                type="button"
+                disabled={purging}
+                onClick={runPurgeAndCleanUp}
+                className="h-10 px-5 rounded-xl bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] text-xs font-black flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className={`w-4 h-4 ${purging ? "animate-spin" : ""}`} />
+                <span>{purging ? "Purging & Upgrading..." : "Start Purge & Clean Up"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Permanent Deletion Confirmation Modal */}
       {showDeleteModal && (
@@ -7454,6 +7757,96 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
   const [staffForm, setStaffForm] = useState({ name: "", staffId: "", role: "admin", phone: "", status: "active" });
   const [savingStaff, setSavingStaff] = useState(false);
   const [recalibratingSettings, setRecalibratingSettings] = useState(false);
+  const [purgingSettings, setPurgingSettings] = useState(false);
+
+  const handleSettingsPurgeUsers = async () => {
+    setPurgingSettings(true);
+    try {
+      const now = Timestamp.now();
+      const userSnap = await getDocs(collection(db, "users"));
+      let upgradedUsers = 0;
+      let syncedDeliveries = 0;
+      let generatedPins = 0;
+
+      for (const uDoc of userSnap.docs) {
+        const uData = uDoc.data();
+        const uId = uDoc.id;
+        const updates: any = {};
+
+        if (uData.walletBalance === undefined || uData.walletBalance === null || isNaN(Number(uData.walletBalance))) {
+          updates.walletBalance = 0.0;
+        }
+        if (uData.loyaltyPoints === undefined || uData.loyaltyPoints === null || isNaN(Number(uData.loyaltyPoints))) {
+          updates.loyaltyPoints = 350;
+        }
+        if (uData.deliveryCount === undefined || uData.deliveryCount === null || isNaN(Number(uData.deliveryCount))) {
+          updates.deliveryCount = 0;
+        }
+        if (!uData.role || uData.role.trim() === "") {
+          updates.role = uData.userRole || "customer";
+        }
+        if (!uData.status || uData.status.trim() === "") {
+          updates.status = "active";
+        }
+        if (uData.isOnline === undefined || uData.isOnline === null) {
+          updates.isOnline = false;
+        }
+        if (uData.role === "rider" || updates.role === "rider") {
+          if (uData.rating === undefined || uData.rating === null) updates.rating = 5.0;
+          if (uData.ratingCount === undefined || uData.ratingCount === null) updates.ratingCount = 1;
+          if (uData.tipsEarned === undefined || uData.tipsEarned === null) updates.tipsEarned = 0.0;
+          if (uData.totalTips === undefined || uData.totalTips === null) updates.totalTips = 0.0;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          updates.updatedAt = now;
+          await setDoc(doc(db, "users", uId), updates, { merge: true });
+          upgradedUsers++;
+        }
+
+        try {
+          const subDelSnap = await getDocs(collection(db, "users", uId, "deliveries"));
+          for (const dDoc of subDelSnap.docs) {
+            const dData = dDoc.data();
+            const dId = dDoc.id;
+            const curStatus = (dData.status || "").toUpperCase();
+            const subUpdates: any = {};
+
+            if ((!dData.otpCode || dData.otpCode.trim() === "") && !["DELIVERED", "CANCELLED"].includes(curStatus)) {
+              subUpdates.otpCode = Math.floor(1000 + Math.random() * 9000).toString();
+              generatedPins++;
+            }
+            if (dData.completedTimestamp && curStatus !== "DELIVERED") {
+              subUpdates.status = "DELIVERED";
+              subUpdates.progress = 1.0;
+              subUpdates.otpVerified = true;
+            }
+            if (curStatus === "DELIVERED" && (dData.progress !== 1.0 || !dData.otpVerified)) {
+              subUpdates.progress = 1.0;
+              subUpdates.otpVerified = true;
+              if (!dData.completedTimestamp) subUpdates.completedTimestamp = Date.now();
+            }
+
+            if (Object.keys(subUpdates).length > 0) {
+              subUpdates.updatedAt = now;
+              await updateDoc(doc(db, "users", uId, "deliveries", dId), subUpdates);
+              syncedDeliveries++;
+              try {
+                await updateDoc(doc(db, "deliveries", dId), subUpdates);
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+
+      addLog("Purge & Upgrade Users", `Settings maintenance: ${upgradedUsers} users normalized, ${syncedDeliveries} delivery mirrors synced, ${generatedPins} PINs generated.`);
+      addToast?.("success", `Purge & Clean Up complete: ${upgradedUsers} accounts normalized, ${syncedDeliveries} deliveries synced.`);
+    } catch (e: any) {
+      addToast?.("error", "Purge & Clean Up failed: " + e.message);
+    } finally {
+      setPurgingSettings(false);
+    }
+  };
 
   const handleSettingsRecalibration = async () => {
     setRecalibratingSettings(true);
@@ -7718,6 +8111,24 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         >
           <RefreshCw className={`w-3.5 h-3.5 ${recalibratingSettings ? "animate-spin" : ""}`} />
           {recalibratingSettings ? "Recalibrating..." : "Recalibrate Fleet Now"}
+        </button>
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+        <div>
+          <p className="text-xs font-bold text-[#111] dark:text-white">Purge & Clean Up Legacy User Accounts</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-0.5">
+            Normalize missing wallet balances, loyalty points, and courier stats so old accounts experience all new features and updates seamlessly.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={purgingSettings}
+          onClick={handleSettingsPurgeUsers}
+          className="px-4 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50 shrink-0"
+        >
+          <Sparkles className={`w-3.5 h-3.5 ${purgingSettings ? "animate-spin" : ""}`} />
+          {purgingSettings ? "Purging..." : "Purge & Upgrade Old Users"}
         </button>
       </div>
     </div>
