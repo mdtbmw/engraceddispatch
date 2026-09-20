@@ -620,10 +620,55 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
       return;
     }
     try {
-      await updateDoc(doc(db, "deliveries", deliveryId), {
+      const updates: any = {
         status: newStatus,
         updatedAt: Timestamp.now()
-      });
+      };
+      if (newStatus === "DELIVERED") {
+        updates.progress = 1.0;
+        updates.completedTimestamp = Date.now();
+        updates.otpVerified = true;
+      } else if (newStatus === "ARRIVED" || newStatus === "HANDOVER_VERIFIED") {
+        updates.progress = 0.9;
+      } else if (newStatus === "TRANSIT" || newStatus === "OUT_FOR_DELIVERY") {
+        updates.progress = 0.6;
+      }
+
+      await updateDoc(doc(db, "deliveries", deliveryId), updates);
+
+      // Synchronize customer subcollection and award loyalty points if delivered
+      if (del?.userId) {
+        try {
+          const userDelRef = doc(db, "users", del.userId, "deliveries", deliveryId);
+          await setDoc(userDelRef, updates, { merge: true });
+
+          if (newStatus === "DELIVERED") {
+            const loyaltyRef = doc(db, "customer_loyalty_points", deliveryId);
+            await setDoc(loyaltyRef, {
+              parcelId: deliveryId,
+              userId: del.userId,
+              pointsAwarded: 15,
+              awardedAt: Date.now(),
+              verified: true
+            }, { merge: true });
+
+            const userRef = doc(db, "users", del.userId);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+              const curPts = (userSnap.data()?.loyaltyPoints as number) || 350;
+              const curDels = (userSnap.data()?.deliveryCount as number) || 1;
+              await updateDoc(userRef, {
+                loyaltyPoints: curPts + 15,
+                deliveryCount: curDels + 1,
+                updatedAt: Timestamp.now()
+              });
+            }
+          }
+        } catch (subErr) {
+          console.error("Failed to mirror status to customer subcollection:", subErr);
+        }
+      }
+
       if (addToast) addToast("success", `Updated status to ${newStatus.replace(/_/g, " ")}`);
       if (del?.userId) {
         try {
@@ -4651,10 +4696,128 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
     const [overrideReason, setOverrideReason] = useState("");
     const [riderSearch, setRiderSearch] = useState("");
     const [riderOnlineOnly, setRiderOnlineOnly] = useState(false);
+    const [showRecalibrateModal, setShowRecalibrateModal] = useState(false);
+    const [recalibrating, setRecalibrating] = useState(false);
+    const [recalibrateLog, setRecalibrateLog] = useState<string[]>([]);
     const [newForm, setNewForm] = useState({ userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
     const [creating, setCreating] = useState(false);
     const [decisionDelivery, setDecisionDelivery] = useState<Delivery | null>(null);
     const perPage = 15;
+
+    const runSystemRecalibration = async () => {
+      setRecalibrating(true);
+      setRecalibrateLog([]);
+      const logMsg = (msg: string) => setRecalibrateLog(prev => [...prev, msg]);
+      logMsg("Initiating system recalibration & fleet data audit...");
+
+      try {
+        const snap = await getDocs(collection(db, "deliveries"));
+        let resolvedStatusCount = 0;
+        let generatedPinCount = 0;
+        let subcollectionsSynced = 0;
+        const now = Timestamp.now();
+
+        for (const dDoc of snap.docs) {
+          const dData = dDoc.data();
+          const delId = dDoc.id;
+          const uId = dData.userId || "";
+          const curStatus = (dData.status || "").toUpperCase();
+
+          const rootUpdates: any = {};
+
+          // Check 1: Active delivery missing OTP Code (legacy bookings)
+          if ((!dData.otpCode || dData.otpCode.trim() === "") && !["DELIVERED", "CANCELLED"].includes(curStatus)) {
+            const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+            rootUpdates.otpCode = newPin;
+            generatedPinCount++;
+            logMsg(`Generated Handover PIN (${newPin}) for active shipment #${idShort(delId)}`);
+          }
+
+          // Check 2: Completed timestamp exists but status is stuck in ARRIVED / TRANSIT / OUT_FOR_DELIVERY
+          if (dData.completedTimestamp && curStatus !== "DELIVERED") {
+            rootUpdates.status = "DELIVERED";
+            rootUpdates.progress = 1.0;
+            rootUpdates.otpVerified = true;
+            resolvedStatusCount++;
+            logMsg(`Resolved stuck delivery #${idShort(delId)} to DELIVERED status`);
+          }
+
+          // Check 3: Status is DELIVERED but progress is < 1.0 or otpVerified is false
+          if (curStatus === "DELIVERED" && (dData.progress !== 1.0 || !dData.otpVerified)) {
+            rootUpdates.progress = 1.0;
+            rootUpdates.otpVerified = true;
+            if (!dData.completedTimestamp) rootUpdates.completedTimestamp = Date.now();
+            resolvedStatusCount++;
+          }
+
+          if (Object.keys(rootUpdates).length > 0) {
+            rootUpdates.updatedAt = now;
+            await updateDoc(doc(db, "deliveries", delId), rootUpdates);
+          }
+
+          // Check 4: Cross-collection mirror synchronization with users/{userId}/deliveries/{delId}
+          if (uId) {
+            try {
+              const targetStatus = rootUpdates.status || curStatus;
+              const targetProgress = targetStatus === "DELIVERED" ? 1.0 : (rootUpdates.progress !== undefined ? rootUpdates.progress : (dData.progress || 0.0));
+              const targetOtp = rootUpdates.otpCode || dData.otpCode || "";
+
+              const userDelRef = doc(db, "users", uId, "deliveries", delId);
+              const userDelSnap = await getDoc(userDelRef);
+
+              if (!userDelSnap.exists()) {
+                await setDoc(userDelRef, {
+                  ...dData,
+                  ...rootUpdates,
+                  status: targetStatus,
+                  progress: targetProgress,
+                  otpCode: targetOtp,
+                  updatedAt: now
+                }, { merge: true });
+                subcollectionsSynced++;
+              } else {
+                const subData = userDelSnap.data();
+                if (subData.status !== targetStatus || subData.progress !== targetProgress || (targetOtp && subData.otpCode !== targetOtp)) {
+                  await updateDoc(userDelRef, {
+                    status: targetStatus,
+                    progress: targetProgress,
+                    otpCode: targetOtp,
+                    updatedAt: now
+                  });
+                  subcollectionsSynced++;
+                }
+              }
+
+              // Check 5: If delivered, ensure customer loyalty points record exists
+              if (targetStatus === "DELIVERED") {
+                const loyaltyRef = doc(db, "customer_loyalty_points", delId);
+                const loyaltySnap = await getDoc(loyaltyRef);
+                if (!loyaltySnap.exists()) {
+                  await setDoc(loyaltyRef, {
+                    parcelId: delId,
+                    userId: uId,
+                    pointsAwarded: 15,
+                    awardedAt: Date.now(),
+                    verified: true
+                  }, { merge: true });
+                }
+              }
+            } catch (userErr) {
+              console.warn(`User delivery subcollection check failed for ${delId}:`, userErr);
+            }
+          }
+        }
+
+        logMsg(`Recalibration Complete: ${resolvedStatusCount} deliveries aligned, ${generatedPinCount} PINs generated, ${subcollectionsSynced} client caches synchronized.`);
+        addLog("Recalibrate Fleet", `System recalibration: ${resolvedStatusCount} statuses aligned, ${generatedPinCount} PINs generated, ${subcollectionsSynced} subcollections synced`);
+        if (addToast) addToast("success", `Recalibration finished successfully: ${resolvedStatusCount} deliveries aligned, ${subcollectionsSynced} mirrors synced.`);
+      } catch (err: any) {
+        logMsg(`Recalibration error: ${err.message}`);
+        if (addToast) addToast("error", "Recalibration failed: " + err.message);
+      } finally {
+        setRecalibrating(false);
+      }
+    };
 
     useEffect(() => {
       if (filterPrefill) {
@@ -4898,13 +5061,56 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
 
       try {
         const updatePayload: any = { status: newStatus, updatedAt: Timestamp.now() };
-        if (newStatus === "DELIVERED" && !delivery.otpVerified) {
-          updatePayload.adminOverrideReason = overrideReason.trim() || "Administrative manual verification";
-          updatePayload.adminOverrideAt = Timestamp.now();
+        if (newStatus === "DELIVERED") {
+          updatePayload.progress = 1.0;
+          updatePayload.completedTimestamp = Date.now();
+          updatePayload.otpVerified = true;
+          if (!delivery.otpVerified) {
+            updatePayload.adminOverrideReason = overrideReason.trim() || "Administrative manual verification";
+            updatePayload.adminOverrideAt = Timestamp.now();
+          }
+        } else if (newStatus === "ARRIVED" || newStatus === "HANDOVER_VERIFIED") {
+          updatePayload.progress = 0.9;
+        } else if (newStatus === "TRANSIT" || newStatus === "OUT_FOR_DELIVERY") {
+          updatePayload.progress = 0.6;
         }
+
         await updateDoc(doc(db, "deliveries", delivery.id), updatePayload);
         addLog("Status", `${idShort(delivery.id)} -> ${newStatus}${updatePayload.adminOverrideReason ? ` (Override: ${updatePayload.adminOverrideReason})` : ""}`);
         const del = deliveries.find(d => d.id === delivery.id) || delivery;
+
+        // Synchronize customer subcollection
+        if (del?.userId) {
+          try {
+            const userDelRef = doc(db, "users", del.userId, "deliveries", delivery.id);
+            await setDoc(userDelRef, updatePayload, { merge: true });
+
+            if (newStatus === "DELIVERED") {
+              const loyaltyRef = doc(db, "customer_loyalty_points", delivery.id);
+              await setDoc(loyaltyRef, {
+                parcelId: delivery.id,
+                userId: del.userId,
+                pointsAwarded: 15,
+                awardedAt: Date.now(),
+                verified: true
+              }, { merge: true });
+
+              const userRef = doc(db, "users", del.userId);
+              const userSnap = await getDoc(userRef);
+              if (userSnap.exists()) {
+                const curPts = (userSnap.data()?.loyaltyPoints as number) || 350;
+                const curDels = (userSnap.data()?.deliveryCount as number) || 1;
+                await updateDoc(userRef, {
+                  loyaltyPoints: curPts + 15,
+                  deliveryCount: curDels + 1,
+                  updatedAt: Timestamp.now()
+                });
+              }
+            }
+          } catch (subErr) {
+            console.error("Failed to mirror status to customer subcollection:", subErr);
+          }
+        }
 
         // When status is CANCELLED: execute customer wallet refund and alert assigned rider
         if (newStatus === "CANCELLED" && del) {
@@ -5375,7 +5581,52 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
             onAssignRider={assignRider}
             onReserveRider={reserveRider}
             onUpdateStatus={async (delId: string, newStatus: string) => {
-              await updateDoc(doc(db, "deliveries", delId), { status: newStatus, updatedAt: Timestamp.now() });
+              const updates: any = { status: newStatus, updatedAt: Timestamp.now() };
+              if (newStatus === "DELIVERED") {
+                updates.progress = 1.0;
+                updates.completedTimestamp = Date.now();
+                updates.otpVerified = true;
+              } else if (newStatus === "ARRIVED" || newStatus === "HANDOVER_VERIFIED") {
+                updates.progress = 0.9;
+              } else if (newStatus === "TRANSIT" || newStatus === "OUT_FOR_DELIVERY") {
+                updates.progress = 0.6;
+              }
+
+              await updateDoc(doc(db, "deliveries", delId), updates);
+
+              const del = deliveries.find((x: any) => x.id === delId);
+              if (del?.userId) {
+                try {
+                  const userDelRef = doc(db, "users", del.userId, "deliveries", delId);
+                  await setDoc(userDelRef, updates, { merge: true });
+
+                  if (newStatus === "DELIVERED") {
+                    const loyaltyRef = doc(db, "customer_loyalty_points", delId);
+                    await setDoc(loyaltyRef, {
+                      parcelId: delId,
+                      userId: del.userId,
+                      pointsAwarded: 15,
+                      awardedAt: Date.now(),
+                      verified: true
+                    }, { merge: true });
+
+                    const userRef = doc(db, "users", del.userId);
+                    const userSnap = await getDoc(userRef);
+                    if (userSnap.exists()) {
+                      const curPts = (userSnap.data()?.loyaltyPoints as number) || 350;
+                      const curDels = (userSnap.data()?.deliveryCount as number) || 1;
+                      await updateDoc(userRef, {
+                        loyaltyPoints: curPts + 15,
+                        deliveryCount: curDels + 1,
+                        updatedAt: Timestamp.now()
+                      });
+                    }
+                  }
+                } catch (subErr) {
+                  console.error("Failed to mirror status to customer subcollection:", subErr);
+                }
+              }
+
               addLog("Status Update", `Shipment #${idShort(delId)} status updated to ${newStatus.toUpperCase()}`, "Shipments");
               if (addToast) addToast("success", `Status updated to ${newStatus.replace(/_/g, " ")}`);
             }}
@@ -5472,6 +5723,16 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
               <div className="w-full sm:w-64">
                 <SearchInput value={search} onChange={setSearch} placeholder="Search sender, receiver, item, tracking #..." />
               </div>
+              <button
+                onClick={() => {
+                  setShowRecalibrateModal(true);
+                  setRecalibrateLog([]);
+                }}
+                className="h-10 px-3.5 bg-gray-100 dark:bg-[#222] hover:bg-[#FFB800] hover:text-[#111] text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-black shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                title="Recalibrate and synchronize in-flight deliveries across client app versions"
+              >
+                <RefreshCw className="w-4 h-4 text-[#FFB800]" /> Recalibrate Fleet
+              </button>
               <button
                 onClick={() => setShowNew(true)}
                 className="h-10 px-4 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
@@ -6575,6 +6836,79 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
           </div>
         )}
 
+        {/* System Recalibration & In-Flight Fleet Sync Modal */}
+        {showRecalibrateModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" onClick={() => !recalibrating && setShowRecalibrateModal(false)}>
+            <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-6 w-full max-w-xl shadow-2xl space-y-4 text-left" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/10 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-[#FFB800]/15 text-[#FFB800] flex items-center justify-center">
+                    <RefreshCw className={`w-5 h-5 ${recalibrating ? "animate-spin text-[#FFB800]" : ""}`} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-[#111] dark:text-white">System Recalibration Hub</h3>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">Resolve in-flight delivery inconsistencies across client version rollouts</p>
+                  </div>
+                </div>
+                {!recalibrating && (
+                  <button onClick={() => setShowRecalibrateModal(false)} className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-red-500 cursor-pointer p-1 rounded-lg">
+                    <X size={18} />
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl space-y-1.5">
+                  <div className="flex items-center gap-2 text-amber-800 dark:text-[#FFB800] font-black text-xs">
+                    <ShieldCheck size={16} /> Automated Recalibration Pipeline
+                  </div>
+                  <p className="text-[11px] text-gray-700 dark:text-gray-300 leading-relaxed font-medium">
+                    This utility audits all deliveries in Firestore to reconcile client version rollouts:
+                  </p>
+                  <ul className="text-[11px] text-gray-600 dark:text-gray-400 list-disc list-inside space-y-1 font-medium pl-1">
+                    <li><b>Legacy PIN Gate Resolution</b>: Generates 4-digit Handover PINs for active orders created before PIN enforcement.</li>
+                    <li><b>Stuck Arrived / In-Transit Deliveries</b>: Aligns orders completed by couriers on older app versions to <span className="font-bold text-emerald-600 dark:text-emerald-400">DELIVERED</span>.</li>
+                    <li><b>Cross-Collection Synchronization</b>: Reconciles root <code className="font-mono text-[10px]">deliveries</code> with customer subcollections <code className="font-mono text-[10px]">users/{"{id}"}/deliveries</code>.</li>
+                    <li><b>Loyalty Points Assurance</b>: Confirms 15 loyalty points are safely awarded in <code className="font-mono text-[10px]">customer_loyalty_points</code>.</li>
+                  </ul>
+                </div>
+
+                {/* Audit Terminal Log */}
+                {recalibrateLog.length > 0 && (
+                  <div className="bg-black/90 dark:bg-black text-emerald-400 font-mono text-[11px] rounded-2xl p-3.5 max-h-48 overflow-y-auto space-y-1 border border-white/10 shadow-inner">
+                    {recalibrateLog.map((line, idx) => (
+                      <div key={idx} className="flex items-start gap-2">
+                        <span className="text-gray-500 select-none">&gt;</span>
+                        <span>{line}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100 dark:border-white/10">
+                <button
+                  type="button"
+                  disabled={recalibrating}
+                  onClick={() => setShowRecalibrateModal(false)}
+                  className="px-4 py-2.5 bg-gray-100 dark:bg-[#262626] text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-[#333] transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {recalibrateLog.length > 0 && !recalibrating ? "Done" : "Cancel"}
+                </button>
+                <button
+                  type="button"
+                  disabled={recalibrating}
+                  onClick={runSystemRecalibration}
+                  className="px-5 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${recalibrating ? "animate-spin" : ""}`} />
+                  {recalibrating ? "Recalibrating System..." : "Start System Recalibration"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Dispatch Decision Drawer (Design System) */}
         <DispatchDecisionDrawer
           isOpen={!!decisionDelivery}
@@ -7119,6 +7453,105 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
   const [editingStaff, setEditingStaff] = useState<UserProfile | null>(null);
   const [staffForm, setStaffForm] = useState({ name: "", staffId: "", role: "admin", phone: "", status: "active" });
   const [savingStaff, setSavingStaff] = useState(false);
+  const [recalibratingSettings, setRecalibratingSettings] = useState(false);
+
+  const handleSettingsRecalibration = async () => {
+    setRecalibratingSettings(true);
+    try {
+      const snap = await getDocs(collection(db, "deliveries"));
+      let resolvedCount = 0;
+      let pinCount = 0;
+      let syncCount = 0;
+      const now = Timestamp.now();
+
+      for (const dDoc of snap.docs) {
+        const dData = dDoc.data();
+        const delId = dDoc.id;
+        const uId = dData.userId || "";
+        const curStatus = (dData.status || "").toUpperCase();
+        const rootUpdates: any = {};
+
+        if ((!dData.otpCode || dData.otpCode.trim() === "") && !["DELIVERED", "CANCELLED"].includes(curStatus)) {
+          rootUpdates.otpCode = Math.floor(1000 + Math.random() * 9000).toString();
+          pinCount++;
+        }
+
+        if (dData.completedTimestamp && curStatus !== "DELIVERED") {
+          rootUpdates.status = "DELIVERED";
+          rootUpdates.progress = 1.0;
+          rootUpdates.otpVerified = true;
+          resolvedCount++;
+        }
+
+        if (curStatus === "DELIVERED" && (dData.progress !== 1.0 || !dData.otpVerified)) {
+          rootUpdates.progress = 1.0;
+          rootUpdates.otpVerified = true;
+          if (!dData.completedTimestamp) rootUpdates.completedTimestamp = Date.now();
+          resolvedCount++;
+        }
+
+        if (Object.keys(rootUpdates).length > 0) {
+          rootUpdates.updatedAt = now;
+          await updateDoc(doc(db, "deliveries", delId), rootUpdates);
+        }
+
+        if (uId) {
+          try {
+            const targetStatus = rootUpdates.status || curStatus;
+            const targetProgress = targetStatus === "DELIVERED" ? 1.0 : (rootUpdates.progress !== undefined ? rootUpdates.progress : (dData.progress || 0.0));
+            const targetOtp = rootUpdates.otpCode || dData.otpCode || "";
+
+            const userDelRef = doc(db, "users", uId, "deliveries", delId);
+            const userDelSnap = await getDoc(userDelRef);
+
+            if (!userDelSnap.exists()) {
+              await setDoc(userDelRef, {
+                ...dData,
+                ...rootUpdates,
+                status: targetStatus,
+                progress: targetProgress,
+                otpCode: targetOtp,
+                updatedAt: now
+              }, { merge: true });
+              syncCount++;
+            } else {
+              const subData = userDelSnap.data();
+              if (subData.status !== targetStatus || subData.progress !== targetProgress || (targetOtp && subData.otpCode !== targetOtp)) {
+                await updateDoc(userDelRef, {
+                  status: targetStatus,
+                  progress: targetProgress,
+                  otpCode: targetOtp,
+                  updatedAt: now
+                });
+                syncCount++;
+              }
+            }
+
+            if (targetStatus === "DELIVERED") {
+              const loyaltyRef = doc(db, "customer_loyalty_points", delId);
+              const loyaltySnap = await getDoc(loyaltyRef);
+              if (!loyaltySnap.exists()) {
+                await setDoc(loyaltyRef, {
+                  parcelId: delId,
+                  userId: uId,
+                  pointsAwarded: 15,
+                  awardedAt: Date.now(),
+                  verified: true
+                }, { merge: true });
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+      addLog("Recalibrate Fleet", `Settings recalibration: ${resolvedCount} deliveries aligned, ${pinCount} PINs generated, ${syncCount} subcollections synced`);
+      addToast?.("success", `Recalibration finished: ${resolvedCount} deliveries aligned, ${pinCount} PINs generated, ${syncCount} subcollections synced.`);
+    } catch (e: any) {
+      addToast?.("error", "Recalibration failed: " + e.message);
+    } finally {
+      setRecalibratingSettings(false);
+    }
+  };
 
   const staffMembers = useMemo(() => {
     return (activeUsers || []).filter(u => u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher");
@@ -7258,6 +7691,34 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
 
       <div className="flex justify-end pt-1">
         <SaveBtn onClick={() => saveSettings("Fleet Operations & Working Days")} loading={saving} />
+      </div>
+    </div>
+
+    {/* Section 2c — System Recalibration & Fleet Maintenance */}
+    <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10">
+        <RefreshCw className="w-4 h-4 text-[#FFB800]" />
+        <span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">System Recalibration & Fleet Maintenance</span>
+      </div>
+      <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">
+        Audit and synchronize in-flight deliveries, customer subcollection mirrors, and legacy handover PINs across mobile app version rollouts.
+      </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+        <div>
+          <p className="text-xs font-bold text-[#111] dark:text-white">In-Flight Delivery & Client Mirror Sync</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-0.5">
+            Resolve deliveries stuck in transit, generate missing PINs, and reconcile client cache records.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={recalibratingSettings}
+          onClick={handleSettingsRecalibration}
+          className="px-4 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/80 text-[#111] rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50 shrink-0"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${recalibratingSettings ? "animate-spin" : ""}`} />
+          {recalibratingSettings ? "Recalibrating..." : "Recalibrate Fleet Now"}
+        </button>
       </div>
     </div>
 
