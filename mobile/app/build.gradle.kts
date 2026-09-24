@@ -44,6 +44,9 @@ android {
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     val geminiApiKey = resolveEnv("GEMINI_API_KEY")
     buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
+    val mapsApiKey = resolveEnv("MAPS_API_KEY", "AIzaSyCnYpvx0peHOafunoZcPMIIhd7Y-pM0NAs")
+    buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
+    manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -162,6 +165,10 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.play.services.auth)
   implementation(libs.play.services.location)
+  implementation(libs.maps.compose)
+  implementation(libs.play.services.maps)
+  implementation(libs.places)
+  implementation(libs.android.maps.utils)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

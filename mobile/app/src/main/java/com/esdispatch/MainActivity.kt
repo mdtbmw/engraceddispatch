@@ -494,10 +494,7 @@ class MainActivity : FragmentActivity() {
                         MultiBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BookingForm") {
-                        BookingSelectionScreen(viewModel = viewModel, onNavigate = handleNavigation)
-                    }
-                    composable("BookingDetails") {
-                        BookingDetails(viewModel = viewModel, onNavigate = handleNavigation)
+                        com.esdispatch.ui.screens.BookingFormScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BookingSelection") {
                         BookingSelectionScreen(viewModel = viewModel, onNavigate = handleNavigation)
@@ -519,6 +516,10 @@ class MainActivity : FragmentActivity() {
                     composable("ProofOfDelivery/{parcelId}") { backStackEntry ->
                         val parcelId = backStackEntry.arguments?.getString("parcelId") ?: ""
                         com.esdispatch.ui.screens.ProofOfDeliveryScreen(navController = navController, viewModel = viewModel, parcelId = parcelId)
+                    }
+                    composable("ProofOfPickup/{parcelId}") { backStackEntry ->
+                        val parcelId = backStackEntry.arguments?.getString("parcelId") ?: ""
+                        com.esdispatch.ui.screens.ProofOfPickupScreen(navController = navController, viewModel = viewModel, parcelId = parcelId, isDark = true)
                     }
                     composable("CustomerAssistant") {
                         CustomerAssistantScreen(viewModel = viewModel, onBack = { handleNavigation("BACK") })

@@ -93,7 +93,7 @@ fun ProfileScreen(
             else -> "Platinum VIP"
         }
     }
-    val totalEarned by viewModel.totalEarned.collectAsState()
+    val totalTipsEarned by viewModel.totalTipsEarned.collectAsState()
     val deliveryCount by viewModel.deliveryCount.collectAsState()
     val userParcels by viewModel.parcels.collectAsState()
     val effectiveShipmentCount = maxOf(deliveryCount, userParcels.size)
@@ -482,8 +482,8 @@ fun ProfileScreen(
                                     Column {
                                         Text("TIPS EARNED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
                                         Spacer(modifier = Modifier.height(2.dp))
-                                        val totalEarned by viewModel.totalEarned.collectAsState()
-                                        Text("₦${String.format("%,.2f", totalEarned)}", fontSize = 15.sp, fontWeight = FontWeight.Black, color = Gold)
+                                        val totalTipsEarned by viewModel.totalTipsEarned.collectAsState()
+                                        Text("₦${String.format("%,.2f", totalTipsEarned)}", fontSize = 15.sp, fontWeight = FontWeight.Black, color = Gold)
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text("AVG RATING", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
@@ -1200,7 +1200,7 @@ fun ProfileScreen(
                     ProfileMenuRow(
                         icon = Icons.Filled.CreditCard,
                         title = if (isRider) "Courier Tip Wallet" else "Wallet & Payment",
-                        subtitle = if (isRider) "View tips earned & request withdrawal" else "Manage wallet, top up & withdrawals",
+                        subtitle = if (isRider) "View tips earned & request withdrawal" else if (isRider) "Manage wallet, top up & withdrawals" else "Manage wallet, top up & refunds",
                         onClick = { onNavigate("Wallet") }
                     )
 
@@ -1561,7 +1561,7 @@ fun WalletScreen(
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(Icons.Filled.AccountBalance, contentDescription = null, tint = Obsidian, modifier = Modifier.size(18.dp))
                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                Text("Request Withdrawal", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Obsidian)
+                                                Text(if (isRider) "Request Withdrawal" else "Refund Request", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Obsidian)
                                             }
                                         }
                                         Spacer(modifier = Modifier.height(10.dp))
@@ -1602,7 +1602,7 @@ fun WalletScreen(
                                                     .weight(1f)
                                                     .height(52.dp)
                                             ) {
-                                                Text("Withdraw", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color.White)
+                                                Text(if (isRider) "Withdraw" else "Request Refund", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color.White)
                                             }
                                         }
                                     }
@@ -1807,8 +1807,8 @@ fun WalletScreen(
             },
             onWithdrawTrigger = { amount ->
                 pendingAmount = amount
-                confirmationTitle = "Confirm Withdrawal"
-                confirmationMessage = "You are about to withdraw ₦${String.format("%,.2f", amount)} from your wallet to your registered bank account."
+                confirmationTitle = if (isRider) "Confirm Withdrawal" else "Confirm Refund"
+                confirmationMessage = if (isRider) "You are about to withdraw ₦${String.format("%,.2f", amount)} from your wallet to your registered bank account." else "You are about to request a refund of ₦${String.format("%,.2f", amount)} from your wallet balance."
                 onConfirmAction = {
                     showConfirmationDialog = false
                     showFundWithdrawSheet = false
@@ -1829,8 +1829,8 @@ fun WalletScreen(
                                 userRole = "customer"
                             )
                         }
-                        successTitle = "Withdrawal Request Submitted"
-                        successMessage = "Your withdrawal request of ₦${String.format("%,.2f", pendingAmount)} has been submitted for admin processing and will arrive in your bank account once authorized."
+                        successTitle = if (isRider) "Withdrawal Request Submitted" else "Refund Request Submitted"
+                        successMessage = if (isRider) "Your withdrawal request of ₦${String.format("%,.2f", pendingAmount)} has been submitted for admin processing and will arrive in your bank account once authorized." else "Your refund request of ₦${String.format("%,.2f", pendingAmount)} has been submitted and will be processed shortly."
                         showSuccessSheet = true
                     }
                     showPinAuthSheet = true
@@ -6237,7 +6237,8 @@ fun FundWithdrawBottomSheet(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            val titleText = if (mode == "fund") "Top Up Wallet Balance" else "Withdraw Cash Funds"
+            val isRiderRole = viewModel.userRole.collectAsState().value == "rider"
+            val titleText = if (mode == "fund") "Top Up Wallet Balance" else if (isRiderRole) "Withdraw Cash Funds" else "Request Refund"
             Text(titleText, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
 
             if (mode == "withdraw") {
@@ -6251,7 +6252,7 @@ fun FundWithdrawBottomSheet(
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("No Settlement Account Configured", fontWeight = FontWeight.Bold, color = WarningOrange)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Please configure a valid settlement bank account details to authorize cash withdrawals.", fontSize = 12.sp, color = TextGray)
+                            Text(if (isRiderRole) "Please configure a valid settlement bank account details to authorize cash withdrawals." else "Please ensure your bank details are correct to process this refund.", fontSize = 12.sp, color = TextGray)
                             Spacer(modifier = Modifier.height(12.dp))
                             Button(
                                 onClick = { onOpenBankSetup() },

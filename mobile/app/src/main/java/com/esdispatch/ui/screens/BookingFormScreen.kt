@@ -11,6 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.animation.core.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.rememberScrollState
@@ -45,6 +47,15 @@ import com.esdispatch.ui.components.RoundedSheet
 import com.esdispatch.ui.components.QuiltedBackground
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapProperties
+import com.google.maps.android.compose.MapType
+import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.rememberCameraPositionState
+import com.esdispatch.utils.GoogleMapsHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -92,7 +103,7 @@ suspend fun detectUserLocationDetailed(context: android.content.Context): Detect
                 if (landmark != null) {
                     return@withContext DetectedLocation(landmark.displayName, loc.latitude, loc.longitude)
                 }
-                val addr = com.esdispatch.utils.GeocoderUtils.reverseGeocodeCoordinates(context, loc.latitude, loc.longitude)
+                val addr = com.esdispatch.utils.GoogleMapsHelper.reverseGeocode(context, loc.latitude, loc.longitude)
                 return@withContext DetectedLocation(addr, loc.latitude, loc.longitude)
             }
         }
@@ -124,6 +135,7 @@ fun BookingFormScreen(
     var delivery by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("1") }
     var weight by remember { mutableStateOf("1.0") }
+    var itemValue by remember { mutableStateOf("") }
     var length by remember { mutableStateOf("20") }
     var width by remember { mutableStateOf("15") }
     var height by remember { mutableStateOf("10") }
@@ -313,6 +325,7 @@ fun BookingFormScreen(
         viewModel.updateDraftSpecs(
             quantity = quantity.toIntOrNull() ?: 1,
             weight = weight.toDoubleOrNull() ?: 1.0,
+            itemValue = itemValue.toDoubleOrNull() ?: 0.0,
             length = length.toIntOrNull() ?: 20,
             width = width.toIntOrNull() ?: 15,
             height = height.toIntOrNull() ?: 10
@@ -512,10 +525,22 @@ fun BookingFormScreen(
                                         Icon(Icons.Filled.Place, null, tint = accentIconColor, modifier = Modifier.size(22.dp))
                                     },
                                     trailingIcon = {
-                                        IconButton(onClick = {
-                                            showPinDropForField = "pickup"
-                                        }) {
-                                            Icon(Icons.Filled.Map, null, tint = Gold, modifier = Modifier.size(20.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(onClick = {
+                                                permissionLauncher.launch(
+                                                    arrayOf(
+                                                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                                        android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                                    )
+                                                )
+                                            }) {
+                                                Icon(Icons.Filled.MyLocation, contentDescription = "Auto-detect GPS", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(18.dp))
+                                            }
+                                            IconButton(onClick = {
+                                                showPinDropForField = "pickup"
+                                            }) {
+                                                Icon(Icons.Filled.Map, contentDescription = "Pin on Map", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(18.dp))
+                                            }
                                         }
                                     },
                                     textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
@@ -561,9 +586,16 @@ fun BookingFormScreen(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .clickable {
-                                                            pickup = item.displayInput
-                                                            viewModel.updateDraftPickup(item.displayInput, item.lat, item.lng)
-                                                            focusedField = null
+                                                             pickup = item.displayInput
+                                                             coroutineScope.launch {
+                                                                 val coords = if (item.lat != null && item.lng != null) {
+                                                                     Pair(item.lat, item.lng)
+                                                                 } else {
+                                                                     GoogleMapsHelper.geocodeAddress(context, item.displayInput)
+                                                                 }
+                                                                 viewModel.updateDraftPickup(item.displayInput, coords?.first, coords?.second)
+                                                             }
+                                                             focusedField = null
                                                         }
                                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                                     verticalAlignment = Alignment.CenterVertically
@@ -818,7 +850,7 @@ fun BookingFormScreen(
                                         IconButton(onClick = {
                                             showPinDropForField = "delivery"
                                         }) {
-                                            Icon(Icons.Filled.Map, null, tint = Gold, modifier = Modifier.size(20.dp))
+                                            Icon(Icons.Filled.Map, contentDescription = "Pin on Map", tint = if (isDark) Gold else Obsidian, modifier = Modifier.size(20.dp))
                                         }
                                     },
                                     textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
@@ -865,7 +897,14 @@ fun BookingFormScreen(
                                                         .fillMaxWidth()
                                                         .clickable {
                                                             delivery = item.displayInput
-                                                            viewModel.updateDraftDelivery(item.displayInput, item.lat, item.lng)
+                                                            coroutineScope.launch {
+                                                                val coords = if (item.lat != null && item.lng != null) {
+                                                                    Pair(item.lat, item.lng)
+                                                                } else {
+                                                                    GoogleMapsHelper.geocodeAddress(context, item.displayInput)
+                                                                }
+                                                                viewModel.updateDraftDelivery(item.displayInput, coords?.first, coords?.second)
+                                                            }
                                                             focusedField = null
                                                         }
                                                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -1249,6 +1288,31 @@ fun BookingFormScreen(
                                 )
                             )
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = itemValue,
+                            onValueChange = { itemValue = it.filter { char -> char.isDigit() || char == '.' } },
+                            label = { Text("Declared Item Value (?)", fontSize = 12.sp, color = TextGray) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) focusedField = "itemValue" },
+                            shape = RoundedCornerShape(20.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = if (isLight) Obsidian else Gold,
+                                unfocusedBorderColor = fieldBorderColor,
+                                focusedContainerColor = fieldBgColor,
+                                unfocusedContainerColor = fieldBgColor,
+                                focusedTextColor = fieldTextColor,
+                                unfocusedTextColor = fieldTextColor
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Disclaimer: The rider has the right to know what's inside the package being sent.",
+                            color = TextGray,
+                            fontSize = 11.sp,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
 
                         Spacer(modifier = Modifier.height(32.dp))
 
@@ -1519,12 +1583,13 @@ fun BookingFormScreen(
                             viewModel.updateDraftDelivery(delivery)
                             viewModel.updateDraftAdditionalStops(additionalStops)
                             viewModel.updateDraftSpecs(
-                                quantity.toIntOrNull() ?: 1,
-                                weight.toDoubleOrNull() ?: 1.0,
-                                length.toIntOrNull() ?: 10,
-                                width.toIntOrNull() ?: 10,
-                                height.toIntOrNull() ?: 10
-                            )
+                                  quantity = quantity.toIntOrNull() ?: 1,
+                                  weight = weight.toDoubleOrNull() ?: 1.0,
+                                  itemValue = itemValue.toDoubleOrNull() ?: 0.0,
+                                  length = length.toIntOrNull() ?: 10,
+                                  width = width.toIntOrNull() ?: 10,
+                                  height = height.toIntOrNull() ?: 10
+                              )
                             viewModel.updateDraftSenderInfo(sName, sPhone)
                             viewModel.updateDraftReceiverInfo(rName, rPhone)
                             onNavigate("BookingSelection")
@@ -1545,11 +1610,13 @@ fun BookingFormScreen(
         if (showPinDropForField != null) {
             MapPinDropDialog(
                 initialAddress = if (showPinDropForField == "pickup") pickup else delivery,
-                onAddressSelected = { selectedAddr ->
+                onAddressSelected = { selectedAddr, coords ->
                     if (showPinDropForField == "pickup") {
                         pickup = selectedAddr
+                        viewModel.updateDraftPickup(selectedAddr, coords?.latitude, coords?.longitude)
                     } else {
                         delivery = selectedAddr
+                        viewModel.updateDraftDelivery(selectedAddr, coords?.latitude, coords?.longitude)
                     }
                     showPinDropForField = null
                 },
@@ -1558,56 +1625,79 @@ fun BookingFormScreen(
         }
     }
 }
-
 @Composable
 fun MapPinDropDialog(
     initialAddress: String,
-    onAddressSelected: (String) -> Unit,
+    onAddressSelected: (String, LatLng?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
-    val landmarks = remember {
-        listOf(
-            Triple("King's Square, Ring Road, Benin City", 0f, 0f),
-            Triple("Kada Plaza, Sapele Road, Benin City", 80f, -100f),
-            Triple("UNIBEN Main Gate, Ugbowo, Benin City", -120f, 110f),
-            Triple("Airport Road, GRA, Benin City", -60f, -90f),
-            Triple("Ramat Park, Ikpoba Hill, Benin City", 140f, 60f),
-            Triple("Uselu Market, Uselu, Benin City", -100f, 50f)
-        )
+    // Default to Benin City coordinates (Ring Road / King's Square center)
+    val defaultLocation = LatLng(6.3350, 5.6037)
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(defaultLocation, 15f)
     }
 
-    val nearestLandmark = remember(offsetX, offsetY) {
-        landmarks.minByOrNull { (_, x, y) ->
-            val dx = offsetX - x
-            val dy = offsetY - y
-            dx * dx + dy * dy
-        }?.first ?: "Custom Pin-Drop Location"
+    var detectedAddress by remember { mutableStateOf(if (initialAddress.isNotBlank()) initialAddress else "Locating address...") }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchSuggestions by remember { mutableStateOf<List<com.esdispatch.utils.SearchResultItem>>(emptyList()) }
+    var isSearching by remember { mutableStateOf(false) }
+
+    // On mount, if initialAddress is present, center map to it
+    LaunchedEffect(initialAddress) {
+        if (initialAddress.isNotBlank()) {
+            val coords = GoogleMapsHelper.geocodeAddress(context, initialAddress)
+            if (coords != null) {
+                cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(coords.first, coords.second), 16f)
+                detectedAddress = initialAddress
+            }
+        }
     }
 
-    val transition = rememberInfiniteTransition("pinBounce")
-    val pinBounce by transition.animateFloat(
-        initialValue = -12f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "bounce"
-    )
+    // When user stops moving the map, reverse-geocode the center location
+    LaunchedEffect(cameraPositionState) {
+        snapshotFlow { cameraPositionState.isMoving }
+            .collect { isMoving ->
+                if (!isMoving) {
+                    val center = cameraPositionState.position.target
+                    if (center.latitude != 0.0 && center.longitude != 0.0) {
+                        coroutineScope.launch {
+                            val addr = GoogleMapsHelper.reverseGeocode(context, center.latitude, center.longitude)
+                            if (addr.isNotBlank()) {
+                                detectedAddress = addr
+                            }
+                        }
+                    }
+                }
+            }
+    }
+
+    // Places autocomplete query with debounce
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.trim().length >= 2) {
+            delay(300)
+            isSearching = true
+            searchSuggestions = GoogleMapsHelper.searchPlaces(context, searchQuery)
+            isSearching = false
+        } else {
+            searchSuggestions = emptyList()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.border(1.5.dp, Gold, RoundedCornerShape(28.dp)),
+        modifier = Modifier
+            .border(1.5.dp, Gold, RoundedCornerShape(28.dp))
+            .fillMaxWidth(0.95f),
         confirmButton = {
             Button(
-                onClick = { onAddressSelected(nearestLandmark) },
+                onClick = { onAddressSelected(detectedAddress, cameraPositionState.position.target) },
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Select Location", fontWeight = FontWeight.Black)
+                Text("Confirm Location", fontWeight = FontWeight.Black)
             }
         },
         dismissButton = {
@@ -1616,115 +1706,200 @@ fun MapPinDropDialog(
             }
         },
         title = {
-            Text(
-                "Drag Map to Drop Pin",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Gold,
-                fontFamily = SpaceGrotesk
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Pinpoint Address",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Gold,
+                    fontFamily = SpaceGrotesk
+                )
+                Surface(
+                    onClick = {
+                        // Real GPS current location
+                        coroutineScope.launch {
+                            val loc = GoogleMapsHelper.getCurrentDeviceLocation(context)
+                            if (loc != null) {
+                                cameraPositionState.animate(
+                                    CameraUpdateFactory.newLatLngZoom(LatLng(loc.first, loc.second), 17f)
+                                )
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    color = Charcoal,
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MyLocation,
+                            contentDescription = "Current Location",
+                            tint = Gold,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("My GPS", fontSize = 10.sp, color = Gold, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         },
         text = {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(
-                    "Move your finger over the grid map below to reposition the delivery pin. The nearest Benin City address is automatically detected.",
-                    fontSize = 11.sp,
-                    color = TextGray
+                // Places Search Input
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search street or landmark...", fontSize = 12.sp, color = TextGray) },
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(imageVector = Icons.Filled.Close, contentDescription = "Clear", tint = TextGray, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Charcoal,
+                        unfocusedContainerColor = Charcoal,
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Gold.copy(alpha = 0.3f),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
                 )
 
+                // Search suggestions dropdown if active
+                if (searchSuggestions.isNotEmpty()) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 140.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        color = Obsidian,
+                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                    ) {
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            searchSuggestions.forEach { item ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            coroutineScope.launch {
+                                                searchQuery = ""
+                                                searchSuggestions = emptyList()
+                                                val coords = GoogleMapsHelper.geocodeAddress(context, item.fullAddress)
+                                                if (coords != null) {
+                                                    cameraPositionState.animate(
+                                                        CameraUpdateFactory.newLatLngZoom(LatLng(coords.first, coords.second), 17f)
+                                                    )
+                                                    detectedAddress = item.fullAddress
+                                                }
+                                            }
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Place,
+                                        contentDescription = null,
+                                        tint = Gold,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = item.title,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = item.fullAddress,
+                                            fontSize = 10.sp,
+                                            color = TextGray,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                HorizontalDivider(color = Gold.copy(alpha = 0.15f))
+                            }
+                        }
+                    }
+                }
+
+                // Native Google Map Box with Centered Pin
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
+                        .height(260.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(BackgroundDark)
-                        .border(1.dp, Gold.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
-                        .pointerInput(Unit) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                offsetX += dragAmount.x
-                                offsetY += dragAmount.y
-                            }
-                        }
+                        .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
                 ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val w = size.width
-                        val h = size.height
-                        val cx = w / 2f
-                        val cy = h / 2f
+                    GoogleMap(
+                        modifier = Modifier.fillMaxSize(),
+                        cameraPositionState = cameraPositionState,
+                        properties = MapProperties(
+                            isMyLocationEnabled = false,
+                            mapType = MapType.NORMAL,
+                            mapStyleOptions = GoogleMapsHelper.getMapStyle(androidx.compose.foundation.isSystemInDarkTheme())
+                        ),
+                        uiSettings = MapUiSettings(
+                            zoomControlsEnabled = false,
+                            compassEnabled = true,
+                            myLocationButtonEnabled = false,
+                            rotationGesturesEnabled = true,
+                            scrollGesturesEnabled = true,
+                            tiltGesturesEnabled = false,
+                            zoomGesturesEnabled = true
+                        )
+                    )
 
-                        drawRect(MapStandardBg)
-
-                        val xStep = 30.dp.toPx()
-                        var xLine = (offsetX % xStep)
-                        while (xLine < w) {
-                            drawLine(
-                                color = MapBlock,
-                                start = Offset(xLine, 0f),
-                                end = Offset(xLine, h),
-                                strokeWidth = 1.dp.toPx()
-                            )
-                            xLine += xStep
-                        }
-
-                        val yStep = 30.dp.toPx()
-                        var yLine = (offsetY % yStep)
-                        while (yLine < h) {
-                            drawLine(
-                                color = MapBlock,
-                                start = Offset(0f, yLine),
-                                end = Offset(w, yLine),
-                                strokeWidth = 1.dp.toPx()
-                            )
-                            yLine += yStep
-                        }
-
-                        landmarks.forEach { (_, lx, ly) ->
-                            val drawX = cx + lx + offsetX
-                            val drawY = cy + ly + offsetY
-                            
-                            if (drawX in 0f..w && drawY in 0f..h) {
-                                drawCircle(
-                                    color = SuccessGreen.copy(alpha = 0.15f),
-                                    radius = 24.dp.toPx(),
-                                    center = Offset(drawX, drawY)
-                               )
-                                drawCircle(
-                                    color = SuccessGreen,
-                                    radius = 4.dp.toPx(),
-                                    center = Offset(drawX, drawY)
+                    // Centered Pin Crosshair with Signature Gold Styling
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Gold,
+                            shadowElevation = 6.dp
+                        ) {
+                            Box(modifier = Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Place,
+                                    contentDescription = null,
+                                    tint = Obsidian,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
-
-                        drawLine(
-                            color = TextGray.copy(alpha = 0.3f),
-                            start = Offset(cx - 15.dp.toPx(), cy),
-                            end = Offset(cx + 15.dp.toPx(), cy),
-                            strokeWidth = 1.5.dp.toPx()
-                        )
-                        drawLine(
-                            color = TextGray.copy(alpha = 0.3f),
-                            start = Offset(cx, cy - 15.dp.toPx()),
-                            end = Offset(cx, cy + 15.dp.toPx()),
-                            strokeWidth = 1.5.dp.toPx()
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(Gold)
                         )
                     }
-
-                    Icon(
-                        imageVector = Icons.Filled.Place,
-                        contentDescription = "Pin Drop",
-                        tint = Gold,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .offset(y = pinBounce.dp)
-                            .size(36.dp)
-                    )
                 }
 
+                // Pinned Address Card
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Charcoal,
@@ -1736,7 +1911,7 @@ fun MapPinDropDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.Place,
+                            imageVector = Icons.Filled.CheckCircle,
                             contentDescription = null,
                             tint = Gold,
                             modifier = Modifier.size(18.dp)
@@ -1744,16 +1919,18 @@ fun MapPinDropDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                text = "DETECTED NEAREST ADDRESS:",
+                                text = "PINNED ADDRESS",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Gold
                             )
                             Text(
-                                text = nearestLandmark,
-                                fontSize = 11.sp,
+                                text = detectedAddress,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color.White
+                                color = Color.White,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -1763,274 +1940,4 @@ fun MapPinDropDialog(
         containerColor = BackgroundDark,
         shape = RoundedCornerShape(28.dp)
     )
-}
-
-@Composable
-fun BookingDetails(
-    viewModel: DeliveryViewModel,
-    onNavigate: (String) -> Unit
-) {
-    val selectedParcel by viewModel.selectedParcel.collectAsState()
-    val parcel = selectedParcel
-    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
-    val isLight = !isDark
-    val adaptiveGoldText = if (isDark) Gold else Obsidian
-    val adaptiveGoldIcon = if (isDark) Gold else Obsidian
-
-    val scrollState = rememberScrollState()
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(LuxuryBlack)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(HeaderBgColor)
-        ) {
-            ScreenHeader(
-                title = "Shipment Details",
-                onBack = { onNavigate("Dashboard") }
-            )
-
-            Surface(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(topStart = 40.dp, topEnd = 40.dp),
-                color = if (isDark) BackgroundDark else BackgroundLight
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState)
-                        .padding(horizontal = 24.dp, vertical = 24.dp)
-                        .padding(bottom = 120.dp)
-                ) {
-                if (parcel == null) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().height(300.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("No Shipment Selected", fontWeight = FontWeight.Bold, color = TextGray)
-                    }
-                } else {
-                    // Main Info Card
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = Charcoal,
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(
-                                        text = "Tracking ID",
-                                        fontSize = 12.sp,
-                                        color = TextGray,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "#${parcel.id}",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = AppTextColor
-                                    )
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Gold.copy(alpha = 0.15f),
-                                    modifier = Modifier.padding(4.dp)
-                                ) {
-                                    Text(
-                                        text = parcel.status.name,
-                                        color = Gold,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(24.dp))
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                AsyncImage(
-                                    model = parcel.imageUrl,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .clip(RoundedCornerShape(16.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column {
-                                    Text(
-                                        text = parcel.itemName,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = AppTextColor
-                                    )
-                                    Text(
-                                        text = "${parcel.weight} kg • ${parcel.quantity} pcs",
-                                        fontSize = 13.sp,
-                                        color = TextGray,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // Addresses Card
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = Charcoal,
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Text(
-                                text = "Route Information",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 14.sp,
-                                color = adaptiveGoldText,
-                                modifier = Modifier.padding(bottom = 16.dp)
-                            )
-
-                            Row(verticalAlignment = Alignment.Top) {
-                                Icon(Icons.Filled.Place, null, tint = adaptiveGoldIcon, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text("Pickup Location", fontSize = 11.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                                    Text(parcel.pickupAddress, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Row(verticalAlignment = Alignment.Top) {
-                                Icon(Icons.Filled.Navigation, null, tint = adaptiveGoldIcon, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text("Delivery Destination", fontSize = 11.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                                    Text(parcel.deliveryAddress, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // People Card
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = Charcoal,
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Text(
-                                text = "Contact Persons",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 14.sp,
-                                color = adaptiveGoldText,
-                                modifier = Modifier.padding(bottom = 16.dp)
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text("Sender", fontSize = 11.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                                    Text(parcel.senderName, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                    Text(parcel.senderPhone, fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("Receiver", fontSize = 11.sp, color = TextGray, fontWeight = FontWeight.Bold)
-                                    Text(parcel.receiverName, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                                    Text(parcel.receiverPhone, fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // Financials
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = Charcoal,
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(20.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Paid Amount", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = AppTextColor)
-                            Text(
-                                text = "₦${String.format("%,.2f", parcel.price)}",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Black,
-                                color = if (isLight) Obsidian else Gold
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Live Map Tracking CTA at bottom
-        Box(modifier = Modifier.fillMaxSize()) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding(),
-                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-                color = Charcoal,
-                tonalElevation = 8.dp
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
-                ) {
-                    Button(
-                        onClick = { onNavigate("ActiveTracking") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(60.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Obsidian),
-                        border = BorderStroke(1.2.dp, Gold)
-                    ) {
-                        Icon(Icons.Filled.Place, null, tint = Gold)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Track on Live Map", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
-                    }
-                }
-            }
-        }
-    }
-}
 }

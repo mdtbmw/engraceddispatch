@@ -26,6 +26,7 @@ data class Parcel(
     val width: Int = 10,
     val height: Int = 10,
     val price: Double = 0.0,
+    val itemValue: Double = 0.0,
     val courierName: String = "",
     val courierPhone: String = "",
     val courierAvatar: String = "",
@@ -210,6 +211,7 @@ data class ParcelDraft(
     val deliveryInstructions: String = "",
     val insuranceSelected: Boolean = false,
     val price: Double = 0.0,
+    val itemValue: Double = 0.0,
     val additionalStops: String = ""
 )
 

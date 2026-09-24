@@ -830,7 +830,7 @@ fun RiderDashboardScreen(
                             }
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "PREMIUM LOGISTICS & DISPATCH",
+                                text = "SMILES DISPATCH RIDER",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Gold,
@@ -1965,20 +1965,10 @@ fun RiderUpdateBottomSheetContent(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Button(
-                onClick = {
-                    isSubmitting = true
-                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.PICKED_UP, 0.40f) { success, err ->
-                        isSubmitting = false
-                        if (success) {
-                            val msg = if (parcel.isBatch) "${parcel.itemName.ifBlank { "Item" }} collected! Status updated to Picked Up." else "Package collected! Status updated to Picked Up."
-                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            onDismiss()
-                        } else {
-                            Toast.makeText(context, err ?: "Failed to update status", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                },
+                          Button(
+                  onClick = {
+                      onNavigateToPOD("ProofOfPickup/${parcel.id}")
+                  },
                 modifier = Modifier.fillMaxWidth().tactilePress(scaleDown = 0.96f),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                 shape = RoundedCornerShape(14.dp),
@@ -3252,7 +3242,7 @@ fun RiderWaybillBottomSheet(
                 letterSpacing = 2.sp
             )
             Text(
-                text = "PREMIUM LOGISTICS & DISPATCH",
+                text = "SMILES DISPATCH RIDER",
                 fontSize = 9.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = TextGray,

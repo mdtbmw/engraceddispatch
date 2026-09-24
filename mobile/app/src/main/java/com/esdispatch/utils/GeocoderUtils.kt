@@ -16,7 +16,7 @@ data class SearchResultItem(
         get() {
             val t = title.trim()
             val f = fullAddress.trim()
-            if (t.isBlank() || t.equals("Current Location", ignoreCase = true)) {
+            if (t.isBlank() || t.equals("Current Location", ignoreCase = true) || t.equals("Saved Home", ignoreCase = true) || t.equals("Saved Work", ignoreCase = true)) {
                 return f
             }
             if (f.isBlank()) {

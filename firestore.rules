@@ -54,16 +54,19 @@ service cloud.firestore {
       return isAuth() && request.auth.uid == userId;
     }
 
+    function getRole(data) {
+      return 'role' in data ? data.role : ('userRole' in data ? data.userRole : 'customer');
+    }
+
     // Prevents non-admins from escalating their role to administrative levels
     function notElevatingRole() {
-      return isAdmin()
-        || !request.resource.data.keys().hasAny(['role', 'userRole'])
-        || (resource == null && (!('role' in request.resource.data) || request.resource.data.role in ['customer', 'rider', 'vendor', 'dispatcher', 'admin', 'super_admin']))
-        || (resource != null && (
-            (!('role' in resource.data) && (!('role' in request.resource.data) || request.resource.data.role in ['customer', 'rider', 'vendor']))
-            || ('role' in resource.data && request.resource.data.role == resource.data.role)
-            || (request.resource.data.role in ['customer', 'rider', 'vendor'] && (!('role' in resource.data) || resource.data.role in ['customer', 'rider', 'vendor']))
-          ));
+      return isAdmin() 
+        || (resource == null && getRole(request.resource.data) in ['customer', 'rider', 'vendor']) 
+        || (resource != null && getRole(request.resource.data) == getRole(resource.data));
+    }
+
+    function isTipOrRatingUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tipsEarned', 'totalTips', 'rating', 'ratingCount', 'walletBalance', 'wallet', 'updatedAt']);
     }
 
     function isReasonableWrite() {
@@ -103,7 +106,7 @@ service cloud.firestore {
         isAdmin() ||
         isDispatcher() ||
         isOwner(userId) ||
-        notElevatingRole()
+        (notElevatingRole() && isTipOrRatingUpdate())
       );
       allow delete: if isAdmin() || isSuperAdmin();
 
@@ -196,6 +199,26 @@ service cloud.firestore {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
+
+      match /reviews/{reviewId} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+
+      match /ratings/{ratingId} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // =========================================================
+    // REVIEWS
+    // =========================================================
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create, update: if isAuth();
+      allow delete: if isAdmin();
     }
 
     // Redacted public tracking projection (non-PII, no phone numbers, no OTP secrets)

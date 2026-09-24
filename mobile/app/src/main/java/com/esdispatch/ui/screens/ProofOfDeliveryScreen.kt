@@ -359,6 +359,64 @@ fun ProofOfDeliveryScreen(
                             Text("VERIFY & UNLOCK CAMERA", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Obsidian)
                         }
                     }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    var waitStartTime by remember { mutableStateOf(viewModel.waitTimes[parcelId]) }
+                    var timeRemaining by remember { mutableStateOf(7 * 60) }
+                    
+                    LaunchedEffect(waitStartTime) {
+                        if (waitStartTime != null) {
+                            while(timeRemaining > 0) {
+                                kotlinx.coroutines.delay(1000)
+                                val elapsed = (System.currentTimeMillis() - waitStartTime!!) / 1000
+                                timeRemaining = (7 * 60) - elapsed.toInt()
+                                if (timeRemaining < 0) timeRemaining = 0
+                            }
+                        }
+                    }
+                    
+                    if (waitStartTime == null) {
+                        TextButton(onClick = {
+                            val now = System.currentTimeMillis()
+                            viewModel.waitTimes[parcelId] = now
+                            waitStartTime = now
+                        }) {
+                            Text("Recipient Unavailable?", color = TextGray, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Charcoal,
+                            border = BorderStroke(1.dp, if (timeRemaining == 0) Color(0xFFFF5252) else Gold.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                val mins = timeRemaining / 60
+                                val secs = timeRemaining % 60
+                                Text("Wait Time Remaining: ${String.format("%02d:%02d", mins, secs)}", color = if (timeRemaining == 0) Color(0xFFFF5252) else Gold, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                                if (timeRemaining == 0) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Wait time exceeded. Package will be taken back to the office and rebooked for delivery.", fontSize = 12.sp, color = TextGray, textAlign = TextAlign.Center, lineHeight = 16.sp)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(
+                                        onClick = {
+                                            viewModel.updateParcelStatusByRider(parcelId, com.esdispatch.data.ParcelStatus.RECIPIENT_UNAVAILABLE, 1.0f) { s, _ ->
+                                                if (s) {
+                                                    Toast.makeText(context, "Marked as unavailable. Please return package to office.", Toast.LENGTH_LONG).show()
+                                                    navController.popBackStack()
+                                                }
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("MARK UNAVAILABLE & RETURN", color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             } else if (isSignatureStep) {
                 // STEP 2: Customer Signature (when enabled by admin)
