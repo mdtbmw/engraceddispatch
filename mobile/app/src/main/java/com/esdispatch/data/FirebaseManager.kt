@@ -2317,6 +2317,7 @@ object FirebaseManager {
             return
         }
 
+        val effectiveCustomerId = customerId.ifBlank { auth?.currentUser?.uid ?: "" }
         val parcelDoc = db.collection("deliveries").document(parcelId)
         db.runTransaction { transaction ->
             // --- ALL READS FIRST ---
@@ -2331,8 +2332,8 @@ object FirebaseManager {
             // Customer snapshot read
             var customerRef: com.google.firebase.firestore.DocumentReference? = null
             var custBal = 0.0
-            if (customerId.isNotEmpty() && tipAmount > 0.0) {
-                val ref = db.collection("users").document(customerId)
+            if (effectiveCustomerId.isNotEmpty() && tipAmount > 0.0) {
+                val ref = db.collection("users").document(effectiveCustomerId)
                 val customerSnap = transaction.get(ref)
                 if (customerSnap.exists()) {
                     custBal = (customerSnap.get("walletBalance") as? Number)?.toDouble() ?: 0.0
@@ -2390,7 +2391,7 @@ object FirebaseManager {
             }
             effectiveRiderId
         }.addOnSuccessListener { resolvedRiderId ->
-            val parcelUserId = customerId
+            val parcelUserId = effectiveCustomerId
             if (parcelUserId.isNotEmpty()) {
                 val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
                 userDocRef.set(mapOf(
@@ -2430,6 +2431,7 @@ object FirebaseManager {
 
             onComplete(true, null)
         }.addOnFailureListener { e ->
+            Log.e(TAG, "Failed to submit rating & tip: ${e.message}", e)
             onComplete(false, e.message ?: "Failed to submit rating & tip.")
         }
     }
@@ -2673,12 +2675,13 @@ object FirebaseManager {
             return
         }
 
+        val effectiveCustomerId = customerId.ifBlank { auth?.currentUser?.uid ?: "" }
         val ratingId = java.util.UUID.randomUUID().toString()
         val ratingMap = hashMapOf(
             "id" to ratingId,
             "parcelId" to parcelId,
-            "customerId" to customerId,
-            "rating" to rating,
+            "customerId" to effectiveCustomerId,
+            "rating" to rating.toDouble(),
             "feedback" to feedback,
             "timestamp" to System.currentTimeMillis()
         )
@@ -2690,20 +2693,26 @@ object FirebaseManager {
                 // Update average rating on rider document
                 db.collection("users").document(riderId).get()
                     .addOnSuccessListener { doc ->
-                        val currentRating = doc.getSafeDouble("rating", 4.8)
-                        val count = doc.getSafeDouble("ratingCount", 0.0)
-                        val newRating = ((currentRating * count) + rating) / (count + 1.0)
-                        
-                        db.collection("users").document(riderId).update(
-                            mapOf(
-                                "rating" to newRating,
-                                "ratingCount" to (count + 1.0)
-                            )
-                        )
+                        if (doc.exists()) {
+                            val currentRating = doc.getSafeDouble("rating", 4.8)
+                            val count = doc.getSafeDouble("ratingCount", 0.0)
+                            val newRating = ((currentRating * count) + rating) / (count + 1.0)
+                            
+                            db.collection("users").document(riderId).update(
+                                mapOf(
+                                    "rating" to newRating,
+                                    "ratingCount" to (count + 1.0),
+                                    "updatedAt" to com.google.firebase.Timestamp.now()
+                                )
+                            ).addOnFailureListener { err ->
+                                Log.w(TAG, "Could not update average rating on rider doc: ${err.message}")
+                            }
+                        }
                     }
                 onComplete(true, null)
             }
             .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to submit rating: ${e.message}", e)
                 onComplete(false, e.message ?: "Failed to submit rating")
             }
     }

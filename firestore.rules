@@ -60,13 +60,19 @@ service cloud.firestore {
 
     // Prevents non-admins from escalating their role to administrative levels
     function notElevatingRole() {
-      return isAdmin() 
-        || (resource == null && getRole(request.resource.data) in ['customer', 'rider', 'vendor']) 
+      return isAdmin()
+        || (resource == null && getRole(request.resource.data) in ['customer', 'rider', 'vendor', 'Customer', 'Rider', 'Vendor', 'driver', 'Driver'])
+        || (resource != null && !('role' in request.resource.data.diff(resource.data).affectedKeys()) && !('userRole' in request.resource.data.diff(resource.data).affectedKeys()))
         || (resource != null && getRole(request.resource.data) == getRole(resource.data));
     }
 
+    // Explicitly allows tip and rating mutations across user documents without role elevation
     function isTipOrRatingUpdate() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tipsEarned', 'totalTips', 'rating', 'ratingCount', 'walletBalance', 'wallet', 'updatedAt']);
+      return resource != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'tipsEarned', 'totalTips', 'rating', 'ratingCount', 'walletBalance', 'wallet',
+        'updatedAt', 'reviews', 'reviewsCount', 'deliveryCount', 'totalDeliveries',
+        'lastRatedAt', 'ratings', 'feedback', 'customerRating', 'isRated', 'tipAmount'
+      ]);
     }
 
     function isReasonableWrite() {
@@ -98,30 +104,39 @@ service cloud.firestore {
     // =========================================================
 
     match /users/{userId} {
-      // Individual profile lookup: user themselves, dispatchers, admins, or assigned couriers
-      allow get: if isAuth() && (
-        request.auth.uid == userId ||
-        isAdmin() ||
-        isDispatcher() ||
-        exists(/databases/$(database)/documents/drivers/$(userId)) ||
-        exists(/databases/$(database)/documents/riders/$(userId))
-      );
-      // Mass user enumeration/listing is restricted to admins and dispatchers
-      allow list: if isAdmin() || isDispatcher();
+      // Individual profile lookup: any authenticated client can look up profiles
+      // (customers viewing courier profile/avatar/rating, couriers viewing customer, cross-user transactions & tips)
+      allow get: if isAuth();
+
+      // Querying users: authenticated users (with limit cap for fleet discovery) or dispatchers/admins
+      allow list: if isAuth() && (isAdmin() || isDispatcher() || request.query.limit <= 100);
+
+      // Account creation on signup
       allow create: if isAuth() && (request.auth.uid == userId || isAdmin());
-      // Allows self updates, admin/dispatcher updates, cross-user rating & tip updates,
-      // and wallet/loyalty adjustments while strictly preventing unauthorized privilege escalation.
+
+      // Profile updates:
+      // 1. Admins & dispatchers can update any profile
+      // 2. Profile owner can update their own document (role elevation strictly prevented)
+      // 3. Authenticated customers can tip, rate, or add feedback to a driver's profile without permission denial
       allow update: if isAuth() && (
         isAdmin() ||
         isDispatcher() ||
-        isOwner(userId) ||
-        (notElevatingRole() && isTipOrRatingUpdate())
+        (isOwner(userId) && notElevatingRole()) ||
+        isTipOrRatingUpdate()
       );
+
       allow delete: if isAdmin() || isSuperAdmin();
 
+      // Subcollections under /users/{userId}
       match /ratings/{ratingId} {
         allow read: if true;
-        allow create, update: if isAuth();
+        allow create, update, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow create, update, write: if isAuth();
         allow delete: if isAdmin();
       }
 
@@ -160,6 +175,12 @@ service cloud.firestore {
       match /deliveries/{deliveryId} {
         allow read, write, delete: if isAuth();
       }
+
+      // Wildcard subcollection fallback for nested extensions (devices, feedback, activity)
+      match /{subcollection=**} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
     }
 
     // =========================================================
@@ -179,7 +200,7 @@ service cloud.firestore {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
 
-      match /messages/{messageId} {
+      match /{subcollection=**} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
@@ -201,35 +222,38 @@ service cloud.firestore {
       allow update: if isAuth() || isAdmin() || isDispatcher();
       allow delete: if isAdmin();
 
-      match /chats/{chatId} {
-        allow read, write: if isAuth();
-        allow delete: if isAdmin();
-      }
-
-      match /timeline/{eventId} {
-        allow read, write: if isAuth();
-        allow delete: if isAdmin();
-      }
-
-      match /reviews/{reviewId} {
-        allow read, write: if isAuth();
-        allow delete: if isAdmin();
-      }
-
-      match /ratings/{ratingId} {
+      match /{subcollection=**} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
     }
 
     // =========================================================
-    // REVIEWS
+    // REVIEWS & RATINGS (Root Collections)
     // =========================================================
 
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create, update: if isAuth();
+      allow create, update, write: if isAuth();
       allow delete: if isAdmin();
+
+      match /{subcollection=**} {
+        allow read: if true;
+        allow write: if isAuth();
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /ratings/{ratingId} {
+      allow read: if true;
+      allow create, update, write: if isAuth();
+      allow delete: if isAdmin();
+
+      match /{subcollection=**} {
+        allow read: if true;
+        allow write: if isAuth();
+        allow delete: if isAdmin();
+      }
     }
 
     // Redacted public tracking projection (non-PII, no phone numbers, no OTP secrets)
@@ -278,11 +302,11 @@ service cloud.firestore {
 
     match /system_config/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isDispatcher();
     }
 
     match /system_settings/{settingId} {
-      allow read: if isAuth();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
@@ -388,16 +412,29 @@ service cloud.firestore {
       allow create: if isAdmin() || (isAuth() && isReasonableWrite());
       allow update: if isAdmin()
         || (isAuth() && resource.data.vendorId == request.auth.uid && isReasonableWrite())
-        || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']));
+        || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'rating', 'reviewCount', 'ratingsCount', 'reviews', 'updatedAt']));
       allow delete: if isAdmin() || (isAuth() && resource.data.vendorId == request.auth.uid);
+
+      match /{subcollection=**} {
+        allow read: if true;
+        allow write: if isAuth();
+        allow delete: if isAdmin();
+      }
     }
 
     match /marketplace_stores/{docId} {
       allow read: if true; // Public store directory
       allow create: if isAuth() && isReasonableWrite() || isAdmin();
       allow update: if isAdmin()
-        || (isAuth() && (resource.data.ownerId == request.auth.uid || resource.data.id == request.auth.uid) && isReasonableWrite());
+        || (isAuth() && (resource.data.ownerId == request.auth.uid || resource.data.id == request.auth.uid) && isReasonableWrite())
+        || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'reviewCount', 'ratingsCount', 'reviews', 'updatedAt']));
       allow delete: if isAdmin() || (isAuth() && resource.data.ownerId == request.auth.uid);
+
+      match /{subcollection=**} {
+        allow read: if true;
+        allow write: if isAuth();
+        allow delete: if isAdmin();
+      }
     }
 
     match /marketplace_orders/{docId} {
@@ -427,16 +464,31 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAuth();
       allow delete: if isAdmin();
+
+      match /{subcollection=**} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
     }
 
     match /drivers/{driverId} {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
+
+      match /{subcollection=**} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
     }
 
     match /riders/{riderId} {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
+
+      match /{subcollection=**} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
     }
 
     match /system_ledger/{docId} {
@@ -471,7 +523,7 @@ service cloud.firestore {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
 
-      match /items/{itemId} {
+      match /{subcollection=**} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
