@@ -764,8 +764,10 @@ exports.onNotificationCreated = functions.firestore
             batch.set(notifRef, {
                 title,
                 description,
+                message: description,
                 time: 'Just now',
                 read: false,
+                isRead: false,
                 adminNotifId: notificationId,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 timestamp: Date.now(),

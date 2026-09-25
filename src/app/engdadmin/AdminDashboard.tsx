@@ -42,7 +42,8 @@ import { DispatchDecisionDrawer } from "@/components/design-system/DispatchDecis
 import { NotificationLifecycleManager } from "@/components/design-system/NotificationLifecycle";
 import { ShipmentMicroPage } from "@/components/design-system/ShipmentMicroPage";
 import AdminDispatchBookingModal from "@/components/AdminDispatchBookingModal";
-type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "broadcast" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support" | "payouts";
+import EmailStudioTab from "./EmailStudioTab";
+type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "broadcast" | "emails" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support" | "payouts";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; lastPing?: any; lastHeartbeat?: any; lastActive?: any; createdAt?: any; vendorBalance?: number; pin?: string; userPin?: string; securityPin?: string; }
 
 /** Safely parse any Firestore Timestamp, millisecond/second number, or date string into ms */
@@ -2627,6 +2628,7 @@ function AdminDashboardPage() {
     { id: "payouts", label: "Tip Payouts", icon: <DollarSign size={24} strokeWidth={2} />, roles: ["super_admin", "admin"], badge: pendingTipPayouts.length > 0 ? pendingTipPayouts.length : undefined },
     { id: "tracking", label: "Live Tracking", icon: <MapPin size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "broadcast", label: "Broadcast News", icon: <Radio size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
+    { id: "emails", label: "Email Studio", icon: <Mail size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "users", label: "Users", icon: <Users size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "banners", label: "Hero Slides", icon: <ImageIcon size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "referrals", label: "Referrals", icon: <Gift size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
@@ -2733,8 +2735,9 @@ function AdminDashboardPage() {
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} userRole={userRole} currentUser={currentUser} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} users={users} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
-        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} onNewDispatch={() => setShowNew(true)} />}
+        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} onNewDispatch={() => setTab("shipments")} />}
         {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
+        {tab === "emails" && <EmailStudioTab db={db} activeUsers={activeUsers} addLog={addLog} addToast={addToast} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} addToast={addToast} />}
         {tab === "promotions" && <PromotionsTab promotions={promotions} db={db} addLog={addLog} addToast={addToast} />}

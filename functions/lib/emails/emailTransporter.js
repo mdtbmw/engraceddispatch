@@ -66,14 +66,14 @@ async function getSmtpConfig() {
     catch (err) {
         console.warn('[SMTP] Could not load system_settings/smtp from Firestore:', err);
     }
-    // Fallback to process.env
+    // Fallback to process.env or verified production SMTP
     return {
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        host: process.env.SMTP_HOST || 'server.hostnextdns.com',
         port: Number(process.env.SMTP_PORT) || 465,
         secure: process.env.SMTP_SECURE === 'false' ? false : true,
-        user: process.env.SMTP_USER || process.env.SMTP_EMAIL || '',
-        pass: process.env.SMTP_PASS || process.env.SMTP_PASSWORD || '',
-        fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'dispatch@esdispatch.com',
+        user: process.env.SMTP_USER || process.env.SMTP_EMAIL || 'noreply@engracedsmile.com',
+        pass: process.env.SMTP_PASS || process.env.SMTP_PASSWORD || 'ha;LS.fiewLkDw~x',
+        fromEmail: process.env.SMTP_FROM_EMAIL || 'noreply@engracedsmile.com',
         fromName: process.env.SMTP_FROM_NAME || 'ESDispatch Logistics',
     };
 }
@@ -127,4 +127,3 @@ async function sendEmail(options) {
         return { success: false, error: error.message || 'Unknown SMTP error' };
     }
 }
-//# sourceMappingURL=emailTransporter.js.map
