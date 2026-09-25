@@ -1,35 +1,29 @@
 "use client";
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Mail,
   Send,
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  Eye,
   Copy,
   Smartphone,
   Monitor,
   Code,
-  Settings,
   ShieldCheck,
   Key,
   ImageIcon,
   Sparkles,
-  ExternalLink,
-  ChevronRight,
-  User,
   Package,
   CreditCard,
   UserCheck,
   Megaphone,
   Check,
   X,
-  History,
   Lock,
-  ArrowRight,
   Server,
   Zap,
+  Tag,
 } from "lucide-react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import {
@@ -38,6 +32,8 @@ import {
   renderPasswordResetOtpEmail,
   renderTwoFactorOtpEmail,
   renderPinResetOtpEmail,
+  renderCustomerWelcomeEmail,
+  renderPromotionalCampaignEmail,
   renderDeliveryHandoverOtpEmail,
   renderDeliveryInvoiceEmail,
   renderWalletTransactionEmail,
@@ -47,6 +43,8 @@ import {
 } from "../../lib/emailTemplates";
 
 export type TemplateId =
+  | "customer_welcome"
+  | "promotional_campaign"
   | "auth_signup_otp"
   | "auth_password_reset"
   | "auth_two_factor"
@@ -60,7 +58,7 @@ export type TemplateId =
 interface TemplateMeta {
   id: TemplateId;
   label: string;
-  category: "AUTH" | "LOGISTICS" | "FINANCE" | "ONBOARDING" | "BROADCAST";
+  category: "ONBOARDING" | "BROADCAST" | "AUTH" | "LOGISTICS" | "FINANCE";
   icon: React.ReactNode;
   badge: string;
   description: string;
@@ -68,12 +66,28 @@ interface TemplateMeta {
 
 const TEMPLATES: TemplateMeta[] = [
   {
+    id: "customer_welcome",
+    label: "Customer Welcome",
+    category: "ONBOARDING",
+    icon: <Sparkles className="w-4 h-4" />,
+    badge: "Welcome Suite",
+    description: "Welcome guide with 3-step dispatch roadmap, insured perks, and promo voucher.",
+  },
+  {
+    id: "promotional_campaign",
+    label: "Promo & Voucher",
+    category: "BROADCAST",
+    icon: <Megaphone className="w-4 h-4" />,
+    badge: "Special Campaign",
+    description: "Futuristic delivery van hero with gold dashed voucher coupon card.",
+  },
+  {
     id: "auth_signup_otp",
     label: "Sign-Up Verification",
     category: "AUTH",
     icon: <ShieldCheck className="w-4 h-4" />,
     badge: "OTP Passcode",
-    description: "Account creation verification with 6-digit dynamic passcode.",
+    description: "Punchy, clean 6-digit verification code with 10-minute expiry badge.",
   },
   {
     id: "auth_password_reset",
@@ -81,7 +95,7 @@ const TEMPLATES: TemplateMeta[] = [
     category: "AUTH",
     icon: <Key className="w-4 h-4" />,
     badge: "Security Alert",
-    description: "Password reset authorization code with security advisory.",
+    description: "Single-use password reset authorization code with account security advisory.",
   },
   {
     id: "auth_two_factor",
@@ -105,7 +119,7 @@ const TEMPLATES: TemplateMeta[] = [
     category: "LOGISTICS",
     icon: <Package className="w-4 h-4" />,
     badge: "Proof of Delivery",
-    description: "Confidential 4-digit code provided to recipient for driver POD release.",
+    description: "Motorbike courier hero, 4-digit handover code, origin/dropoff route card.",
   },
   {
     id: "delivery_invoice",
@@ -113,7 +127,7 @@ const TEMPLATES: TemplateMeta[] = [
     category: "LOGISTICS",
     icon: <Zap className="w-4 h-4" />,
     badge: "Tax Invoice",
-    description: "Itemized booking receipt with fare breakdown, surge, and escrow status.",
+    description: "Itemized booking receipt with fare breakdown, VAT, and live tracking.",
   },
   {
     id: "wallet_transaction",
@@ -128,8 +142,8 @@ const TEMPLATES: TemplateMeta[] = [
     label: "Partner Onboarding",
     category: "ONBOARDING",
     icon: <UserCheck className="w-4 h-4" />,
-    badge: "Welcome Fleet",
-    description: "Welcome letter for new couriers, merchants, or corporate clients.",
+    badge: "Fleet Partner",
+    description: "Courier helmet & key hero, verified credentials card, and dispatch desk hotline.",
   },
   {
     id: "custom_broadcast",
@@ -139,6 +153,18 @@ const TEMPLATES: TemplateMeta[] = [
     badge: "Campaign Studio",
     description: "Rich announcement with hero banners, custom cards, and flexible CTAs.",
   },
+];
+
+const PRESET_IMAGES = [
+  { url: "/images/emails/welcome_light.jpg", label: "Luxury Satin Box", category: "Welcome", caption: "Luxury Satin Gold Parcel • High-Key Studio Lighting" },
+  { url: "/images/emails/promo_light.jpg", label: "Electric Delivery Van", category: "Promo", caption: "Futuristic Electric Delivery Van • ESDispatch Gilded Fleet" },
+  { url: "/images/emails/biker_light.jpg", label: "Fleet Motorbike", category: "Courier", caption: "ESDispatch Courier Fleet • Precision Express Delivery" },
+  { url: "/images/emails/security_light.jpg", label: "Gold Security Shield", category: "Security", caption: "ESDispatch Security Shield & Access Verification" },
+  { url: "/images/emails/receipt_light.jpg", label: "Certified Delivery Parcel", category: "Invoice", caption: "Official Verification & Certified Secure Settlement" },
+  { url: "/images/emails/fleet_light.jpg", label: "Courier Helmet & Key", category: "Partner", caption: "Official Partner Key & 5-Star Courier Helmet" },
+  { url: "/images/emails/onboarding_sending.png", label: "Courier on Clock", category: "Speed", caption: "Speed Courier On-Demand Dispatch • Instant Booking" },
+  { url: "/images/emails/onboarding_tracking.png", label: "3D Gold Map Pin", category: "Tracking", caption: "Live Turn-by-Turn GPS Map Telemetry" },
+  { url: "/images/emails/onboarding_wallet.png", label: "3D Gold Wallet", category: "Finance", caption: "ESDispatch Unified Wallet & Secure Escrow Ledger" },
 ];
 
 interface EmailStudioTabProps {
@@ -154,7 +180,7 @@ export default function EmailStudioTab({
   addLog,
   addToast,
 }: EmailStudioTabProps) {
-  const [templateId, setTemplateId] = useState<TemplateId>("auth_signup_otp");
+  const [templateId, setTemplateId] = useState<TemplateId>("customer_welcome");
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
   const [showHtmlModal, setShowHtmlModal] = useState(false);
   const [copiedHtml, setCopiedHtml] = useState(false);
@@ -162,14 +188,14 @@ export default function EmailStudioTab({
   // Common Form States
   const [recipientEmail, setRecipientEmail] = useState("client@esdispatch.com.ng");
   const [recipientName, setRecipientName] = useState("Osaze Ighodaro");
-  const [subject, setSubject] = useState("Verify Your ESDispatch Account");
-  const [preheader, setPreheader] = useState("Your one-time passcode is ready. Valid for 10 minutes.");
-  const [categoryTag, setCategoryTag] = useState("ACCOUNT VERIFICATION");
-  const [headline, setHeadline] = useState("Welcome to ESDispatch, Osaze");
-  const [heroImageUrl, setHeroImageUrl] = useState("");
-  const [heroImageCaption, setHeroImageCaption] = useState("");
+  const [subject, setSubject] = useState("Welcome to ESDispatch, Osaze Ighodaro");
+  const [preheader, setPreheader] = useState("Welcome to ESDispatch. Premium logistics, instant express booking, and live GPS tracking.");
+  const [categoryTag, setCategoryTag] = useState("CUSTOMER WELCOME");
+  const [headline, setHeadline] = useState("Welcome to Premium Logistics, Osaze");
+  const [heroImageUrl, setHeroImageUrl] = useState("/images/emails/welcome_light.jpg");
+  const [heroImageCaption, setHeroImageCaption] = useState("Luxury Satin Gold Parcel • High-Key Studio Lighting");
   const [bodyText, setBodyText] = useState(
-    "Thank you for choosing ESDispatch — the gold standard in precision logistics and express courier dispatch. Please enter your confidential passcode below to activate your account."
+    "Welcome to ESDispatch — Benin City’s premier on-demand delivery network. Whether you are sending fragile goods, eCommerce merchandise, confidential documents, or urgent parcels, our fleet guarantees precision timing and white-glove handling."
   );
 
   // Template-Specific Parameters
@@ -184,24 +210,29 @@ export default function EmailStudioTab({
   const [paymentMethod, setPaymentMethod] = useState("ESDispatch Wallet");
   const [transactionType, setTransactionType] = useState<"CREDIT" | "DEBIT">("CREDIT");
   const [partnerRole, setPartnerRole] = useState<"rider" | "vendor" | "customer">("rider");
-  const [ctaText, setCtaText] = useState("OPEN ESDISPATCH APP");
+  const [ctaText, setCtaText] = useState("BOOK YOUR FIRST DISPATCH");
   const [ctaUrl, setCtaUrl] = useState("https://www.esdispatch.com.ng");
+
+  // Promo & Voucher Specific Parameters
+  const [voucherCode, setVoucherCode] = useState("ESDISPATCH20");
+  const [discountHeadline, setDiscountHeadline] = useState("20% OFF YOUR FIRST 3 BOOKINGS");
+  const [validUntil, setValidUntil] = useState("End of This Month");
 
   // Custom 3-card grid state
   const [card1, setCard1] = useState<EmailThreeCard>({
-    tag: "SECURITY",
-    title: "256-Bit SSL",
-    description: "End-to-end encrypted dispatch network.",
+    tag: "SPEED",
+    title: "45-Min Express",
+    description: "Rapid dispatch routes across GRA, Ugbowo, and city center.",
   });
   const [card2, setCard2] = useState<EmailThreeCard>({
-    tag: "VALIDITY",
-    title: "10 Minutes",
-    description: "Single-use dynamic authentication.",
+    tag: "SECURITY",
+    title: "All-Risk Insured",
+    description: "Every dispatched package is backed by escrow protection.",
   });
   const [card3, setCard3] = useState<EmailThreeCard>({
-    tag: "HEADQUARTERS",
-    title: "Benin City",
-    description: "Active fleet operating across Edo State.",
+    tag: "WALLET",
+    title: "Unified Balance",
+    description: "Fund your wallet with Paystack for seamless 1-tap bookings.",
   });
 
   // SMTP Configuration State
@@ -255,55 +286,101 @@ export default function EmailStudioTab({
   const handleTemplateChange = (newId: TemplateId) => {
     setTemplateId(newId);
     switch (newId) {
+      case "customer_welcome":
+        setCategoryTag("CUSTOMER WELCOME");
+        setSubject(`Welcome to ESDispatch, ${recipientName}!`);
+        setHeadline(`Welcome to Premium Logistics, ${recipientName}`);
+        setPreheader("Welcome to ESDispatch. Premium logistics, instant express booking, and live GPS tracking.");
+        setHeroImageUrl("/images/emails/welcome_light.jpg");
+        setHeroImageCaption("Luxury Satin Gold Parcel • High-Key Studio Lighting");
+        setVoucherCode("ESDISPATCH20");
+        setDiscountHeadline("20% OFF YOUR FIRST 3 BOOKINGS");
+        setValidUntil("End of This Month");
+        setBodyText(
+          "Welcome to ESDispatch — Benin City’s premier on-demand delivery network. Whether you are sending fragile goods, eCommerce merchandise, confidential documents, or urgent parcels, our fleet guarantees precision timing and white-glove handling."
+        );
+        setCtaText("BOOK YOUR FIRST DISPATCH");
+        setCtaUrl("https://www.esdispatch.com.ng");
+        setCard1({ tag: "SPEED", title: "45-Min Express", description: "Rapid dispatch routes across GRA, Ugbowo, and city center." });
+        setCard2({ tag: "SECURITY", title: "All-Risk Insured", description: "Every dispatched package is backed by escrow protection." });
+        setCard3({ tag: "WALLET", title: "Unified Balance", description: "Fund your wallet with Paystack for seamless 1-tap bookings." });
+        break;
+      case "promotional_campaign":
+        setCategoryTag("SPECIAL PROMOTION");
+        setSubject("Special Offer: 20% Off Your Next 3 Deliveries");
+        setHeadline("20% Off Your Next 3 Deliveries");
+        setPreheader("Claim your exclusive discount code ESDISPATCH20 for priority delivery.");
+        setHeroImageUrl("/images/emails/promo_light.jpg");
+        setHeroImageCaption("Futuristic Electric Delivery Van • ESDispatch Gilded Fleet");
+        setVoucherCode("ESDISPATCH20");
+        setDiscountHeadline("20% OFF YOUR NEXT 3 DELIVERIES");
+        setValidUntil("Next 14 Days");
+        setBodyText(
+          "Experience the fastest, most reliable logistics in Edo State with our exclusive partner discount. For a limited time, enjoy priority dispatch and reduced booking fares on all deliveries."
+        );
+        setCtaText("CLAIM PROMO DISCOUNT");
+        setCtaUrl("https://www.esdispatch.com.ng");
+        setCard1({ tag: "ZERO SURGE", title: "Locked Pricing", description: "No rainy day or peak-hour price surges." });
+        setCard2({ tag: "PRIORITY", title: "Express Assignment", description: "Nearest verified courier assigned within 60 seconds." });
+        setCard3({ tag: "LIVE MAP", title: "Track Anywhere", description: "Share live tracking links with your parcel recipients." });
+        break;
       case "auth_signup_otp":
         setCategoryTag("ACCOUNT VERIFICATION");
         setSubject(`Verify Your ESDispatch Account (${otpCode})`);
         setHeadline(`Welcome to ESDispatch, ${recipientName}`);
         setPreheader(`Your verification passcode is ${otpCode}. Valid for 10 minutes.`);
+        setHeroImageUrl("");
+        setHeroImageCaption("");
         setBodyText(
-          "Thank you for choosing ESDispatch — the gold standard in precision logistics and express courier dispatch. Please enter your confidential passcode below to activate your account."
+          "Welcome to ESDispatch — the gold standard in express logistics and courier dispatch. Enter the one-time passcode below into your mobile application to activate your account."
         );
         setCtaText("OPEN ESDISPATCH APP");
         setCtaUrl("https://www.esdispatch.com.ng");
         setCard1({ tag: "SECURITY", title: "256-Bit SSL", description: "End-to-end encrypted dispatch network." });
-        setCard2({ tag: "VALIDITY", title: "10 Minutes", description: "Single-use dynamic authentication." });
-        setCard3({ tag: "HEADQUARTERS", title: "Benin City", description: "Active fleet operating across Edo State." });
+        setCard2({ tag: "DISPATCH", title: "Benin City", description: "Active fleet operating across Edo State." });
+        setCard3({ tag: "WALLET", title: "Escrow Safe", description: "Automated fund protection on bookings." });
         break;
       case "auth_password_reset":
         setCategoryTag("SECURITY ALERT");
         setSubject(`Password Reset Authorization Code: ${otpCode}`);
-        setHeadline("Password Reset Request");
-        setPreheader(`Your password reset authorization code is ${otpCode}.`);
+        setHeadline("Password Reset Authorization");
+        setPreheader(`Your password reset code is ${otpCode}. Valid for 10 minutes.`);
+        setHeroImageUrl("/images/emails/security_light.jpg");
+        setHeroImageCaption("ESDispatch Security Shield & Access Verification");
         setBodyText(
-          "We received a formal request to reset the password for your ESDispatch account. If you initiated this request, authorize the update using the single-use security passcode below."
+          "We received a formal request to reset the password for your ESDispatch logistics account. If you initiated this request, authorize the update using your confidential passcode below."
         );
         setCtaText("VISIT SECURITY PORTAL");
         setCtaUrl("https://www.esdispatch.com.ng");
         setCard1({ tag: "NOTICE", title: "Single Use", description: "Code invalidates after first successful entry." });
-        setCard2({ tag: "SECURITY", title: "Account Shield", description: "Multi-layer device verification active." });
-        setCard3({ tag: "SUPPORT", title: "Emergency", description: "Contact fleets@esdispatch.com.ng immediately." });
+        setCard2({ tag: "SHIELD", title: "Keystore Lock", description: "Multi-layer device verification active." });
+        setCard3({ tag: "HOTLINE", title: "Emergency", description: "Direct call to +234 905 626 3010." });
         break;
       case "auth_two_factor":
         setCategoryTag("TWO-FACTOR LOGIN");
         setSubject(`2FA Login Challenge: ${otpCode}`);
-        setHeadline("Second-Factor Authentication");
+        setHeadline("Second-Factor Verification");
         setPreheader(`Your two-factor sign-in passcode is ${otpCode}.`);
+        setHeroImageUrl("");
+        setHeroImageCaption("");
         setBodyText(
-          "A sign-in attempt was detected from your verified mobile application. Enter the one-time authentication code below to finalize your session."
+          "A new sign-in attempt was detected from your verified mobile application. Enter the one-time authentication code below to finalize your session."
         );
         setCtaText("CONFIRM ON APP");
         setCtaUrl("https://www.esdispatch.com.ng");
-        setCard1({ tag: "DEVICE", title: "Identity Verified", description: "Session locked to active client signature." });
+        setCard1({ tag: "DEVICE", title: "Identity Locked", description: "Session locked to active client signature." });
         setCard2({ tag: "EXPIRY", title: "5 Minutes", description: "Instant auto-expiration window." });
-        setCard3({ tag: "DEFENSE", title: "Zero Sharing", description: "Never forward or send to dispatchers." });
+        setCard3({ tag: "PROTECTION", title: "Zero Sharing", description: "Never forward or send to dispatchers." });
         break;
       case "wallet_pin_reset":
         setCategoryTag("WALLET SECURITY");
         setSubject(`Authorize Wallet PIN Reset (${otpCode})`);
-        setHeadline("Wallet PIN Reset Authorization");
+        setHeadline("Wallet PIN Change Request");
         setPreheader(`Your PIN reset code is ${otpCode}. Valid for 10 minutes.`);
+        setHeroImageUrl("/images/emails/onboarding_wallet.png");
+        setHeroImageCaption("ESDispatch Unified Wallet & Secure Escrow Ledger");
         setBodyText(
-          "You have initiated a change of your ESDispatch transaction security PIN. Your wallet PIN secures all fund transfers and delivery escrows. Enter the authorization code below to complete this update."
+          "You have initiated a change or reset of your ESDispatch transaction security PIN. Your wallet PIN secures all fund transfers, balance deductions, and delivery escrows. Enter the authorization code below to complete this update."
         );
         setCtaText("MANAGE WALLET SETTINGS");
         setCtaUrl("https://www.esdispatch.com.ng");
@@ -316,62 +393,72 @@ export default function EmailStudioTab({
         setSubject(`Delivery Handover Code for #${trackingNumber}`);
         setHeadline(`Your Delivery is Arriving (#${trackingNumber})`);
         setPreheader(`Your ESDispatch handover code is ${otpCode.slice(0, 4)} for shipment #${trackingNumber}.`);
+        setHeroImageUrl("/images/emails/biker_light.jpg");
+        setHeroImageCaption("ESDispatch Courier Fleet • Precision Express Delivery");
         setBodyText(
-          `Your courier ${courierName} is arriving at your destination. For your protection, do not disclose your handover passcode until you physically inspect your parcel.`
+          `Your courier ${courierName} is approaching your delivery destination. Important: Provide this 4-digit confirmation code to your courier only after you have physically inspected your parcel.`
         );
         setCtaText("TRACK LIVE ON MAP");
         setCtaUrl(`https://www.esdispatch.com.ng/track?id=${trackingNumber}`);
-        setCard1({ tag: "COURIER", title: courierName.split(" ")[0] || "Fleet Rider", description: "Authorized & tracked courier." });
-        setCard2({ tag: "INSPECTION", title: "Check Package", description: "Inspect before releasing code." });
-        setCard3({ tag: "LOCATION", title: "Benin City", description: "Direct GPS track available." });
+        setCard1({ tag: "VERIFY", title: "Inspect Package", description: "Check seal and condition before sharing code." });
+        setCard2({ tag: "ESCROW", title: "Protected Settlement", description: "Funds release only upon valid OTP submission." });
+        setCard3({ tag: "BENIN CITY", title: "Live GPS Telemetry", description: "Active turn-by-turn map tracking." });
         break;
       case "delivery_invoice":
         setCategoryTag("PAYMENT CONFIRMED");
         setSubject(`Payment Receipt: Shipment #${trackingNumber}`);
         setHeadline(`Official Delivery Receipt (#${trackingNumber})`);
         setPreheader(`Payment confirmed for shipment #${trackingNumber}. Total: ${amountPaid}.`);
+        setHeroImageUrl("/images/emails/receipt_light.jpg");
+        setHeroImageCaption("Official Verification & Certified Secure Settlement");
         setBodyText(
           `Thank you for booking with ESDispatch. Your payment of ${amountPaid} has been confirmed and escrowed for delivery. Please find your itemized settlement details below.`
         );
         setCtaText("VIEW LIVE TRACKING");
         setCtaUrl(`https://www.esdispatch.com.ng/track?id=${trackingNumber}`);
-        setCard1({ tag: "SERVICE", title: serviceType, description: "Door-to-door delivery." });
-        setCard2({ tag: "TRACKING", title: `#${trackingNumber}`, description: "Live tracking enabled." });
-        setCard3({ tag: "STATUS", title: "Dispatched", description: "Fleet assigned." });
+        setCard1({ tag: "SERVICE", title: serviceType, description: "Door-to-door citywide delivery." });
+        setCard2({ tag: "TRACKING", title: `#${trackingNumber}`, description: "Real-time telemetry enabled." });
+        setCard3({ tag: "STATUS", title: "Dispatched", description: "Fleet assigned & en route." });
         break;
       case "wallet_transaction":
         setCategoryTag(transactionType === "CREDIT" ? "WALLET CREDIT ALERT" : "WALLET DEBIT ALERT");
         setSubject(`Wallet ${transactionType}: ${amountPaid}`);
         setHeadline(transactionType === "CREDIT" ? "Funds Credited to Your Wallet" : "Wallet Debit Notification");
-        setPreheader(`Wallet ${transactionType.toLowerCase()} of ${amountPaid}. Your updated balance is available.`);
+        setPreheader(`Wallet ${transactionType.toLowerCase()} of ${amountPaid}. New balance: ₦48,250.`);
+        setHeroImageUrl("/images/emails/onboarding_wallet.png");
+        setHeroImageCaption("ESDispatch Unified Wallet & Secure Escrow Ledger");
         setBodyText(
           `Your ESDispatch wallet balance has been updated successfully. Transaction reference: ${trackingNumber}.`
         );
         setCtaText("OPEN WALLET IN APP");
         setCtaUrl("https://www.esdispatch.com.ng");
-        setCard1({ tag: "SECURITY", title: "Instant Ledger", description: "Immutable transaction logging." });
-        setCard2({ tag: "SPEED", title: "Real-Time", description: "Zero waiting for wallet updates." });
-        setCard3({ tag: "BENIN CITY", title: "ESDispatch", description: "Fast settlement for couriers & merchants." });
+        setCard1({ tag: "LEDGER", title: "Instant Audit", description: "Immutable transaction logging." });
+        setCard2({ tag: "SPEED", title: "Real-Time", description: "Zero waiting for balance updates." });
+        setCard3({ tag: "SETTLEMENT", title: "Paystack Sync", description: "Direct automated banking gateway." });
         break;
       case "partner_welcome":
         setCategoryTag("FLEET ONBOARDING");
-        setSubject(`Welcome to ESDISPATCH, ${recipientName}!`);
+        setSubject(`Welcome to the Fleet, ${recipientName}!`);
         setHeadline(`Welcome to the Fleet, ${recipientName}`);
-        setPreheader("Welcome to ESDispatch. Start delivering excellence today.");
+        setPreheader("Welcome to ESDispatch as our Fleet Courier Partner. Start delivering excellence today.");
+        setHeroImageUrl("/images/emails/fleet_light.jpg");
+        setHeroImageCaption("Official Partner Key & 5-Star Courier Helmet");
         setBodyText(
-          "Congratulations! You are officially onboarded as an authorized partner with ESDispatch. You now have access to prompt fleet assignments, transparent tracking, automated daily escrow settlements, and responsive dispatch support."
+          "Congratulations! You have been officially verified and onboarded as an authorized Fleet Courier Partner with ESDispatch. As an esteemed member of our logistics family, you enjoy prompt fleet assignments, automated escrow settlements, and direct dispatcher guidance across Benin City."
         );
         setCtaText("ACCESS PARTNER CONSOLE");
         setCtaUrl("https://www.esdispatch.com.ng");
         setCard1({ tag: "STANDARDS", title: "Zero Compromise", description: "Strict timing and secure deliveries." });
-        setCard2({ tag: "EARNINGS", title: "Prompt Payouts", description: "Direct wallet settlements & tips." });
-        setCard3({ tag: "SAFETY", title: "Live Telemetry", description: "Continuous location tracking." });
+        setCard2({ tag: "EARNINGS", title: "Prompt Payouts", description: "Direct wallet settlements & cumulative tips." });
+        setCard3({ tag: "SAFETY", title: "Live Telemetry", description: "Continuous GPS safety monitoring." });
         break;
       case "custom_broadcast":
         setCategoryTag("OFFICIAL ANNOUNCEMENT");
         setSubject("Important Update from ESDispatch Operations");
         setHeadline("Special Announcement for Benin City Dispatch");
         setPreheader("Important service updates, fleet announcements, and promotional perks.");
+        setHeroImageUrl("/images/emails/promo_light.jpg");
+        setHeroImageCaption("ESDispatch Fleet Operations Corridor");
         setBodyText(
           "We are pleased to introduce enhanced express dispatch coverage across Benin City, extending service corridors into GRA, Uselu, Ikpoba Hill, and Airport Road with guaranteed 45-minute drop-offs."
         );
@@ -409,6 +496,22 @@ export default function EmailStudioTab({
   const compiledHtml = useMemo(() => {
     const threeCards: [EmailThreeCard, EmailThreeCard, EmailThreeCard] = [card1, card2, card3];
     switch (templateId) {
+      case "customer_welcome":
+        return renderCustomerWelcomeEmail({
+          name: recipientName,
+          heroImageUrl: heroImageUrl || undefined,
+          promoCode: voucherCode || undefined,
+        });
+      case "promotional_campaign":
+        return renderPromotionalCampaignEmail({
+          recipientName: recipientName,
+          campaignTitle: headline,
+          discountHeadline: discountHeadline,
+          voucherCode: voucherCode,
+          validUntil: validUntil,
+          detailsHtml: `<p style="margin: 0 0 12px 0;">${bodyText.replace(/\n/g, "<br>")}</p>`,
+          heroImageUrl: heroImageUrl || undefined,
+        });
       case "auth_signup_otp":
         return renderSignUpOtpEmail({
           name: recipientName,
@@ -458,8 +561,8 @@ export default function EmailStudioTab({
           date: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
           paymentMethod: paymentMethod,
           breakdown: [
-            { label: "Base Delivery Fare", amount: "₦2,500" },
-            { label: "Weight Surcharge (2.4 kg)", amount: "₦500" },
+            { label: "Base Express Fare", amount: "₦2,500" },
+            { label: "Distance Charge (12.4 km)", amount: "₦500" },
             { label: "Courier Tip", amount: "₦500" },
           ],
           heroImageUrl: heroImageUrl || undefined,
@@ -517,6 +620,9 @@ export default function EmailStudioTab({
     paymentMethod,
     transactionType,
     partnerRole,
+    voucherCode,
+    discountHeadline,
+    validUntil,
     ctaText,
     ctaUrl,
     card1,
@@ -676,7 +782,7 @@ export default function EmailStudioTab({
       {/* ========================================================================= */}
       <div className="px-6 py-4 bg-white dark:bg-[#121217] border-b border-gray-200 dark:border-white/10 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#FFB800] text-[#111] flex items-center justify-center font-black shadow-sm">
+          <div className="w-10 h-10 rounded-xl bg-[#FFB800] text-[#050505] flex items-center justify-center font-black shadow-sm">
             <Mail className="w-5 h-5" />
           </div>
           <div>
@@ -728,7 +834,7 @@ export default function EmailStudioTab({
                   ? "bg-white dark:bg-[#222] text-[#FFB800] shadow-xs"
                   : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
               }`}
-              title="Desktop View (720px)"
+              title="Desktop View (680px Luxury)"
             >
               <Monitor className="w-4 h-4" />
             </button>
@@ -740,7 +846,7 @@ export default function EmailStudioTab({
                   ? "bg-white dark:bg-[#222] text-[#FFB800] shadow-xs"
                   : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
               }`}
-              title="Mobile View (375px)"
+              title="Mobile View (375px Fluid)"
             >
               <Smartphone className="w-4 h-4" />
             </button>
@@ -754,7 +860,7 @@ export default function EmailStudioTab({
               setSendResult(null);
               setShowSendModal(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] rounded-xl text-xs font-black shadow-md hover:shadow-lg transition-all cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#050505] rounded-xl text-xs font-black shadow-md hover:shadow-lg transition-all cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" />
             <span>Dispatch Test Email</span>
@@ -778,7 +884,7 @@ export default function EmailStudioTab({
               onClick={() => handleTemplateChange(t.id)}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                 isSelected
-                  ? "bg-[#FFB800] text-[#111] shadow-xs"
+                  ? "bg-[#FFB800] text-[#050505] shadow-xs"
                   : "bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 border border-gray-200 dark:border-white/5"
               }`}
             >
@@ -883,7 +989,7 @@ export default function EmailStudioTab({
             </div>
             <div>
               <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">
-                Inbox Preheader (Invisible Preview Snippet)
+                Inbox Preheader (Preview Summary Snippet)
               </span>
               <input
                 type="text"
@@ -894,12 +1000,12 @@ export default function EmailStudioTab({
             </div>
           </div>
 
-          {/* Dynamic Image Insertion */}
+          {/* Dynamic Image & Illustration Gallery */}
           <div className="space-y-3 p-4 rounded-2xl bg-amber-500/5 border border-[#FFB800]/20">
             <div className="flex items-center justify-between">
               <label className="text-xs font-black uppercase tracking-wider text-gray-800 dark:text-white flex items-center gap-1.5">
                 <ImageIcon className="w-3.5 h-3.5 text-[#FFB800]" />
-                <span>Hero Banner / Embedded Media</span>
+                <span>Light-Mode Studio Illustrations</span>
               </label>
               {heroImageUrl && (
                 <button
@@ -914,15 +1020,47 @@ export default function EmailStudioTab({
                 </button>
               )}
             </div>
+
+            {/* Quick 1-Click Preset Grid */}
+            <div>
+              <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase block mb-1.5">
+                Click to attach minimalist 3D asset:
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                {PRESET_IMAGES.map((img) => (
+                  <button
+                    key={img.url}
+                    type="button"
+                    onClick={() => {
+                      setHeroImageUrl(img.url);
+                      setHeroImageCaption(img.caption);
+                    }}
+                    className={`p-2 rounded-xl text-left border transition-all cursor-pointer ${
+                      heroImageUrl === img.url
+                        ? "bg-[#FFB800]/20 border-[#FFB800] text-gray-900 dark:text-white font-bold"
+                        : "bg-white dark:bg-[#1A1A24] border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:border-[#FFB800]/60"
+                    }`}
+                  >
+                    <span className="text-[9px] font-extrabold text-[#FFB800] uppercase block">
+                      {img.category}
+                    </span>
+                    <span className="text-[10px] font-semibold leading-tight line-clamp-1 block mt-0.5">
+                      {img.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div>
               <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">
-                Image Web URL (HTTPS)
+                Active Image Path / URL
               </span>
               <input
-                type="url"
+                type="text"
                 value={heroImageUrl}
                 onChange={(e) => setHeroImageUrl(e.target.value)}
-                placeholder="https://example.com/banner.png or leave empty"
+                placeholder="/images/emails/welcome_light.jpg"
                 className="w-full mt-1 bg-gray-50 dark:bg-[#1A1A24] border border-gray-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-[#FFB800]"
               />
             </div>
@@ -935,35 +1073,51 @@ export default function EmailStudioTab({
                   type="text"
                   value={heroImageCaption}
                   onChange={(e) => setHeroImageCaption(e.target.value)}
-                  placeholder="e.g. Benin City express delivery coverage"
+                  placeholder="e.g. ESDispatch Courier Fleet • Precision Express Delivery"
                   className="w-full mt-1 bg-gray-50 dark:bg-[#1A1A24] border border-gray-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-1 focus:ring-[#FFB800]"
                 />
               </div>
             )}
-            <div className="flex items-center gap-2 pt-1">
-              <span className="text-[10px] text-gray-500 dark:text-gray-400">Quick presets:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setHeroImageUrl("https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80");
-                  setHeroImageCaption("ESDispatch Logistics Fleet • Precision Dispatch Network");
-                }}
-                className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 dark:bg-white/10 hover:bg-[#FFB800] hover:text-black transition-colors cursor-pointer"
-              >
-                Logistics Hub
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setHeroImageUrl("https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80");
-                  setHeroImageCaption("Fast Courier Movement across Benin City, Edo State");
-                }}
-                className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 dark:bg-white/10 hover:bg-[#FFB800] hover:text-black transition-colors cursor-pointer"
-              >
-                Dispatch Courier
-              </button>
-            </div>
           </div>
+
+          {/* Promo Voucher Parameters */}
+          {(templateId === "promotional_campaign" || templateId === "customer_welcome") && (
+            <div className="space-y-3 p-4 rounded-2xl bg-amber-500/5 border border-[#FFB800]/20">
+              <label className="text-xs font-black uppercase tracking-wider text-gray-800 dark:text-white flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-[#FFB800]" />
+                <span>Promo Voucher Card Details</span>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Voucher Code</span>
+                  <input
+                    type="text"
+                    value={voucherCode}
+                    onChange={(e) => setVoucherCode(e.target.value)}
+                    className="w-full mt-1 bg-gray-50 dark:bg-[#1A1A24] border border-gray-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-mono font-black text-[#FFB800]"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Validity</span>
+                  <input
+                    type="text"
+                    value={validUntil}
+                    onChange={(e) => setValidUntil(e.target.value)}
+                    className="w-full mt-1 bg-gray-50 dark:bg-[#1A1A24] border border-gray-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Discount Headline</span>
+                <input
+                  type="text"
+                  value={discountHeadline}
+                  onChange={(e) => setDiscountHeadline(e.target.value)}
+                  className="w-full mt-1 bg-gray-50 dark:bg-[#1A1A24] border border-gray-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-bold"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Dynamic Highlight Card Fields */}
           <div className="space-y-3">
@@ -1118,7 +1272,7 @@ export default function EmailStudioTab({
             <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400 font-medium">
               <span>Preview Mode:</span>
               <span className="font-bold text-gray-900 dark:text-white uppercase">
-                {viewport === "desktop" ? "Desktop (720px Full Luxury)" : "Mobile (375px Responsive Stack)"}
+                {viewport === "desktop" ? "Desktop (680px Luxury Presentation)" : "Mobile (375px Fluid Adaptive Stack)"}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -1137,7 +1291,7 @@ export default function EmailStudioTab({
           <div className="flex-1 overflow-auto p-6 flex justify-center items-start">
             <div
               className={`transition-all duration-300 ease-out shadow-2xl bg-white rounded-2xl overflow-hidden border border-gray-300 dark:border-white/20 ${
-                viewport === "desktop" ? "w-full max-w-[760px]" : "w-[395px] max-w-full"
+                viewport === "desktop" ? "w-full max-w-[720px]" : "w-[395px] max-w-full"
               }`}
               style={{ minHeight: "680px" }}
             >
@@ -1160,12 +1314,12 @@ export default function EmailStudioTab({
           <div className="w-full max-w-md bg-white dark:bg-[#121217] rounded-3xl p-6 border border-gray-200 dark:border-white/15 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#FFB800] text-[#111] flex items-center justify-center font-black">
+                <div className="w-9 h-9 rounded-xl bg-[#FFB800] text-[#050505] flex items-center justify-center font-black">
                   <Send className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-gray-900 dark:text-white">
-                    Dispatch Test Email
+                    Dispatch Live Test Email
                   </h3>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400">
                     Live SMTP dispatch via {smtpHost}:{smtpPort}
@@ -1190,7 +1344,7 @@ export default function EmailStudioTab({
                   type="email"
                   value={testSendTo}
                   onChange={(e) => setTestSendTo(e.target.value)}
-                  placeholder="Enter your email to receive test"
+                  placeholder="Enter any destination email address"
                   className="w-full mt-1 bg-gray-50 dark:bg-[#1A1A24] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-[#FFB800]"
                   required
                 />
@@ -1242,7 +1396,7 @@ export default function EmailStudioTab({
                 type="button"
                 onClick={handleDispatchTestEmail}
                 disabled={sendingEmail}
-                className="flex items-center gap-2 px-5 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 disabled:opacity-50 text-[#111] rounded-xl text-xs font-black shadow-md transition-all cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 disabled:opacity-50 text-[#050505] rounded-xl text-xs font-black shadow-md transition-all cursor-pointer"
               >
                 {sendingEmail ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                 <span>{sendingEmail ? "Dispatching..." : "Send Test Email"}</span>
@@ -1269,7 +1423,7 @@ export default function EmailStudioTab({
                 <button
                   type="button"
                   onClick={handleCopyHtml}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FFB800] text-[#111] text-xs font-black cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FFB800] text-[#050505] text-xs font-black cursor-pointer"
                 >
                   {copiedHtml ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedHtml ? "Copied" : "Copy Code"}</span>
@@ -1299,7 +1453,7 @@ export default function EmailStudioTab({
             <div className="space-y-6 overflow-y-auto pr-1">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-[#FFB800] text-[#111] flex items-center justify-center font-black">
+                  <div className="w-9 h-9 rounded-xl bg-[#FFB800] text-[#050505] flex items-center justify-center font-black">
                     <Server className="w-4 h-4" />
                   </div>
                   <div>
@@ -1417,7 +1571,7 @@ export default function EmailStudioTab({
                 type="button"
                 onClick={handleSaveSmtp}
                 disabled={savingSmtp}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] text-xs font-black shadow-md transition-all cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#050505] text-xs font-black shadow-md transition-all cursor-pointer"
               >
                 {savingSmtp ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 <span>{savingSmtp ? "Saving Settings..." : "Save to Production Firestore"}</span>
