@@ -98,8 +98,17 @@ service cloud.firestore {
     // =========================================================
 
     match /users/{userId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
+      // Individual profile lookup: user themselves, dispatchers, admins, or assigned couriers
+      allow get: if isAuth() && (
+        request.auth.uid == userId ||
+        isAdmin() ||
+        isDispatcher() ||
+        exists(/databases/$(database)/documents/drivers/$(userId)) ||
+        exists(/databases/$(database)/documents/riders/$(userId))
+      );
+      // Mass user enumeration/listing is restricted to admins and dispatchers
+      allow list: if isAdmin() || isDispatcher();
+      allow create: if isAuth() && (request.auth.uid == userId || isAdmin());
       // Allows self updates, admin/dispatcher updates, cross-user rating & tip updates,
       // and wallet/loyalty adjustments while strictly preventing unauthorized privilege escalation.
       allow update: if isAuth() && (
@@ -181,8 +190,10 @@ service cloud.firestore {
     // =========================================================
 
     match /deliveries/{deliveryId} {
-      // Unrestricted read for live customer tracking, dispatcher map, and public queries
-      allow read: if true;
+      // Single parcel lookup: anyone with the tracking ID can look up status
+      allow get: if true;
+      // Mass query/listing of all deliveries requires authentication (stops open bot scraping)
+      allow list: if isAuth();
       // Allow creation of deliveries from authenticated users or reasonable guest bookings
       allow create: if isAuth() || isReasonableWrite();
       // Allow delivery lifecycle transitions, handover PIN verification, driver assignment,

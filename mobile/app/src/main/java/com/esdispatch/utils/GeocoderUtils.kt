@@ -165,7 +165,7 @@ object GeocoderUtils {
         query: String
     ): List<SearchResultItem> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val cleanQ = query.trim()
-        if (cleanQ.length < 2) return@withContext emptyList()
+        if (cleanQ.length < 3) return@withContext emptyList()
         val cacheKey = cleanQ.lowercase()
         placesCache[cacheKey]?.let { return@withContext it }
 
@@ -213,6 +213,9 @@ object GeocoderUtils {
         }
 
         if (results.isNotEmpty()) {
+            if (placesCache.size > 300) {
+                placesCache.clear()
+            }
             placesCache[cacheKey] = results
         }
         return@withContext results

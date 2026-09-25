@@ -769,13 +769,12 @@ fun SendParcelScreen(
                         viewModel.updateDraftPickup(pickup)
                         viewModel.updateDraftDelivery(delivery)
                         viewModel.updateDraftSpecs(
-                                  quantity = quantity.toIntOrNull() ?: 1,
-                                  weight = weight.toDoubleOrNull() ?: 1.0,
-                                  itemValue = itemValue.toDoubleOrNull() ?: 0.0,
-                                  length = length.toIntOrNull() ?: 10,
-                                  width = width.toIntOrNull() ?: 10,
-                                  height = height.toIntOrNull() ?: 10
-                              )
+                            quantity.toIntOrNull() ?: 1,
+                            weight.toDoubleOrNull() ?: 1.0,
+                            length.toIntOrNull() ?: 10,
+                            width.toIntOrNull() ?: 10,
+                            height.toIntOrNull() ?: 10
+                        )
                         viewModel.updateDraftSenderInfo(sName, sPhone)
                         viewModel.updateDraftReceiverInfo(rName, rPhone)
                         onNavigate("BookingSelection")

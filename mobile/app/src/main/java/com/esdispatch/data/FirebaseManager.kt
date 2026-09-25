@@ -80,9 +80,30 @@ object FirebaseManager {
             null
         }
 
+    @Volatile
+    private var isFirestoreConfigured = false
+
     val firestore: FirebaseFirestore?
         get() = try {
-            FirebaseFirestore.getInstance()
+            val instance = FirebaseFirestore.getInstance()
+            if (!isFirestoreConfigured) {
+                synchronized(this) {
+                    if (!isFirestoreConfigured) {
+                        try {
+                            val settings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
+                                .setLocalCacheSettings(
+                                    com.google.firebase.firestore.PersistentCacheSettings.newBuilder()
+                                        .setSizeBytes(104857600L) // 100 MB persistent disk cache to minimize billable cloud reads
+                                        .build()
+                                )
+                                .build()
+                            instance.firestoreSettings = settings
+                        } catch (_: Exception) {}
+                        isFirestoreConfigured = true
+                    }
+                }
+            }
+            instance
         } catch (e: Exception) {
             Log.e(TAG, "FirebaseFirestore initialization failed: ${e.message}")
             null

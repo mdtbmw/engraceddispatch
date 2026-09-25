@@ -28,6 +28,31 @@ class DispatchApplication : Application() {
         installCrashHandler()
         createNotificationChannels()
         initializeFirebaseSafely()
+        initializeAppCheck()
+    }
+
+    private fun initializeAppCheck() {
+        try {
+            val appCheck = com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
+            if (BuildConfig.DEBUG) {
+                try {
+                    val debugClass = Class.forName("com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory")
+                    val method = debugClass.getMethod("getInstance")
+                    val factory = method.invoke(null) as com.google.firebase.appcheck.AppCheckProviderFactory
+                    appCheck.installAppCheckProviderFactory(factory)
+                    android.util.Log.i("DispatchApplication", "App Check initialized with DebugProvider")
+                } catch (t: Throwable) {
+                    android.util.Log.w("DispatchApplication", "Debug AppCheck provider unavailable: ${t.message}")
+                }
+            } else {
+                appCheck.installAppCheckProviderFactory(
+                    com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory.getInstance()
+                )
+                android.util.Log.i("DispatchApplication", "App Check initialized with PlayIntegrityProvider")
+            }
+        } catch (e: Throwable) {
+            android.util.Log.w("DispatchApplication", "App Check initialization non-fatal: ${e.message}")
+        }
     }
 
     private fun createNotificationChannels() {

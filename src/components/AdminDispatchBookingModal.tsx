@@ -225,8 +225,12 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
     }
   };
 
+  // In-Memory Autocomplete Cache & Debounce Timer to prevent billing runaway
+  const searchDebounceRef = useRef<any>(null);
+  const placesCacheRef = useRef<Map<string, any[]>>(new Map());
+
   // Landmark Local & Google Places Search for Pickup
-  const searchAddress = async (q: string, isPickup: boolean) => {
+  const searchAddress = (q: string, isPickup: boolean) => {
     const term = q.trim().toLowerCase();
     if (!term) {
       if (isPickup) setPickupSuggestions([]);
@@ -256,35 +260,63 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
       setIsSearchingDelivery(true);
     }
 
-    // 2. Fetch Google Places Autocomplete client-side (biased to Benin City)
-    try {
-      const apiKey = "AIzaSyCnYpvx0peHOafunoZcPMIIhd7Y-pM0NAs";
-      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
-        q
-      )}&location=6.3350,5.6037&radius=30000&components=country:ng&key=${apiKey}`;
-
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.predictions && data.predictions.length > 0) {
-          const apiMatches = data.predictions.slice(0, 5).map((p: any) => ({
-            title: p.structured_formatting?.main_text || p.description,
-            address: p.description,
-            placeId: p.place_id,
-            source: "google"
-          }));
-
-          const combined = [...localMatches, ...apiMatches].slice(0, 7);
-          if (isPickup) setPickupSuggestions(combined);
-          else setDeliverySuggestions(combined);
-        }
-      }
-    } catch {
-      // Fallback gracefully to local matches
-    } finally {
-      if (isPickup) setIsSearchingPickup(false);
-      else setIsSearchingDelivery(false);
+    // 2. If already in memory cache, serve immediately with zero network overhead
+    if (placesCacheRef.current.has(term)) {
+      const cached = placesCacheRef.current.get(term) || [];
+      const combined = [...localMatches, ...cached].slice(0, 7);
+      if (isPickup) setPickupSuggestions(combined);
+      else setDeliverySuggestions(combined);
+      return;
     }
+
+    // Skip network queries for short inputs (< 3 chars)
+    if (term.length < 3) return;
+
+    // 3. Debounce external Google Places API call by 350ms to stop runaway billing
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    if (isPickup) setIsSearchingPickup(true);
+    else setIsSearchingDelivery(true);
+
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyCnYpvx0peHOafunoZcPMIIhd7Y-pM0NAs";
+        const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
+          q
+        )}&location=6.3350,5.6037&radius=30000&components=country:ng&key=${apiKey}`;
+
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.predictions && data.predictions.length > 0) {
+            const apiMatches = data.predictions.slice(0, 5).map((p: any) => ({
+              title: p.structured_formatting?.main_text || p.description,
+              address: p.description,
+              placeId: p.place_id,
+              source: "google"
+            }));
+
+            // Store in memory cache (capped at 200 items)
+            if (placesCacheRef.current.size > 200) {
+              const firstKey = placesCacheRef.current.keys().next().value;
+              if (firstKey) placesCacheRef.current.delete(firstKey);
+            }
+            placesCacheRef.current.set(term, apiMatches);
+
+            const combined = [...localMatches, ...apiMatches].slice(0, 7);
+            if (isPickup) setPickupSuggestions(combined);
+            else setDeliverySuggestions(combined);
+          }
+        }
+      } catch {
+        // Fallback gracefully to local matches
+      } finally {
+        if (isPickup) setIsSearchingPickup(false);
+        else setIsSearchingDelivery(false);
+      }
+    }, 350);
   };
 
   // Initialize Leaflet Map on step 2
