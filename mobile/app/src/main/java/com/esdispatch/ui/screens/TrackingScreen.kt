@@ -742,25 +742,12 @@ fun ActiveTrackingScreen(
     }
 
     // ------------------------------------------------------------------------------------------------
-    // Mapbox Interactive Configurations (Simulated GL Engine Controls)
-    // ------------------------------------------------------------------------------------------------
+    // Map view configurations driven by live GPS telemetry
     var isSatelliteMode by remember { mutableStateOf(false) }
     var showTraffic by remember { mutableStateOf(true) }
     var mapZoom by remember { mutableFloatStateOf(14.5f) }
     var dismissedTrafficAlert by remember { mutableStateOf(false) }
     var followUser by remember(hasNoBooking) { mutableStateOf(hasNoBooking) }
-
-    // Dynamic infinite animation for real-time courier path gliding
-    val infiniteTransition = rememberInfiniteTransition(label = "tracking")
-    val progressOffset by infiniteTransition.animateFloat(
-        initialValue = 0.15f,
-        targetValue = 0.85f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "laserPos"
-    )
 
     val accentIconColor = if (isLight) Obsidian else Gold
     val accentTextColor = if (isLight) Obsidian else Gold

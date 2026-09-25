@@ -282,7 +282,13 @@ class MainActivity : FragmentActivity() {
                     try {
                         when (effectiveRoute) {
                             "BACK" -> {
-                                if (!navController.popBackStack()) {
+                                val currentRoute = navController.currentBackStackEntry?.destination?.route
+                                if (currentRoute in listOf("OrderLogs", "Marketplace", "Profile", "Wallet")) {
+                                    navController.navigate("Dashboard") {
+                                        popUpTo("Dashboard") { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                } else if (!navController.popBackStack()) {
                                     navController.navigate("Dashboard") {
                                         popUpTo("Dashboard") { inclusive = false }
                                         launchSingleTop = true
@@ -290,18 +296,30 @@ class MainActivity : FragmentActivity() {
                                 }
                             }
                             "Dashboard" -> {
-                                if (!navController.popBackStack("Dashboard", false)) {
-                                    navController.navigate("Dashboard") {
-                                        popUpTo("Dashboard") { inclusive = false }
-                                        launchSingleTop = true
+                                navController.navigate("Dashboard") {
+                                    popUpTo("Dashboard") {
+                                        inclusive = false
                                     }
+                                    launchSingleTop = true
+                                }
+                            }
+                            "OrderLogs", "Marketplace", "Profile", "Wallet" -> {
+                                navController.navigate(effectiveRoute) {
+                                    popUpTo("Dashboard") {
+                                        saveState = true
+                                        inclusive = false
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
                             }
                             "SendParcel" -> {
-                                if (!navController.popBackStack("SendParcel", false)) {
-                                    navController.navigate("SendParcel") {
-                                        launchSingleTop = true
+                                navController.navigate("SendParcel") {
+                                    popUpTo("Dashboard") {
+                                        saveState = true
+                                        inclusive = false
                                     }
+                                    launchSingleTop = true
                                 }
                             }
                             "PaymentSuccess" -> {
@@ -312,7 +330,10 @@ class MainActivity : FragmentActivity() {
                             }
                             "Tracking", "ActiveTracking" -> {
                                 navController.navigate("ActiveTracking") {
-                                    popUpTo("Dashboard") { inclusive = false }
+                                    popUpTo("Dashboard") {
+                                        saveState = true
+                                        inclusive = false
+                                    }
                                     launchSingleTop = true
                                 }
                             }
@@ -474,12 +495,12 @@ class MainActivity : FragmentActivity() {
                         ProfileScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
 
-                    // Booking Flow
+                    // Booking Flow — 4 Canonical Services Only
                     composable("SendParcel") {
                         ServiceSelectionScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("SendParcelDetails") {
-                        SendParcelScreen(viewModel = viewModel, onNavigate = handleNavigation)
+                        ExpressBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("ExpressBooking") {
                         ExpressBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
@@ -494,13 +515,13 @@ class MainActivity : FragmentActivity() {
                         MultiBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BookingForm") {
-                        BookingSelectionScreen(viewModel = viewModel, onNavigate = handleNavigation)
+                        ExpressBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BookingDetails") {
-                        BookingDetails(viewModel = viewModel, onNavigate = handleNavigation)
+                        ExpressBookingScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("BookingSelection") {
-                        BookingSelectionScreen(viewModel = viewModel, onNavigate = handleNavigation)
+                        ServiceSelectionScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("PaymentSuccess") {
                         PaymentSuccessScreen(viewModel = viewModel, onNavigate = handleNavigation)

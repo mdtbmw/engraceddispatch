@@ -584,3 +584,36 @@ object GeocoderUtils {
         return@withContext null
     }
 }
+
+data class DetectedLocation(
+    val address: String,
+    val lat: Double,
+    val lng: Double
+)
+
+suspend fun detectUserLocationDetailed(context: android.content.Context): DetectedLocation = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val fusedClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+            val loc: android.location.Location? = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                fusedClient.getCurrentLocation(com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, null)
+                    .addOnSuccessListener { if (it != null) cont.resume(it) else fusedClient.lastLocation.addOnSuccessListener { l -> cont.resume(l) }.addOnFailureListener { cont.resume(null) } }
+                    .addOnFailureListener { fusedClient.lastLocation.addOnSuccessListener { l -> cont.resume(l) }.addOnFailureListener { cont.resume(null) } }
+            }
+            if (loc != null) {
+                val landmark = com.esdispatch.data.AddressDatabase.findNearest(loc.latitude, loc.longitude, maxDistKm = 0.35)
+                if (landmark != null) return@withContext DetectedLocation(landmark.displayName, loc.latitude, loc.longitude)
+                val addr = GeocoderUtils.reverseGeocodeCoordinates(context, loc.latitude, loc.longitude)
+                return@withContext DetectedLocation(addr, loc.latitude, loc.longitude)
+            }
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("DetectLocation", "GPS detection failed: ${e.message}")
+    }
+    return@withContext DetectedLocation("Ring Road (King's Square), City Center, Benin City", 6.3350, 5.6037)
+}
+
+suspend fun detectUserLocation(context: android.content.Context): String {
+    return detectUserLocationDetailed(context).address
+}

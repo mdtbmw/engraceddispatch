@@ -2733,7 +2733,7 @@ function AdminDashboardPage() {
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} userRole={userRole} currentUser={currentUser} />}
         {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} users={users} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
-        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} />}
+        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} onNewDispatch={() => setShowNew(true)} />}
         {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} addToast={addToast} />}
@@ -10326,7 +10326,7 @@ function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: 
   </div>;
 }
 
-function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers: UserProfile[] }) {
+function TrackingTab({ deliveries, drivers, onNewDispatch }: { deliveries: Delivery[]; drivers: UserProfile[]; onNewDispatch?: () => void }) {
   const [trackSearch, setTrackSearch] = useState("");
   const [tSelectedId, setTSelectedId] = useState<string | null>(null);
   const activeD = deliveries.filter(d => d.status !== "DELIVERED" && d.status !== "CANCELLED");
@@ -10339,7 +10339,18 @@ function TrackingTab({ deliveries, drivers }: { deliveries: Delivery[]; drivers:
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
       <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><MapPin className="w-5 h-5 text-[#FFB800]" /> Live Tracking</h1><p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">{activeD.length} active deliveries, {drivers.filter(d => d.lat && d.lng).length} riders on map</p></div>
-      <SearchInput value={trackSearch} onChange={setTrackSearch} placeholder="Search by ID, name, item..." />
+      <div className="flex items-center gap-3 flex-wrap">
+        <SearchInput value={trackSearch} onChange={setTrackSearch} placeholder="Search by ID, name, item..." />
+        {onNewDispatch && (
+          <button
+            onClick={onNewDispatch}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#FFB800] text-black font-extrabold text-xs shadow-md hover:bg-[#e6a600] active:scale-95 transition-all cursor-pointer"
+          >
+            <Plus size={16} className="stroke-[3]" />
+            Dispatch Ride
+          </button>
+        )}
+      </div>
     </div>
     <div className="h-[400px] rounded-3xl overflow-hidden border border-gray-200 dark:border-white/10 shadow-sm">
       <LiveTrackingMap deliveries={filtered} drivers={drivers} selectedId={tSelectedId} onSelect={setTSelectedId} />

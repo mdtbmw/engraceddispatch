@@ -276,13 +276,17 @@ fun DashboardScreen(
     }
 
     val context = LocalContext.current
+    val feedbackPrefs = remember { context.getSharedPreferences("esdispatch_feedback_prefs", android.content.Context.MODE_PRIVATE) }
     var feedbackParcel by remember { mutableStateOf<Parcel?>(null) }
     var dismissedFeedbackParcelId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(completedParcels, userRole) {
         if (userRole != "rider") {
             val unrated = completedParcels.firstOrNull { 
-                !it.isRated && it.id != dismissedFeedbackParcelId && (it.riderId.isNotBlank() || it.driverId.isNotBlank()) 
+                !it.isRated && 
+                it.id != dismissedFeedbackParcelId && 
+                !feedbackPrefs.getBoolean("feedback_dismissed_${it.id}", false) &&
+                (it.riderId.isNotBlank() || it.driverId.isNotBlank()) 
             }
             if (unrated != null && feedbackParcel == null) {
                 feedbackParcel = unrated
@@ -296,10 +300,14 @@ fun DashboardScreen(
             isDark = isDark,
             walletBalance = walletBalance,
             onDismiss = {
+                feedbackPrefs.edit().putBoolean("feedback_dismissed_${parcelToRate.id}", true).apply()
                 dismissedFeedbackParcelId = parcelToRate.id
                 feedbackParcel = null
             },
             onSubmit = { rating, tip ->
+                feedbackPrefs.edit().putBoolean("feedback_dismissed_${parcelToRate.id}", true).apply()
+                dismissedFeedbackParcelId = parcelToRate.id
+                feedbackParcel = null
                 val rId = parcelToRate.riderId.ifEmpty { parcelToRate.driverId }
                 viewModel.rateAndTipRider(
                     parcelId = parcelToRate.id,
@@ -312,8 +320,6 @@ fun DashboardScreen(
                         } else {
                             Toast.makeText(context, "Error: ${error ?: "Submission failed"}", Toast.LENGTH_LONG).show()
                         }
-                        dismissedFeedbackParcelId = parcelToRate.id
-                        feedbackParcel = null
                     }
                 )
             }

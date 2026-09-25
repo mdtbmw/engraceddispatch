@@ -48,6 +48,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import com.esdispatch.utils.detectUserLocation
 
 @Composable
 fun EconomyBookingScreen(
@@ -73,13 +74,29 @@ fun EconomyBookingScreen(
     var rName by remember { mutableStateOf(draft.receiverName) }
     var rPhone by remember { mutableStateOf(draft.receiverPhone) }
 
-    var itemName by remember { mutableStateOf("") }
-    var weight by remember { mutableStateOf("2.5") }
+    var itemName by remember { mutableStateOf(draft.itemName) }
+    var weight by remember { mutableStateOf(if (draft.weight > 0) draft.weight.toString() else "2.5") }
+    var declaredValue by remember { mutableStateOf(if (draft.declaredValue > 0) draft.declaredValue.toString() else "") }
     
     // Package Dimensions
-    var length by remember { mutableStateOf("25") }
-    var width by remember { mutableStateOf("20") }
-    var height by remember { mutableStateOf("15") }
+    var length by remember { mutableStateOf(if (draft.length > 0) draft.length.toString() else "25") }
+    var width by remember { mutableStateOf(if (draft.width > 0) draft.width.toString() else "20") }
+    var height by remember { mutableStateOf(if (draft.height > 0) draft.height.toString() else "15") }
+
+    LaunchedEffect(draft) {
+        if (draft.pickupAddress.isNotBlank()) pickup = draft.pickupAddress
+        if (draft.deliveryAddress.isNotBlank()) delivery = draft.deliveryAddress
+        if (draft.senderName.isNotBlank()) sName = draft.senderName
+        if (draft.senderPhone.isNotBlank()) sPhone = draft.senderPhone
+        if (draft.receiverName.isNotBlank()) rName = draft.receiverName
+        if (draft.receiverPhone.isNotBlank()) rPhone = draft.receiverPhone
+        if (draft.itemName.isNotBlank()) itemName = draft.itemName
+        if (draft.weight > 0) weight = draft.weight.toString()
+        if (draft.declaredValue > 0) declaredValue = draft.declaredValue.toString()
+        if (draft.length > 0) length = draft.length.toString()
+        if (draft.width > 0) width = draft.width.toString()
+        if (draft.height > 0) height = draft.height.toString()
+    }
 
     val cargoFeasibility = remember(itemName, weight, length, width, height) {
         CargoFeasibilityValidator.validateEconomyCargo(
@@ -748,6 +765,56 @@ fun EconomyBookingScreen(
                             )
                         }
 
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        OutlinedTextField(
+                            value = declaredValue,
+                            onValueChange = { declaredValue = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(20.dp),
+                            label = { Text("Declared Item Value (₦)", color = TextGray) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = accentColor,
+                                unfocusedBorderColor = fieldBorderColor,
+                                focusedContainerColor = fieldBgColor,
+                                unfocusedContainerColor = fieldBgColor,
+                                focusedTextColor = fieldTextColor,
+                                unfocusedTextColor = fieldTextColor,
+                                focusedLabelColor = accentColor,
+                                unfocusedLabelColor = TextGray
+                            )
+                        )
+
+                        // Packaging Inspection Disclaimer
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isDark) Color(0xFF1E1C14) else Color(0xFFFFFBEB),
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth().padding(top = 14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Info,
+                                    contentDescription = null,
+                                    tint = if (isDark) Gold else Obsidian,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "Notice: Smiles Dispatch riders reserve the right to inspect package contents before pickup for safety, integrity, and regulatory compliance.",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isDark) GoldLight else Obsidian,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+
                         if (!cargoFeasibility.isFeasible) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
@@ -1207,6 +1274,14 @@ fun EconomyBookingScreen(
                     viewModel.updateDraftDelivery(delivery)
                     viewModel.updateDraftSenderInfo(sName, sPhone)
                     viewModel.updateDraftReceiverInfo(rName, rPhone)
+                    viewModel.updateDraftSpecs(
+                        quantity = 1,
+                        weight = weight.toDoubleOrNull() ?: 2.5,
+                        length = length.toIntOrNull() ?: 25,
+                        width = width.toIntOrNull() ?: 20,
+                        height = height.toIntOrNull() ?: 15,
+                        declaredValue = declaredValue.toDoubleOrNull() ?: 0.0
+                    )
                     viewModel.finalizeDraftPrice("Economy", quotePrice)
                     viewModel.confirmBooking { ok, msg ->
                         if (ok) {

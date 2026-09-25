@@ -3062,8 +3062,8 @@ fun GeofenceTelemetryDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var testLat by remember { mutableStateOf("6.45") }
-    var testLng by remember { mutableStateOf("3.42") }
+    var testLat by remember { mutableStateOf("6.3350") }
+    var testLng by remember { mutableStateOf("5.6037") }
     var alertResult by remember { mutableStateOf<com.esdispatch.data.GeofenceAlert?>(null) }
     var checkedStatus by remember { mutableStateOf(false) }
 

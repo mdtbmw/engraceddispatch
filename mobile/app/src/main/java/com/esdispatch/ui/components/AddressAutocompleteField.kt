@@ -6,10 +6,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,6 +59,17 @@ fun AddressAutocompleteField(
         com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
     }
 
+    // Curated quick-fill popular destinations in Benin City
+    val quickPicks = remember {
+        listOf(
+            SearchResultItem("King's Square", "Ring Road, City Center, Benin City", 6.3350, 5.6200),
+            SearchResultItem("UBTH Hospital", "Ugbowo Lagos Road, Benin City", 6.3982, 5.6111),
+            SearchResultItem("UNIBEN Campus", "Ugbowo, Benin City", 6.4024, 5.6166),
+            SearchResultItem("Benin Airport", "Airport Road, GRA, Benin City", 6.3175, 5.5995),
+            SearchResultItem("Sapele Road", "Sapele Road, Benin City", 6.3210, 5.6280)
+        )
+    }
+
     // Trigger instant local matching + debounced Places autocomplete search when value changes
     fun performSearch(query: String) {
         searchJob?.cancel()
@@ -69,7 +81,7 @@ fun AddressAutocompleteField(
             return
         }
 
-        // Instant local Benin City matches on keystroke 1
+        // Instant local Benin City matches on keystroke 1 (0ms)
         val instantMatches = com.esdispatch.data.AddressDatabase.searchItems(trimmed)
         if (instantMatches.isNotEmpty()) {
             searchResults = instantMatches
@@ -79,7 +91,7 @@ fun AddressAutocompleteField(
         if (trimmed.length >= 2) {
             searchJob = scope.launch {
                 isSearching = true
-                delay(250L) // debouncing
+                delay(250L) // debouncing to prevent excessive requests
                 val items = GeocoderUtils.fetchMapboxPlacesAutocompleteItems(trimmed)
                 if (items.isNotEmpty()) {
                     searchResults = items
@@ -91,6 +103,15 @@ fun AddressAutocompleteField(
             isSearching = false
         }
     }
+
+    val primaryTextColor = if (isDark) Color.White else Obsidian
+    val secondaryTextColor = TextGray
+    val containerColor = if (isDark) LuxuryBlack else Color.White
+    val focusedBorder = if (isDark) Gold else Obsidian
+    val unfocusedBorder = if (isDark) BorderDark else Slate
+    val chipBorder = if (isDark) Gold.copy(alpha = 0.35f) else Obsidian.copy(alpha = 0.25f)
+    val chipBg = if (isDark) Gold.copy(alpha = 0.12f) else Obsidian.copy(alpha = 0.06f)
+    val chipText = if (isDark) Gold else Obsidian
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -104,7 +125,7 @@ fun AddressAutocompleteField(
                 text = label,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
-                color = Gold,
+                color = if (isDark) Gold else Obsidian,
                 letterSpacing = 1.sp
             )
 
@@ -130,7 +151,6 @@ fun AddressAutocompleteField(
                             if (loc != null) {
                                 scope.launch {
                                     val detectedAddress = GeocoderUtils.reverseGeocodeCoordinates(context, loc.latitude, loc.longitude)
-                                    // Keep title blank so displayInput resolves to the raw address — no "Current Location," prefix
                                     val item = SearchResultItem(
                                         title = "",
                                         fullAddress = detectedAddress,
@@ -141,7 +161,6 @@ fun AddressAutocompleteField(
                                     onAddressSelected(item)
                                     showDropdown = false
                                     isLocatingGPS = false
-                                    Toast.makeText(context, "Address detected via GPS!", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
                                 isLocatingGPS = false
@@ -157,8 +176,8 @@ fun AddressAutocompleteField(
                     }
                 },
                 shape = RoundedCornerShape(12.dp),
-                color = Gold.copy(alpha = 0.15f),
-                border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                color = chipBg,
+                border = BorderStroke(1.dp, chipBorder)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -167,13 +186,13 @@ fun AddressAutocompleteField(
                     if (isLocatingGPS) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(12.dp),
-                            color = Gold, strokeWidth = 2.dp
+                            color = chipText, strokeWidth = 2.dp
                         )
                     } else {
                         Icon(
                             imageVector = Icons.Filled.MyLocation,
                             contentDescription = "Detect Location",
-                            tint = Gold,
+                            tint = chipText,
                             modifier = Modifier.size(12.dp)
                         )
                     }
@@ -182,7 +201,7 @@ fun AddressAutocompleteField(
                         text = if (isLocatingGPS) "Detecting..." else "Use Current Location",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Gold
+                        color = chipText
                     )
                 }
             }
@@ -201,13 +220,13 @@ fun AddressAutocompleteField(
                 if (isSearching) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
-                        color = Gold, strokeWidth = 2.dp
+                        color = if (isDark) Gold else Obsidian, strokeWidth = 2.dp
                     )
                 } else {
                     Icon(
                         imageVector = Icons.Filled.LocationOn,
                         contentDescription = null,
-                        tint = Gold,
+                        tint = if (isDark) Gold else Obsidian,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -225,15 +244,58 @@ fun AddressAutocompleteField(
             },
             shape = RoundedCornerShape(14.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Gold,
-                unfocusedBorderColor = if (isDark) BorderDark else Slate,
-                focusedContainerColor = if (isDark) LuxuryBlack else Color.White,
-                unfocusedContainerColor = if (isDark) LuxuryBlack else Color.White
+                focusedBorderColor = focusedBorder,
+                unfocusedBorderColor = unfocusedBorder,
+                focusedContainerColor = containerColor,
+                unfocusedContainerColor = containerColor,
+                focusedTextColor = primaryTextColor,
+                unfocusedTextColor = primaryTextColor
             ),
             singleLine = true
         )
 
-        // Mapbox Live Autocomplete Dropdown Suggestions Surface
+        // Quick-Fill Benin City Landmark Chips (shown when input is blank)
+        if (value.isBlank()) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(quickPicks) { pick ->
+                    Surface(
+                        onClick = {
+                            onValueChange(pick.displayInput)
+                            onAddressSelected(pick)
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isDark) Charcoal else Slate.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = null,
+                                tint = if (isDark) Gold else Obsidian,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = pick.title,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else Obsidian
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Live Autocomplete Dropdown Suggestions Surface
         AnimatedVisibility(
             visible = showDropdown && searchResults.isNotEmpty(),
             enter = fadeIn(),
@@ -247,7 +309,7 @@ fun AddressAutocompleteField(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 6.dp)
-                    .heightIn(max = 220.dp)
+                    .heightIn(max = 240.dp)
             ) {
                 LazyColumn(
                     modifier = Modifier.padding(vertical = 6.dp)
@@ -266,31 +328,31 @@ fun AddressAutocompleteField(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(30.dp)
+                                    .size(32.dp)
                                     .clip(CircleShape)
-                                    .background(Gold.copy(alpha = 0.15f)),
+                                    .background(if (isDark) Gold.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.08f)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Place,
                                     contentDescription = null,
-                                    tint = Gold,
+                                    tint = if (isDark) Gold else Obsidian,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = item.title,
+                                    text = item.title.ifBlank { item.fullAddress },
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color.White else Obsidian,
+                                    color = primaryTextColor,
                                     maxLines = 1
                                 )
                                 Text(
                                     text = item.fullAddress,
                                     fontSize = 11.sp,
-                                    color = TextGray,
+                                    color = secondaryTextColor,
                                     maxLines = 1
                                 )
                             }

@@ -2429,7 +2429,6 @@ class DeliveryViewModel : WalletViewModel() {
         val seedPrefs = appContext?.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
         val hasSeeded = seedPrefs?.getBoolean("seed_complete", false) ?: false
         if (!hasSeeded) {
-            seedAiRiders()
             seedAiChat()
             seedAiAnalytics()
             savePref("seed_complete", true)
@@ -2481,106 +2480,7 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     private fun seedAiRiders() {
-        val ridersList = listOf(
-            Rider(
-                id = "RDR-01",
-                name = "Richard Dheo",
-                phone = "+234 803 111 2222",
-                avatar = "",
-                vehicleType = "Bike",
-                status = RiderStatus.ONLINE,
-                latitude = 6.3350,
-                longitude = 5.6037,
-                currentWorkload = 1,
-                batteryLevel = 94,
-                rating = 4.9,
-                averageDeliveryTimeMin = 18,
-                cancellationHistoryCount = 0,
-                fuelEfficiency = 42.0,
-                shiftSchedule = "08:00 - 18:00",
-                distanceToPickupKm = 0.8,
-                activeDeliveriesCount = 1
-            ),
-            Rider(
-                id = "RDR-02",
-                name = "Adebayo Musa",
-                phone = "+234 812 345 6789",
-                avatar = "",
-                vehicleType = "Tricycle",
-                status = RiderStatus.ONLINE,
-                latitude = 6.3982,
-                longitude = 5.6111,
-                currentWorkload = 2,
-                batteryLevel = 82,
-                rating = 4.8,
-                averageDeliveryTimeMin = 24,
-                cancellationHistoryCount = 1,
-                fuelEfficiency = 28.5,
-                shiftSchedule = "08:00 - 18:00",
-                distanceToPickupKm = 1.6,
-                activeDeliveriesCount = 2
-            ),
-            Rider(
-                id = "RDR-03",
-                name = "Chinedu Okafor",
-                phone = "+234 802 999 8888",
-                avatar = "",
-                vehicleType = "Van",
-                status = RiderStatus.ONLINE,
-                latitude = 6.3150,
-                longitude = 5.6150,
-                currentWorkload = 0,
-                batteryLevel = 88,
-                rating = 4.7,
-                averageDeliveryTimeMin = 28,
-                cancellationHistoryCount = 0,
-                fuelEfficiency = 15.0,
-                shiftSchedule = "06:00 - 15:00",
-                distanceToPickupKm = 3.2,
-                activeDeliveriesCount = 0
-            ),
-            Rider(
-                id = "RDR-04",
-                name = "Chioma Balogun",
-                phone = "+234 905 444 3333",
-                avatar = "",
-                vehicleType = "Truck",
-                status = RiderStatus.BUSY,
-                latitude = 6.3200,
-                longitude = 5.6300,
-                currentWorkload = 3,
-                batteryLevel = 65,
-                rating = 4.5,
-                averageDeliveryTimeMin = 35,
-                cancellationHistoryCount = 3,
-                fuelEfficiency = 8.5,
-                shiftSchedule = "20:00 - 06:00",
-                distanceToPickupKm = 5.4,
-                activeDeliveriesCount = 3
-            ),
-            Rider(
-                id = "RDR-05",
-                name = "Akin Ogundipe",
-                phone = "+234 803 777 8888",
-                avatar = "",
-                vehicleType = "Bike",
-                status = RiderStatus.ONLINE,
-                latitude = 6.3500,
-                longitude = 5.6450,
-                currentWorkload = 1,
-                batteryLevel = 90,
-                rating = 4.7,
-                averageDeliveryTimeMin = 19,
-                cancellationHistoryCount = 2,
-                fuelEfficiency = 41.5,
-                shiftSchedule = "08:00 - 18:00",
-                distanceToPickupKm = 2.1,
-                activeDeliveriesCount = 1
-            )
-        )
-        _aiRiders.value = ridersList
-
-        // Local fallback list only; strictly zero mock driver documents seeded to Firestore
+        // Fleet riders are loaded dynamically from live Firestore via FirebaseManager.listenToAllRiders()
     }
 
     private fun seedAiChat() {
@@ -6134,6 +6034,19 @@ class DeliveryViewModel : WalletViewModel() {
      * directly to the matching modern booking workflow.
      */
     fun rebookParcel(parcel: Parcel, onNavigate: (String) -> Unit) {
+        val targetService = when {
+            parcel.category.contains("Economy", ignoreCase = true) -> "Economy"
+            parcel.category.contains("Batch", ignoreCase = true) -> "Batch"
+            parcel.category.contains("Multi", ignoreCase = true) -> "Multi"
+            else -> "Express"
+        }
+        val targetRoute = when (targetService) {
+            "Economy" -> "EconomyBooking"
+            "Batch" -> "BatchBooking"
+            "Multi" -> "MultiBooking"
+            else -> "ExpressBooking"
+        }
+
         _parcelDraft.update {
             it.copy(
                 pickupAddress = parcel.pickupAddress,
@@ -6149,15 +6062,16 @@ class DeliveryViewModel : WalletViewModel() {
                 width = parcel.width,
                 height = parcel.height,
                 price = parcel.price,
-                selectedService = if (parcel.category.contains("Economy", ignoreCase = true)) "Economy" else "Express",
+                selectedService = targetService,
                 selectedCategory = parcel.category.ifBlank { "Standard" },
                 pickupLat = parcel.pickupLat,
                 pickupLng = parcel.pickupLng,
                 deliveryLat = parcel.deliveryLat,
-                deliveryLng = parcel.deliveryLng
+                deliveryLng = parcel.deliveryLng,
+                declaredValue = parcel.declaredValue
             )
         }
-        onNavigate("BookingSelection")
+        onNavigate(targetRoute)
     }
 
     /**
@@ -6267,7 +6181,11 @@ class DeliveryViewModel : WalletViewModel() {
                     .addOnSuccessListener {
                         logAdminActivity("Order Cancelled", "User cancelled order $parcelId with refund ₦$refundAmount (deducted: ₦$deductedFee)")
                     }.addOnFailureListener { e ->
-                        android.util.Log.e("DeliveryViewModel", "Failed to update Firestore cancelled status: ${e.message}")
+                        android.util.Log.e("DeliveryViewModel", "Failed to update deliveries cancelled status: ${e.message}")
+                    }
+                db.collection("parcels").document(parcelId).update(updateData)
+                    .addOnFailureListener { e ->
+                        android.util.Log.e("DeliveryViewModel", "Failed to update parcels cancelled status: ${e.message}")
                     }
                 if (uid != null) {
                     db.collection("users").document(uid).collection("deliveries").document(parcelId).update(updateData)
@@ -7019,8 +6937,7 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun pinDropNearestAddress(): String {
-        val entry = com.esdispatch.data.AddressDatabase.entries.random()
-        return entry.displayName
+        return "Ring Road (King's Square), City Center, Benin City"
     }
 
     suspend fun pinDropNearestAddress(lat: Double, lng: Double): String {
@@ -7053,8 +6970,8 @@ class DeliveryViewModel : WalletViewModel() {
 
             val unvisited = geocodedStops.toMutableList()
             val orderedRoute = mutableListOf<String>()
-            var currentLat = 6.454070
-            var currentLng = 3.394670
+            var currentLat = 6.3350
+            var currentLng = 5.6037
             var totalDistanceKm = 0.0
 
             while (unvisited.isNotEmpty()) {
@@ -7117,7 +7034,7 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun checkGeofenceBreach(riderName: String, lat: Double, lng: Double, onBreachDetected: (GeofenceAlert?) -> Unit) {
-        val isOutside = lat < 6.20 || lat > 6.80 || lng < 3.10 || lng > 3.80
+        val isOutside = lat < 6.10 || lat > 6.55 || lng < 5.45 || lng > 5.85
         val activeRiderId = _firebaseUserId.value ?: "RIDER-ACTIVE"
         if (isOutside) {
             val alert = GeofenceAlert(

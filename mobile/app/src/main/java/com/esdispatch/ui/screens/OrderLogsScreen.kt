@@ -48,6 +48,10 @@ fun OrderLogsScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
+    androidx.activity.compose.BackHandler {
+        onNavigate("Dashboard")
+    }
+
     val parcels by viewModel.parcels.collectAsState()
     val loadingParcels by viewModel.loadingParcels.collectAsState()
     val networkOnline by viewModel.networkOnline.collectAsState()

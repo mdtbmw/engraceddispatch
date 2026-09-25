@@ -62,7 +62,7 @@ fun MarketplaceScreen(
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
 
     BackHandler {
-        onNavigate("BACK")
+        onNavigate("Dashboard")
     }
 
     // Live Firestore state

@@ -14,25 +14,25 @@ export default function CoverageSimulation() {
     BEN: {
       name: "Benin City Office",
       coordinates: "17 Upper Adesuwa Road, GRA",
-      convoyCounts: "081-8584-0000",
-      threatLevel: "Open Mon - Sun, 6am - 10pm",
-      activeCrews: "Benin City, Edo State",
+      phone: "081-8584-0000",
+      operatingHours: "Open Mon - Sun, 6am - 10pm",
+      location: "Benin City, Edo State",
       history: ["Our main office. Come see us or call.", "We serve all of Edo and nearby states."]
     },
     ASB: {
       name: "Asaba Office",
       coordinates: "Suite 03, Faith Akpede Plaza",
-      convoyCounts: "081-8588-0000",
-      threatLevel: "Open Mon - Sun, 6am - 10pm",
-      activeCrews: "Asaba, Delta State",
+      phone: "081-8588-0000",
+      operatingHours: "Open Mon - Sun, 6am - 10pm",
+      location: "Asaba, Delta State",
       history: ["Our Asaba branch is ready to serve you.", "Covering Delta State and beyond."]
     },
     LAG: {
       name: "Lagos Office",
       coordinates: "34 Ikorodu Road, Fadeyi, Yaba",
-      convoyCounts: "081-8587-0000",
-      threatLevel: "Open Mon - Sun, 6am - 10pm",
-      activeCrews: "Lagos, Nigeria",
+      phone: "081-8587-0000",
+      operatingHours: "Open Mon - Sun, 6am - 10pm",
+      location: "Lagos, Nigeria",
       history: ["Visit our Lagos office for fast service.", "Covering all of Lagos and the South-West."]
     }
   };
@@ -98,15 +98,15 @@ export default function CoverageSimulation() {
                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-1.5 sm:gap-4">
                      <div>
                         <span className="text-[13px] xs:text-[14.5px] sm:text-[15px] text-zinc-400 block font-mono">PHONE NUMBER</span>
-                        <span className="text-[13.5px] xs:text-[16px] sm:text-xs font-bold text-zinc-800 uppercase font-sans">{regionDetails[activeRegion].convoyCounts}</span>
+                        <span className="text-[13.5px] xs:text-[16px] sm:text-xs font-bold text-zinc-800 uppercase font-sans">{regionDetails[activeRegion].phone}</span>
                      </div>
                      <div>
                         <span className="text-[13px] xs:text-[14.5px] sm:text-[15px] text-zinc-400 block font-mono">LOCATION</span>
-                        <span className="text-[13.5px] xs:text-[16px] sm:text-xs font-bold text-zinc-800 uppercase font-sans">{regionDetails[activeRegion].activeCrews}</span>
+                        <span className="text-[13.5px] xs:text-[16px] sm:text-xs font-bold text-zinc-800 uppercase font-sans">{regionDetails[activeRegion].location}</span>
                      </div>
                      <div className="col-span-1 xs:col-span-2">
                         <span className="text-[13px] xs:text-[14.5px] sm:text-[15px] text-zinc-400 block font-mono">WORKING HOURS</span>
-                         <span className="text-[13.5px] xs:text-[16px] sm:text-xs font-bold text-white uppercase font-sans">{regionDetails[activeRegion].threatLevel}</span>
+                         <span className="text-[13.5px] xs:text-[16px] sm:text-xs font-bold text-zinc-800 uppercase font-sans">{regionDetails[activeRegion].operatingHours}</span>
                      </div>
                    </div>
        

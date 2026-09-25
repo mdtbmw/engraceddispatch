@@ -78,6 +78,10 @@ fun ProfileScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
+    androidx.activity.compose.BackHandler {
+        onNavigate("Dashboard")
+    }
+
     val context = LocalContext.current
     val name by viewModel.userName.collectAsState()
     val email by viewModel.userEmail.collectAsState()
@@ -1449,6 +1453,10 @@ fun WalletScreen(
     viewModel: DeliveryViewModel,
     onNavigate: (String) -> Unit
 ) {
+    androidx.activity.compose.BackHandler {
+        onNavigate("Dashboard")
+    }
+
     val balance by viewModel.walletBalance.collectAsState()
     val txs by viewModel.transactions.collectAsState()
     val loadingTransactions by viewModel.loadingTransactions.collectAsState()

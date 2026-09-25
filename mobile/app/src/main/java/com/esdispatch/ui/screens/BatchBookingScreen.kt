@@ -91,12 +91,13 @@ fun BatchBookingScreen(
                     destinationAddress = if (draft.deliveryAddress.isNotBlank()) draft.deliveryAddress else "14 Ihama Road, GRA, Benin City",
                     recipientName = draft.receiverName,
                     recipientPhone = draft.receiverPhone,
-                    itemName = "Package 1",
-                    weight = "1.5"
+                    itemName = if (draft.itemName.isNotBlank()) draft.itemName else "Package 1",
+                    weight = if (draft.weight > 0) draft.weight.toString() else "1.5"
                 )
             )
         )
     }
+
     var useSamePickupLocation by remember { mutableStateOf(true) }
     var useSameDeliveryLocation by remember { mutableStateOf(false) }
     var activeContactPickerStopIndex by remember { mutableStateOf(-1) }
@@ -107,6 +108,23 @@ fun BatchBookingScreen(
 
     var sName by remember { mutableStateOf(draft.senderName) }
     var sPhone by remember { mutableStateOf(draft.senderPhone) }
+
+    LaunchedEffect(draft) {
+        if (draft.pickupAddress.isNotBlank()) pickup = draft.pickupAddress
+        if (draft.senderName.isNotBlank()) sName = draft.senderName
+        if (draft.senderPhone.isNotBlank()) sPhone = draft.senderPhone
+        if (draft.deliveryAddress.isNotBlank()) {
+            batchStops = listOf(
+                BatchDestinationItem(
+                    destinationAddress = draft.deliveryAddress,
+                    recipientName = draft.receiverName,
+                    recipientPhone = draft.receiverPhone,
+                    itemName = if (draft.itemName.isNotBlank()) draft.itemName else "Package 1",
+                    weight = if (draft.weight > 0) draft.weight.toString() else "1.5"
+                )
+            )
+        }
+    }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()

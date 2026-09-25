@@ -75,17 +75,18 @@ fun MultiBookingScreen(
         mutableStateOf(
             listOf(
                 MultiPickupStop(
-                    address = if (draft.pickupAddress.isNotBlank()) draft.pickupAddress else "Murtala Muhammed Rd, Ikeja",
+                    address = if (draft.pickupAddress.isNotBlank()) draft.pickupAddress else "Ring Road (King's Square), City Center, Benin City",
                     recipientName = draft.receiverName,
                     recipientPhone = draft.receiverPhone,
-                    itemDescription = ""
+                    itemDescription = draft.itemName
                 )
             )
         )
     }
     var delivery by remember { mutableStateOf(draft.deliveryAddress) }
-    var itemName by remember { mutableStateOf("") }
-    var weight by remember { mutableStateOf("4.5") }
+    var itemName by remember { mutableStateOf(draft.itemName) }
+    var weight by remember { mutableStateOf(if (draft.weight > 0) draft.weight.toString() else "4.5") }
+
     val cargoValidation = remember(itemName, weight) {
         CargoFeasibilityValidator.validateCargo(itemName = itemName, weightKg = weight.toDoubleOrNull() ?: 1.0)
     }
@@ -97,6 +98,16 @@ fun MultiBookingScreen(
     var sPhone by remember { mutableStateOf(draft.senderPhone) }
     var rName by remember { mutableStateOf(draft.receiverName) }
     var rPhone by remember { mutableStateOf(draft.receiverPhone) }
+
+    LaunchedEffect(draft) {
+        if (draft.deliveryAddress.isNotBlank()) delivery = draft.deliveryAddress
+        if (draft.senderName.isNotBlank()) sName = draft.senderName
+        if (draft.senderPhone.isNotBlank()) sPhone = draft.senderPhone
+        if (draft.receiverName.isNotBlank()) rName = draft.receiverName
+        if (draft.receiverPhone.isNotBlank()) rPhone = draft.receiverPhone
+        if (draft.itemName.isNotBlank()) itemName = draft.itemName
+        if (draft.weight > 0) weight = draft.weight.toString()
+    }
 
     var activeContactPickerStopIndex by remember { mutableIntStateOf(-1) }
 

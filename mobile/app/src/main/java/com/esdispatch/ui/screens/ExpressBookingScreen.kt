@@ -54,6 +54,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import com.esdispatch.utils.detectUserLocation
 
 @Composable
 fun ExpressBookingScreen(
@@ -88,9 +89,21 @@ fun ExpressBookingScreen(
         }
     }
 
-    var itemName by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("Electronics") }
-    var weight by remember { mutableStateOf("1.5") }
+    var itemName by remember { mutableStateOf(draft.itemName) }
+    var selectedCategory by remember { mutableStateOf(draft.selectedCategory.ifBlank { "Electronics" }) }
+    var weight by remember { mutableStateOf(if (draft.weight > 0) draft.weight.toString() else "1.5") }
+
+    LaunchedEffect(draft) {
+        if (draft.pickupAddress.isNotBlank()) pickup = draft.pickupAddress
+        if (draft.deliveryAddress.isNotBlank()) delivery = draft.deliveryAddress
+        if (draft.senderName.isNotBlank()) sName = draft.senderName
+        if (draft.senderPhone.isNotBlank()) sPhone = draft.senderPhone
+        if (draft.receiverName.isNotBlank()) rName = draft.receiverName
+        if (draft.receiverPhone.isNotBlank()) rPhone = draft.receiverPhone
+        if (draft.itemName.isNotBlank()) itemName = draft.itemName
+        if (draft.weight > 0) weight = draft.weight.toString()
+        if (draft.selectedCategory.isNotBlank()) selectedCategory = draft.selectedCategory
+    }
     
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
