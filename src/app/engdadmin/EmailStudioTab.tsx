@@ -24,10 +24,14 @@ import {
   Server,
   Zap,
   Tag,
+  Globe,
+  ExternalLink,
+  ShieldAlert,
 } from "lucide-react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import {
   wrapInMasterLuxuryTemplate,
+  extractPlainTextFromHtml,
   renderSignUpOtpEmail,
   renderPasswordResetOtpEmail,
   renderTwoFactorOtpEmail,
@@ -186,7 +190,7 @@ export default function EmailStudioTab({
   const [copiedHtml, setCopiedHtml] = useState(false);
 
   // Common Form States
-  const [recipientEmail, setRecipientEmail] = useState("client@esdispatch.com.ng");
+  const [recipientEmail, setRecipientEmail] = useState("support@engracedsmile.com");
   const [recipientName, setRecipientName] = useState("Osaze Ighodaro");
   const [subject, setSubject] = useState("Welcome to ESDispatch, Osaze Ighodaro");
   const [preheader, setPreheader] = useState("Welcome to ESDispatch. Premium logistics, instant express booking, and live GPS tracking.");
@@ -211,7 +215,7 @@ export default function EmailStudioTab({
   const [transactionType, setTransactionType] = useState<"CREDIT" | "DEBIT">("CREDIT");
   const [partnerRole, setPartnerRole] = useState<"rider" | "vendor" | "customer">("rider");
   const [ctaText, setCtaText] = useState("BOOK YOUR FIRST DISPATCH");
-  const [ctaUrl, setCtaUrl] = useState("https://www.esdispatch.com.ng");
+  const [ctaUrl, setCtaUrl] = useState("https://esdispatch.vercel.app");
 
   // Promo & Voucher Specific Parameters
   const [voucherCode, setVoucherCode] = useState("ESDISPATCH20");
@@ -248,9 +252,34 @@ export default function EmailStudioTab({
   const [smtpStatus, setSmtpStatus] = useState<{ ok?: boolean; message?: string } | null>(null);
   const [savingSmtp, setSavingSmtp] = useState(false);
 
+  // Live Domain DNS & Deliverability State
+  const [dnsCheckLoading, setDnsCheckLoading] = useState(false);
+  const [dnsCheckData, setDnsCheckData] = useState<any>(null);
+  const [showDnsModal, setShowDnsModal] = useState(false);
+  const [copiedRecordKey, setCopiedRecordKey] = useState<string | null>(null);
+
+  const runDnsCheck = async () => {
+    setDnsCheckLoading(true);
+    try {
+      const res = await fetch("/api/email/dns-check");
+      const json = await res.json();
+      if (json.success) {
+        setDnsCheckData(json.data);
+      }
+    } catch (err) {
+      console.warn("Failed to check DNS status:", err);
+    } finally {
+      setDnsCheckLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    runDnsCheck();
+  }, []);
+
   // Test Dispatch Modal State
   const [showSendModal, setShowSendModal] = useState(false);
-  const [testSendTo, setTestSendTo] = useState("noreply@engracedsmile.com");
+  const [testSendTo, setTestSendTo] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendResult, setSendResult] = useState<{ success: boolean; message: string; messageId?: string } | null>(null);
 
@@ -300,7 +329,7 @@ export default function EmailStudioTab({
           "Welcome to ESDispatch — Benin City’s premier on-demand delivery network. Whether you are sending fragile goods, eCommerce merchandise, confidential documents, or urgent parcels, our fleet guarantees precision timing and white-glove handling."
         );
         setCtaText("BOOK YOUR FIRST DISPATCH");
-        setCtaUrl("https://www.esdispatch.com.ng");
+        setCtaUrl("https://esdispatch.vercel.app");
         setCard1({ tag: "SPEED", title: "45-Min Express", description: "Rapid dispatch routes across GRA, Ugbowo, and city center." });
         setCard2({ tag: "SECURITY", title: "All-Risk Insured", description: "Every dispatched package is backed by escrow protection." });
         setCard3({ tag: "WALLET", title: "Unified Balance", description: "Fund your wallet with Paystack for seamless 1-tap bookings." });
@@ -319,7 +348,7 @@ export default function EmailStudioTab({
           "Experience the fastest, most reliable logistics in Edo State with our exclusive partner discount. For a limited time, enjoy priority dispatch and reduced booking fares on all deliveries."
         );
         setCtaText("CLAIM PROMO DISCOUNT");
-        setCtaUrl("https://www.esdispatch.com.ng");
+        setCtaUrl("https://esdispatch.vercel.app");
         setCard1({ tag: "ZERO SURGE", title: "Locked Pricing", description: "No rainy day or peak-hour price surges." });
         setCard2({ tag: "PRIORITY", title: "Express Assignment", description: "Nearest verified courier assigned within 60 seconds." });
         setCard3({ tag: "LIVE MAP", title: "Track Anywhere", description: "Share live tracking links with your parcel recipients." });
@@ -335,7 +364,7 @@ export default function EmailStudioTab({
           "Welcome to ESDispatch — the gold standard in express logistics and courier dispatch. Enter the one-time passcode below into your mobile application to activate your account."
         );
         setCtaText("OPEN ESDISPATCH APP");
-        setCtaUrl("https://www.esdispatch.com.ng");
+        setCtaUrl("https://esdispatch.vercel.app");
         setCard1({ tag: "SECURITY", title: "256-Bit SSL", description: "End-to-end encrypted dispatch network." });
         setCard2({ tag: "DISPATCH", title: "Benin City", description: "Active fleet operating across Edo State." });
         setCard3({ tag: "WALLET", title: "Escrow Safe", description: "Automated fund protection on bookings." });
@@ -351,7 +380,7 @@ export default function EmailStudioTab({
           "We received a formal request to reset the password for your ESDispatch logistics account. If you initiated this request, authorize the update using your confidential passcode below."
         );
         setCtaText("VISIT SECURITY PORTAL");
-        setCtaUrl("https://www.esdispatch.com.ng");
+        setCtaUrl("https://esdispatch.vercel.app");
         setCard1({ tag: "NOTICE", title: "Single Use", description: "Code invalidates after first successful entry." });
         setCard2({ tag: "SHIELD", title: "Keystore Lock", description: "Multi-layer device verification active." });
         setCard3({ tag: "HOTLINE", title: "Emergency", description: "Direct call to +234 905 626 3010." });
@@ -367,7 +396,7 @@ export default function EmailStudioTab({
           "A new sign-in attempt was detected from your verified mobile application. Enter the one-time authentication code below to finalize your session."
         );
         setCtaText("CONFIRM ON APP");
-        setCtaUrl("https://www.esdispatch.com.ng");
+        setCtaUrl("https://esdispatch.vercel.app");
         setCard1({ tag: "DEVICE", title: "Identity Locked", description: "Session locked to active client signature." });
         setCard2({ tag: "EXPIRY", title: "5 Minutes", description: "Instant auto-expiration window." });
         setCard3({ tag: "PROTECTION", title: "Zero Sharing", description: "Never forward or send to dispatchers." });
@@ -383,7 +412,7 @@ export default function EmailStudioTab({
           "You have initiated a change or reset of your ESDispatch transaction security PIN. Your wallet PIN secures all fund transfers, balance deductions, and delivery escrows. Enter the authorization code below to complete this update."
         );
         setCtaText("MANAGE WALLET SETTINGS");
-        setCtaUrl("https://www.esdispatch.com.ng");
+        setCtaUrl("https://esdispatch.vercel.app");
         setCard1({ tag: "ESCROW", title: "Fund Protection", description: "Secures your Naira wallet balance." });
         setCard2({ tag: "SECURITY", title: "Hardware Lock", description: "Validated against device keystore." });
         setCard3({ tag: "SUPPORT", title: "Questions?", description: "Call +234 905 626 3010 for immediate support." });
@@ -399,7 +428,7 @@ export default function EmailStudioTab({
           `Your courier ${courierName} is approaching your delivery destination. Important: Provide this 4-digit confirmation code to your courier only after you have physically inspected your parcel.`
         );
         setCtaText("TRACK LIVE ON MAP");
-        setCtaUrl(`https://www.esdispatch.com.ng/track?id=${trackingNumber}`);
+        setCtaUrl(`https://esdispatch.vercel.app/track?id=${trackingNumber}`);
         setCard1({ tag: "VERIFY", title: "Inspect Package", description: "Check seal and condition before sharing code." });
         setCard2({ tag: "ESCROW", title: "Protected Settlement", description: "Funds release only upon valid OTP submission." });
         setCard3({ tag: "BENIN CITY", title: "Live GPS Telemetry", description: "Active turn-by-turn map tracking." });
@@ -415,7 +444,7 @@ export default function EmailStudioTab({
           `Thank you for booking with ESDispatch. Your payment of ${amountPaid} has been confirmed and escrowed for delivery. Please find your itemized settlement details below.`
         );
         setCtaText("VIEW LIVE TRACKING");
-        setCtaUrl(`https://www.esdispatch.com.ng/track?id=${trackingNumber}`);
+        setCtaUrl(`https://esdispatch.vercel.app/track?id=${trackingNumber}`);
         setCard1({ tag: "SERVICE", title: serviceType, description: "Door-to-door citywide delivery." });
         setCard2({ tag: "TRACKING", title: `#${trackingNumber}`, description: "Real-time telemetry enabled." });
         setCard3({ tag: "STATUS", title: "Dispatched", description: "Fleet assigned & en route." });
@@ -431,7 +460,7 @@ export default function EmailStudioTab({
           `Your ESDispatch wallet balance has been updated successfully. Transaction reference: ${trackingNumber}.`
         );
         setCtaText("OPEN WALLET IN APP");
-        setCtaUrl("https://www.esdispatch.com.ng");
+        setCtaUrl("https://esdispatch.vercel.app");
         setCard1({ tag: "LEDGER", title: "Instant Audit", description: "Immutable transaction logging." });
         setCard2({ tag: "SPEED", title: "Real-Time", description: "Zero waiting for balance updates." });
         setCard3({ tag: "SETTLEMENT", title: "Paystack Sync", description: "Direct automated banking gateway." });
@@ -447,7 +476,7 @@ export default function EmailStudioTab({
           "Congratulations! You have been officially verified and onboarded as an authorized Fleet Courier Partner with ESDispatch. As an esteemed member of our logistics family, you enjoy prompt fleet assignments, automated escrow settlements, and direct dispatcher guidance across Benin City."
         );
         setCtaText("ACCESS PARTNER CONSOLE");
-        setCtaUrl("https://www.esdispatch.com.ng");
+        setCtaUrl("https://esdispatch.vercel.app");
         setCard1({ tag: "STANDARDS", title: "Zero Compromise", description: "Strict timing and secure deliveries." });
         setCard2({ tag: "EARNINGS", title: "Prompt Payouts", description: "Direct wallet settlements & cumulative tips." });
         setCard3({ tag: "SAFETY", title: "Live Telemetry", description: "Continuous GPS safety monitoring." });
@@ -704,6 +733,8 @@ export default function EmailStudioTab({
     setSendingEmail(true);
     setSendResult(null);
 
+    const plainText = extractPlainTextFromHtml(compiledHtml);
+
     try {
       const res = await fetch("/api/email/test-send", {
         method: "POST",
@@ -712,7 +743,7 @@ export default function EmailStudioTab({
           to: testSendTo.trim(),
           subject: subject,
           html: compiledHtml,
-          text: subject,
+          text: plainText,
           credentials: {
             host: smtpHost,
             port: Number(smtpPort),
@@ -802,6 +833,28 @@ export default function EmailStudioTab({
 
         {/* Action Controls */}
         <div className="flex items-center gap-2.5">
+          {/* Domain DNS & Spam Health Check Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowDnsModal(true)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border transition-colors cursor-pointer ${
+              dnsCheckData?.summary?.isInboxReady
+                ? "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/40 hover:bg-emerald-100"
+                : "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800/40 hover:bg-amber-100"
+            }`}
+            title="Inspect SPF, DMARC, and Anti-Spam DNS Records"
+          >
+            <Globe className="w-3.5 h-3.5 text-[#FFB800]" />
+            <span>DNS &amp; Spam Health</span>
+            {dnsCheckLoading ? (
+              <RefreshCw className="w-3 h-3 animate-spin text-gray-400 ml-0.5" />
+            ) : dnsCheckData?.summary?.isInboxReady ? (
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            )}
+          </button>
+
           {/* SMTP Settings Toggle */}
           <button
             type="button"
@@ -1359,6 +1412,29 @@ export default function EmailStudioTab({
                 </div>
               </div>
 
+              {/* Spam & Inbox Deliverability Note */}
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-xl space-y-1.5 text-[11px] text-amber-900 dark:text-amber-200">
+                <div className="font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    Deliverability &amp; Spam Advisory
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSendModal(false);
+                      setShowDnsModal(true);
+                    }}
+                    className="text-[10px] font-bold text-[#FFB800] hover:underline cursor-pointer"
+                  >
+                    Check DNS Status →
+                  </button>
+                </div>
+                <p className="text-[10px] leading-relaxed text-amber-800 dark:text-amber-300">
+                  If this email lands in your Spam folder, your domain (<span className="font-mono font-bold">engracedsmile.com</span>) requires SPF and DMARC TXT records in Vercel DNS to pass Gmail/Yahoo 2024 sender verification.
+                </p>
+              </div>
+
               {sendResult && (
                 <div
                   className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${
@@ -1395,11 +1471,251 @@ export default function EmailStudioTab({
               <button
                 type="button"
                 onClick={handleDispatchTestEmail}
-                disabled={sendingEmail}
+                disabled={sendingEmail || !testSendTo.trim() || !testSendTo.includes("@")}
                 className="flex items-center gap-2 px-5 py-2.5 bg-[#FFB800] hover:bg-[#FFB800]/90 disabled:opacity-50 text-[#050505] rounded-xl text-xs font-black shadow-md transition-all cursor-pointer"
               >
                 {sendingEmail ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                 <span>{sendingEmail ? "Dispatching..." : "Send Test Email"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* DOMAIN DNS & SPAM HEALTH MODAL                                             */}
+      {/* ========================================================================= */}
+      {showDnsModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl bg-white dark:bg-[#121217] rounded-3xl p-6 border border-gray-200 dark:border-white/15 shadow-2xl space-y-5 my-8">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-[#FFB800]/15 flex items-center justify-center">
+                  <Globe className="w-5 h-5 text-[#FFB800]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-gray-900 dark:text-white">
+                    Domain DNS &amp; Anti-Spam Deliverability
+                  </h3>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    Live SPF, DMARC &amp; MX verification for <span className="font-bold text-gray-900 dark:text-white">engracedsmile.com</span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={runDnsCheck}
+                  disabled={dnsCheckLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-xs font-bold text-gray-800 dark:text-white transition-colors cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${dnsCheckLoading ? "animate-spin" : ""}`} />
+                  <span>Re-check</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDnsModal(false)}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Why emails land in spam notice */}
+            <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
+              <div className="font-bold flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>Why Emails Land in Spam (Google &amp; Yahoo 2024 Policy)</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                Gmail, Yahoo, and Outlook require sender domains to have valid <strong>SPF</strong> and <strong>DMARC</strong> records.
+                Without them, automated filters classify mail from custom domains as unverified or spoofed, routing it straight to Spam.
+                Add the 3 DNS records below in your Vercel DNS settings to achieve 100% Primary Inbox deliverability.
+              </p>
+            </div>
+
+            {/* Status Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* SPF Record Card */}
+              <div className={`p-3.5 rounded-2xl border ${
+                dnsCheckData?.spf?.valid
+                  ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/40"
+                  : "bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-800/40"
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">SPF Record</span>
+                  {dnsCheckData?.spf?.valid ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Valid
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 dark:text-red-400">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Missing
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-xs font-bold text-gray-900 dark:text-white">
+                  {dnsCheckData?.spf?.valid ? "Configured" : "Action Required"}
+                </div>
+                <p className="mt-1 text-[10px] text-gray-600 dark:text-gray-400 line-clamp-2">
+                  {dnsCheckData?.spf?.valid ? dnsCheckData.spf.records[0] : "Authorizes mail server 5.39.69.62"}
+                </p>
+              </div>
+
+              {/* DMARC Record Card */}
+              <div className={`p-3.5 rounded-2xl border ${
+                dnsCheckData?.dmarc?.valid
+                  ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/40"
+                  : "bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-800/40"
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">DMARC Record</span>
+                  {dnsCheckData?.dmarc?.valid ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Valid
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 dark:text-red-400">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Missing
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-xs font-bold text-gray-900 dark:text-white">
+                  {dnsCheckData?.dmarc?.valid ? "Protected" : "Action Required"}
+                </div>
+                <p className="mt-1 text-[10px] text-gray-600 dark:text-gray-400 line-clamp-2">
+                  {dnsCheckData?.dmarc?.valid ? dnsCheckData.dmarc.records[0] : "Domain identity policy enforcement"}
+                </p>
+              </div>
+
+              {/* MX Record Card */}
+              <div className={`p-3.5 rounded-2xl border ${
+                dnsCheckData?.mx?.valid
+                  ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/40"
+                  : "bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800/40"
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">MX Record</span>
+                  {dnsCheckData?.mx?.valid ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Configured
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Recommended
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-xs font-bold text-gray-900 dark:text-white">
+                  {dnsCheckData?.mx?.valid ? "Active" : "Recommended"}
+                </div>
+                <p className="mt-1 text-[10px] text-gray-600 dark:text-gray-400 line-clamp-2">
+                  {dnsCheckData?.mx?.valid ? dnsCheckData.mx.records[0]?.exchange : "Inbound routing: server.hostnextdns.com"}
+                </p>
+              </div>
+            </div>
+
+            {/* Step-by-Step DNS Instructions */}
+            <div className="space-y-3">
+              <div className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white flex items-center justify-between">
+                <span>Required DNS Records for Vercel DNS</span>
+                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                  Domain: engracedsmile.com
+                </span>
+              </div>
+
+              {/* Record 1: SPF */}
+              <div className="p-3 bg-gray-50 dark:bg-[#1A1A24] border border-gray-200 dark:border-white/10 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-md bg-[#FFB800] text-[#050505] font-black text-[10px]">TXT</span>
+                    <span className="font-bold text-gray-900 dark:text-white">SPF (Sender Policy Framework)</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">Name: @</span>
+                </div>
+                <div className="flex items-center justify-between bg-white dark:bg-[#121217] p-2.5 rounded-xl border border-gray-200 dark:border-white/10 font-mono text-[11px] text-gray-800 dark:text-gray-200">
+                  <span className="truncate mr-2">v=spf1 ip4:5.39.69.62 include:server.hostnextdns.com ~all</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText("v=spf1 ip4:5.39.69.62 include:server.hostnextdns.com ~all");
+                      setCopiedRecordKey("spf");
+                      setTimeout(() => setCopiedRecordKey(null), 2000);
+                    }}
+                    className="shrink-0 px-2.5 py-1 bg-[#FFB800] text-[#050505] rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedRecordKey === "spf" ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedRecordKey === "spf" ? "Copied" : "Copy Value"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Record 2: DMARC */}
+              <div className="p-3 bg-gray-50 dark:bg-[#1A1A24] border border-gray-200 dark:border-white/10 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-md bg-[#FFB800] text-[#050505] font-black text-[10px]">TXT</span>
+                    <span className="font-bold text-gray-900 dark:text-white">DMARC (Domain-based Message Authentication)</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">Name: _dmarc</span>
+                </div>
+                <div className="flex items-center justify-between bg-white dark:bg-[#121217] p-2.5 rounded-xl border border-gray-200 dark:border-white/10 font-mono text-[11px] text-gray-800 dark:text-gray-200">
+                  <span className="truncate mr-2">v=DMARC1; p=none; rua=mailto:support@engracedsmile.com; aspf=r;</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText("v=DMARC1; p=none; rua=mailto:support@engracedsmile.com; aspf=r;");
+                      setCopiedRecordKey("dmarc");
+                      setTimeout(() => setCopiedRecordKey(null), 2000);
+                    }}
+                    className="shrink-0 px-2.5 py-1 bg-[#FFB800] text-[#050505] rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedRecordKey === "dmarc" ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedRecordKey === "dmarc" ? "Copied" : "Copy Value"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Record 3: MX */}
+              <div className="p-3 bg-gray-50 dark:bg-[#1A1A24] border border-gray-200 dark:border-white/10 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-md bg-[#FFB800] text-[#050505] font-black text-[10px]">MX</span>
+                    <span className="font-bold text-gray-900 dark:text-white">Mail Exchange (Inbound)</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">Name: @ • Priority: 10</span>
+                </div>
+                <div className="flex items-center justify-between bg-white dark:bg-[#121217] p-2.5 rounded-xl border border-gray-200 dark:border-white/10 font-mono text-[11px] text-gray-800 dark:text-gray-200">
+                  <span className="truncate mr-2">server.hostnextdns.com</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText("server.hostnextdns.com");
+                      setCopiedRecordKey("mx");
+                      setTimeout(() => setCopiedRecordKey(null), 2000);
+                    }}
+                    className="shrink-0 px-2.5 py-1 bg-[#FFB800] text-[#050505] rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedRecordKey === "mx" ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedRecordKey === "mx" ? "Copied" : "Copy Value"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-white/10">
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                DNS propagation usually completes within 10 to 60 minutes.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowDnsModal(false)}
+                className="px-5 py-2 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#050505] rounded-xl text-xs font-black transition-colors cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>

@@ -100,8 +100,9 @@ async function getTransporter() {
     }
     return { transporter: cachedTransporter, config };
 }
+const emailTemplates_1 = require("./emailTemplates");
 /**
- * Dispatches an email with structured logging and fallback diagnostics.
+ * Dispatches an email with structured logging, RFC deliverability headers, and 1:1 MIME plain-text parity.
  */
 async function sendEmail(options) {
     try {
@@ -111,12 +112,33 @@ async function sendEmail(options) {
             console.error(`[SMTP ERROR] ${err}`);
             return { success: false, error: err };
         }
+        const plainText = (options.text && options.text.trim().length > 50 && options.text !== options.subject)
+            ? options.text.trim()
+            : (0, emailTemplates_1.extractPlainTextFromHtml)(options.html);
+        const domain = config.fromEmail.includes('@') ? config.fromEmail.split('@')[1] : 'engracedsmile.com';
+        const randomHex = Math.random().toString(36).substring(2, 10);
+        const messageId = `<${Date.now()}.${randomHex}@${domain}>`;
         const mailOptions = {
             from: `"${config.fromName}" <${config.fromEmail}>`,
-            to: options.to,
-            subject: options.subject,
-            text: options.text || options.subject,
+            sender: config.fromEmail,
+            replyTo: `"ESDispatch Support" <support@${domain}>`,
+            to: options.to.trim(),
+            subject: options.subject.trim(),
+            text: plainText,
             html: options.html,
+            messageId: messageId,
+            envelope: {
+                from: config.fromEmail,
+                to: [options.to.trim()],
+            },
+            headers: {
+                'X-Mailer': 'ESDispatch Logistics Mailer/2026',
+                'X-Priority': '3',
+                'List-Unsubscribe': `<mailto:support@${domain}?subject=unsubscribe>, <https://www.engracedsmile.com/unsubscribe>`,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+                'Feedback-ID': `esdispatch:notification:${Date.now()}`,
+                'X-Entity-Ref-ID': `${Date.now()}-${randomHex}`,
+            },
         };
         const info = await transporter.sendMail(mailOptions);
         console.log(`[SMTP SUCCESS] Message delivered to ${options.to}. ID: ${info.messageId}`);
@@ -127,3 +149,4 @@ async function sendEmail(options) {
         return { success: false, error: error.message || 'Unknown SMTP error' };
     }
 }
+//# sourceMappingURL=emailTransporter.js.map

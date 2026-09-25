@@ -404,7 +404,7 @@ export function wrapInMasterLuxuryTemplate(opts: MasterEmailOptions): string {
                 <tr>
                   <!-- Official Brand Logo -->
                   <td style="vertical-align: middle; padding: 0;" valign="middle">
-                    <a href="https://www.esdispatch.com.ng" target="_blank" rel="noopener" style="text-decoration: none; display: inline-block;">
+                    <a href="https://www.engracedsmile.com" target="_blank" rel="noopener" style="text-decoration: none; display: inline-block;">
                       <img 
                         src="${logoUrl}" 
                         alt="ESDISPATCH - PREMIUM LOGISTICS & DISPATCH" 
@@ -491,8 +491,8 @@ export function wrapInMasterLuxuryTemplate(opts: MasterEmailOptions): string {
                   <!-- EMAIL -->
                   <td class="contact-col" style="width: 33.33%; padding: 0 12px 0 0; vertical-align: top;" valign="top">
                     <div style="font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 10px; line-height: 14px; color: #9CA3AF; font-weight: 800; text-transform: uppercase;">EMAIL DESK</div>
-                    <a style="display: block; padding-top: 4px; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 11.5px; line-height: 17px; color: #111827; text-decoration: none; font-weight: 600;" href="mailto:fleets@esdispatch.com.ng">
-                      fleets@esdispatch.com.ng
+                    <a style="display: block; padding-top: 4px; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 11.5px; line-height: 17px; color: #111827; text-decoration: none; font-weight: 600;" href="mailto:support@engracedsmile.com">
+                      support@engracedsmile.com
                     </a>
                   </td>
                   <!-- PHONE -->
@@ -528,7 +528,7 @@ export function wrapInMasterLuxuryTemplate(opts: MasterEmailOptions): string {
                     </div>
                   </td>
                   <td style="vertical-align: middle;" align="right" valign="middle">
-                    <a style="display: inline-block; padding: 6px 14px; background: #1F2937; border-radius: 6px; text-decoration: none; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 11px; font-weight: 700; color: #FFB800;" href="https://www.esdispatch.com.ng" target="_blank" rel="noopener">
+                    <a style="display: inline-block; padding: 6px 14px; background: #1F2937; border-radius: 6px; text-decoration: none; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 11px; font-weight: 700; color: #FFB800;" href="https://esdispatch.vercel.app" target="_blank" rel="noopener">
                       PORTAL &#8599;
                     </a>
                   </td>
@@ -537,10 +537,17 @@ export function wrapInMasterLuxuryTemplate(opts: MasterEmailOptions): string {
             </td>
           </tr>
 
-          <!-- ENCRYPTED COPYRIGHT BAR -->
+          <!-- ENCRYPTED COPYRIGHT & CAN-SPAM COMPLIANCE BAR -->
           <tr>
-            <td style="padding: 10px 20px; background: #000000; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 9.5px; line-height: 14px; color: #6B7280;" align="center">
-              &copy; ${currentYear} ESDISPATCH &bull; Premium Logistics &amp; Dispatch &bull; Encrypted 256-Bit SSL Telemetry
+            <td style="padding: 12px 20px; background: #000000; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 9.5px; line-height: 15px; color: #6B7280;" align="center">
+              <div>&copy; ${currentYear} ESDISPATCH &bull; Premium Logistics &amp; Dispatch &bull; Encrypted 256-Bit SSL Telemetry</div>
+              <div style="padding-top: 4px;">
+                <a href="https://www.engracedsmile.com" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Official Website</a> &bull;
+                <a href="https://esdispatch.vercel.app" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Web Portal</a> &bull;
+                <a href="mailto:support@engracedsmile.com" style="color: #9CA3AF; text-decoration: underline;">Support Desk</a> &bull;
+                <a href="https://www.engracedsmile.com/privacy" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Privacy</a> &bull;
+                <a href="https://www.engracedsmile.com/unsubscribe" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Unsubscribe</a>
+              </div>
             </td>
           </tr>
 
@@ -551,6 +558,153 @@ export function wrapInMasterLuxuryTemplate(opts: MasterEmailOptions): string {
   </table>
 </body>
 </html>`;
+}
+
+/**
+ * Strips HTML tags, converts structural elements to clean linebreaks,
+ * and decodes basic entities for a crisp plain text email alternative.
+ */
+export function extractPlainTextFromHtml(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*[\/]?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/h[1-6]>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<li>/gi, '• ')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<td[^>]*>/gi, ' ')
+    .replace(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&bull;/g, '•')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s+\n/g, '\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * Generates an authoritative, beautifully structured ASCII plain-text version
+ * of any email template, guaranteeing 1:1 MIME parity with zero HTML-to-text skew.
+ */
+export function generatePlainTextEmail(opts: MasterEmailOptions): string {
+  const lines: string[] = [];
+
+  lines.push('============================================================');
+  lines.push('ESDISPATCH | PREMIUM LOGISTICS & DISPATCH');
+  lines.push('Benin City Fleet Telemetry • Secured 256-Bit Dispatch');
+  lines.push('============================================================');
+  lines.push('');
+
+  if (opts.categoryTag) {
+    lines.push(`[${opts.categoryTag.toUpperCase()}]`);
+  }
+  lines.push(opts.headline || opts.title);
+  lines.push('------------------------------------------------------------');
+  lines.push('');
+
+  lines.push(`Dear ${opts.recipientName || 'Valued Client'},`);
+  lines.push('');
+
+  if (opts.contentHtml) {
+    lines.push(extractPlainTextFromHtml(opts.contentHtml));
+    lines.push('');
+  }
+
+  // Voucher Card
+  if (opts.voucher) {
+    lines.push('************************************************************');
+    lines.push(`PROMO CODE: ${opts.voucher.code}`);
+    lines.push(`DISCOUNT: ${opts.voucher.discount}`);
+    lines.push(opts.voucher.subtext);
+    if (opts.voucher.validUntil) {
+      lines.push(`Valid Until: ${opts.voucher.validUntil}`);
+    }
+    lines.push('************************************************************');
+    lines.push('');
+  }
+
+  // Info Card
+  if (opts.infoCard) {
+    lines.push('------------------------------------------------------------');
+    if (opts.infoCard.category) {
+      lines.push(`[${opts.infoCard.category.toUpperCase()}]`);
+    }
+    lines.push(opts.infoCard.heading);
+    if (opts.infoCard.codeDisplay) {
+      lines.push('');
+      lines.push(`>>> CODE: ${opts.infoCard.codeDisplay} <<<`);
+      lines.push('');
+    }
+    if (opts.infoCard.codeSubtext) {
+      lines.push(extractPlainTextFromHtml(opts.infoCard.codeSubtext));
+    }
+    if (opts.infoCard.bodyText) {
+      lines.push(extractPlainTextFromHtml(opts.infoCard.bodyText));
+    }
+    if (opts.infoCard.rows && opts.infoCard.rows.length > 0) {
+      lines.push('');
+      opts.infoCard.rows.forEach((r) => {
+        lines.push(`  • ${r.label}: ${r.value}`);
+      });
+    }
+    lines.push('------------------------------------------------------------');
+    lines.push('');
+  }
+
+  // Workflow Steps
+  if (opts.steps && opts.steps.length > 0) {
+    lines.push('OPERATIONAL WORKFLOW:');
+    opts.steps.forEach((s) => {
+      lines.push(`[Step ${s.stepNumber}] ${s.title}`);
+      lines.push(`  ${s.description}`);
+    });
+    lines.push('');
+  }
+
+  // Service Highlights (Three Cards)
+  if (opts.threeCards && opts.threeCards.length > 0) {
+    lines.push('SERVICE HIGHLIGHTS:');
+    opts.threeCards.forEach((c) => {
+      lines.push(`• [${c.tag}] ${c.title}: ${c.description}`);
+    });
+    lines.push('');
+  }
+
+  // Call to Action
+  if (opts.ctaText && opts.ctaUrl) {
+    lines.push('============================================================');
+    lines.push(`ACTION: ${opts.ctaText}`);
+    lines.push(`LINK: ${opts.ctaUrl}`);
+    lines.push('============================================================');
+    lines.push('');
+  }
+
+  // Direct Desk Contact
+  lines.push('------------------------------------------------------------');
+  lines.push('ESDISPATCH DESK • DIRECT CONTACT');
+  lines.push('Email: support@engracedsmile.com');
+  lines.push('Hotline: +234 905 626 3010');
+  lines.push('Headquarters: 17 Upper Adesuwa Rd, GRA, Benin City, Edo State, Nigeria');
+  lines.push('Web Portal: https://esdispatch.vercel.app');
+  lines.push('Official Website: https://www.engracedsmile.com');
+  lines.push('');
+  lines.push('To manage preferences or unsubscribe:');
+  lines.push('https://www.engracedsmile.com/unsubscribe');
+  lines.push('');
+  lines.push(`© ${new Date().getFullYear()} ESDISPATCH. Encrypted 256-Bit SSL Telemetry.`);
+  lines.push('============================================================');
+
+  return lines.join('\n');
 }
 
 // ============================================================================
@@ -594,7 +748,7 @@ export function renderSignUpOtpEmail(params: {
       { tag: 'WALLET', title: 'Escrow Safe', description: 'Automated fund protection on bookings.' },
     ],
     ctaText: 'OPEN ESDISPATCH APP',
-    ctaUrl: 'https://www.esdispatch.com.ng',
+    ctaUrl: 'https://esdispatch.vercel.app',
   });
 }
 
@@ -627,7 +781,7 @@ export function renderPasswordResetOtpEmail(params: {
       codeSubtext: `Valid for ${expiry} minutes &bull; Single-use authorization`,
       badgeText: 'SECURITY DESK ALERT',
       badgeType: 'warning',
-      bodyText: 'If you did not initiate this password reset, please secure your account immediately or notify fleets@esdispatch.com.ng.',
+      bodyText: 'If you did not initiate this password reset, please secure your account immediately or notify support@engracedsmile.com.',
     },
     threeCards: [
       { tag: 'NOTICE', title: 'Single Use', description: 'Code invalidates after first successful entry.' },
@@ -635,7 +789,7 @@ export function renderPasswordResetOtpEmail(params: {
       { tag: 'HOTLINE', title: 'Emergency', description: 'Direct call to +234 905 626 3010.' },
     ],
     ctaText: 'VISIT SECURITY PORTAL',
-    ctaUrl: 'https://www.esdispatch.com.ng',
+    ctaUrl: 'https://esdispatch.vercel.app',
   });
 }
 
@@ -676,7 +830,7 @@ export function renderTwoFactorOtpEmail(params: {
       { tag: 'PROTECTION', title: 'Zero Sharing', description: 'Never forward or send to dispatchers.' },
     ],
     ctaText: 'CONFIRM ON APP',
-    ctaUrl: 'https://www.esdispatch.com.ng',
+    ctaUrl: 'https://esdispatch.vercel.app',
   });
 }
 
@@ -716,7 +870,7 @@ export function renderPinResetOtpEmail(params: {
       { tag: 'SUPPORT', title: 'Questions?', description: 'Call +234 905 626 3010 for immediate support.' },
     ],
     ctaText: 'MANAGE WALLET SETTINGS',
-    ctaUrl: 'https://www.esdispatch.com.ng',
+    ctaUrl: 'https://esdispatch.vercel.app',
   });
 }
 
@@ -771,7 +925,7 @@ export function renderCustomerWelcomeEmail(params: {
       { tag: 'WALLET', title: 'Unified Balance', description: 'Fund your wallet with Paystack for seamless 1-tap bookings.' },
     ],
     ctaText: 'BOOK YOUR FIRST DISPATCH',
-    ctaUrl: 'https://www.esdispatch.com.ng',
+    ctaUrl: 'https://esdispatch.vercel.app',
   });
 }
 
@@ -812,7 +966,7 @@ export function renderPromotionalCampaignEmail(params: {
       { tag: 'LIVE MAP', title: 'Track Anywhere', description: 'Share live tracking links with your parcel recipients.' },
     ],
     ctaText: 'CLAIM PROMO DISCOUNT',
-    ctaUrl: 'https://www.esdispatch.com.ng',
+    ctaUrl: 'https://esdispatch.vercel.app',
   });
 }
 
@@ -861,7 +1015,7 @@ export function renderDeliveryHandoverOtpEmail(params: {
       { tag: 'BENIN CITY', title: 'Live GPS Telemetry', description: 'Active turn-by-turn map tracking.' },
     ],
     ctaText: 'TRACK LIVE ON MAP',
-    ctaUrl: `https://www.esdispatch.com.ng/track?id=${params.trackingNumber}`,
+    ctaUrl: `https://esdispatch.vercel.app/track?id=${params.trackingNumber}`,
   });
 }
 
@@ -917,7 +1071,7 @@ export function renderDeliveryInvoiceEmail(params: {
       { tag: 'STATUS', title: 'Dispatched', description: 'Fleet assigned & en route.' },
     ],
     ctaText: 'VIEW LIVE TRACKING',
-    ctaUrl: `https://www.esdispatch.com.ng/track?id=${params.trackingNumber}`,
+    ctaUrl: `https://esdispatch.vercel.app/track?id=${params.trackingNumber}`,
   });
 }
 
@@ -966,7 +1120,7 @@ export function renderWalletTransactionEmail(params: {
       { tag: 'SETTLEMENT', title: 'Paystack Sync', description: 'Direct automated banking gateway.' },
     ],
     ctaText: 'OPEN WALLET IN APP',
-    ctaUrl: 'https://www.esdispatch.com.ng',
+    ctaUrl: 'https://esdispatch.vercel.app',
   });
 }
 
@@ -1018,7 +1172,7 @@ export function renderPartnerWelcomeEmail(params: {
       { tag: 'SAFETY', title: 'Live Telemetry', description: 'Continuous GPS safety monitoring.' },
     ],
     ctaText: 'ACCESS PARTNER CONSOLE',
-    ctaUrl: params.portalUrl || 'https://www.esdispatch.com.ng',
+    ctaUrl: params.portalUrl || 'https://esdispatch.vercel.app',
   });
 }
 

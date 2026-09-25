@@ -40,6 +40,123 @@ function emailApiPlugin() {
           return;
         }
 
+        if (req.url?.startsWith("/api/email/dns-check")) {
+          const dns = await import("dns");
+          const { resolveTxt, resolveMx } = dns.promises;
+          const queryDomain = "engracedsmile.com";
+
+          try {
+            let rootTxtRecords: string[][] = [];
+            try {
+              rootTxtRecords = await resolveTxt(queryDomain);
+            } catch (e: any) {}
+
+            const flatTxt = rootTxtRecords.map((chunks) => chunks.join(""));
+            const spfRecord = flatTxt.find((txt) => txt.toLowerCase().startsWith("v=spf1"));
+            const expectedSpf = "v=spf1 ip4:5.39.69.62 include:server.hostnextdns.com ~all";
+            const spfExists = Boolean(spfRecord);
+            const spfIncludesHost = spfExists && (spfRecord!.includes("5.39.69.62") || spfRecord!.includes("server.hostnextdns.com"));
+
+            let dmarcTxtRecords: string[][] = [];
+            try {
+              dmarcTxtRecords = await resolveTxt(`_dmarc.${queryDomain}`);
+            } catch (e: any) {}
+
+            const flatDmarc = dmarcTxtRecords.map((chunks) => chunks.join(""));
+            const dmarcRecord = flatDmarc.find((txt) => txt.toUpperCase().startsWith("V=DMARC1") || txt.toLowerCase().startsWith("v=dmarc1"));
+            const expectedDmarc = `v=DMARC1; p=none; rua=mailto:support@${queryDomain}; aspf=r;`;
+            const dmarcExists = Boolean(dmarcRecord);
+
+            let mxRecords: Array<{ exchange: string; priority: number }> = [];
+            try {
+              mxRecords = await resolveMx(queryDomain);
+            } catch (e: any) {}
+            const mxExists = mxRecords && mxRecords.length > 0;
+            const expectedMx = "server.hostnextdns.com (Priority 10)";
+
+            const recommendations: string[] = [];
+            let spamRiskLevel: "CRITICAL" | "MODERATE" | "LOW" = "LOW";
+
+            if (!spfExists) {
+              spamRiskLevel = "CRITICAL";
+              recommendations.push(
+                `Add SPF TXT record: Name '@', Value '${expectedSpf}'. Gmail & Yahoo automatically flag emails as SPAM without SPF.`
+              );
+            } else if (!spfIncludesHost) {
+              if (spamRiskLevel !== "CRITICAL") spamRiskLevel = "MODERATE";
+              recommendations.push(
+                `Update SPF TXT record to authorize HostNextDNS IP (5.39.69.62) or include:server.hostnextdns.com.`
+              );
+            }
+
+            if (!dmarcExists) {
+              if (spamRiskLevel !== "CRITICAL") spamRiskLevel = "MODERATE";
+              recommendations.push(
+                `Add DMARC TXT record: Name '_dmarc', Value '${expectedDmarc}'. Required by 2024 Google/Yahoo inbox standards.`
+              );
+            }
+
+            if (!mxExists) {
+              recommendations.push(
+                `Add MX record: Name '@', Server 'server.hostnextdns.com', Priority 10 to receive incoming bounces and support replies.`
+              );
+            }
+
+            const isInboxReady = spfExists && spfIncludesHost && dmarcExists;
+
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                success: true,
+                data: {
+                  domain: queryDomain,
+                  spf: {
+                    exists: spfExists,
+                    record: spfRecord,
+                    isAuthorizedForHost: spfIncludesHost,
+                    expectedRecord: expectedSpf,
+                    status: spfExists && spfIncludesHost ? "valid" : spfExists ? "warning" : "missing",
+                    message: spfExists
+                      ? spfIncludesHost
+                        ? "SPF is valid and authorizes mail server 5.39.69.62"
+                        : "SPF exists but does not authorize server.hostnextdns.com (5.39.69.62)"
+                      : "Missing SPF record. Gmail/Yahoo will route outgoing mail to SPAM.",
+                  },
+                  dmarc: {
+                    exists: dmarcExists,
+                    record: dmarcRecord,
+                    expectedRecord: expectedDmarc,
+                    status: dmarcExists ? "valid" : "missing",
+                    message: dmarcExists
+                      ? "DMARC authentication policy is active"
+                      : "Missing DMARC policy on _dmarc domain. Mandatory for Google & Yahoo 2024 compliance.",
+                  },
+                  mx: {
+                    exists: mxExists,
+                    records: mxRecords,
+                    expectedRecord: expectedMx,
+                    status: mxExists ? "valid" : "missing",
+                    message: mxExists
+                      ? `Found ${mxRecords.length} MX record(s)`
+                      : "No MX record detected. Reverse mail checks will fail.",
+                  },
+                  summary: {
+                    isInboxReady,
+                    spamRiskLevel,
+                    recommendations,
+                  },
+                },
+              })
+            );
+            return;
+          } catch (err: any) {
+            res.setHeader("Content-Type", "application/json");
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, error: err.message || "Failed to inspect DNS" }));
+            return;
+          }
+        }
+
         if (req.url === "/api/email/test-send" && req.method === "POST") {
           let body = "";
           req.on("data", (chunk: any) => (body += chunk));
@@ -62,6 +179,37 @@ function emailApiPlugin() {
               const fromEmail = (creds.fromEmail || creds.user || "noreply@engracedsmile.com").trim();
               const fromName = (creds.fromName || "ESDispatch Logistics").trim();
 
+              const plainText = (text && text.trim().length > 50 && text !== subject)
+                ? text.trim()
+                : (html || "")
+                    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+                    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+                    .replace(/<br\s*[\/]?>/gi, "\n")
+                    .replace(/<\/p>/gi, "\n\n")
+                    .replace(/<\/h[1-6]>/gi, "\n\n")
+                    .replace(/<\/div>/gi, "\n")
+                    .replace(/<\/li>/gi, "\n")
+                    .replace(/<li>/gi, "• ")
+                    .replace(/<\/tr>/gi, "\n")
+                    .replace(/<td[^>]*>/gi, " ")
+                    .replace(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, "$2 ($1)")
+                    .replace(/<[^>]+>/g, "")
+                    .replace(/&bull;/g, "•")
+                    .replace(/&amp;/g, "&")
+                    .replace(/&lt;/g, "<")
+                    .replace(/&gt;/g, ">")
+                    .replace(/&quot;/g, '"')
+                    .replace(/&#39;/g, "'")
+                    .replace(/&nbsp;/g, " ")
+                    .replace(/[ \t]+/g, " ")
+                    .replace(/\n\s+\n/g, "\n\n")
+                    .replace(/\n{3,}/g, "\n\n")
+                    .trim();
+
+              const domain = fromEmail.includes("@") ? fromEmail.split("@")[1] : "engracedsmile.com";
+              const randomHex = Math.random().toString(36).substring(2, 10);
+              const messageId = `<${Date.now()}.${randomHex}@${domain}>`;
+
               const nodemailer = await import("nodemailer");
               const transporter = nodemailer.createTransport({
                 host,
@@ -73,10 +221,25 @@ function emailApiPlugin() {
 
               const info = await transporter.sendMail({
                 from: `"${fromName}" <${fromEmail}>`,
+                sender: fromEmail,
+                replyTo: `"ESDispatch Support" <support@${domain}>`,
                 to: to.trim(),
                 subject: subject.trim(),
-                text: text || subject,
+                text: plainText,
                 html: html,
+                messageId: messageId,
+                envelope: {
+                  from: fromEmail,
+                  to: [to.trim()],
+                },
+                headers: {
+                  "X-Mailer": "ESDispatch Logistics Mailer/2026",
+                  "X-Priority": "3",
+                  "List-Unsubscribe": `<mailto:support@${domain}?subject=unsubscribe>, <https://www.engracedsmile.com/unsubscribe>`,
+                  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                  "Feedback-ID": `esdispatch:notification:${Date.now()}`,
+                  "X-Entity-Ref-ID": `${Date.now()}-${randomHex}`,
+                },
               });
 
               res.setHeader("Content-Type", "application/json");
