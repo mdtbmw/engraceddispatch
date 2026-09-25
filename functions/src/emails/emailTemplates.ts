@@ -74,8 +74,8 @@ export function resolveEmailImageUrl(path?: string): string {
     return path;
   }
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  // Primary: GitHub Raw repository storage (accessible worldwide)
-  return `https://raw.githubusercontent.com/mdtbmw/engraceddispatch/main/public${cleanPath}`;
+  // Primary: Production Vercel CDN (100% compatible with Google Image Proxy and Apple Mail)
+  return `https://engraceddispatchnew.vercel.app${cleanPath}`;
 }
 
 /**

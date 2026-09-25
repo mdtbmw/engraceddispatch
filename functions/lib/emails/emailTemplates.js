@@ -35,8 +35,8 @@ function resolveEmailImageUrl(path) {
         return path;
     }
     var cleanPath = path.startsWith('/') ? path : "/".concat(path);
-    // Primary: GitHub Raw repository storage (accessible worldwide)
-    return "https://raw.githubusercontent.com/mdtbmw/engraceddispatch/main/public".concat(cleanPath);
+    // Primary: Production Vercel CDN (100% compatible with Google Image Proxy and Apple Mail)
+    return "https://engraceddispatchnew.vercel.app".concat(cleanPath);
 }
 /**
  * Universal Master Luxury Email Template
