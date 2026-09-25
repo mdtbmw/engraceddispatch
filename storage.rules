@@ -1,32 +1,81 @@
 rules_version = '2';
-// Firebase Storage security rules for ESDispatch app assets.
-// Uploads are scoped to the authenticated owner; public gallery reads are allowed.
+
+// Firebase Storage Security Rules for ESDispatch
+// Bucket: gs://engraceddispatch-ffba4.firebasestorage.app
+// Scoped to authenticated users, strictly validated by MIME type and byte size.
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Profile avatars (btw: publicly needed for web/chat/review avatars)
-    match /avatars/{userId}/{file} {
+
+    // Helper functions for security and validation
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isUnderSize(maxBytes) {
+      return request.resource.size <= maxBytes;
+    }
+
+    // 1. Profile Avatars (Public read for dispatch display, chat, & reviews; owner write <= 5MB)
+    match /avatars/{userId}/{fileName} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if isOwner(userId) && isValidImage() && isUnderSize(5 * 1024 * 1024);
     }
 
-    // Marketplace store assets (logo/cover) — keyed by the store owner uid
-    match /store-assets/{storeId}/{file} {
+    // 2. Marketplace Store Assets (Logos & Covers; public read; store owner write <= 10MB)
+    match /store-assets/{storeId}/{fileName} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == storeId;
+      allow write: if isOwner(storeId) && isValidImage() && isUnderSize(10 * 1024 * 1024);
     }
 
-    // Proof-of-delivery photos & signatures — visible to authenticated users,
-    // writable by authenticated riders/users (max 10MB per asset)
-    match /pod/{deliveryId}/{file} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.resource.size < 10 * 1024 * 1024;
+    // 3. Proof of Delivery (Signatures & Photos; authenticated read; authenticated rider write <= 10MB)
+    match /delivery_proofs/{parcelId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidImage() && isUnderSize(10 * 1024 * 1024);
     }
 
-    // Incident/SOS evidence photos
-    match /incidents/{riderId}/{file} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == riderId;
+    // 4. Delivery Proofs (Legacy alias /pod/{deliveryId}/{fileName})
+    match /pod/{deliveryId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidImage() && isUnderSize(10 * 1024 * 1024);
+    }
+
+    // 5. Arrival Photos captured by couriers at destination (<= 10MB)
+    match /arrival_photos/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidImage() && isUnderSize(10 * 1024 * 1024);
+    }
+
+    // 6. Incident / SOS Evidence (Photos & short videos; rider & admin access <= 25MB)
+    match /incidents/{riderId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(riderId) && isUnderSize(25 * 1024 * 1024);
+    }
+
+    // 7. Chat & Customer Support Attachments (<= 10MB)
+    match /chat/{chatId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidImage() && isUnderSize(10 * 1024 * 1024);
+    }
+
+    // 8. Marketplace Products (Images uploaded by sellers/admin <= 10MB)
+    match /marketplace_products/{productId}/{fileName} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isValidImage() && isUnderSize(10 * 1024 * 1024);
+    }
+
+    // 9. Public App Releases & Direct APK Downloads (Public read; restricted admin write <= 150MB)
+    match /releases/{fileName} {
+      allow read: if true;
+      allow write: if isAuthenticated() && request.auth.token.admin == true && isUnderSize(150 * 1024 * 1024);
     }
   }
 }

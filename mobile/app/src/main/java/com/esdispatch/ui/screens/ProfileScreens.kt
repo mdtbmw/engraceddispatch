@@ -93,7 +93,7 @@ fun ProfileScreen(
             else -> "Platinum VIP"
         }
     }
-    val totalTipsEarned by viewModel.totalTipsEarned.collectAsState()
+    val totalEarned by viewModel.totalEarned.collectAsState()
     val deliveryCount by viewModel.deliveryCount.collectAsState()
     val userParcels by viewModel.parcels.collectAsState()
     val effectiveShipmentCount = maxOf(deliveryCount, userParcels.size)
@@ -1200,7 +1200,7 @@ fun ProfileScreen(
                     ProfileMenuRow(
                         icon = Icons.Filled.CreditCard,
                         title = if (isRider) "Courier Tip Wallet" else "Wallet & Payment",
-                        subtitle = if (isRider) "View tips earned & request withdrawal" else if (isRider) "Manage wallet, top up & withdrawals" else "Manage wallet, top up & refunds",
+                        subtitle = if (isRider) "View tips earned & request withdrawal" else "Manage wallet, top up & refund requests",
                         onClick = { onNavigate("Wallet") }
                     )
 
@@ -1561,7 +1561,7 @@ fun WalletScreen(
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(Icons.Filled.AccountBalance, contentDescription = null, tint = Obsidian, modifier = Modifier.size(18.dp))
                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                Text(if (isRider) "Request Withdrawal" else "Refund Request", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Obsidian)
+                                                Text("Request Withdrawal", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Obsidian)
                                             }
                                         }
                                         Spacer(modifier = Modifier.height(10.dp))
@@ -1602,7 +1602,7 @@ fun WalletScreen(
                                                     .weight(1f)
                                                     .height(52.dp)
                                             ) {
-                                                Text(if (isRider) "Withdraw" else "Request Refund", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color.White)
+                                                Text("Request Refund", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color.White)
                                             }
                                         }
                                     }
@@ -1794,6 +1794,7 @@ fun WalletScreen(
         FundWithdrawBottomSheet(
             viewModel = viewModel,
             mode = sheetMode,
+            isRider = isRider,
             onFundTrigger = { amount ->
                 pendingAmount = amount
                 confirmationTitle = "Confirm Top Up"
@@ -1807,8 +1808,12 @@ fun WalletScreen(
             },
             onWithdrawTrigger = { amount ->
                 pendingAmount = amount
-                confirmationTitle = if (isRider) "Confirm Withdrawal" else "Confirm Refund"
-                confirmationMessage = if (isRider) "You are about to withdraw ₦${String.format("%,.2f", amount)} from your wallet to your registered bank account." else "You are about to request a refund of ₦${String.format("%,.2f", amount)} from your wallet balance."
+                confirmationTitle = if (isRider) "Confirm Tip Withdrawal" else "Confirm Refund Request"
+                confirmationMessage = if (isRider) {
+                    "You are about to withdraw ₦${String.format("%,.2f", amount)} from your tip earnings to your registered bank account."
+                } else {
+                    "You are about to request a wallet refund of ₦${String.format("%,.2f", amount)} to your registered bank account."
+                }
                 onConfirmAction = {
                     showConfirmationDialog = false
                     showFundWithdrawSheet = false
@@ -1830,7 +1835,11 @@ fun WalletScreen(
                             )
                         }
                         successTitle = if (isRider) "Withdrawal Request Submitted" else "Refund Request Submitted"
-                        successMessage = if (isRider) "Your withdrawal request of ₦${String.format("%,.2f", pendingAmount)} has been submitted for admin processing and will arrive in your bank account once authorized." else "Your refund request of ₦${String.format("%,.2f", pendingAmount)} has been submitted and will be processed shortly."
+                        successMessage = if (isRider) {
+                            "Your withdrawal request of ₦${String.format("%,.2f", pendingAmount)} has been submitted for admin processing and will arrive in your bank account once authorized."
+                        } else {
+                            "Your wallet refund request of ₦${String.format("%,.2f", pendingAmount)} has been submitted for admin review and will be refunded to your registered bank account."
+                        }
                         showSuccessSheet = true
                     }
                     showPinAuthSheet = true
@@ -6203,6 +6212,7 @@ fun PreferredRidersSheet(
 fun FundWithdrawBottomSheet(
     viewModel: DeliveryViewModel,
     mode: String, // "fund" or "withdraw"
+    isRider: Boolean = false,
     onFundTrigger: (Double) -> Unit,
     onWithdrawTrigger: (Double) -> Unit,
     onOpenBankSetup: () -> Unit,
@@ -6237,8 +6247,13 @@ fun FundWithdrawBottomSheet(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            val isRiderRole = viewModel.userRole.collectAsState().value == "rider"
-            val titleText = if (mode == "fund") "Top Up Wallet Balance" else if (isRiderRole) "Withdraw Cash Funds" else "Request Refund"
+            val titleText = if (mode == "fund") {
+                "Top Up Wallet Balance"
+            } else if (isRider) {
+                "Withdraw Tip Earnings"
+            } else {
+                "Request Wallet Refund"
+            }
             Text(titleText, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
 
             if (mode == "withdraw") {
@@ -6252,7 +6267,12 @@ fun FundWithdrawBottomSheet(
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("No Settlement Account Configured", fontWeight = FontWeight.Bold, color = WarningOrange)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(if (isRiderRole) "Please configure a valid settlement bank account details to authorize cash withdrawals." else "Please ensure your bank details are correct to process this refund.", fontSize = 12.sp, color = TextGray)
+                            val accountHelpText = if (isRider) {
+                                "Please configure your settlement bank account details to authorize courier tip withdrawals."
+                            } else {
+                                "Please configure your settlement bank account details to receive your wallet refund."
+                            }
+                            Text(accountHelpText, fontSize = 12.sp, color = TextGray)
                             Spacer(modifier = Modifier.height(12.dp))
                             Button(
                                 onClick = { onOpenBankSetup() },
@@ -6323,7 +6343,14 @@ fun FundWithdrawBottomSheet(
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian)
             ) {
-                Text(if (mode == "fund") "Proceed to Checkout" else "Initiate Cashout", fontWeight = FontWeight.Black)
+                val actionLabel = if (mode == "fund") {
+                    "Proceed to Checkout"
+                } else if (isRider) {
+                    "Initiate Tip Cashout"
+                } else {
+                    "Submit Refund Request"
+                }
+                Text(actionLabel, fontWeight = FontWeight.Black)
             }
             Spacer(modifier = Modifier.height(16.dp))
         }

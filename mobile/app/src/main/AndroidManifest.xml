@@ -28,11 +28,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ESDispatch">
 
-        <!-- Google Maps Platform API Key -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${MAPS_API_KEY}" />
-
         <!-- Default FCM Notification Configuration -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
@@ -43,6 +38,11 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/gold" />
+
+        <!-- Google Maps Platform API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${GOOGLE_MAPS_API_KEY}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -26,7 +26,6 @@ data class Parcel(
     val width: Int = 10,
     val height: Int = 10,
     val price: Double = 0.0,
-    val itemValue: Double = 0.0,
     val courierName: String = "",
     val courierPhone: String = "",
     val courierAvatar: String = "",
@@ -84,7 +83,10 @@ data class Parcel(
     val verificationStatus: String = "UNVERIFIED",
     val isDisputed: Boolean = false,
     val disputeReason: String = "",
-    val disputeNotes: String = ""
+    val disputeNotes: String = "",
+    val declaredValue: Double = 0.0,
+    val pickupPhotoUrl: String = "",
+    val feedbackDismissed: Boolean = false
 )
 
 @Entity(tableName = "transactions")
@@ -211,8 +213,8 @@ data class ParcelDraft(
     val deliveryInstructions: String = "",
     val insuranceSelected: Boolean = false,
     val price: Double = 0.0,
-    val itemValue: Double = 0.0,
-    val additionalStops: String = ""
+    val additionalStops: String = "",
+    val declaredValue: Double = 0.0
 )
 
 data class ParcelChatMessage(

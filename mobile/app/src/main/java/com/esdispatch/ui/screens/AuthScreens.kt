@@ -478,7 +478,7 @@ fun LoginScreen(
                                 horizontalArrangement = Arrangement.Center
                             ) {
                                 Text(
-                                    text = if (step == LoginStep.EMAIL) "Login Now" else "Verify & Login", 
+                                    text = if (step == LoginStep.EMAIL) "Login now" else "Verify & Login", 
                                     fontSize = 16.sp, 
                                     fontWeight = FontWeight.ExtraBold, 
                                     color = if (isLight) Gold else Obsidian

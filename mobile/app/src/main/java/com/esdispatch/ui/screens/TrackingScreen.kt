@@ -56,24 +56,10 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.runtime.*
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.ui.platform.LocalContext
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.JointType
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.LatLngBounds
-import com.google.android.gms.maps.model.RoundCap
-import com.google.maps.android.compose.Circle
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapType
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
-import com.google.maps.android.compose.Polyline
-import com.google.maps.android.compose.rememberCameraPositionState
-import com.esdispatch.utils.GoogleMapsHelper
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -441,9 +427,14 @@ fun ActiveTrackingScreen(
 
     val walletBalance by viewModel.walletBalance.collectAsState()
 
-    // Automatically and intelligently pop up Feedback & Tip dialog when delivery is completed
-    LaunchedEffect(parcel.status, parcel.isRated, isRider) {
-        if (!isRider && parcel.status == ParcelStatus.DELIVERED && !parcel.isRated && parcel.id.isNotBlank()) {
+    val trackingPrefs = remember(context) { context.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE) }
+    val isFeedbackDismissed = remember(parcel.id, parcel.feedbackDismissed) {
+        parcel.feedbackDismissed || trackingPrefs.getBoolean("feedback_dismissed_${parcel.id}", false)
+    }
+
+    // Automatically and intelligently pop up Feedback & Tip dialog once when delivery is completed
+    LaunchedEffect(parcel.status, parcel.isRated, isRider, isFeedbackDismissed, parcel.id) {
+        if (!isRider && parcel.status == ParcelStatus.DELIVERED && !parcel.isRated && parcel.id.isNotBlank() && !isFeedbackDismissed) {
             showFeedbackDialog = true
         }
     }
@@ -453,8 +444,14 @@ fun ActiveTrackingScreen(
             parcel = parcel,
             isDark = isDark,
             walletBalance = walletBalance,
-            onDismiss = { showFeedbackDialog = false },
+            onDismiss = {
+                showFeedbackDialog = false
+                trackingPrefs.edit().putBoolean("feedback_dismissed_${parcel.id}", true).apply()
+                viewModel.dismissFeedback(parcel.id)
+            },
             onSubmit = { rating, tip ->
+                trackingPrefs.edit().putBoolean("feedback_dismissed_${parcel.id}", true).apply()
+                viewModel.dismissFeedback(parcel.id)
                 viewModel.rateAndTipRider(
                     parcelId = parcel.id,
                     riderId = parcel.riderId,
@@ -897,8 +894,7 @@ fun ActiveTrackingScreen(
                     parcelDeliveryLat = parcel.deliveryLat,
                     parcelDeliveryLng = parcel.deliveryLng,
                     courierName = resolvedCourierName,
-                    courierPhone = resolvedCourierPhone,
-                    isDark = isDark
+                    courierPhone = resolvedCourierPhone
                 )
             }
 
@@ -1974,14 +1970,20 @@ fun ActiveTrackingScreen(
                                                             }
                                                         }
 
-                                                        Text(
-                                                            text = "HANDOVER PIN",
-                                                            fontSize = 12.sp,
-                                                            fontFamily = SpaceGrotesk,
-                                                            fontWeight = FontWeight.Black,
-                                                            letterSpacing = 1.sp,
-                                                            color = if (isDark) GoldLight else Obsidian
-                                                        )
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = Gold.copy(alpha = 0.15f),
+                                                            border = BorderStroke(0.5.dp, Gold)
+                                                        ) {
+                                                            Text(
+                                                                text = "CONFIDENTIAL HANDOVER PIN",
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Black,
+                                                                letterSpacing = 1.sp,
+                                                                color = if (isDark) GoldLight else Obsidian,
+                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                            )
+                                                        }
                                                         Spacer(modifier = Modifier.height(10.dp))
                                                         Row(
                                                             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -2006,12 +2008,52 @@ fun ActiveTrackingScreen(
                                                             }
                                                         }
                                                         Spacer(modifier = Modifier.height(8.dp))
+                                                        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                                        var pinCopied by remember { mutableStateOf(false) }
+                                                        OutlinedButton(
+                                                            onClick = {
+                                                                if (parcel.otpCode.isNotBlank()) {
+                                                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(parcel.otpCode))
+                                                                    pinCopied = true
+                                                                }
+                                                            },
+                                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                                contentColor = if (isDark) GoldLight else Obsidian
+                                                            ),
+                                                            border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.3f)),
+                                                            shape = RoundedCornerShape(10.dp),
+                                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                                            modifier = Modifier.height(34.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = if (pinCopied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+                                                                contentDescription = "Copy PIN",
+                                                                tint = if (isDark) GoldLight else Obsidian,
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Text(
+                                                                text = if (pinCopied) "PIN COPIED" else "COPY PIN",
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.height(8.dp))
                                                         Text(
-                                                            text = "Provide this 4-digit PIN to courier upon delivery to verify handover",
+                                                            text = "Confidential • Only release this PIN after physically inspecting and receiving your package.",
                                                             fontSize = 11.sp,
                                                             color = TextGray,
                                                             textAlign = TextAlign.Center
                                                         )
+                                                        if (parcel.declaredValue > 0.0) {
+                                                            Spacer(modifier = Modifier.height(4.dp))
+                                                            Text(
+                                                                text = "Declared Value: ₦${String.format(java.util.Locale.US, "%,.0f", parcel.declaredValue)}",
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                color = if (isDark) GoldLight.copy(alpha = 0.8f) else Obsidian.copy(alpha = 0.7f)
+                                                            )
+                                                        }
                                                     }
 
                                                     HorizontalDivider(color = if (isDark) BorderDark else BorderLight)
@@ -3041,6 +3083,57 @@ private fun MapControlButton(
     }
 }
 
+class LeafletJavascriptInterface(
+    private val context: android.content.Context,
+    private val onMapClickCallback: (Double, Double) -> Unit,
+    private val onMarkerPlacedCallback: (String, Double, Double) -> Unit,
+    private val onTrackingUpdatedCallback: (Double, Double) -> Unit,
+    private val onMapTypeToggledCallback: (Boolean) -> Unit,
+    private val onUserInteractedCallback: () -> Unit = {},
+    private val onRouteTelemetryCallback: (Double, Double) -> Unit = { _, _ -> }
+) {
+    @android.webkit.JavascriptInterface
+    fun onMapClick(lat: Double, lng: Double) {
+        (context as? android.app.Activity)?.runOnUiThread {
+            onMapClickCallback(lat, lng)
+        }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onMarkerPlaced(label: String, lat: Double, lng: Double) {
+        (context as? android.app.Activity)?.runOnUiThread {
+            onMarkerPlacedCallback(label, lat, lng)
+        }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onTrackingUpdated(lat: Double, lng: Double) {
+        (context as? android.app.Activity)?.runOnUiThread {
+            onTrackingUpdatedCallback(lat, lng)
+        }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onRouteTelemetry(distanceMeters: Double, durationSeconds: Double) {
+        (context as? android.app.Activity)?.runOnUiThread {
+            onRouteTelemetryCallback(distanceMeters, durationSeconds)
+        }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onMapTypeToggled(isSatellite: Boolean) {
+        (context as? android.app.Activity)?.runOnUiThread {
+            onMapTypeToggledCallback(isSatellite)
+        }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onUserInteracted() {
+        (context as? android.app.Activity)?.runOnUiThread {
+            onUserInteractedCallback()
+        }
+    }
+}
 
 @Composable
 private fun AddressDetailRow(
@@ -3079,6 +3172,37 @@ private fun AddressDetailRow(
     }
 }
 
+private fun geocodeAddressToLatLng(context: android.content.Context, address: String): Pair<Double, Double> {
+    if (address.isBlank()) return Pair(6.3350, 5.6037)
+
+    // 1. Instant lookup from authentic Benin City address catalog (fastest, 0ms latency)
+    val beninCoords = com.esdispatch.data.AddressDatabase.getCoordinates(address)
+    if (beninCoords != null) {
+        return beninCoords
+    }
+
+    // 2. System Geocoder with strict timeout
+    try {
+        if (android.location.Geocoder.isPresent()) {
+            val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+            val query = if (address.contains("Benin", ignoreCase = true)) address else "$address, Benin City, Nigeria"
+            @Suppress("DEPRECATION")
+            val addresses = geocoder.getFromLocationName(query, 1)
+            if (!addresses.isNullOrEmpty()) {
+                val addr = addresses[0]
+                if (addr.latitude in 6.1..6.5 && addr.longitude in 5.4..5.8) {
+                    return Pair(addr.latitude, addr.longitude)
+                }
+            }
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("Geocoder", "System Geocoder failed: ${e.message}")
+    }
+
+    // 3. Reliable central Benin City fallback (Ring Road / King's Square)
+    return Pair(6.3350, 5.6037)
+}
+
 @Composable
 fun LiveMapView(
     modifier: Modifier = Modifier,
@@ -3106,377 +3230,1290 @@ fun LiveMapView(
     parcelDeliveryLng: Double? = null,
     courierName: String = "Courier",
     courierPhone: String = "",
-    isDark: Boolean = false,
     onRouteTelemetry: (Double, Double) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    var localTraffic by remember { mutableStateOf(showTraffic) }
+    val pickupCoords = remember(pickupAddress, parcelPickupLat, parcelPickupLng, hasNoBooking) {
+        if (hasNoBooking) {
+            null
+        } else if (parcelPickupLat != null && parcelPickupLng != null && parcelPickupLat != 0.0 && parcelPickupLng != 0.0) {
+            Pair(parcelPickupLat, parcelPickupLng)
+        } else if (pickupAddress.isNotBlank()) {
+            geocodeAddressToLatLng(context, pickupAddress)
+        } else {
+            null
+        }
+    }
+    val deliveryCoords = remember(deliveryAddress, parcelDeliveryLat, parcelDeliveryLng, hasNoBooking) {
+        if (hasNoBooking) {
+            null
+        } else if (parcelDeliveryLat != null && parcelDeliveryLng != null && parcelDeliveryLat != 0.0 && parcelDeliveryLng != 0.0) {
+            Pair(parcelDeliveryLat, parcelDeliveryLng)
+        } else if (deliveryAddress.isNotBlank()) {
+            geocodeAddressToLatLng(context, deliveryAddress)
+        } else {
+            null
+        }
+    }
+    val isDarkTheme = MaterialTheme.colorScheme.background == BackgroundDark
+    var isPageLoaded by remember { mutableStateOf(false) }
     var userHasPanned by remember { mutableStateOf(false) }
 
-    // Resolve coordinates with fallback geocoding
-    var resolvedPickupCoords by remember(pickupAddress, parcelPickupLat, parcelPickupLng) {
-        mutableStateOf(
-            if (parcelPickupLat != null && parcelPickupLng != null && parcelPickupLat != 0.0) LatLng(parcelPickupLat, parcelPickupLng) else null
-        )
+    val leafletCss = remember(context) {
+        try {
+            context.assets.open("leaflet/leaflet.css").bufferedReader().use { it.readText() }
+        } catch (e: Throwable) {
+            ""
+        }
     }
-    var resolvedDeliveryCoords by remember(deliveryAddress, parcelDeliveryLat, parcelDeliveryLng) {
-        mutableStateOf(
-            if (parcelDeliveryLat != null && parcelDeliveryLng != null && parcelDeliveryLat != 0.0) LatLng(parcelDeliveryLat, parcelDeliveryLng) else null
-        )
-    }
-    val courierLatLng = remember(courierLatitude, courierLongitude) {
-        if (courierLatitude != null && courierLongitude != null && courierLatitude != 0.0) LatLng(courierLatitude, courierLongitude) else null
-    }
-    val userLiveLatLng = remember(userCoords) {
-        if (userCoords != null && userCoords.first != 0.0) LatLng(userCoords.first, userCoords.second) else null
+    val leafletJs = remember(context) {
+        try {
+            context.assets.open("leaflet/leaflet.js").bufferedReader().use { it.readText() }
+        } catch (e: Throwable) {
+            ""
+        }
     }
 
-    LaunchedEffect(pickupAddress) {
-        if (resolvedPickupCoords == null && pickupAddress.isNotBlank()) {
-            val coords = GoogleMapsHelper.geocodeAddress(context, pickupAddress)
-            if (coords != null) {
-                resolvedPickupCoords = LatLng(coords.first, coords.second)
+    val webView = remember(context) {
+        WebView(context).apply {
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+            settings.allowFileAccess = true
+            settings.allowContentAccess = true
+            settings.allowFileAccessFromFileURLs = true
+            settings.allowUniversalAccessFromFileURLs = true
+            settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+            settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+            try {
+                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            } catch (e: Throwable) {}
+            
+            try {
+                WebView.setWebContentsDebuggingEnabled(true)
+            } catch (e: Throwable) {}
+
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    isPageLoaded = true
+                    view?.evaluateJavascript("if (typeof map !== 'undefined' && map !== null) { map.invalidateSize(); }", null)
+                }
+
+                override fun onReceivedSslError(
+                    view: WebView?,
+                    handler: android.webkit.SslErrorHandler?,
+                    error: android.net.http.SslError?
+                ) {
+                    handler?.proceed()
+                }
             }
-        }
-    }
 
-    LaunchedEffect(deliveryAddress) {
-        if (resolvedDeliveryCoords == null && deliveryAddress.isNotBlank()) {
-            val coords = GoogleMapsHelper.geocodeAddress(context, deliveryAddress)
-            if (coords != null) {
-                resolvedDeliveryCoords = LatLng(coords.first, coords.second)
+            webChromeClient = object : android.webkit.WebChromeClient() {
+                override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                    android.util.Log.d("MapWebViewConsole", "[${consoleMessage?.messageLevel()}] ${consoleMessage?.message()}")
+                    return true
+                }
             }
-        }
-    }
 
-    // Default to center of Benin City
-    val defaultCenter = LatLng(6.3350, 5.6037)
-    val cameraPositionState = rememberCameraPositionState {
-        val initial = courierLatLng ?: userLiveLatLng ?: resolvedDeliveryCoords ?: resolvedPickupCoords ?: defaultCenter
-        position = CameraPosition.fromLatLngZoom(initial, zoom.coerceIn(12f, 17f))
-    }
-
-    // Track user gesture to pause auto-following
-    LaunchedEffect(cameraPositionState.isMoving) {
-        if (cameraPositionState.isMoving) {
-            userHasPanned = true
-        }
-    }
-
-    // Smoothly animate camera as courier moves
-    LaunchedEffect(courierLatLng, followUser) {
-        if (followUser && !userHasPanned && courierLatLng != null) {
-            cameraPositionState.animate(
-                CameraUpdateFactory.newLatLng(courierLatLng),
-                durationMs = 900
+            addJavascriptInterface(
+                LeafletJavascriptInterface(
+                    context = context,
+                    onMapClickCallback = { lat, lng ->
+                        if (hasNoBooking) {
+                            reverseGeocodeAddress(context, lat, lng) { address ->
+                                com.esdispatch.util.CustomToastBridge.show("Location Selected: $address", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                            }
+                        }
+                    },
+                    onMarkerPlacedCallback = { _, _, _ -> },
+                    onTrackingUpdatedCallback = { _, _ -> },
+                    onMapTypeToggledCallback = { isSat ->
+                        onMapTypeToggled(isSat)
+                    },
+                    onUserInteractedCallback = {
+                        userHasPanned = true
+                    },
+                    onRouteTelemetryCallback = onRouteTelemetry
+                ),
+                "AndroidMap"
             )
         }
     }
 
-    // Route directions calculation using Google Directions API
-    var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
-    var routeSteps by remember { mutableStateOf<List<com.esdispatch.utils.RouteStep>>(emptyList()) }
-    var routeSummary by remember { mutableStateOf<Pair<String, String>?>(null) }
-    var lastRouteKey by remember { mutableStateOf("") }
+    // Load static shell ONLY ONCE
+    val htmlContent = remember(leafletCss, leafletJs) {
+        """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+            <style>
+                $leafletCss
+                
+                html, body {
+                    margin: 0;
+                    padding: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: #121214;
+                    overflow: hidden;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                }
+                #map {
+                    margin: 0;
+                    padding: 0;
+                    width: 100%;
+                    height: 100%;
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: #121214;
+                    overflow: hidden;
+                    z-index: 1;
+                }
+                .dark-tiles {
+                    filter: invert(100%) hue-rotate(180deg) brightness(88%) contrast(105%);
+                }
 
-    LaunchedEffect(courierLatLng, resolvedPickupCoords, resolvedDeliveryCoords, parcelStatus) {
-        val origin: LatLng?
-        val destination: LatLng?
+                /* Rider Marker: Compact 26px badge with rotating directional chevron */
+                .rider-marker-wrap {
+                    position: relative;
+                    width: 32px;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .rider-marker-beacon {
+                    position: absolute;
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 50%;
+                    background: rgba(255, 184, 0, 0.25);
+                    animation: rider-pulse 2s infinite ease-out;
+                }
+                @keyframes rider-pulse {
+                    0% { transform: scale(0.8); opacity: 1; }
+                    100% { transform: scale(1.6); opacity: 0; }
+                }
+                .rider-marker-core {
+                    position: relative;
+                    width: 26px;
+                    height: 26px;
+                    border-radius: 50%;
+                    background-color: #0E0E10;
+                    border: 2px solid #FFB800;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+                    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+                }
+                .rider-arrow {
+                    width: 14px;
+                    height: 14px;
+                    fill: #FFB800;
+                }
 
-        when (parcelStatus) {
-            ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.ARRIVED -> {
-                origin = courierLatLng ?: resolvedPickupCoords
-                destination = resolvedDeliveryCoords
-            }
-            ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT, ParcelStatus.ARRIVED_PICKUP -> {
-                origin = courierLatLng ?: userLiveLatLng
-                destination = resolvedPickupCoords
-            }
-            else -> {
-                origin = resolvedPickupCoords
-                destination = resolvedDeliveryCoords
-            }
-        }
+                /* Stop Badges: Compact 22px circular indicators */
+                .stop-badge {
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 11px;
+                    font-weight: 900;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                    transition: all 0.3s ease;
+                }
+                .stop-active {
+                    background-color: #FFB800;
+                    color: #0E0E10;
+                    border: 2px solid #0E0E10;
+                    animation: stop-pulse 2s infinite ease-in-out;
+                }
+                .stop-waiting {
+                    background-color: #1A1A1F;
+                    color: #8E8E93;
+                    border: 1.5px solid #3A3A3C;
+                }
+                .stop-completed {
+                    background-color: #10B981;
+                    color: #FFFFFF;
+                    border: 2px solid #0E0E10;
+                }
+                @keyframes stop-pulse {
+                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.7); }
+                    70% { transform: scale(1.08); box-shadow: 0 0 0 10px rgba(255, 184, 0, 0); }
+                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 184, 0, 0); }
+                }
 
-        if (origin != null && destination != null) {
-            val key = "${origin.latitude},${origin.longitude}->${destination.latitude},${destination.longitude}"
-            if (key != lastRouteKey) {
-                lastRouteKey = key
-                val directions = GoogleMapsHelper.fetchDirections(
-                    origin.latitude, origin.longitude,
-                    destination.latitude, destination.longitude
-                )
-                if (directions != null) {
-                    routePoints = directions.points
-                    routeSteps = directions.steps
-                    routeSummary = Pair(directions.distanceText, directions.durationText)
-                    onRouteTelemetry(directions.distanceMeters.toDouble(), directions.durationSeconds.toDouble())
+                /* Tooltip Badges */
+                .clean-map-badge {
+                    background: transparent !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    padding: 0 !important;
+                }
+                .clean-map-badge:before {
+                    display: none !important;
+                }
+                .badge-label-active {
+                    background: #FFB800;
+                    color: #0E0E10;
+                    border: 1.5px solid #0E0E10;
+                    font-size: 9px;
+                    font-weight: 900;
+                    letter-spacing: 0.5px;
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    text-transform: uppercase;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                    white-space: nowrap;
+                }
+                .badge-label-waiting {
+                    background: #1A1A1F;
+                    color: #8E8E93;
+                    border: 1px solid #3A3A3C;
+                    font-size: 9px;
+                    font-weight: 700;
+                    letter-spacing: 0.5px;
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    text-transform: uppercase;
+                    white-space: nowrap;
+                }
+                .badge-label-completed {
+                    background: #10B981;
+                    color: #FFFFFF;
+                    border: 1.5px solid #0E0E10;
+                    font-size: 9px;
+                    font-weight: 900;
+                    letter-spacing: 0.5px;
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    text-transform: uppercase;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                    white-space: nowrap;
+                }
+
+                /* Proximity Arrival Beacon */
+                @keyframes beacon-expand {
+                    0% { transform: scale(0.4); opacity: 0.9; }
+                    50% { transform: scale(1.6); opacity: 0.4; }
+                    100% { transform: scale(2.4); opacity: 0; }
+                }
+                .arrival-beacon-wrap {
+                    position: relative;
+                    width: 50px;
+                    height: 50px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    pointer-events: none;
+                }
+                .arrival-beacon-ring {
+                    position: absolute;
+                    width: 50px;
+                    height: 50px;
+                    border-radius: 50%;
+                    background: rgba(255, 184, 0, 0.35);
+                    border: 2px solid #FFB800;
+                    animation: beacon-expand 1.6s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
+                }
+                .arrival-beacon-core {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 50%;
+                    background: #FFB800;
+                }
+
+                /* Map Style Controls */
+                .map-controls {
+                    position: absolute;
+                    top: 16px;
+                    left: 16px;
+                    z-index: 1000;
+                    background: rgba(18, 18, 18, 0.95);
+                    border: 1.5px solid #FFB800;
+                    border-radius: 24px;
+                    padding: 4px;
+                    display: flex;
+                    gap: 4px;
+                }
+                .control-btn {
+                    background: transparent;
+                    border: none;
+                    color: #A0AEC0;
+                    padding: 6px 14px;
+                    font-size: 10px;
+                    font-weight: 800;
+                    border-radius: 20px;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                }
+                .control-btn.active {
+                    background: #FFB800;
+                    color: #121212;
+                    font-weight: 900;
+                }
+
+                /* User Location Pin (Clean, compact 20px) */
+                .user-dot-wrap {
+                    width: 20px;
+                    height: 20px;
+                    position: relative;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .user-dot-pulse {
+                    position: absolute;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    background: rgba(0, 122, 255, 0.3);
+                    animation: user-pulse 2s infinite ease-out;
+                }
+                @keyframes user-pulse {
+                    0% { transform: scale(0.6); opacity: 1; }
+                    100% { transform: scale(1.8); opacity: 0; }
+                }
+                .user-dot-core {
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    background: #007AFF;
+                    border: 2px solid #FFFFFF;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+                }
+
+                /* Turn-by-Turn Navigation HUD Card */
+                .nav-hud-card {
+                    position: absolute;
+                    top: 56px;
+                    left: 14px;
+                    right: 14px;
+                    z-index: 1000;
+                    background: rgba(14, 14, 16, 0.94);
+                    border: 1.5px solid #FFB800;
+                    border-radius: 16px;
+                    padding: 8px 12px;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+                    backdrop-filter: blur(8px);
+                    transition: all 0.3s ease;
+                }
+                .nav-hud-card.light-mode {
+                    background: rgba(255, 255, 255, 0.95);
+                    border: 1.5px solid #0E0E10;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+                }
+                .nav-hud-icon {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 50%;
+                    background: #FFB800;
+                    color: #0E0E10;
+                    font-size: 14px;
+                    font-weight: 900;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
+                }
+                .nav-hud-body {
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                }
+                .nav-hud-title {
+                    font-size: 11px;
+                    font-weight: 800;
+                    color: #FFFFFF;
+                    letter-spacing: 0.2px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .nav-hud-card.light-mode .nav-hud-title {
+                    color: #0E0E10;
+                }
+                .nav-hud-sub {
+                    font-size: 10px;
+                    color: #A0AEC0;
+                    font-weight: 600;
+                }
+                .nav-hud-card.light-mode .nav-hud-sub {
+                    color: #4A5568;
+                }
+
+                /* Floating Re-center Button */
+                .map-recenter-btn {
+                    position: absolute;
+                    bottom: 24px;
+                    right: 14px;
+                    z-index: 1000;
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    background: rgba(14, 14, 16, 0.92);
+                    border: 1.5px solid #FFB800;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                    cursor: pointer;
+                }
+            </style>
+            <script>
+                $leafletJs
+            </script>
+        </head>
+        <body>
+            <div id="map"></div>
+            <div class="map-controls">
+                <button class="control-btn active" id="streetBtn" onclick="onToggleClick(false)">STREET</button>
+                <button class="control-btn" id="satelliteBtn" onclick="onToggleClick(true)">SATELLITE</button>
+            </div>
+            <div class="nav-hud-card" id="navHudCard" style="display:none;">
+                <div class="nav-hud-icon" id="navHudIcon">↗</div>
+                <div class="nav-hud-body">
+                    <div class="nav-hud-title" id="navHudTitle">Dispatch Route</div>
+                    <div class="nav-hud-sub" id="navHudSub">Live Navigation Active</div>
+                </div>
+            </div>
+            <div class="map-recenter-btn" id="recenterBtn" onclick="recenterMapOnFocus()">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="#FFB800"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+            </div>
+            <script>
+                var pickupLoc = null;
+                var deliveryLoc = null;
+                var pickupAddressStr = '';
+                var deliveryAddressStr = '';
+                var courierInfoStr = '';
+                var userLoc = null;
+                var courierLoc = null;
+                var prevCourierLoc = null;
+                var traveledCoords = [];
+                var traveledRouteLine = null;
+                var lastRouteOrigin = null;
+                var currentStatus = 'PENDING';
+                var currentBearing = 0;
+                var isDarkTheme = true;
+                var isSatelliteMode = false;
+                var userInteracted = false;
+                var hasBooking = false;
+                var isRiderMode = false;
+
+                var map = null;
+                var activeRouteLine = null;
+                var routeCasingLine = null;
+                var courierMarker = null;
+                var pickupMarker = null;
+                var deliveryMarker = null;
+                var liveUserMarker = null;
+                var arrivalBeaconCircle = null;
+
+                var googleStreetTiles = null;
+                var darkStreetTiles = null;
+                var satelliteTiles = null;
+                var esriTransportationTiles = null;
+                var osmTiles = null;
+
+                function initMapContainer() {
+                    var container = document.getElementById('map');
+                    if (!container || map) return;
+
+                    try {
+                        map = L.map('map', {
+                            center: [6.3350, 5.6037],
+                            zoom: 14,
+                            minZoom: 3,
+                            maxZoom: 20,
+                            zoomControl: false,
+                            attributionControl: false
+                        });
+
+                        googleStreetTiles = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+                            maxZoom: 20,
+                            subdomains: ['0', '1', '2', '3']
+                        });
+
+                        darkStreetTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            maxZoom: 19,
+                            className: 'dark-tiles'
+                        });
+
+                        satelliteTiles = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+                            maxZoom: 20,
+                            subdomains: ['0', '1', '2', '3']
+                        });
+
+                        esriTransportationTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {
+                            maxZoom: 19,
+                            opacity: 0.95
+                        });
+
+                        osmTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            maxZoom: 19
+                        });
+
+                        darkStreetTiles.on('tileerror', function() { googleStreetTiles.addTo(map); });
+                        googleStreetTiles.on('tileerror', function() { osmTiles.addTo(map); });
+
+                        if (isSatelliteMode) {
+                            satelliteTiles.addTo(map);
+                            try { esriTransportationTiles.addTo(map); } catch(e){}
+                        } else if (isDarkTheme) {
+                            darkStreetTiles.addTo(map);
+                        } else {
+                            googleStreetTiles.addTo(map);
+                        }
+
+                        map.on('movestart dragstart zoomstart', function(e) {
+                            if (e && e.originalEvent) {
+                                userInteracted = true;
+                                if (window.AndroidMap && window.AndroidMap.onUserInteracted) {
+                                    window.AndroidMap.onUserInteracted();
+                                }
+                            }
+                        });
+
+                        map.on('click', function(e) {
+                            if (window.AndroidMap && window.AndroidMap.onMapClick) {
+                                window.AndroidMap.onMapClick(e.latlng.lat, e.latlng.lng);
+                            }
+                        });
+
+                        setTimeout(function() { if (map) map.invalidateSize(); }, 250);
+                        window.addEventListener('resize', function() { if (map) map.invalidateSize(); });
+                    } catch(e) {
+                        console.error("Map init error:", e);
+                    }
+                }
+
+                function distanceBetweenCoords(lat1, lon1, lat2, lon2) {
+                    var R = 6371; // km
+                    var dLat = (lat2 - lat1) * Math.PI / 180;
+                    var dLon = (lon2 - lon1) * Math.PI / 180;
+                    var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                            Math.sin(dLon/2) * Math.sin(dLon/2);
+                    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                    return R * c;
+                }
+
+                function calculateBearing(lat1, lon1, lat2, lon2) {
+                    var dLon = (lon2 - lon1) * Math.PI / 180;
+                    var y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+                    var x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+                            Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+                    var brng = Math.atan2(y, x) * 180 / Math.PI;
+                    return (brng + 360) % 360;
+                }
+
+                function setRiderMode(isRider) {
+                    isRiderMode = !!isRider;
+                }
+
+                function setPickupLocation(lat, lng, addr) {
+                    if (!lat || !lng) return;
+                    pickupLoc = [lat, lng];
+                    if (addr) pickupAddressStr = addr;
+                    hasBooking = true;
+                    refreshStopMarkers();
+                    fetchOSRMRoute();
+                }
+
+                function setDeliveryLocation(lat, lng, addr) {
+                    if (!lat || !lng) return;
+                    deliveryLoc = [lat, lng];
+                    if (addr) deliveryAddressStr = addr;
+                    hasBooking = true;
+                    refreshStopMarkers();
+                    fetchOSRMRoute();
+                }
+
+                function setCourierDetails(name, phone) {
+                    courierInfoStr = (name || 'Courier') + (phone ? ' • ' + phone : '');
+                }
+
+                function updateDeliveryStatus(statusStr) {
+                    currentStatus = (statusStr || 'PENDING').toUpperCase();
+                    refreshStopMarkers();
+                    fetchOSRMRoute();
+                }
+
+                function refreshStopMarkers() {
+                    if (!map) return;
+                    var isPickupCompleted = (currentStatus === 'PICKED_UP' || currentStatus === 'PARCEL_COLLECTED' || currentStatus === 'IN_TRANSIT' || currentStatus === 'TRANSIT' || currentStatus === 'OUT_FOR_DELIVERY' || currentStatus === 'ARRIVED' || currentStatus === 'HANDOVER_VERIFIED' || currentStatus === 'DELIVERED');
+                    var isPickupActive = (currentStatus === 'PENDING' || currentStatus === 'QUEUED' || currentStatus === 'OFFERED' || currentStatus === 'ASSIGNED' || currentStatus === 'CONFIRMED' || currentStatus === 'ARRIVED_PICKUP' || currentStatus === 'RESERVED_NEXT');
+                    var isDeliveryActive = (currentStatus === 'PICKED_UP' || currentStatus === 'PARCEL_COLLECTED' || currentStatus === 'IN_TRANSIT' || currentStatus === 'TRANSIT' || currentStatus === 'OUT_FOR_DELIVERY' || currentStatus === 'ARRIVED');
+                    var isDeliveryCompleted = (currentStatus === 'DELIVERED');
+
+                    // Pickup Marker
+                    if (pickupLoc && hasBooking) {
+                        var pickupHtml = '';
+                        var pickupLabelClass = '';
+                        var pickupLabelText = 'PICKUP';
+
+                        if (isPickupCompleted) {
+                            pickupHtml = "<div class='stop-badge stop-completed'>✓</div>";
+                            pickupLabelClass = 'badge-label-completed';
+                            pickupLabelText = 'COLLECTED';
+                        } else if (isPickupActive) {
+                            pickupHtml = "<div class='stop-badge stop-active'>P</div>";
+                            pickupLabelClass = 'badge-label-active';
+                            pickupLabelText = 'PICKUP';
+                        } else {
+                            pickupHtml = "<div class='stop-badge stop-waiting'>P</div>";
+                            pickupLabelClass = 'badge-label-waiting';
+                            pickupLabelText = 'PICKUP';
+                        }
+
+                        var pickupIcon = L.divIcon({
+                            className: 'clean-map-badge',
+                            html: pickupHtml,
+                            iconSize: [22, 22],
+                            iconAnchor: [11, 11]
+                        });
+
+                        if (pickupMarker) {
+                            pickupMarker.setLatLng(pickupLoc);
+                            pickupMarker.setIcon(pickupIcon);
+                        } else {
+                            pickupMarker = L.marker(pickupLoc, { icon: pickupIcon }).addTo(map);
+                        }
+                        pickupMarker.bindTooltip("<div class='" + pickupLabelClass + "'>" + pickupLabelText + "</div>", {
+                            permanent: true,
+                            direction: 'top',
+                            className: 'clean-map-badge',
+                            offset: [0, -12]
+                        });
+                        var pickupPopup = "<div style='font-size:12px;font-weight:700;color:#111;padding:4px;'><b>" + (isPickupCompleted ? "Pickup (Collected)" : "Pickup Location") + "</b><br/><span style='font-size:10px;color:#555;font-weight:500;'>" + (pickupAddressStr || "Benin City") + "</span></div>";
+                        pickupMarker.bindPopup(pickupPopup);
+                    } else if (pickupMarker) {
+                        try { map.removeLayer(pickupMarker); } catch(e){}
+                        pickupMarker = null;
+                    }
+
+                    // Delivery Marker
+                    if (deliveryLoc && hasBooking) {
+                        var delivHtml = '';
+                        var delivLabelClass = '';
+                        var delivLabelText = 'DELIVERY';
+
+                        if (isDeliveryCompleted) {
+                            delivHtml = "<div class='stop-badge stop-completed'>✓</div>";
+                            delivLabelClass = 'badge-label-completed';
+                            delivLabelText = 'DELIVERED';
+                        } else if (isDeliveryActive) {
+                            delivHtml = "<div class='stop-badge stop-active'>D</div>";
+                            delivLabelClass = 'badge-label-active';
+                            delivLabelText = (currentStatus === 'ARRIVED') ? 'ARRIVED' : 'DELIVERY';
+                        } else {
+                            delivHtml = "<div class='stop-badge stop-waiting'>D</div>";
+                            delivLabelClass = 'badge-label-waiting';
+                            delivLabelText = 'DELIVERY';
+                        }
+
+                        var delivIcon = L.divIcon({
+                            className: 'clean-map-badge',
+                            html: delivHtml,
+                            iconSize: [22, 22],
+                            iconAnchor: [11, 11]
+                        });
+
+                        if (deliveryMarker) {
+                            deliveryMarker.setLatLng(deliveryLoc);
+                            deliveryMarker.setIcon(delivIcon);
+                        } else {
+                            deliveryMarker = L.marker(deliveryLoc, { icon: delivIcon }).addTo(map);
+                        }
+                        deliveryMarker.bindTooltip("<div class='" + delivLabelClass + "'>" + delivLabelText + "</div>", {
+                            permanent: true,
+                            direction: 'top',
+                            className: 'clean-map-badge',
+                            offset: [0, -12]
+                        });
+                        var delivPopup = "<div style='font-size:12px;font-weight:700;color:#111;padding:4px;'><b>" + (isDeliveryCompleted ? "Delivery (Completed)" : "Delivery Destination") + "</b><br/><span style='font-size:10px;color:#555;font-weight:500;'>" + (deliveryAddressStr || "Benin City") + "</span></div>";
+                        deliveryMarker.bindPopup(delivPopup);
+                    } else if (deliveryMarker) {
+                        try { map.removeLayer(deliveryMarker); } catch(e){}
+                        deliveryMarker = null;
+                    }
+                }
+
+                function getActiveStopCoords() {
+                    var isPickupActive = (currentStatus === 'PENDING' || currentStatus === 'QUEUED' || currentStatus === 'OFFERED' || currentStatus === 'ASSIGNED' || currentStatus === 'CONFIRMED' || currentStatus === 'ARRIVED_PICKUP');
+                    if (isPickupActive) return pickupLoc || deliveryLoc;
+                    var isDeliveryActive = (currentStatus === 'PICKED_UP' || currentStatus === 'PARCEL_COLLECTED' || currentStatus === 'IN_TRANSIT' || currentStatus === 'TRANSIT' || currentStatus === 'OUT_FOR_DELIVERY' || currentStatus === 'ARRIVED' || currentStatus === 'HANDOVER_VERIFIED');
+                    if (isDeliveryActive) return deliveryLoc || pickupLoc;
+                    return deliveryLoc || pickupLoc;
+                }
+
+                function setArrivalBeacon(active, coords) {
+                    if (!map) return;
+                    if (active && coords) {
+                        if (!arrivalBeaconCircle) {
+                            var beaconIcon = L.divIcon({
+                                className: 'arrival-beacon-wrap',
+                                html: "<div class='arrival-beacon-ring'></div><div class='arrival-beacon-core'></div>",
+                                iconSize: [50, 50],
+                                iconAnchor: [25, 25]
+                            });
+                            arrivalBeaconCircle = L.marker(coords, { icon: beaconIcon, zIndexOffset: -100 }).addTo(map);
+                        } else {
+                            arrivalBeaconCircle.setLatLng(coords);
+                        }
+                    } else {
+                        if (arrivalBeaconCircle) {
+                            try { map.removeLayer(arrivalBeaconCircle); } catch(e){}
+                            arrivalBeaconCircle = null;
+                        }
+                    }
+                }
+
+                function fetchOSRMRoute() {
+                    if (!map) return;
+                    var origin = null;
+                    var targetStop = null;
+
+                    var isPrePickup = (currentStatus === 'PENDING' || currentStatus === 'QUEUED' || currentStatus === 'OFFERED' || currentStatus === 'ASSIGNED' || currentStatus === 'CONFIRMED');
+
+                    if (courierLoc && (courierLoc[0] !== 0.0 || courierLoc[1] !== 0.0)) {
+                        origin = courierLoc;
+                        if (isPrePickup) {
+                            targetStop = pickupLoc || deliveryLoc;
+                        } else {
+                            targetStop = deliveryLoc || pickupLoc;
+                        }
+                    } else {
+                        // Courier not moving / static view: always show complete route between pickup and delivery
+                        origin = pickupLoc;
+                        targetStop = deliveryLoc;
+                    }
+
+                    if (!origin && !targetStop) return;
+                    if (!origin) origin = targetStop;
+                    if (!targetStop) targetStop = origin;
+
+                    lastRouteOrigin = [origin[0], origin[1]];
+
+                    // If origin and target are practically identical, skip network call
+                    if (Math.abs(origin[0] - targetStop[0]) < 0.0001 && Math.abs(origin[1] - targetStop[1]) < 0.0001) return;
+
+                    var url = 'https://router.project-osrm.org/route/v1/driving/' + 
+                        origin[1] + ',' + origin[0] + ';' + 
+                        targetStop[1] + ',' + targetStop[0] + 
+                        '?overview=full&geometries=geojson';
+
+                    var controller = null;
+                    try {
+                        controller = new AbortController();
+                        setTimeout(function() { controller.abort(); }, 4500);
+                    } catch(e){}
+
+                    fetch(url, controller ? { signal: controller.signal } : {})
+                        .then(function(res) { return res.json(); })
+                        .then(function(data) {
+                            if (data && data.routes && data.routes.length > 0) {
+                                var route = data.routes[0];
+                                var coords = route.geometry.coordinates;
+                                var latLngs = coords.map(function(c) { return [c[1], c[0]]; });
+
+                                var casingColor = isDarkTheme ? '#0E0E10' : '#1F2937';
+                                if (!routeCasingLine) {
+                                    routeCasingLine = L.polyline(latLngs, {
+                                        color: casingColor,
+                                        weight: 9,
+                                        opacity: 0.85,
+                                        lineCap: 'round',
+                                        lineJoin: 'round'
+                                    }).addTo(map);
+                                } else {
+                                    routeCasingLine.setLatLngs(latLngs);
+                                    routeCasingLine.setStyle({ color: casingColor });
+                                }
+
+                                if (!activeRouteLine) {
+                                    activeRouteLine = L.polyline(latLngs, {
+                                        color: '#FFB800',
+                                        weight: 5,
+                                        opacity: 1.0,
+                                        lineCap: 'round',
+                                        lineJoin: 'round'
+                                    }).addTo(map);
+                                } else {
+                                    activeRouteLine.setLatLngs(latLngs);
+                                }
+
+                                if (window.AndroidMap && window.AndroidMap.onRouteTelemetry) {
+                                    window.AndroidMap.onRouteTelemetry(route.distance || 0, route.duration || 0);
+                                }
+
+                                updateNavHud(route.distance, route.duration);
+
+                                if (!userInteracted && latLngs.length > 0) {
+                                    try {
+                                        var bounds = L.latLngBounds(latLngs);
+                                        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 17 });
+                                    } catch(e) {}
+                                }
+                            } else {
+                                throw new Error('Empty OSRM route response');
+                            }
+                        })
+                        .catch(function(err) {
+                            console.warn("OSRM route fallback activated:", err);
+                            // Resilient fallback: draw high-visibility casing and direct route connecting origin and target
+                            var casingColor = isDarkTheme ? '#0E0E10' : '#1F2937';
+                            if (!routeCasingLine) {
+                                routeCasingLine = L.polyline([origin, targetStop], {
+                                    color: casingColor,
+                                    weight: 8,
+                                    opacity: 0.8
+                                }).addTo(map);
+                            } else {
+                                routeCasingLine.setLatLngs([origin, targetStop]);
+                            }
+
+                            if (!activeRouteLine) {
+                                activeRouteLine = L.polyline([origin, targetStop], {
+                                    color: '#FFB800',
+                                    weight: 4,
+                                    dashArray: '8, 8',
+                                    opacity: 0.95
+                                }).addTo(map);
+                            } else {
+                                activeRouteLine.setLatLngs([origin, targetStop]);
+                            }
+                        });
+                }
+
+                function distToSegmentSquared(px, py, vx, vy, wx, wy) {
+                    var l2 = (vx - wx)*(vx - wx) + (vy - wy)*(vy - wy);
+                    if (l2 === 0) return (px - vx)*(px - vx) + (py - vy)*(py - vy);
+                    var t = ((px - vx)*(wx - vx) + (py - vy)*(wy - vy)) / l2;
+                    t = Math.max(0, Math.min(1, t));
+                    var dx = px - (vx + t*(wx - vx));
+                    var dy = py - (vy + t*(wy - vy));
+                    return dx*dx + dy*dy;
+                }
+
+                function isCourierOffRoute(lat, lng, routeLatLngs, thresholdMeters) {
+                    if (!routeLatLngs || routeLatLngs.length < 2) return false;
+                    var threshDeg = (thresholdMeters || 40) / 111000.0;
+                    var threshSq = threshDeg * threshDeg;
+                    var minSq = 999999999;
+                    for (var i = 0; i < routeLatLngs.length - 1; i++) {
+                        var v = routeLatLngs[i];
+                        var w = routeLatLngs[i + 1];
+                        var dSq = distToSegmentSquared(lat, lng, v[0], v[1], w[0], w[1]);
+                        if (dSq < minSq) minSq = dSq;
+                        if (minSq <= threshSq) return false; // within acceptable corridor
+                    }
+                    return minSq > threshSq;
+                }
+
+                function updateCourierLocation(lat, lng, bearing, speed) {
+                    if (!lat || !lng || (lat === 0.0 && lng === 0.0)) return;
+                    courierLoc = [lat, lng];
+                    if (bearing !== undefined && bearing !== null && !isNaN(bearing) && bearing !== 0) {
+                        currentBearing = bearing;
+                    } else if (prevCourierLoc) {
+                        var dist = distanceBetweenCoords(prevCourierLoc[0], prevCourierLoc[1], lat, lng);
+                        if (dist > 0.005) {
+                            currentBearing = calculateBearing(prevCourierLoc[0], prevCourierLoc[1], lat, lng);
+                        }
+                    } else {
+                        var activeStop = getActiveStopCoords();
+                        if (activeStop) {
+                            currentBearing = calculateBearing(lat, lng, activeStop[0], activeStop[1]);
+                        }
+                    }
+                    prevCourierLoc = [lat, lng];
+
+                    traveledCoords.push([lat, lng]);
+                    if (traveledCoords.length > 1 && map) {
+                        if (!traveledRouteLine) {
+                            traveledRouteLine = L.polyline(traveledCoords, {
+                                color: '#6B7280',
+                                weight: 4,
+                                opacity: 0.7,
+                                dashArray: '4, 6',
+                                lineCap: 'round',
+                                lineJoin: 'round'
+                            }).addTo(map);
+                        } else {
+                            traveledRouteLine.setLatLngs(traveledCoords);
+                        }
+                    }
+
+                    if (!map) return;
+
+                    var riderHtml = "<div class='rider-marker-wrap'>" +
+                        "<div class='rider-marker-beacon'></div>" +
+                        "<div class='rider-marker-core' style='transform: rotate(" + Math.round(currentBearing) + "deg);'>" +
+                        "<svg class='rider-arrow' viewBox='0 0 24 24'><polygon points='12,2 22,22 12,17 2,22'/></svg>" +
+                        "</div></div>";
+
+                    var riderIcon = L.divIcon({
+                        className: 'clean-map-badge',
+                        html: riderHtml,
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 16]
+                    });
+
+                    if (courierMarker) {
+                        courierMarker.setLatLng(courierLoc);
+                        courierMarker.setIcon(riderIcon);
+                    } else {
+                        courierMarker = L.marker(courierLoc, { icon: riderIcon, zIndexOffset: 500 }).addTo(map);
+                    }
+
+                    var courierPopup = "<div style='font-size:12px;font-weight:700;color:#111;padding:4px;'><b>" + (isRiderMode ? "Your Position (Rider)" : "Courier Location") + "</b><br/><span style='font-size:10px;color:#555;font-weight:500;'>" + (courierInfoStr || "On Active Mission") + "</span></div>";
+                    courierMarker.bindPopup(courierPopup);
+                    courierMarker.bindTooltip("<div class='badge-label-active'>" + (isRiderMode ? "YOU (RIDER)" : "COURIER") + "</div>", {
+                        permanent: false,
+                        direction: 'top',
+                        className: 'clean-map-badge',
+                        offset: [0, -16]
+                    });
+
+                    var activeStop = getActiveStopCoords();
+                    if (activeStop) {
+                        var distToStopKm = distanceBetweenCoords(lat, lng, activeStop[0], activeStop[1]);
+                        setArrivalBeacon(distToStopKm <= 0.05, activeStop);
+                    }
+
+                    // Check for route deviation or significant movement to dynamically reroute
+                    var isOffRoute = false;
+                    if (activeRouteLine && activeRouteLine.getLatLngs) {
+                        var currentRoutePts = activeRouteLine.getLatLngs();
+                        if (Array.isArray(currentRoutePts) && currentRoutePts.length > 1) {
+                            var flatPts = currentRoutePts.map(function(pt) {
+                                return Array.isArray(pt) ? pt : [pt.lat, pt.lng];
+                            });
+                            isOffRoute = isCourierOffRoute(lat, lng, flatPts, 40);
+                        }
+                    }
+
+                    var movedFarFromOrigin = !lastRouteOrigin || distanceBetweenCoords(lat, lng, lastRouteOrigin[0], lastRouteOrigin[1]) > 0.040;
+                    if (isOffRoute || movedFarFromOrigin) {
+                        fetchOSRMRoute();
+                    }
+
+                    if (!userInteracted) {
+                        map.panTo(courierLoc, { animate: true, duration: 0.6 });
+                    }
+
+                    if (window.AndroidMap && window.AndroidMap.onTrackingUpdated) {
+                        window.AndroidMap.onTrackingUpdated(lat, lng);
+                    }
+                }
+
+                function setUserLocation(lat, lng) {
+                    if (!lat || !lng) return;
+                    userLoc = [lat, lng];
+                    if (isRiderMode && !courierLoc) {
+                        updateCourierLocation(lat, lng, currentBearing, 0);
+                        return;
+                    }
+                    if (!map) return;
+                    var userIcon = L.divIcon({
+                        className: 'clean-map-badge',
+                        html: "<div class='user-dot-wrap'><div class='user-dot-pulse'></div><div class='user-dot-core'></div></div>",
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    if (liveUserMarker) {
+                        liveUserMarker.setLatLng(userLoc);
+                    } else {
+                        liveUserMarker = L.marker(userLoc, { icon: userIcon, zIndexOffset: 400 }).addTo(map);
+                    }
+                    liveUserMarker.bindPopup("<div style='font-size:12px;font-weight:700;color:#111;padding:4px;'><b>Your Location</b><br/><span style='font-size:10px;color:#555;font-weight:500;'>Current GPS position</span></div>");
+                    liveUserMarker.bindTooltip("<div class='badge-label-waiting'>YOU</div>", {
+                        permanent: false,
+                        direction: 'top',
+                        className: 'clean-map-badge',
+                        offset: [0, -10]
+                    });
+                }
+
+                function updateMapType(isSat) {
+                    isSatelliteMode = isSat;
+                    if (!map) return;
+                    try { map.removeLayer(satelliteTiles); } catch(e){}
+                    try { map.removeLayer(esriTransportationTiles); } catch(e){}
+                    try { map.removeLayer(darkStreetTiles); } catch(e){}
+                    try { map.removeLayer(googleStreetTiles); } catch(e){}
+                    try { map.removeLayer(osmTiles); } catch(e){}
+
+                    if (isSat) {
+                        satelliteTiles.addTo(map);
+                        try { esriTransportationTiles.addTo(map); } catch(e){}
+                        var satBtn = document.getElementById('satelliteBtn');
+                        if (satBtn) satBtn.classList.add('active');
+                        var strBtn = document.getElementById('streetBtn');
+                        if (strBtn) strBtn.classList.remove('active');
+                    } else {
+                        if (isDarkTheme) {
+                            darkStreetTiles.addTo(map);
+                        } else {
+                            googleStreetTiles.addTo(map);
+                        }
+                        var strBtn = document.getElementById('streetBtn');
+                        if (strBtn) strBtn.classList.add('active');
+                        var satBtn = document.getElementById('satelliteBtn');
+                        if (satBtn) satBtn.classList.remove('active');
+                    }
+                }
+
+                function onToggleClick(isSat) {
+                    updateMapType(isSat);
+                    if (window.AndroidMap) {
+                        window.AndroidMap.onMapTypeToggled(isSat);
+                    }
+                }
+
+                function updateNavHud(distMeters, durSeconds) {
+                    var hud = document.getElementById('navHudCard');
+                    var title = document.getElementById('navHudTitle');
+                    var sub = document.getElementById('navHudSub');
+                    if (!hud || !hasBooking) return;
+
+                    hud.style.display = 'flex';
+                    if (!isDarkTheme) {
+                        hud.classList.add('light-mode');
+                    } else {
+                        hud.classList.remove('light-mode');
+                    }
+
+                    var distKm = (distMeters / 1000.0).toFixed(1);
+                    var durMins = Math.max(1, Math.round(durSeconds / 60.0));
+
+                    var targetName = (currentStatus === 'PICKED_UP' || currentStatus === 'IN_TRANSIT' || currentStatus === 'OUT_FOR_DELIVERY') 
+                        ? (deliveryAddressStr || "Destination") 
+                        : (pickupAddressStr || "Pickup");
+
+                    if (title) title.innerText = (isRiderMode ? "Heading to " : "Courier arriving at ") + targetName;
+                    if (sub) sub.innerText = distKm + " km • Est. " + durMins + " mins remaining";
+                }
+
+                function recenterMapOnFocus() {
+                    recenterMap();
+                }
+
+                function recenterMap() {
+                    userInteracted = false;
+                    if (!map) return;
+                    if (courierMarker && hasBooking) {
+                        map.panTo(courierMarker.getLatLng(), { animate: true, duration: 0.8 });
+                    } else if (activeRouteLine) {
+                        var bounds = activeRouteLine.getBounds();
+                        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
+                    } else if (liveUserMarker) {
+                        map.panTo(liveUserMarker.getLatLng(), { animate: true, duration: 0.8 });
+                    } else if (pickupLoc && deliveryLoc) {
+                        var bounds = L.latLngBounds([pickupLoc, deliveryLoc]);
+                        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+                    } else {
+                        map.setView([6.3350, 5.6037], 13);
+                    }
+                }
+
+                function clearMapRoutesAndPins() {
+                    hasBooking = false;
+                    if (pickupMarker) {
+                        try { map.removeLayer(pickupMarker); } catch(e){}
+                        pickupMarker = null;
+                    }
+                    if (deliveryMarker) {
+                        try { map.removeLayer(deliveryMarker); } catch(e){}
+                        deliveryMarker = null;
+                    }
+                    if (courierMarker) {
+                        try { map.removeLayer(courierMarker); } catch(e){}
+                        courierMarker = null;
+                    }
+                    if (activeRouteLine) {
+                        try { map.removeLayer(activeRouteLine); } catch(e){}
+                        activeRouteLine = null;
+                    }
+                    if (traveledRouteLine) {
+                        try { map.removeLayer(traveledRouteLine); } catch(e){}
+                        traveledRouteLine = null;
+                    }
+                    if (arrivalBeaconCircle) {
+                        try { map.removeLayer(arrivalBeaconCircle); } catch(e){}
+                        arrivalBeaconCircle = null;
+                    }
+                    pickupLoc = null;
+                    deliveryLoc = null;
+                    courierLoc = null;
+                    prevCourierLoc = null;
+                    traveledCoords = [];
+                    lastRouteOrigin = null;
+                    if (liveUserMarker) {
+                        map.setView(liveUserMarker.getLatLng(), 15);
+                    } else {
+                        map.setView([6.3350, 5.6037], 13);
+                    }
+                }
+
+                window.addEventListener('DOMContentLoaded', initMapContainer);
+                setTimeout(initMapContainer, 80);
+            </script>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    LaunchedEffect(htmlContent) {
+        isPageLoaded = false
+        webView.loadDataWithBaseURL("https://esdispatch.app", htmlContent, "text/html", "UTF-8", null)
+    }
+
+    LaunchedEffect(isPageLoaded, hasNoBooking) {
+        if (isPageLoaded) {
+            if (hasNoBooking) {
+                webView.evaluateJavascript("clearMapRoutesAndPins()", null)
+                webView.evaluateJavascript("updateMapType($isSatellite)", null)
+                if (userCoords != null) {
+                    webView.evaluateJavascript("setUserLocation(${userCoords.first}, ${userCoords.second})", null)
+                }
+                if (isRider) {
+                    val effectiveLat = userCoords?.first ?: courierLatitude
+                    val effectiveLng = userCoords?.second ?: courierLongitude
+                    if (effectiveLat != null && effectiveLng != null && effectiveLat != 0.0 && effectiveLng != 0.0) {
+                        webView.evaluateJavascript("updateCourierLocation($effectiveLat, $effectiveLng, $courierBearing, 0)", null)
+                    }
+                }
+            } else {
+                val safeCourierName = courierName.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+                val safeCourierPhone = courierPhone.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+                webView.evaluateJavascript("setCourierDetails(\"$safeCourierName\", \"$safeCourierPhone\")", null)
+                webView.evaluateJavascript("setRiderMode($isRider)", null)
+                if (pickupCoords != null) {
+                    val safePickupAddr = pickupAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+                    webView.evaluateJavascript("setPickupLocation(${pickupCoords.first}, ${pickupCoords.second}, \"$safePickupAddr\")", null)
+                }
+                if (deliveryCoords != null) {
+                    val safeDeliveryAddr = deliveryAddress.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+                    webView.evaluateJavascript("setDeliveryLocation(${deliveryCoords.first}, ${deliveryCoords.second}, \"$safeDeliveryAddr\")", null)
+                }
+                webView.evaluateJavascript("updateDeliveryStatus('${parcelStatus.name}')", null)
+                webView.evaluateJavascript("updateMapType($isSatellite)", null)
+                if (userCoords != null) {
+                    webView.evaluateJavascript("setUserLocation(${userCoords.first}, ${userCoords.second})", null)
+                }
+                val effectiveLat = if (isRider) (userCoords?.first ?: courierLatitude) else courierLatitude
+                val effectiveLng = if (isRider) (userCoords?.second ?: courierLongitude) else courierLongitude
+                if (effectiveLat != null && effectiveLng != null && effectiveLat != 0.0 && effectiveLng != 0.0) {
+                    webView.evaluateJavascript("updateCourierLocation($effectiveLat, $effectiveLng, $courierBearing, 0)", null)
                 }
             }
+        }
+    }
+
+    LaunchedEffect(courierName, courierPhone, isPageLoaded) {
+        if (isPageLoaded) {
+            val safeCourierName = courierName.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+            val safeCourierPhone = courierPhone.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+            webView.evaluateJavascript("setCourierDetails(\"$safeCourierName\", \"$safeCourierPhone\")", null)
+        }
+    }
+
+    LaunchedEffect(parcelStatus, isPageLoaded) {
+        if (isPageLoaded && !hasNoBooking) {
+            webView.evaluateJavascript("updateDeliveryStatus('${parcelStatus.name}')", null)
+        }
+    }
+
+    LaunchedEffect(isSatellite, isPageLoaded) {
+        if (isPageLoaded) {
+            webView.evaluateJavascript("updateMapType($isSatellite)", null)
+        }
+    }
+
+    LaunchedEffect(zoom, isPageLoaded) {
+        if (isPageLoaded) {
+            webView.evaluateJavascript("if (typeof map !== 'undefined' && map !== null) { map.setZoom($zoom); }", null)
+        }
+    }
+
+    LaunchedEffect(courierLatitude, courierLongitude, courierBearing, userCoords, isPageLoaded, hasNoBooking, isRider) {
+        if (isPageLoaded && (!hasNoBooking || isRider)) {
+            val effectiveLat = if (isRider) (userCoords?.first ?: courierLatitude) else courierLatitude
+            val effectiveLng = if (isRider) (userCoords?.second ?: courierLongitude) else courierLongitude
+            if (effectiveLat != null && effectiveLng != null && effectiveLat != 0.0 && effectiveLng != 0.0) {
+                webView.evaluateJavascript("updateCourierLocation($effectiveLat, $effectiveLng, $courierBearing, 0)", null)
+            }
+        }
+    }
+
+    LaunchedEffect(userCoords, isPageLoaded) {
+        if (isPageLoaded && userCoords != null) {
+            webView.evaluateJavascript("setUserLocation(${userCoords.first}, ${userCoords.second})", null)
+        }
+    }
+
+    LaunchedEffect(pickupCoords, isPageLoaded, hasNoBooking) {
+        if (isPageLoaded && !hasNoBooking && pickupCoords != null) {
+            val safeAddr = pickupAddress.replace("\"", "\\\"").replace("'", "\\'").trim()
+            webView.evaluateJavascript("setPickupLocation(${pickupCoords.first}, ${pickupCoords.second}, '$safeAddr')", null)
+        }
+    }
+
+    LaunchedEffect(deliveryCoords, isPageLoaded, hasNoBooking) {
+        if (isPageLoaded && !hasNoBooking && deliveryCoords != null) {
+            val safeAddr = deliveryAddress.replace("\"", "\\\"").replace("'", "\\'").trim()
+            webView.evaluateJavascript("setDeliveryLocation(${deliveryCoords.first}, ${deliveryCoords.second}, '$safeAddr')", null)
         }
     }
 
     Box(modifier = modifier) {
-        GoogleMap(
-            modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            properties = MapProperties(
-                isMyLocationEnabled = false,
-                isTrafficEnabled = localTraffic,
-                mapType = if (isSatellite) MapType.HYBRID else MapType.NORMAL,
-                mapStyleOptions = if (!isSatellite) GoogleMapsHelper.getMapStyle(isDark) else null
-            ),
-            uiSettings = MapUiSettings(
-                zoomControlsEnabled = false,
-                compassEnabled = true,
-                myLocationButtonEnabled = false,
-                rotationGesturesEnabled = true,
-                scrollGesturesEnabled = true,
-                tiltGesturesEnabled = false,
-                zoomGesturesEnabled = true
-            )
-        ) {
-            // 1. Drop-off Destination Marker
-            resolvedDeliveryCoords?.let { dest ->
-                Marker(
-                    state = MarkerState(position = dest),
-                    title = "Destination",
-                    snippet = deliveryAddress,
-                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
-                )
-            }
+        AndroidView(
+            factory = { webView },
+            modifier = Modifier.fillMaxSize()
+        )
 
-            // 2. Pickup Location Marker
-            resolvedPickupCoords?.let { pickup ->
-                Marker(
-                    state = MarkerState(position = pickup),
-                    title = "Pickup Location",
-                    snippet = pickupAddress,
-                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)
-                )
-            }
-
-            // 3. Customer User Location Marker
-            if (!isRider && userLiveLatLng != null) {
-                Marker(
-                    state = MarkerState(position = userLiveLatLng),
-                    title = "Your Location",
-                    snippet = "Current GPS Device Location",
-                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_VIOLET)
-                )
-            }
-
-            // 4. Courier Marker with Signature Breathing Pulse
-            courierLatLng?.let { courierPos ->
-                // Ambient Breathing Beacon Pulse (1800ms)
-                val infiniteTransition = rememberInfiniteTransition(label = "courierPulse")
-                val pulseRadius by infiniteTransition.animateFloat(
-                    initialValue = 15f,
-                    targetValue = 50f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1800, easing = FastOutSlowInEasing),
-                        repeatMode = RepeatMode.Restart
-                    ),
-                    label = "pulseRadius"
-                )
-                val pulseAlpha by infiniteTransition.animateFloat(
-                    initialValue = 0.45f,
-                    targetValue = 0.0f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1800, easing = FastOutSlowInEasing),
-                        repeatMode = RepeatMode.Restart
-                    ),
-                    label = "pulseAlpha"
-                )
-
-                Circle(
-                    center = courierPos,
-                    radius = pulseRadius.toDouble(),
-                    fillColor = Gold.copy(alpha = pulseAlpha),
-                    strokeColor = Gold.copy(alpha = pulseAlpha * 1.5f),
-                    strokeWidth = 2f
-                )
-
-                Marker(
-                    state = MarkerState(position = courierPos),
-                    title = courierName,
-                    snippet = if (parcelStatus == ParcelStatus.TRANSIT || parcelStatus == ParcelStatus.OUT_FOR_DELIVERY) "In Transit" else parcelStatus.name,
-                    rotation = courierBearing,
-                    flat = true,
-                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)
-                )
-            }
-
-            // 5. Uber-Style Dual-Layer Road Polylines
-            if (routePoints.isNotEmpty()) {
-                // Outer Casing: High contrast boundary separating road from background
-                Polyline(
-                    points = routePoints,
-                    color = if (isDark) Color(0xFF0A0D14) else Color(0xFFFFFFFF),
-                    width = 20f,
-                    jointType = JointType.ROUND,
-                    startCap = RoundCap(),
-                    endCap = RoundCap()
-                )
-                // Inner Core: High visibility electric blue route path
-                Polyline(
-                    points = routePoints,
-                    color = Color(0xFF0066FF),
-                    width = 12f,
-                    jointType = JointType.ROUND,
-                    startCap = RoundCap(),
-                    endCap = RoundCap()
-                )
-            }
-        }
-
-        // Top Navigation Guidance Banner (Uber-grade turn-by-turn guidance & ETA)
-        if (routePoints.isNotEmpty()) {
-            val currentStep = routeSteps.firstOrNull()
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 14.dp, top = 14.dp, end = 130.dp)
-                    .fillMaxWidth(0.66f)
-                    .zIndex(10f),
-                shape = RoundedCornerShape(16.dp),
-                color = if (isDark) Obsidian.copy(alpha = 0.95f) else Color.White.copy(alpha = 0.98f),
-                border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.4f) else Slate),
-                shadowElevation = 8.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(if (isDark) Gold else Obsidian),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Navigation,
-                            contentDescription = null,
-                            tint = if (isDark) Obsidian else Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = currentStep?.instruction ?: "Live Navigation Active",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color.White else Obsidian,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (routeSummary != null) {
-                            Text(
-                                text = "${routeSummary!!.second} • ${routeSummary!!.first}",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isDark) Gold else Color(0xFF0066FF)
-                            )
-                        } else if (currentStep != null && currentStep.distanceText.isNotBlank()) {
-                            Text(
-                                text = currentStep.distanceText,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Gold else Color(0xFF0066FF)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Top Floating Map Style Toggles
-        Row(
+        // Floating Recenter button when user has panned or zoomed
+        androidx.compose.animation.AnimatedVisibility(
+            visible = userHasPanned,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 16.dp, end = 16.dp)
-                .zIndex(12f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 120.dp)
+                .zIndex(15f)
         ) {
-            Surface(
-                onClick = { onMapTypeToggled(!isSatellite) },
-                shape = RoundedCornerShape(20.dp),
-                color = if (isSatellite) Gold else Obsidian.copy(alpha = 0.85f),
-                border = BorderStroke(1.dp, Gold),
-                shadowElevation = 6.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Layers,
-                        contentDescription = "Map Style",
-                        tint = if (isSatellite) Obsidian else Gold,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (isSatellite) "Satellite" else "Street",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isSatellite) Obsidian else Gold
-                    )
-                }
-            }
-
-            Surface(
-                onClick = { localTraffic = !localTraffic },
-                shape = RoundedCornerShape(20.dp),
-                color = if (localTraffic) Gold else Obsidian.copy(alpha = 0.85f),
-                border = BorderStroke(1.dp, Gold),
-                shadowElevation = 6.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Traffic,
-                        contentDescription = "Traffic",
-                        tint = if (localTraffic) Obsidian else Gold,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Traffic",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (localTraffic) Obsidian else Gold
-                    )
-                }
-            }
-        }
-
-        // Recenter Floating Action Button (shown when user has panned or requested)
-        if (userHasPanned) {
             Surface(
                 onClick = {
                     userHasPanned = false
-                    coroutineScope.launch {
-                        val target = courierLatLng ?: userLiveLatLng ?: resolvedDeliveryCoords ?: defaultCenter
-                        cameraPositionState.animate(
-                            CameraUpdateFactory.newLatLngZoom(target, 16f),
-                            durationMs = 800
-                        )
-                    }
+                    webView.evaluateJavascript("recenterMap()", null)
                 },
                 shape = RoundedCornerShape(20.dp),
                 color = Obsidian,
                 border = BorderStroke(1.5.dp, Gold),
-                shadowElevation = 8.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 120.dp)
-                    .zIndex(15f)
+                shadowElevation = 8.dp
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),

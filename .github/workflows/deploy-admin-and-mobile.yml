@@ -1,0 +1,112 @@
+name: Deploy Admin & Mobile App (Play Store & Firebase)
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  deploy-web-admin:
+    name: Build & Deploy Web Admin (Firebase Hosting)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci || npm install --legacy-peer-deps
+
+      - name: Production Build
+        run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          VITE_FIREBASE_PROJECT_ID: engraceddispatch-ffba4
+          VITE_FIREBASE_STORAGE_BUCKET: engraceddispatch-ffba4.firebasestorage.app
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        if: env.FIREBASE_SERVICE_ACCOUNT_ENGRACEDDISPATCH_FFBA4 != ''
+        env:
+          FIREBASE_SERVICE_ACCOUNT_ENGRACEDDISPATCH_FFBA4: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ENGRACEDDISPATCH_FFBA4 }}
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_ENGRACEDDISPATCH_FFBA4 }}'
+          channelId: live
+          projectId: engraceddispatch-ffba4
+
+  deploy-mobile-app:
+    name: Build & Release Mobile App (Play Store & Distribution)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 17
+          cache: 'gradle'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Decode Release Keystore
+        working-directory: mobile
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > app/release-key.jks
+
+      - name: Build Release APK and App Bundle (AAB)
+        working-directory: mobile
+        env:
+          KEYSTORE_PATH: "app/release-key.jks"
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'android123' }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'upload' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'android123' }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || 'AIzaSyCnYpvx0peHOafunoZcPMIIhd7Y-pM0NAs' }}
+        run: |
+          chmod +x gradlew || true
+          ./gradlew :app:assembleRelease :app:bundleRelease --console=plain
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: esdispatch-production-builds
+          path: |
+            mobile/app/build/outputs/apk/release/app-release.apk
+            mobile/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Distribute APK via Firebase App Distribution
+        if: env.FIREBASE_SERVICE_ACCOUNT_ENGRACEDDISPATCH_FFBA4 != ''
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        env:
+          FIREBASE_SERVICE_ACCOUNT_ENGRACEDDISPATCH_FFBA4: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ENGRACEDDISPATCH_FFBA4 }}
+        with:
+          appId: "1:858437923778:android:d6e0dbbb9da0b5e28255be"
+          serviceCredentialsFileContent: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_ENGRACEDDISPATCH_FFBA4 }}"
+          groups: "drivers,testers"
+          file: mobile/app/build/outputs/apk/release/app-release.apk
+          releaseNotes: "Automated production build with Uber-grade live navigation & Google Places"
+
+      - name: Publish to Google Play Console (Internal Track)
+        if: startsWith(github.ref, 'refs/tags/v') && env.PLAY_STORE_JSON_KEY != ''
+        uses: r0adkll/upload-google-play@v1
+        env:
+          PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+        with:
+          serviceAccountJsonPlainText: "${{ secrets.PLAY_STORE_JSON_KEY }}"
+          packageName: "com.esdispatch.app"
+          releaseFiles: mobile/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed

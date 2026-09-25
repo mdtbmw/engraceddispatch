@@ -659,13 +659,15 @@ object FirebaseManager {
             val newBalance = currentBalance - amount
             transaction.update(userRef, "walletBalance", newBalance)
 
-            val withdrawalData = hashMapOf(
+            val targetCollection = if (userRole == "customer") "refund_requests" else "tip_withdrawals"
+            val requestData = hashMapOf(
                 "id" to reqId,
                 "riderId" to userId,
                 "userId" to userId,
                 "riderName" to userName,
                 "userName" to userName,
                 "userRole" to userRole,
+                "type" to if (userRole == "customer") "WALLET_REFUND" else "TIP_WITHDRAWAL",
                 "amount" to amount,
                 "bankName" to bankName,
                 "accountNumber" to accountNumber,
@@ -673,11 +675,11 @@ object FirebaseManager {
                 "status" to "PENDING",
                 "createdAt" to System.currentTimeMillis()
             )
-            transaction.set(db.collection("tip_withdrawals").document(reqId), withdrawalData)
+            transaction.set(db.collection(targetCollection).document(reqId), requestData)
 
             val txnMap = hashMapOf(
                 "id" to txId,
-                "title" to if (userRole == "rider") "Courier Tip Withdrawal (Pending)" else "Cash Withdrawal (Pending)",
+                "title" to if (userRole == "rider") "Courier Tip Withdrawal (Pending)" else "Wallet Refund Request (Pending)",
                 "date" to java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date()),
                 "amount" to amount,
                 "isTopUp" to false,
@@ -760,6 +762,9 @@ object FirebaseManager {
             "isDisputed" to (parcel.isDisputed || parcel.status == ParcelStatus.DISPUTED),
             "disputeReason" to parcel.disputeReason,
             "disputeNotes" to parcel.disputeNotes,
+            "declaredValue" to parcel.declaredValue,
+            "pickupPhotoUrl" to parcel.pickupPhotoUrl,
+            "feedbackDismissed" to parcel.feedbackDismissed,
             "lastUpdated" to System.currentTimeMillis()
         )
 

@@ -33,7 +33,9 @@ android {
       }
     }
     fun resolveEnv(key: String, defaultVal: String = ""): String {
-      return System.getenv(key)?.takeIf { it.isNotBlank() } ?: envProps[key]?.takeIf { it.isNotBlank() } ?: defaultVal
+      return System.getenv(key)?.removeSurrounding("\"")?.takeIf { it.isNotBlank() }
+        ?: envProps[key]?.removeSurrounding("\"")?.takeIf { it.isNotBlank() }
+        ?: defaultVal
     }
 
     val resolvedMapboxToken = resolveEnv("MAPBOX_ACCESS_TOKEN")
@@ -42,11 +44,11 @@ android {
     buildConfigField("String", "PAYSTACK_PUBLIC_KEY", "\"$paystackKey\"")
     val googleWebClientId = resolveEnv("GOOGLE_WEB_CLIENT_ID", "858437923778-pgdqbbcebljr9jvkjn8tv9ujm905erfa.apps.googleusercontent.com")
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
-    val geminiApiKey = resolveEnv("GEMINI_API_KEY")
+    val geminiApiKey = resolveEnv("GEMINI_API_KEY", "AIzaSyCnYpvx0peHOafunoZcPMIIhd7Y-pM0NAs")
     buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
-    val mapsApiKey = resolveEnv("MAPS_API_KEY", "AIzaSyCnYpvx0peHOafunoZcPMIIhd7Y-pM0NAs")
-    buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
-    manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+    val googleMapsApiKey = resolveEnv("GOOGLE_MAPS_API_KEY", "AIzaSyCnYpvx0peHOafunoZcPMIIhd7Y-pM0NAs")
+    buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsApiKey\"")
+    manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -116,6 +118,8 @@ android {
 secrets {
   propertiesFileName = "../.env"
   defaultPropertiesFileName = "../.env.example"
+  ignoreList.add("NEXT_PUBLIC_.*")
+  ignoreList.add("VITE_.*")
 }
 
 googleServices {
@@ -165,10 +169,6 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.play.services.auth)
   implementation(libs.play.services.location)
-  implementation(libs.maps.compose)
-  implementation(libs.play.services.maps)
-  implementation(libs.places)
-  implementation(libs.android.maps.utils)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

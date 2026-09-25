@@ -1,6 +1,8 @@
 package com.esdispatch.ui.screens
 
 import android.widget.Toast
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -828,14 +830,31 @@ fun RiderDashboardScreen(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 WavingHand(isAtTopOrActive = isAtTop.value, fontSize = 30.sp)
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "SMILES DISPATCH RIDER",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Gold,
-                                letterSpacing = 2.sp
-                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Gold
+                                ) {
+                                    Text(
+                                        text = "Smiles Dispatch Rider",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Obsidian,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "PREMIUM LOGISTICS & DISPATCH",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Gold,
+                                    letterSpacing = 2.sp
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
@@ -1635,6 +1654,14 @@ fun RiderUpdateBottomSheetContent(
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
     var isSubmitting by remember { mutableStateOf(false) }
     var otpInput by remember { mutableStateOf("") }
+    var pickupPhotoBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val pickupCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            pickupPhotoBitmap = bitmap
+        }
+    }
 
     LaunchedEffect(parcel.status) {
         if (parcel.status == ParcelStatus.CANCELLED) {
@@ -1951,33 +1978,154 @@ fun RiderUpdateBottomSheetContent(
             }
         } else if (parcel.status == ParcelStatus.ASSIGNED || (parcel.status == ParcelStatus.PENDING && isAssignedToCurrentRider)) {
             val pickupPrompt = if (parcel.isBatch) {
-                "Confirm pickup of '${parcel.itemName.ifBlank { "batch item" }}' (Stop #${parcel.batchItemIndex} of ${parcel.batchTotalItems}). Are you currently at the pickup location and have received this specific package?"
+                "Confirm pickup of '${parcel.itemName.ifBlank { "batch item" }}' (Stop #${parcel.batchItemIndex} of ${parcel.batchTotalItems}). Inspect packaging and capture a clear package photo before confirming pickup."
             } else {
-                "Confirm pickup of this package. Are you currently at the shipper's pickup location and have received the parcel?"
+                "Confirm pickup of this package. Please inspect packaging condition and capture a clear package photo before pickup."
             }
             Text(
                 text = pickupPrompt,
                 color = AppTextColor,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 textAlign = TextAlign.Center,
-                lineHeight = 20.sp
+                lineHeight = 18.sp
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            if (parcel.declaredValue > 0.0) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Gold.copy(alpha = 0.12f),
+                    border = BorderStroke(0.5.dp, Gold)
+                ) {
+                    Text(
+                        text = "Shipper Declared Value: ₦${String.format(java.util.Locale.US, "%,.0f", parcel.declaredValue)}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) GoldLight else Obsidian,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
+            }
 
-                          Button(
-                  onClick = {
-                      onNavigateToPOD("ProofOfPickup/${parcel.id}")
-                  },
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Package Photo Capture Section
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (isDark) Charcoal else GoldenWhiteLight,
+                border = BorderStroke(1.dp, if (pickupPhotoBitmap != null || parcel.pickupPhotoUrl.isNotBlank()) SuccessGreen else (if (isDark) Gold.copy(alpha = 0.4f) else Slate)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { pickupCameraLauncher.launch(null) }
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (pickupPhotoBitmap != null) {
+                        Image(
+                            bitmap = pickupPhotoBitmap!!.asImageBitmap(),
+                            contentDescription = "Pickup Photo",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(140.dp)
+                                .clip(RoundedCornerShape(10.dp)),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
+                            Text("Package Photo Captured", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SuccessGreen)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("• Retake", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Gold)
+                        }
+                    } else if (parcel.pickupPhotoUrl.isNotBlank()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
+                            Text("Package Photo On File", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SuccessGreen)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("• Retake", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Gold)
+                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.PhotoCamera,
+                            contentDescription = "Take Photo",
+                            tint = Gold,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Text(
+                            text = "Take Package Photo (Mandatory)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) GoldLight else Obsidian
+                        )
+                        Text(
+                            text = "Tap to open camera and capture the package before pickup",
+                            fontSize = 11.sp,
+                            color = TextGray,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            val hasPhoto = pickupPhotoBitmap != null || parcel.pickupPhotoUrl.isNotBlank()
+
+            Button(
+                onClick = {
+                    isSubmitting = true
+                    if (pickupPhotoBitmap != null) {
+                        val stream = java.io.ByteArrayOutputStream()
+                        pickupPhotoBitmap!!.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, stream)
+                        val photoBytes = stream.toByteArray()
+                        viewModel.uploadPickupPhoto(parcel.id, photoBytes) { uploadOk, _ ->
+                            viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.PICKED_UP, 0.40f) { success, err ->
+                                isSubmitting = false
+                                if (success) {
+                                    val msg = if (parcel.isBatch) "${parcel.itemName.ifBlank { "Item" }} collected! Status updated to Picked Up." else "Package collected! Status updated to Picked Up."
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    onDismiss()
+                                } else {
+                                    Toast.makeText(context, err ?: "Failed to update status", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    } else {
+                        viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.PICKED_UP, 0.40f) { success, err ->
+                            isSubmitting = false
+                            if (success) {
+                                val msg = if (parcel.isBatch) "${parcel.itemName.ifBlank { "Item" }} collected! Status updated to Picked Up." else "Package collected! Status updated to Picked Up."
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            } else {
+                                Toast.makeText(context, err ?: "Failed to update status", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().tactilePress(scaleDown = 0.96f),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                 shape = RoundedCornerShape(14.dp),
-                enabled = !isSubmitting
+                enabled = !isSubmitting && hasPhoto
             ) {
                 if (isSubmitting) {
                     CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(20.dp))
                 } else {
-                    val btnText = if (parcel.isBatch) "PICK UP ${parcel.itemName.ifBlank { "ITEM" }.uppercase()}" else "CONFIRM PICKUP"
+                    val btnText = if (!hasPhoto) {
+                        "TAKE PHOTO TO CONFIRM PICKUP"
+                    } else if (parcel.isBatch) {
+                        "PICK UP ${parcel.itemName.ifBlank { "ITEM" }.uppercase()}"
+                    } else {
+                        "CONFIRM PICKUP"
+                    }
                     Text(btnText, fontWeight = FontWeight.Bold)
                 }
             }
@@ -2087,9 +2235,17 @@ fun RiderUpdateBottomSheetContent(
                 Text("CLOSE", fontWeight = FontWeight.Bold)
             }
         } else {
-            // Arrived / Handover -> Capture arrival photo (optional) & PIN Verification
+            // Arrived / Handover -> 7-min wait countdown, Receiver Contact, and Handover PIN Verification
+            var remainingSeconds by remember { mutableStateOf(420) }
+            LaunchedEffect(parcel.id) {
+                while (remainingSeconds > 0) {
+                    kotlinx.coroutines.delay(1000L)
+                    remainingSeconds--
+                }
+            }
+
             Surface(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                 shape = RoundedCornerShape(12.dp),
                 color = if (isDark) Charcoal else GoldenWhiteLight,
                 border = BorderStroke(1.dp, Gold)
@@ -2105,6 +2261,124 @@ fun RiderUpdateBottomSheetContent(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isDark) GoldLight else Obsidian
+                    )
+                }
+            }
+
+            // 7-Minute Arrival Wait Countdown Timer Pill
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (remainingSeconds > 0) Gold.copy(alpha = 0.15f) else WarningOrange.copy(alpha = 0.2f),
+                border = BorderStroke(1.dp, if (remainingSeconds > 0) Gold else WarningOrange),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = if (remainingSeconds > 0) (if (isDark) GoldLight else Obsidian) else WarningOrange,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (remainingSeconds > 0) "Arrival Wait Window" else "Wait Window Expired",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (remainingSeconds > 0) (if (isDark) GoldLight else Obsidian) else WarningOrange
+                        )
+                    }
+                    val mins = remainingSeconds / 60
+                    val secs = remainingSeconds % 60
+                    Text(
+                        text = String.format(java.util.Locale.US, "%02d:%02d", mins, secs),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = SpaceGrotesk,
+                        color = if (remainingSeconds > 0) Gold else WarningOrange
+                    )
+                }
+            }
+
+            // Direct Call & SMS Receiver Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        val phone = parcel.receiverPhone.ifBlank { parcel.senderPhone }
+                        if (phone.isNotBlank()) {
+                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                            context.startActivity(intent)
+                        } else {
+                            Toast.makeText(context, "No receiver phone available", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.Call, contentDescription = null, modifier = Modifier.size(16.dp), tint = Obsidian)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("CALL RECEIVER", fontSize = 11.sp, fontWeight = FontWeight.Black)
+                }
+
+                Button(
+                    onClick = {
+                        val phone = parcel.receiverPhone.ifBlank { parcel.senderPhone }
+                        if (phone.isNotBlank()) {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:$phone?body=Hello, your Smiles Dispatch courier has arrived with your package #${parcel.id.take(8).uppercase()}. Please meet me for handover."))
+                            context.startActivity(intent)
+                        } else {
+                            Toast.makeText(context, "No receiver phone available", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isDark) Charcoal else GoldenWhiteLight,
+                        contentColor = if (isDark) GoldLight else Obsidian
+                    ),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (isDark) GoldLight else Obsidian)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("SMS RECEIVER", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Return-to-Hub Policy Disclaimer
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (remainingSeconds == 0) WarningOrange.copy(alpha = 0.15f) else (if (isDark) Charcoal.copy(alpha = 0.5f) else Color(0xFFF3F4F6)),
+                border = BorderStroke(0.5.dp, if (remainingSeconds == 0) WarningOrange else TextGray.copy(alpha = 0.3f)),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = if (remainingSeconds == 0) Icons.Filled.Warning else Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = if (remainingSeconds == 0) WarningOrange else TextGray,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = if (remainingSeconds == 0) {
+                            "⚠️ 7-minute wait window expired. Smiles Dispatch policy: If receiver is unreachable, parcel must be returned to central hub for customer rebooking."
+                        } else {
+                            "Policy: 7-minute maximum arrival wait window. If receiver cannot be reached within 7 minutes, package will be returned to central hub."
+                        },
+                        fontSize = 11.sp,
+                        color = if (remainingSeconds == 0) WarningOrange else TextGray,
+                        lineHeight = 15.sp
                     )
                 }
             }
@@ -3242,7 +3516,7 @@ fun RiderWaybillBottomSheet(
                 letterSpacing = 2.sp
             )
             Text(
-                text = "SMILES DISPATCH RIDER",
+                text = "PREMIUM LOGISTICS & DISPATCH",
                 fontSize = 9.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = TextGray,

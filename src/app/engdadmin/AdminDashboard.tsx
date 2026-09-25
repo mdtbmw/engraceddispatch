@@ -41,6 +41,7 @@ import { PriceDisplay } from "@/components/design-system/PriceDisplay";
 import { DispatchDecisionDrawer } from "@/components/design-system/DispatchDecisionDrawer";
 import { NotificationLifecycleManager } from "@/components/design-system/NotificationLifecycle";
 import { ShipmentMicroPage } from "@/components/design-system/ShipmentMicroPage";
+import AdminDispatchBookingModal from "@/components/AdminDispatchBookingModal";
 type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "broadcast" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support" | "payouts";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; lastPing?: any; lastHeartbeat?: any; lastActive?: any; createdAt?: any; vendorBalance?: number; pin?: string; userPin?: string; securityPin?: string; }
 
@@ -96,7 +97,6 @@ function checkUserOnline(u: {
 }
 interface Delivery {
   id: string;
-  itemValue?: number;
   status: string;
   category?: string;
   receiverName: string;
@@ -211,7 +211,7 @@ interface VendorPayoutRequest {
   requestedAt?: any;
 }
 
-interface PayoutRequest {
+interface TipWithdrawalRequest {
   id: string;
   riderId?: string;
   userId?: string;
@@ -458,14 +458,14 @@ async function seedDeliveries(db: any, addLog: any, addToast: any, createNotific
     const now = new Date();
     const ds = (d: number) => new Date(now.getTime() + d * 86400000).toISOString().slice(0, 10);
     const deliveries = [
-      { receiverName: "Osasere Igbinedion", deliveryAddress: "14 Ihama Road, GRA, Benin City", senderName: "Shopify Hub", senderPhone: "08011122233", receiverPhone: "08044455566", price: 2500, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Laptop", pickupAddress: "Ring Road, Kings Square, Benin City", quantity: 1, weight: 1.5, itemValue: 0, dateString: ds(-1), tipAmount: 500, userId: "seed_u2", otpCode: "1234", status: "DELIVERED", category: "Express" },
-      { receiverName: "Nosakhare Edokpayi", deliveryAddress: "Airport Road, GRA, Benin City", senderName: "Amazon Hub", senderPhone: "08099988877", receiverPhone: "08077766655", price: 1500, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Books", pickupAddress: "Ekehuan Road, UNIBEN Ekehuan, Benin City", quantity: 2, weight: 0.8, itemValue: 0, dateString: ds(0), tipAmount: 200, userId: "seed_u2", otpCode: "5678", status: "TRANSIT", category: "Standard" },
-      { receiverName: "Efosa Osagie", deliveryAddress: "Ugbowo Campus, University of Benin, Benin City", senderName: "Fresh Foods", senderPhone: "08022233344", receiverPhone: "08055566677", price: 3000, riderId: "seed_u1", courierName: couriers[2], courierPhone: "08066677788", itemName: "Groceries", pickupAddress: "Sapele Road, Benin City", quantity: 5, weight: 4.2, itemValue: 0, dateString: ds(0), tipAmount: 0, userId: "seed_u2", otpCode: "9012", status: "PENDING", category: "Cold Chain" },
-      { receiverName: "Ekiuwa Omoruyi", deliveryAddress: "UBTH, Ugbowo, Benin City", senderName: "Jumia Hub", senderPhone: "08033344455", receiverPhone: "08088899900", price: 1800, riderId: "seed_u3", courierName: couriers[3], courierPhone: "08011122200", itemName: "Documents", pickupAddress: "Mission Road, Benin City", quantity: 1, weight: 0.3, itemValue: 0, dateString: ds(1), tipAmount: 100, userId: "seed_u2", otpCode: "3456", status: "DELIVERED", category: "Economy" },
-      { receiverName: "Efe Martins", deliveryAddress: "Ikpoba Hill, Benin City", senderName: "PharmaCo", senderPhone: "08055566688", receiverPhone: "08099900011", price: 4200, riderId: "", courierName: couriers[4], courierPhone: "08022233300", itemName: "Medical Supplies", pickupAddress: "Upper Sakponba Road, Benin City", quantity: 3, weight: 6.0, itemValue: 0, dateString: ds(2), tipAmount: 0, userId: "seed_u2", otpCode: "7890", status: "ASSIGNED", category: "Express" },
-      { receiverName: "Aisosa Obasuyi", deliveryAddress: "Boundary Road, GRA, Benin City", senderName: "MegaMart", senderPhone: "08077788899", receiverPhone: "08011122255", price: 3500, riderId: "", courierName: couriers[5], courierPhone: "08044455500", itemName: "Home Appliances", pickupAddress: "Akpakpava Road, Benin City", quantity: 2, weight: 8.0, itemValue: 0, dateString: ds(1), tipAmount: 300, userId: "seed_u2", otpCode: "2345", status: "TRANSIT", category: "Batch" },
-      { receiverName: "Isoken Agho", deliveryAddress: "New Lagos Road, Benin City", senderName: "PrintHub", senderPhone: "08033322211", receiverPhone: "08066655544", price: 2200, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Print Materials", pickupAddress: "Siluko Road, Benin City", quantity: 4, weight: 2.5, itemValue: 0, dateString: ds(3), tipAmount: 150, userId: "seed_u2", otpCode: "6789", status: "PENDING", category: "Multi" },
-      { receiverName: "Amenze Osunde", deliveryAddress: "Country Home Motel Road, Benin City", senderName: "TechWorld", senderPhone: "08044455566", receiverPhone: "08077788822", price: 2800, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Smartphone", pickupAddress: "Adesuwa Road, GRA, Benin City", quantity: 1, weight: 0.6, itemValue: 0, dateString: ds(4), tipAmount: 250, userId: "seed_u2", otpCode: "1111", status: "PENDING", category: "Standard" },
+      { receiverName: "Osasere Igbinedion", deliveryAddress: "14 Ihama Road, GRA, Benin City", senderName: "Shopify Hub", senderPhone: "08011122233", receiverPhone: "08044455566", price: 2500, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Laptop", pickupAddress: "Ring Road, Kings Square, Benin City", quantity: 1, weight: 1.5, dateString: ds(-1), tipAmount: 500, userId: "seed_u2", otpCode: "1234", status: "DELIVERED", category: "Express" },
+      { receiverName: "Nosakhare Edokpayi", deliveryAddress: "Airport Road, GRA, Benin City", senderName: "Amazon Hub", senderPhone: "08099988877", receiverPhone: "08077766655", price: 1500, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Books", pickupAddress: "Ekehuan Road, UNIBEN Ekehuan, Benin City", quantity: 2, weight: 0.8, dateString: ds(0), tipAmount: 200, userId: "seed_u2", otpCode: "5678", status: "TRANSIT", category: "Standard" },
+      { receiverName: "Efosa Osagie", deliveryAddress: "Ugbowo Campus, University of Benin, Benin City", senderName: "Fresh Foods", senderPhone: "08022233344", receiverPhone: "08055566677", price: 3000, riderId: "seed_u1", courierName: couriers[2], courierPhone: "08066677788", itemName: "Groceries", pickupAddress: "Sapele Road, Benin City", quantity: 5, weight: 4.2, dateString: ds(0), tipAmount: 0, userId: "seed_u2", otpCode: "9012", status: "PENDING", category: "Cold Chain" },
+      { receiverName: "Ekiuwa Omoruyi", deliveryAddress: "UBTH, Ugbowo, Benin City", senderName: "Jumia Hub", senderPhone: "08033344455", receiverPhone: "08088899900", price: 1800, riderId: "seed_u3", courierName: couriers[3], courierPhone: "08011122200", itemName: "Documents", pickupAddress: "Mission Road, Benin City", quantity: 1, weight: 0.3, dateString: ds(1), tipAmount: 100, userId: "seed_u2", otpCode: "3456", status: "DELIVERED", category: "Economy" },
+      { receiverName: "Efe Martins", deliveryAddress: "Ikpoba Hill, Benin City", senderName: "PharmaCo", senderPhone: "08055566688", receiverPhone: "08099900011", price: 4200, riderId: "", courierName: couriers[4], courierPhone: "08022233300", itemName: "Medical Supplies", pickupAddress: "Upper Sakponba Road, Benin City", quantity: 3, weight: 6.0, dateString: ds(2), tipAmount: 0, userId: "seed_u2", otpCode: "7890", status: "ASSIGNED", category: "Express" },
+      { receiverName: "Aisosa Obasuyi", deliveryAddress: "Boundary Road, GRA, Benin City", senderName: "MegaMart", senderPhone: "08077788899", receiverPhone: "08011122255", price: 3500, riderId: "", courierName: couriers[5], courierPhone: "08044455500", itemName: "Home Appliances", pickupAddress: "Akpakpava Road, Benin City", quantity: 2, weight: 8.0, dateString: ds(1), tipAmount: 300, userId: "seed_u2", otpCode: "2345", status: "TRANSIT", category: "Batch" },
+      { receiverName: "Isoken Agho", deliveryAddress: "New Lagos Road, Benin City", senderName: "PrintHub", senderPhone: "08033322211", receiverPhone: "08066655544", price: 2200, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Print Materials", pickupAddress: "Siluko Road, Benin City", quantity: 4, weight: 2.5, dateString: ds(3), tipAmount: 150, userId: "seed_u2", otpCode: "6789", status: "PENDING", category: "Multi" },
+      { receiverName: "Amenze Osunde", deliveryAddress: "Country Home Motel Road, Benin City", senderName: "TechWorld", senderPhone: "08044455566", receiverPhone: "08077788822", price: 2800, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Smartphone", pickupAddress: "Adesuwa Road, GRA, Benin City", quantity: 1, weight: 0.6, dateString: ds(4), tipAmount: 250, userId: "seed_u2", otpCode: "1111", status: "PENDING", category: "Standard" },
     ];
     deliveries.forEach(d => batch.set(doc(collection(db, "deliveries")), d));
     await batch.commit();
@@ -1997,7 +1997,7 @@ function AdminDashboardPage() {
   const [stores, setStores] = useState<VendorStore[]>([]);
   const [marketplaceOrders, setMarketplaceOrders] = useState<MarketplaceOrder[]>([]);
   const [payoutRequests, setPayoutRequests] = useState<VendorPayoutRequest[]>([]);
-  const [tipPayoutRequests, setTipPayoutRequests] = useState<PayoutRequest[]>([]);
+  const [tipWithdrawals, setTipWithdrawals] = useState<TipWithdrawalRequest[]>([]);
   const [fleetLocations, setFleetLocations] = useState<Record<string, { lat: number; lng: number }>>({});
 
   const [connected, setConnected] = useState(false);
@@ -2233,7 +2233,7 @@ function AdminDashboardPage() {
         senderPhone: x.senderPhone || "", receiverPhone: x.receiverPhone || "",
         price: x.price || 0, riderId: x.riderId || "", courierName: x.courierName || "Unassigned",
         courierPhone: x.courierPhone || "", itemName: x.itemName || "Parcel",
-        pickupAddress: x.pickupAddress || "", quantity: x.quantity || 1, weight: x.weight || 0, itemValue: x.itemValue || 0,
+        pickupAddress: x.pickupAddress || "", quantity: x.quantity || 1, weight: x.weight || 0,
         dateString: x.dateString || "", tipAmount: x.tipAmount || 0, userId: x.userId || "", otpCode: x.otpCode || "",
         category: x.category || "Standard",
         riderBikeNumber: x.riderBikeNumber || "",
@@ -2384,7 +2384,7 @@ function AdminDashboardPage() {
       setPayoutRequests(list);
     }, console.error));
     unsubs.push(onSnapshot(collection(db, "tip_withdrawals"), snap => {
-      const list: PayoutRequest[] = [];
+      const list: TipWithdrawalRequest[] = [];
       snap.forEach(d => {
         const x = d.data();
         list.push({
@@ -2408,7 +2408,7 @@ function AdminDashboardPage() {
         const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
         return tB - tA;
       });
-      setTipPayoutRequests(list);
+      setTipWithdrawals(list);
     }, console.error));
     unsubs.push(onSnapshot(doc(db, "system_config", "global_settings"), s => {
       if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() }));
@@ -2539,7 +2539,7 @@ function AdminDashboardPage() {
   const totalBookedGmv = deliveries.reduce((s, d) => s + (d.price || 0), 0);
   const totalTips = delivered.reduce((s, d) => s + (d.tipAmount || 0), 0);
   const completedReferrals = referrals.filter(r => r.status === "completed");
-  const pendingPayouts = tipPayoutRequests.filter(w => w.status === "PENDING");
+  const pendingTipPayouts = tipWithdrawals.filter(w => w.status === "PENDING");
 
   if (loading) return (
     <div className="min-h-screen bg-[#111] flex items-center justify-center">
@@ -2624,7 +2624,7 @@ function AdminDashboardPage() {
     { id: "dashboard", label: "Dashboard", icon: <Folder size={22} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "marketplace", label: "Marketplace & Stores", icon: <ShoppingBag size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"], badge: pendingDeliveries.length > 0 ? pendingDeliveries.length : undefined },
-    { id: "payouts", label: "Payouts & Refunds", icon: <DollarSign size={24} strokeWidth={2} />, roles: ["super_admin", "admin"], badge: pendingPayouts.length > 0 ? pendingPayouts.length : undefined },
+    { id: "payouts", label: "Tip Payouts", icon: <DollarSign size={24} strokeWidth={2} />, roles: ["super_admin", "admin"], badge: pendingTipPayouts.length > 0 ? pendingTipPayouts.length : undefined },
     { id: "tracking", label: "Live Tracking", icon: <MapPin size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "broadcast", label: "Broadcast News", icon: <Radio size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "users", label: "Users", icon: <Users size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
@@ -2743,7 +2743,7 @@ function AdminDashboardPage() {
         {tab === "cms" && <CMSTab db={db} addLog={addLog} userRole={userRole} />}
         {tab === "support" && <SupportTab db={db} addLog={addLog} addToast={addToast} />}
         {tab === "logs" && <LogsTab logs={logs} />}
-        {tab === "payouts" && <TipPayoutsTab withdrawals={tipPayoutRequests} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} users={users} />}
+        {tab === "payouts" && <TipPayoutsTab withdrawals={tipWithdrawals} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} users={users} />}
       </div>
     </main>
     </div>;
@@ -5003,7 +5003,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
     const [showRecalibrateModal, setShowRecalibrateModal] = useState(false);
     const [recalibrating, setRecalibrating] = useState(false);
     const [recalibrateLog, setRecalibrateLog] = useState<string[]>([]);
-    const [newForm, setNewForm] = useState({ userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, itemValue: 0, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
+    const [newForm, setNewForm] = useState({ userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
     const [creating, setCreating] = useState(false);
     const [decisionDelivery, setDecisionDelivery] = useState<Delivery | null>(null);
     const perPage = 15;
@@ -5812,7 +5812,6 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
           id: "",
           quantity: Number(newForm.quantity) || 1,
           weight: Number(newForm.weight) || 1,
-          itemValue: Number(newForm.itemValue) || 0,
           price: Number(newForm.price) || 1500,
           tipAmount: 0,
           userId: newForm.userId || "",
@@ -5849,7 +5848,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
 
         if (addToast) addToast("success", `Created new shipment #${idShort(ref.id)} (${newForm.itemName || "Parcel"})`);
         setShowNew(false);
-        setNewForm({ userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, itemValue: 0, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
+        setNewForm({ userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
       } catch (e: any) { 
         addLog("Error", "Create delivery failed: " + (e?.message || "Unknown error"));
         if (addToast) addToast("error", "Failed to create delivery: " + (e?.message || "Unknown error"));
@@ -6037,6 +6036,53 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                 title="Recalibrate and synchronize in-flight deliveries across client app versions"
               >
                 <RefreshCw className="w-4 h-4 text-[#FFB800]" /> Recalibrate Fleet
+              </button>
+              <button
+                onClick={async () => {
+                  const pendingList = deliveries.filter(d => (d.status === "PENDING" || d.status === "QUEUED") && !d.riderId && !d.driverId);
+                  if (pendingList.length === 0) {
+                    if (addToast) addToast("info", "No unassigned pending shipments found in queue.");
+                    return;
+                  }
+                  const onlineList = (drivers || []).filter(d => d.isOnline && !d.isDeleted && d.status !== "suspended");
+                  if (onlineList.length === 0) {
+                    if (addToast) addToast("error", "No online couriers currently available in fleet.");
+                    return;
+                  }
+                  let count = 0;
+                  for (const p of pendingList) {
+                    const pLat = p.pickupLat || 6.335;
+                    const pLng = p.pickupLng || 5.6037;
+                    let best = onlineList[0];
+                    let minD = Infinity;
+                    for (const drv of onlineList) {
+                      const dLat = drv.lat || 6.335;
+                      const dLng = drv.lng || 5.6037;
+                      const dist = Math.hypot(pLat - dLat, pLng - dLng);
+                      if (dist < minD) { minD = dist; best = drv; }
+                    }
+                    try {
+                      await updateDoc(doc(db, "deliveries", p.id), {
+                        riderId: best.id,
+                        driverId: best.id,
+                        courierName: best.name || "Fleet Courier",
+                        courierPhone: best.phone || "",
+                        riderBikeNumber: best.bikeNumber || "",
+                        status: "ASSIGNED",
+                        updatedAt: Timestamp.now()
+                      });
+                      count++;
+                    } catch (e) {
+                      console.error("Auto assign error:", e);
+                    }
+                  }
+                  if (addToast) addToast("success", `Auto-assigned ${count} pending shipment(s) to closest online fleet.`);
+                  await addLog("Auto-Assign Fleet", `Assigned ${count} pending deliveries to available active couriers.`);
+                }}
+                className="h-10 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                title="Automatically match pending orders with closest online fleet riders"
+              >
+                <Sparkles className="w-4 h-4 text-white" /> Auto-Assign Pending
               </button>
               <button
                 onClick={() => setShowNew(true)}
@@ -6247,10 +6293,28 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                             <div>
                               <p className="text-[11px] font-bold text-gray-900 dark:text-white truncate max-w-[110px]">{d.courierName || d.driverName || "Assigned"}</p>
                               {d.courierPhone && <p className="text-[9px] text-gray-500 dark:text-gray-400 font-mono">{d.courierPhone}</p>}
+                              {(() => {
+                                if (!["ASSIGNED", "PICKED_UP", "TRANSIT"].includes(d.status)) return null;
+                                const rider = drivers.find(drv => drv.id === (d.riderId || d.driverId));
+                                if (!rider) return null;
+                                const ts = Math.max(
+                                  getTimestampMs(rider.lastSeen) || 0,
+                                  getTimestampMs(rider.lastHeartbeat) || 0,
+                                  getTimestampMs(rider.lastPing) || 0,
+                                  getTimestampMs(rider.lastActive) || 0
+                                );
+                                const isStalled = !ts || (Date.now() - ts > 5 * 60 * 1000);
+                                if (!isStalled) return null;
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-600 dark:text-rose-400 text-[8px] font-black border border-rose-500/30 animate-pulse" title="No courier movement or heartbeat for over 5 minutes">
+                                    <AlertTriangle size={8} /> STALLED (5m+)
+                                  </span>
+                                );
+                              })()}
                               {["PENDING", "QUEUED", "RESERVED_NEXT", "ASSIGNED"].includes(d.status) && (
                                 <button
                                   onClick={() => setReassignModal({ delivery: d, show: true })}
-                                  className="text-[9px] font-bold text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer"
+                                  className="text-[9px] font-bold text-amber-800 dark:text-[#FFB800] hover:underline cursor-pointer block mt-0.5"
                                 >
                                   Manage / Reassign
                                 </button>
@@ -6419,7 +6483,6 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                     <div><span className="text-gray-600 dark:text-gray-400 font-medium">Weight:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.weight || 1} kg</span></div>
                     <div><span className="text-gray-600 dark:text-gray-400 font-medium">Quantity:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.quantity || 1}</span></div>
                     <div><span className="text-gray-600 dark:text-gray-400 font-medium">Price:</span> <span className="font-bold text-[#111] dark:text-white">{fmt(detailsModal.delivery.price || 0)}</span></div>
-                    <div><span className="text-gray-600 dark:text-gray-400 font-medium">Declared Value:</span> <span className="font-bold text-[#111] dark:text-white">{fmt(detailsModal.delivery.itemValue || 0)}</span></div>
                     {detailsModal.delivery.tipAmount > 0 && <div><span className="text-gray-600 dark:text-gray-400 font-medium">Tip:</span> <span className="font-bold text-emerald-600 dark:text-emerald-400">{fmt(detailsModal.delivery.tipAmount)}</span></div>}
                   </div>
                 </div>
@@ -6525,10 +6588,6 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                     <span className="text-gray-600 font-bold">Weight & Quantity:</span>
                     <span>{waybillModal.delivery.weight || 1} kg &bull; {waybillModal.delivery.quantity || 1} unit(s)</span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-gray-200">
-                    <span className="text-gray-600 font-bold">Declared Item Value:</span>
-                    <span>{fmt(waybillModal.delivery.itemValue || 0)}</span>
-                  </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600 font-bold">Category & Tier:</span>
                     <span className="uppercase font-semibold">{waybillModal.delivery.category || "Standard"}</span>
@@ -6571,8 +6630,18 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
           </div>
         )}
 
-        {/* New Delivery Creation Modal */}
-        {showNew && (
+        {/* Multi-Step Intelligent Admin Dispatch Booking Modal */}
+        <AdminDispatchBookingModal
+          isOpen={showNew}
+          onClose={() => setShowNew(false)}
+          db={db}
+          drivers={drivers}
+          users={users || []}
+          addLog={addLog}
+          addToast={addToast}
+        />
+
+        {false && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50" onClick={() => setShowNew(false)}>
             <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-xl shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
@@ -9142,7 +9211,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
           <div className="text-center py-12 text-gray-600 dark:text-gray-400 font-medium">
             <DollarSign className="w-12 h-12 mx-auto mb-3 text-[#FFB800]/50" />
             <p className="font-extrabold text-base text-gray-900 dark:text-white">No vendor payout requests</p>
-            <p className="text-xs mt-1 text-gray-600 dark:text-gray-400 font-medium">Withdrawal and refund applications will stream here for review.</p>
+            <p className="text-xs mt-1 text-gray-600 dark:text-gray-400 font-medium">Vendor balance withdrawal applications will stream here for review.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -10318,7 +10387,7 @@ function TipPayoutsTab({
   createNotification,
   users,
 }: {
-  withdrawals: PayoutRequest[];
+  withdrawals: TipWithdrawalRequest[];
   db: any;
   addLog: (a: string, d: string) => Promise<void> | void;
   addToast: (t: Toast["type"], m: string) => void;
@@ -10329,7 +10398,7 @@ function TipPayoutsTab({
   const [search, setSearch] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [rejectModalTarget, setRejectModalTarget] = useState<PayoutRequest | null>(null);
+  const [rejectModalTarget, setRejectModalTarget] = useState<TipWithdrawalRequest | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
   const copyToClipboard = (text: string, id: string) => {
@@ -10339,7 +10408,7 @@ function TipPayoutsTab({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleApprove = async (p: PayoutRequest) => {
+  const handleApprove = async (p: TipWithdrawalRequest) => {
     const targetUserId = p.riderId || p.userId;
     const targetName = p.riderName || p.userName || "User";
     const userRole = p.userRole || "rider";
@@ -10355,7 +10424,7 @@ function TipPayoutsTab({
       if (targetUserId) {
         try {
           await addDoc(collection(db, "users", targetUserId, "notifications"), {
-            title: "Request Approved",
+            title: "Withdrawal Approved",
             description: `Your withdrawal request of ₦${p.amount.toLocaleString()} has been approved and processed to ${p.bankName} (${p.accountNumber}).`,
             read: false,
             time: "Just now",
@@ -10394,7 +10463,7 @@ function TipPayoutsTab({
         const refundTx = {
           id: txId,
           userId: targetUserId,
-          title: "Request Declined - Refund",
+          title: "Withdrawal Declined - Refund",
           amount: p.amount,
           type: "CREDIT",
           status: "SUCCESS",
@@ -10407,7 +10476,7 @@ function TipPayoutsTab({
 
         try {
           await addDoc(collection(db, "users", targetUserId, "notifications"), {
-            title: "Request Declined",
+            title: "Withdrawal Declined",
             description: `Your withdrawal request of ₦${p.amount.toLocaleString()} was declined (${rejectReason || "Administrative decision"}). The funds have been refunded to your wallet.`,
             read: false,
             time: "Just now",
@@ -10454,7 +10523,7 @@ function TipPayoutsTab({
             <DollarSign className="w-6 h-6 text-[#FFB800]" /> Rider Tip Payouts
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Review, verify bank credentials, and authorize withdrawals and refunds submitted by couriers and customers.
+            Review, verify bank credentials, and authorize tip withdrawals submitted by couriers.
           </p>
         </div>
       </div>
@@ -10506,7 +10575,7 @@ function TipPayoutsTab({
         {filtered.length === 0 ? (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400 font-medium">
             <DollarSign className="w-12 h-12 mx-auto mb-3 text-[#FFB800]/50" />
-            <p className="font-extrabold text-base text-gray-900 dark:text-white">No withdrawal or refund requests found</p>
+            <p className="font-extrabold text-base text-gray-900 dark:text-white">No withdrawal requests found</p>
             <p className="text-xs mt-1">Courier tip payout applications will appear here in real-time.</p>
           </div>
         ) : (

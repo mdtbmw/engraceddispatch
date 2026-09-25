@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.*
@@ -147,6 +148,7 @@ fun ExpressBookingScreen(
     var showCheckoutSheet by remember { mutableStateOf(false) }
     var showPaystackSheet by remember { mutableStateOf(false) }
     var pendingAmount by remember { mutableStateOf(0.0) }
+    var declaredValue by remember { mutableStateOf("") }
 
     // Suggestions & Autocomplete state
     var focusedField by remember { mutableStateOf<String?>(null) } // pickup, delivery
@@ -1039,6 +1041,56 @@ fun ExpressBookingScreen(
                             )
                         }
 
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        OutlinedTextField(
+                            value = declaredValue,
+                            onValueChange = { declaredValue = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(20.dp),
+                            label = { Text("Declared Item Value (₦)", color = TextGray) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = fieldTextColor, fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = accentColor,
+                                unfocusedBorderColor = fieldBorderColor,
+                                focusedContainerColor = fieldBgColor,
+                                unfocusedContainerColor = fieldBgColor,
+                                focusedTextColor = fieldTextColor,
+                                unfocusedTextColor = fieldTextColor,
+                                focusedLabelColor = accentColor,
+                                unfocusedLabelColor = TextGray
+                            )
+                        )
+
+                        // Packaging Inspection Disclaimer
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isDark) Color(0xFF1E1C14) else Color(0xFFFFFBEB),
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth().padding(top = 14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Info,
+                                    contentDescription = null,
+                                    tint = if (isDark) Gold else Obsidian,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "Notice: Smiles Dispatch riders reserve the right to inspect package contents before pickup for safety, integrity, and regulatory compliance.",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isDark) GoldLight else Obsidian,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+
                         // Real-Time Cargo Feasibility Warning
                         if (!cargoFeasibility.isFeasible && cargoFeasibility.warningMessage != null) {
                             Surface(
@@ -1267,6 +1319,14 @@ fun ExpressBookingScreen(
                     viewModel.updateDraftDelivery(delivery)
                     viewModel.updateDraftSenderInfo(sName, sPhone)
                     viewModel.updateDraftReceiverInfo(rName, rPhone)
+                    viewModel.updateDraftSpecs(
+                        quantity = 1,
+                        weight = weight.toDoubleOrNull() ?: 1.0,
+                        length = 20,
+                        width = 15,
+                        height = 10,
+                        declaredValue = declaredValue.toDoubleOrNull() ?: 0.0
+                    )
                     viewModel.finalizeDraftPrice("Express", quotePrice)
                     viewModel.confirmBooking { ok, msg ->
                         if (ok) {

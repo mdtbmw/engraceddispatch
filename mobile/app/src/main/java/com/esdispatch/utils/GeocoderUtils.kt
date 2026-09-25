@@ -14,9 +14,25 @@ data class SearchResultItem(
 ) {
     val displayInput: String
         get() {
+            var f = fullAddress.trim()
+            val labelPrefixes = listOf(
+                "Saved Home, ", "Saved Work, ", "Saved Office, ",
+                "Home, ", "Work, ", "Office, ",
+                "Saved Home - ", "Saved Work - ", "Saved Office - "
+            )
+            for (prefix in labelPrefixes) {
+                if (f.startsWith(prefix, ignoreCase = true)) {
+                    f = f.substring(prefix.length).trim()
+                }
+            }
             val t = title.trim()
-            val f = fullAddress.trim()
-            if (t.isBlank() || t.equals("Current Location", ignoreCase = true) || t.equals("Saved Home", ignoreCase = true) || t.equals("Saved Work", ignoreCase = true)) {
+            if (t.isBlank() ||
+                t.equals("Current Location", ignoreCase = true) ||
+                t.startsWith("Saved ", ignoreCase = true) ||
+                t.equals("Home", ignoreCase = true) ||
+                t.equals("Work", ignoreCase = true) ||
+                t.equals("Office", ignoreCase = true)
+            ) {
                 return f
             }
             if (f.isBlank()) {
@@ -40,58 +56,71 @@ data class KnownLandmark(
 object GeocoderUtils {
 
     private val POPULAR_LANDMARKS = listOf(
+        KnownLandmark("King's Square (Ring Road)", "Ring Road / King's Square, City Center, Benin City", listOf("ring road", "kings square", "king square", "ringroad", "oba market", "oba's palace"), 6.3350, 5.6200),
+        KnownLandmark("University of Benin Teaching Hospital (UBTH)", "Ugbowo Lagos Road, Benin City", listOf("ubth", "teaching hospital", "ugbowo hospital", "ubth ugbowo"), 6.3982, 5.6111),
+        KnownLandmark("University of Benin (Main Campus)", "Ugbowo, Benin City", listOf("uniben", "ugbowo campus", "university of benin", "uniben ugbowo"), 6.4024, 5.6166),
+        KnownLandmark("University of Benin (Ekehuan Campus)", "Ekehuan Road, Benin City", listOf("ekehuan campus", "uniben ekehuan", "ekehuan uniben"), 6.3215, 5.5921),
+        KnownLandmark("Government Reserved Area (GRA)", "GRA, Benin City", listOf("gra", "benin gra", "boundary road", "ihama road", "adesuwa"), 6.3150, 5.6180),
+        KnownLandmark("Benin City Airport", "Airport Road, GRA, Benin City", listOf("airport", "benin airport", "air port", "airport road"), 6.3175, 5.5995),
         KnownLandmark("ADP Junction / Edo State ADP", "Ogba Road / Airport Road, Benin City", listOf("adp", "adp junction", "agricultural development"), 6.2941, 5.5972),
-        KnownLandmark("University of Benin Teaching Hospital (UBTH)", "Ugbowo Lagos Road, Benin City", listOf("ubth", "teaching hospital", "ugbowo hospital"), 6.3982, 5.6111),
-        KnownLandmark("University of Benin (Main Campus)", "Ugbowo, Benin City", listOf("uniben", "ugbowo campus", "university of benin"), 6.4024, 5.6166),
-        KnownLandmark("University of Benin (Ekehuan Campus)", "Ekehuan Road, Benin City", listOf("ekehuan campus", "uniben ekehuan"), 6.3215, 5.5921),
-        KnownLandmark("King's Square (Ring Road)", "Ring Road / King's Square, Benin City", listOf("ring road", "kings square", "king square", "oba market"), 6.3350, 5.6200),
-        KnownLandmark("Government Reserved Area (GRA)", "GRA, Benin City", listOf("gra", "benin gra", "boundary road"), 6.3150, 5.6180),
-        KnownLandmark("Ramat Park", "Ikpoba Hill, Benin City", listOf("ramat", "ramat park", "ikpoba hill"), 6.3533, 5.6542),
-        KnownLandmark("Benin City Airport", "Airport Road, GRA, Benin City", listOf("airport", "benin airport", "air port"), 6.3175, 5.5995),
-        KnownLandmark("Chicken Republic (Sapele Road)", "Sapele Road, Benin City", listOf("chicken republic", "chic", "chicken rep", "chick", "cr"), 6.3210, 5.6280),
-        KnownLandmark("Chicken Republic (Airport Road)", "Airport Road, GRA, Benin City", listOf("chicken republic airport", "chic airport", "chicken republic"), 6.3140, 5.6080),
-        KnownLandmark("Chicken Republic (Ugbowo)", "Ugbowo Lagos Road, Benin City", listOf("chicken republic ugbowo", "chic ugbowo"), 6.3910, 5.6120),
-        KnownLandmark("KFC Benin City", "Sapele Road, Benin City", listOf("kfc", "kentucky", "kfc benin"), 6.3240, 5.6260),
+        KnownLandmark("Chicken Republic (Sapele Road)", "Sapele Road, Benin City", listOf("chicken republic", "chic", "chicken rep", "chick", "cr sapele"), 6.3210, 5.6280),
+        KnownLandmark("Chicken Republic (Airport Road)", "Airport Road, GRA, Benin City", listOf("chicken republic airport", "chic airport", "cr airport"), 6.3140, 5.6080),
+        KnownLandmark("Chicken Republic (Ugbowo)", "Ugbowo Lagos Road, Benin City", listOf("chicken republic ugbowo", "chic ugbowo", "cr ugbowo"), 6.3910, 5.6120),
+        KnownLandmark("KFC Benin City", "Sapele Road, Benin City", listOf("kfc", "kentucky", "kfc benin", "kfc sapele"), 6.3240, 5.6260),
         KnownLandmark("Domino's Pizza & Cold Stone Creamery", "Sapele Road, Benin City", listOf("dominos", "domino", "cold stone", "coldstone", "pizza"), 6.3255, 5.6250),
-        KnownLandmark("Kilimanjaro Fast Food", "Airport Road / Ekehuan Road, Benin City", listOf("kilimanjaro", "kiliman"), 6.3160, 5.6090),
+        KnownLandmark("Kilimanjaro Fast Food", "Airport Road / Ekehuan Road, Benin City", listOf("kilimanjaro", "kiliman", "kilimanjaro airport"), 6.3160, 5.6090),
         KnownLandmark("Market Square Supermarket", "Sapele Road, Benin City", listOf("market square", "mk square", "marketsquare"), 6.3190, 5.6270),
         KnownLandmark("Kada Cinemas & Entertainment Centre", "Sapele Road, Benin City", listOf("kada", "kada cinema", "kada cinemas"), 6.3225, 5.6265),
-        KnownLandmark("Edo State Secretariat Complex", "Sapele Road, Benin City", listOf("eksa", "secretariat", "state secretariat"), 6.3300, 5.6230),
-        KnownLandmark("Samuel Ogbemudia Stadium", "Stadium Road, Benin City", listOf("stadium", "ogbemudia stadium"), 6.3310, 5.6110),
-        KnownLandmark("Benson Idahosa University (BIU)", "Ugbor Road, GRA, Benin City", listOf("biu", "benson idahosa"), 6.2990, 5.6210),
-        KnownLandmark("Oba Market", "Ring Road, Benin City", listOf("oba market"), 6.3340, 5.6190),
+        KnownLandmark("Edo State Secretariat Complex", "Sapele Road, Benin City", listOf("eksa", "secretariat", "state secretariat", "edo secretariat"), 6.3300, 5.6230),
+        KnownLandmark("Samuel Ogbemudia Stadium", "Stadium Road, Benin City", listOf("stadium", "ogbemudia stadium", "samuel ogbemudia"), 6.3310, 5.6110),
+        KnownLandmark("Benson Idahosa University (BIU)", "Ugbor Road, GRA, Benin City", listOf("biu", "benson idahosa", "idahosa university"), 6.2990, 5.6210),
+        KnownLandmark("Ramat Park", "Ikpoba Hill, Benin City", listOf("ramat", "ramat park", "ikpoba hill"), 6.3533, 5.6542),
+        KnownLandmark("Oba Market", "Ring Road, Benin City", listOf("oba market", "obamarket"), 6.3340, 5.6190),
         KnownLandmark("New Benin Market", "New Benin, Benin City", listOf("new benin", "new benin market"), 6.3500, 5.6250),
         KnownLandmark("Uselu Market", "Lagos-Benin Expressway, Uselu, Benin City", listOf("uselu", "uselu market"), 6.3750, 5.6150),
         KnownLandmark("Oluku Toll Gate", "Benin-Lagos Expressway, Oluku", listOf("oluku", "toll gate", "oluku toll gate"), 6.4250, 5.6020),
         KnownLandmark("Ogba Zoo & Nature Park", "Airport Road, Benin City", listOf("ogba zoo", "ogba park", "zoo"), 6.2890, 5.5880),
-        KnownLandmark("Country Home Motel Road", "Off Sapele Road, Benin City", listOf("country home", "country home motel"), 6.2950, 5.6320),
-        KnownLandmark("Ihama Road", "GRA, Benin City", listOf("ihama", "ihama road"), 6.3180, 5.6150),
+        KnownLandmark("Country Home Motel Road", "Off Sapele Road, Benin City", listOf("country home", "country home motel", "country home rd"), 6.2950, 5.6320),
+        KnownLandmark("Ihama Road", "GRA, Benin City", listOf("ihama", "ihama road", "ihama rd"), 6.3180, 5.6150),
         KnownLandmark("Adesuwa Road", "GRA, Benin City", listOf("adesuwa", "adusuwa", "adesuwa road"), 6.3120, 5.6220),
-        KnownLandmark("Ugbor Village / Road", "GRA, Benin City", listOf("ugbor", "ugbor road"), 6.2980, 5.6220),
-        KnownLandmark("Etete Layout", "GRA, Benin City", listOf("etete", "etete road"), 6.3050, 5.6260),
+        KnownLandmark("Ugbor Village / Road", "GRA, Benin City", listOf("ugbor", "ugbor road", "ugbor village"), 6.2980, 5.6220),
+        KnownLandmark("Etete Layout", "GRA, Benin City", listOf("etete", "etete road", "etete layout"), 6.3050, 5.6260),
         KnownLandmark("Akpakpava Road", "Akpakpava, Benin City", listOf("akpakpava", "akpakpava rd"), 6.3360, 5.6280),
         KnownLandmark("Mission Road", "Benin City", listOf("mission road", "mission rd"), 6.3380, 5.6220),
         KnownLandmark("Siluko Road", "Benin City", listOf("siluko", "siluko road", "siluko rd"), 6.3510, 5.6050),
-        KnownLandmark("Textile Mill Road", "Benin City", listOf("textile mill", "textile mill road"), 6.3620, 5.6080),
-        KnownLandmark("Murtala Mohammed Way", "Benin City", listOf("mm way", "murtala mohammed", "murtala mohammed way"), 6.3450, 5.6350)
+        KnownLandmark("Textile Mill Road", "Benin City", listOf("textile mill", "textile mill road", "textile"), 6.3620, 5.6080),
+        KnownLandmark("Murtala Mohammed Way", "Benin City", listOf("mm way", "murtala mohammed", "murtala mohammed way"), 6.3450, 5.6350),
+        KnownLandmark("Upper Sakponba Road", "Ikpoba-Okha, Benin City", listOf("upper sakponba", "sakponba", "sakponba rd"), 6.3100, 5.6450),
+        KnownLandmark("Aduwawa Market & Junction", "Benin-Auchi Road, Aduwawa, Benin City", listOf("aduwawa", "aduwawa market", "auchi road"), 6.3720, 5.6680),
+        KnownLandmark("Erediauwa Street", "Off Sapele Road / Upper Sokponba, Benin City", listOf("erediauwa", "erediauwa street"), 6.3020, 5.6300),
+        KnownLandmark("Boundary Road", "GRA, Benin City", listOf("boundary road", "boundary rd"), 6.3190, 5.6110),
+        KnownLandmark("Evbuotubu Community", "Off Ekehuan Road, Benin City", listOf("evbuotubu", "evbuotubu road"), 6.3120, 5.5780)
     )
 
     private val ACRONYM_MAP = mapOf(
         "adp" to "ADP Junction Agricultural Development Programme Benin City",
-        "ubth" to "University of Benin Teaching Hospital UBTH Ugbowo",
-        "uniben" to "University of Benin UNIBEN Ugbowo",
+        "ubt" to "University of Benin Teaching Hospital UBTH Ugbowo Benin City",
+        "ubth" to "University of Benin Teaching Hospital UBTH Ugbowo Benin City",
+        "uniben" to "University of Benin UNIBEN Ugbowo Benin City",
         "gra" to "Government Reserved Area GRA Benin City",
         "biu" to "Benson Idahosa University BIU Benin City",
         "cr" to "Chicken Republic Benin City",
         "chic" to "Chicken Republic Benin City",
-        "chick" to "Chicken Republic Benin City"
+        "chick" to "Chicken Republic Benin City",
+        "ring rd" to "King's Square Ring Road City Center Benin City",
+        "ringroad" to "King's Square Ring Road City Center Benin City",
+        "kings sq" to "King's Square Ring Road City Center Benin City"
     )
 
     fun expandQuery(query: String): String {
         val trimmed = query.trim().lowercase()
         return ACRONYM_MAP[trimmed] ?: query
     }
-    
+
+    private val placesCache = java.util.concurrent.ConcurrentHashMap<String, List<SearchResultItem>>()
+    private val reverseGeocodeCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val geocodeCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Double, Double>>()
+
     suspend fun getFromLocationNameCompat(geocoder: Geocoder, locationName: String, maxResults: Int): List<Address>? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             suspendCancellableCoroutine { continuation ->
@@ -128,6 +157,74 @@ object GeocoderUtils {
         }
     }
 
+    /**
+     * Google Places API Autocomplete query with strict local bias to Benin City (Edo State, Nigeria).
+     * Responses are cached locally in-memory to prevent repeated network calls and preserve user API quota.
+     */
+    suspend fun fetchGooglePlacesAutocompleteItems(
+        query: String
+    ): List<SearchResultItem> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val cleanQ = query.trim()
+        if (cleanQ.length < 2) return@withContext emptyList()
+        val cacheKey = cleanQ.lowercase()
+        placesCache[cacheKey]?.let { return@withContext it }
+
+        val apiKey = try { com.esdispatch.BuildConfig.GOOGLE_MAPS_API_KEY } catch (e: Throwable) { "" }
+        if (apiKey.isBlank()) return@withContext emptyList()
+
+        val results = mutableListOf<SearchResultItem>()
+        try {
+            val expanded = expandQuery(cleanQ)
+            val encoded = java.net.URLEncoder.encode(expanded, "UTF-8")
+            // Biased to Benin City coordinates (6.3350, 5.6037) within 25km radius
+            val urlString = "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$encoded&key=$apiKey&components=country:ng&location=6.3350,5.6037&radius=25000&language=en"
+            val conn = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 3500
+            conn.readTimeout = 3500
+            if (conn.responseCode == 200) {
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val obj = org.json.JSONObject(jsonStr)
+                val predictions = obj.optJSONArray("predictions")
+                if (predictions != null) {
+                    for (i in 0 until predictions.length()) {
+                        val p = predictions.getJSONObject(i)
+                        val description = p.optString("description")
+                        val sf = p.optJSONObject("structured_formatting")
+                        val mainText = sf?.optString("main_text") ?: description.split(",").firstOrNull()?.trim() ?: description
+                        val secondaryText = sf?.optString("secondary_text") ?: description.removePrefix(mainText).removePrefix(",").trim()
+
+                        val cleanSec = secondaryText.replace(", Nigeria", "").replace(", Edo", "").trim()
+                        val cleanMain = mainText.trim()
+
+                        if (cleanMain.isNotBlank() && !cleanMain.equals("Nigeria", ignoreCase = true)) {
+                            results.add(SearchResultItem(
+                                title = cleanMain,
+                                fullAddress = if (cleanSec.isNotBlank()) cleanSec else "Benin City, Edo State",
+                                lat = null,
+                                lng = null
+                            ))
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("GooglePlaces", "Google Places Autocomplete error: ${e.message}")
+        }
+
+        if (results.isNotEmpty()) {
+            placesCache[cacheKey] = results
+        }
+        return@withContext results
+    }
+
+    /**
+     * Unified, robust places autocomplete items matching.
+     * Tier 1: Instant local Benin City AddressDatabase (0ms, zero network)
+     * Tier 2: Typo-tolerant local landmarks & acronym expansion
+     * Tier 3: Google Places API Autocomplete (with Mapbox fallback)
+     * Tier 4: Native Android Geocoder fallback
+     */
     suspend fun fetchMapboxPlacesAutocompleteItems(
         query: String,
         proximityLng: Double? = null,
@@ -136,13 +233,13 @@ object GeocoderUtils {
         if (query.isBlank() || query.length < 2) return@withContext emptyList()
         val results = mutableListOf<SearchResultItem>()
 
-        // 1. Proactive matching against curated Benin City AddressDatabase
+        // 1. Proactive matching against curated Benin City AddressDatabase (0ms)
         try {
             val dbMatches = com.esdispatch.data.AddressDatabase.searchItems(query, 8)
             results.addAll(dbMatches)
         } catch (_: Exception) {}
 
-        // 2. Proactive matching against Nigerian / Benin City Landmarks & Acronyms
+        // 2. Proactive matching against Benin City Landmarks & Acronyms with typo tolerance
         val cleanQ = query.trim().lowercase()
         val matchingLandmarks = POPULAR_LANDMARKS.filter { lm ->
             lm.keywords.any { kw ->
@@ -165,68 +262,78 @@ object GeocoderUtils {
             }
         }
 
-        // 3. Mapbox Places Autocomplete query
+        // 3. Google Places API Autocomplete (High accuracy, city-biased)
         try {
-            val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
-            if (!token.isNullOrBlank()) {
-                val expandedSearch = expandQuery(query)
-                val encodedQuery = java.net.URLEncoder.encode(expandedSearch.trim(), "UTF-8")
-                val proxParam = if (proximityLng != null && proximityLat != null) {
-                    "&proximity=$proximityLng,$proximityLat"
-                } else {
-                    "&proximity=5.6037,6.3350"
+            val googleItems = fetchGooglePlacesAutocompleteItems(query)
+            for (gItem in googleItems) {
+                if (results.none { it.displayInput.contains(gItem.title, ignoreCase = true) || gItem.title.contains(it.title, ignoreCase = true) }) {
+                    results.add(gItem)
                 }
-                val urlString = "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&autocomplete=true&country=ng&bbox=5.50,6.25,5.75,6.45&types=poi,address,neighborhood,locality,place,landmark$proxParam&limit=10"
-                val url = java.net.URL(urlString)
-                val conn = url.openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.connectTimeout = 4000
-                conn.readTimeout = 4000
-                if (conn.responseCode == 200) {
-                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    val jsonObj = org.json.JSONObject(jsonStr)
-                    val features = jsonObj.optJSONArray("features")
-                    if (features != null) {
-                        for (i in 0 until features.length()) {
-                            val feat = features.getJSONObject(i)
-                            val placeName = feat.optString("place_name")
-                            val textName = feat.optString("text")
-                            val center = feat.optJSONArray("center")
-                            val lng = if (center != null && center.length() >= 2) center.getDouble(0) else null
-                            val lat = if (center != null && center.length() >= 2) center.getDouble(1) else null
+            }
+        } catch (_: Exception) {}
 
-                            // Enforce strict Benin City boundary check if coordinates are present
-                            if (lat != null && lng != null) {
-                                if (lat !in 6.20..6.48 || lng !in 5.48..5.78) continue
-                            }
-                            
-                            val title = if (textName.isNotBlank() && textName != placeName) textName else placeName.split(",").firstOrNull()?.trim() ?: placeName
-                            val address = if (placeName.contains(title) && placeName != title) placeName.removePrefix(title).removePrefix(",").trim() else placeName
+        // 4. Mapbox Places Autocomplete fallback
+        if (results.size < 4) {
+            try {
+                val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
+                if (!token.isNullOrBlank()) {
+                    val expandedSearch = expandQuery(query)
+                    val encodedQuery = java.net.URLEncoder.encode(expandedSearch.trim(), "UTF-8")
+                    val proxParam = if (proximityLng != null && proximityLat != null) {
+                        "&proximity=$proximityLng,$proximityLat"
+                    } else {
+                        "&proximity=5.6037,6.3350"
+                    }
+                    val urlString = "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&autocomplete=true&country=ng&bbox=5.50,6.25,5.75,6.45&types=poi,address,neighborhood,locality,place,landmark$proxParam&limit=10"
+                    val url = java.net.URL(urlString)
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.connectTimeout = 3000
+                    conn.readTimeout = 3000
+                    if (conn.responseCode == 200) {
+                        val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                        val jsonObj = org.json.JSONObject(jsonStr)
+                        val features = jsonObj.optJSONArray("features")
+                        if (features != null) {
+                            for (i in 0 until features.length()) {
+                                val feat = features.getJSONObject(i)
+                                val placeName = feat.optString("place_name")
+                                val textName = feat.optString("text")
+                                val center = feat.optJSONArray("center")
+                                val lng = if (center != null && center.length() >= 2) center.getDouble(0) else null
+                                val lat = if (center != null && center.length() >= 2) center.getDouble(1) else null
 
-                            // Filter out generic country-only or region-only slop or non-Benin places
-                            if (placeName.equals("Nigeria", ignoreCase = true) ||
-                                title.equals("Nigeria", ignoreCase = true) ||
-                                title.isBlank() ||
-                                placeName.contains("Lagos", ignoreCase = true) ||
-                                title.contains("Lagos", ignoreCase = true) ||
-                                (title.equals("Edo", ignoreCase = true) && address.isBlank())) {
-                                continue
-                            }
+                                if (lat != null && lng != null) {
+                                    if (lat !in 6.20..6.48 || lng !in 5.48..5.78) continue
+                                }
 
-                            val cleanAddress = address.replace(", Nigeria", "").replace(", Edo", "").trim()
-                            val item = SearchResultItem(title = title, fullAddress = if (cleanAddress.isNotBlank()) cleanAddress else address, lat = lat, lng = lng)
-                            if (results.none { it.displayInput.contains(title, ignoreCase = true) || title.contains(it.title, ignoreCase = true) }) {
-                                results.add(item)
+                                val title = if (textName.isNotBlank() && textName != placeName) textName else placeName.split(",").firstOrNull()?.trim() ?: placeName
+                                val address = if (placeName.contains(title) && placeName != title) placeName.removePrefix(title).removePrefix(",").trim() else placeName
+
+                                if (placeName.equals("Nigeria", ignoreCase = true) ||
+                                    title.equals("Nigeria", ignoreCase = true) ||
+                                    title.isBlank() ||
+                                    placeName.contains("Lagos", ignoreCase = true) ||
+                                    title.contains("Lagos", ignoreCase = true) ||
+                                    (title.equals("Edo", ignoreCase = true) && address.isBlank())) {
+                                    continue
+                                }
+
+                                val cleanAddress = address.replace(", Nigeria", "").replace(", Edo", "").trim()
+                                val item = SearchResultItem(title = title, fullAddress = if (cleanAddress.isNotBlank()) cleanAddress else address, lat = lat, lng = lng)
+                                if (results.none { it.displayInput.contains(title, ignoreCase = true) || title.contains(it.title, ignoreCase = true) }) {
+                                    results.add(item)
+                                }
                             }
                         }
                     }
                 }
+            } catch (e: Exception) {
+                android.util.Log.w("MapboxPlaces", "Mapbox Places API autocomplete fallback: ${e.message}")
             }
-        } catch (e: Exception) {
-            android.util.Log.e("MapboxPlaces", "Mapbox Places API autocomplete error: ${e.message}")
         }
 
-        // 3. Native Android Geocoder fallback for local Nigerian POIs / businesses
+        // 5. Native Android Geocoder fallback for local Nigerian POIs / businesses
         if (results.size < 4) {
             try {
                 val appCtx = com.esdispatch.DispatchApplication.instance
@@ -243,7 +350,7 @@ object GeocoderUtils {
 
                         val title = if (feature.isNotBlank() && feature != cleanLine && !cleanLine.startsWith(feature)) feature else cleanLine.split(",").firstOrNull()?.trim() ?: cleanLine
                         val subtitle = if (cleanLine.contains(title) && cleanLine != title) cleanLine.removePrefix(title).removePrefix(",").trim() else cleanLine
-                        
+
                         if (cleanLine.isNotBlank() && results.none { it.displayInput.contains(cleanLine, ignoreCase = true) || cleanLine.contains(it.displayInput, ignoreCase = true) }) {
                             results.add(SearchResultItem(
                                 title = title,
@@ -272,13 +379,11 @@ object GeocoderUtils {
         return@withContext items.map { it.displayInput }
     }
 
-    private val reverseGeocodeCache = java.util.concurrent.ConcurrentHashMap<String, String>()
-
     suspend fun reverseGeocodeCoordinates(context: android.content.Context, lat: Double, lng: Double): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val cacheKey = String.format(java.util.Locale.US, "%.4f,%.4f", lat, lng)
         reverseGeocodeCache[cacheKey]?.let { return@withContext it }
 
-        // 1. Check verified Benin City landmarks FIRST for rich, detailed landmark titles (e.g. Ring Road (King's Square), City Center, Benin City)
+        // 1. Check verified Benin City landmarks FIRST for rich, detailed landmark titles (0ms)
         try {
             val nearestLandmark = com.esdispatch.data.AddressDatabase.findNearest(lat, lng, maxDistKm = 0.35)
             if (nearestLandmark != null) {
@@ -287,16 +392,41 @@ object GeocoderUtils {
             }
         } catch (_: Exception) {}
 
-        // 2. High-Accuracy Mapbox Reverse Geocoding
+        // 2. High-Accuracy Google Geocoding API
+        try {
+            val apiKey = com.esdispatch.BuildConfig.GOOGLE_MAPS_API_KEY
+            if (!apiKey.isNullOrBlank()) {
+                val urlString = "https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=$apiKey"
+                val conn = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 3500
+                conn.readTimeout = 3500
+                if (conn.responseCode == 200) {
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val jsonObj = org.json.JSONObject(jsonStr)
+                    val results = jsonObj.optJSONArray("results")
+                    if (results != null && results.length() > 0) {
+                        val formattedAddress = results.getJSONObject(0).optString("formatted_address")
+                        if (formattedAddress.isNotBlank()) {
+                            val clean = formattedAddress.replace(", Nigeria", "").replace(", Edo", "").trim()
+                            reverseGeocodeCache[cacheKey] = clean
+                            return@withContext clean
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ReverseGeocode", "Google Geocoding error: ${e.message}")
+        }
+
+        // 3. High-Accuracy Mapbox Reverse Geocoding
         try {
             val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
             if (!token.isNullOrBlank()) {
                 val urlString = "https://api.mapbox.com/geocoding/v5/mapbox.places/$lng,$lat.json?access_token=$token&limit=1"
-                val url = java.net.URL(urlString)
-                val conn = url.openConnection() as java.net.HttpURLConnection
+                val conn = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
-                conn.connectTimeout = 5000
-                conn.readTimeout = 5000
+                conn.connectTimeout = 3500
+                conn.readTimeout = 3500
                 if (conn.responseCode == 200) {
                     val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                     val jsonObj = org.json.JSONObject(jsonStr)
@@ -306,7 +436,7 @@ object GeocoderUtils {
                         val placeName = firstObj.optString("place_name")
                         val text = firstObj.optString("text")
                         val addressNum = firstObj.optString("address")
-                        
+
                         val formatted = when {
                             addressNum.isNotBlank() && text.isNotBlank() -> {
                                 "$addressNum $text, " + placeName.substringAfter(", ").replace(", Nigeria", "").replace(", Edo", "")
@@ -316,7 +446,7 @@ object GeocoderUtils {
                             }
                             else -> text
                         }
-                        
+
                         if (formatted.isNotBlank()) {
                             reverseGeocodeCache[cacheKey] = formatted
                             return@withContext formatted
@@ -328,7 +458,7 @@ object GeocoderUtils {
             android.util.Log.e("ReverseGeocode", "Mapbox reverse geocode error: ${e.message}")
         }
 
-        // 3. Android System Geocoder fallback
+        // 4. Android System Geocoder fallback
         try {
             val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
             val addrs = getFromLocationCompat(geocoder, lat, lng, 1)
@@ -349,32 +479,72 @@ object GeocoderUtils {
     }
 
     suspend fun geocodeAddress(context: android.content.Context, address: String): Pair<Double, Double>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        if (address.isBlank()) return@withContext null
+        val cleanAddr = address.trim()
+        if (cleanAddr.isBlank()) return@withContext null
+        val cacheKey = cleanAddr.lowercase()
+        geocodeCache[cacheKey]?.let { return@withContext it }
 
-        // 1. Check AddressDatabase coordinates first
+        // 1. Check AddressDatabase coordinates first (0ms)
         try {
-            com.esdispatch.data.AddressDatabase.getCoordinates(address)?.let {
+            com.esdispatch.data.AddressDatabase.getCoordinates(cleanAddr)?.let {
+                geocodeCache[cacheKey] = it
                 return@withContext it
             }
         } catch (_: Exception) {}
 
         // 2. Check if address matches a known landmark for instant resolution
-        val cleanA = address.trim().lowercase()
+        val cleanA = cleanAddr.lowercase()
         POPULAR_LANDMARKS.firstOrNull { lm ->
-            lm.keywords.any { it.equals(cleanA, ignoreCase = true) } || lm.title.equals(address.trim(), ignoreCase = true)
+            lm.keywords.any { it.equals(cleanA, ignoreCase = true) } || lm.title.equals(cleanAddr, ignoreCase = true)
         }?.let {
-            return@withContext Pair(it.lat, it.lng)
+            val res = Pair(it.lat, it.lng)
+            geocodeCache[cacheKey] = res
+            return@withContext res
         }
 
+        // 3. Google Maps Geocoding API
+        try {
+            val apiKey = com.esdispatch.BuildConfig.GOOGLE_MAPS_API_KEY
+            if (!apiKey.isNullOrBlank()) {
+                val expandedAddress = expandQuery(cleanAddr)
+                val encoded = java.net.URLEncoder.encode("$expandedAddress, Benin City, Nigeria", "UTF-8")
+                val url = java.net.URL("https://maps.googleapis.com/maps/api/geocode/json?address=$encoded&key=$apiKey")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 3500
+                conn.readTimeout = 3500
+                if (conn.responseCode == 200) {
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val obj = org.json.JSONObject(jsonStr)
+                    val results = obj.optJSONArray("results")
+                    if (results != null && results.length() > 0) {
+                        val geometry = results.getJSONObject(0).optJSONObject("geometry")
+                        val loc = geometry?.optJSONObject("location")
+                        if (loc != null) {
+                            val lat = loc.optDouble("lat")
+                            val lng = loc.optDouble("lng")
+                            if (lat != 0.0 && lng != 0.0) {
+                                val res = Pair(lat, lng)
+                                geocodeCache[cacheKey] = res
+                                return@withContext res
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("GeocoderUtils", "Google Geocoding error: ${e.message}")
+        }
+
+        // 4. Mapbox Geocoding fallback
         try {
             val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
             if (!token.isNullOrBlank()) {
-                val expandedAddress = expandQuery(address)
-                val encoded = java.net.URLEncoder.encode(expandedAddress.trim(), "UTF-8")
+                val expandedAddress = expandQuery(cleanAddr)
+                val encoded = java.net.URLEncoder.encode(expandedAddress, "UTF-8")
                 val url = java.net.URL("https://api.mapbox.com/geocoding/v5/mapbox.places/$encoded.json?access_token=$token&limit=1")
                 val conn = url.openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 4000
-                conn.readTimeout = 4000
+                conn.connectTimeout = 3500
+                conn.readTimeout = 3500
                 if (conn.responseCode == 200) {
                     val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                     val obj = org.json.JSONObject(jsonStr)
@@ -384,23 +554,29 @@ object GeocoderUtils {
                         if (center != null && center.length() >= 2) {
                             val lng = center.getDouble(0)
                             val lat = center.getDouble(1)
-                            return@withContext Pair(lat, lng)
+                            val res = Pair(lat, lng)
+                            geocodeCache[cacheKey] = res
+                            return@withContext res
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("GeocoderUtils", "Mapbox geocode error: ${e.message}")
+            android.util.Log.w("GeocoderUtils", "Mapbox geocode error: ${e.message}")
         }
+
+        // 5. Android Geocoder fallback
         try {
             val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
-            val expanded = expandQuery(address)
+            val expanded = expandQuery(cleanAddr)
             val list = getFromLocationNameCompat(geocoder, expanded, 1)
             if (!list.isNullOrEmpty()) {
-                return@withContext Pair(list[0].latitude, list[0].longitude)
+                val res = Pair(list[0].latitude, list[0].longitude)
+                geocodeCache[cacheKey] = res
+                return@withContext res
             }
         } catch (e: Exception) {
-            android.util.Log.e("GeocoderUtils", "Android geocode error: ${e.message}")
+            android.util.Log.w("GeocoderUtils", "Android geocode error: ${e.message}")
         }
         return@withContext null
     }

@@ -68,7 +68,6 @@ data class AdminActivityLog(
 )
 
 class DeliveryViewModel : WalletViewModel() {
-    val waitTimes = mutableMapOf<String, Long>()
 
     // --- Context & Preferences Persistence ---
     
@@ -1390,14 +1389,14 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
-    /** Upload delivery proof photo to canonical storage path, update Firestore, and either complete or proceed to signature */
-    fun uploadPickupPhotoAndVerify(
+    /** Upload pre-pickup parcel photo to pickup_photos/{parcelId}/pickup.jpg and record pickupPhotoUrl */
+    fun uploadPickupPhoto(
         parcelId: String,
         photoBytes: ByteArray,
-        onComplete: ((Boolean, String?) -> Unit)? = null
+        onComplete: (Boolean, String?) -> Unit
     ) {
         try {
-            val canonicalPath = "pickup_proofs/$parcelId/pickup_photo.jpg"
+            val canonicalPath = "pickup_photos/$parcelId/pickup.jpg"
             val ref = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child(canonicalPath)
             ref.putBytes(photoBytes)
                 .addOnSuccessListener {
@@ -1405,24 +1404,27 @@ class DeliveryViewModel : WalletViewModel() {
                         val downloadUrl = url.toString()
                         val updates = hashMapOf<String, Any>(
                             "pickupPhotoUrl" to downloadUrl,
-                            "status" to "PICKED_UP",
-                            "progress" to 0.40f
+                            "lastUpdated" to System.currentTimeMillis()
                         )
-                        com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                            .collection("deliveries").document(parcelId)
-                            .update(updates)
-                            .addOnSuccessListener { onComplete?.invoke(true, null) }
-                            .addOnFailureListener { onComplete?.invoke(false, it.message) }
+                        com.esdispatch.data.FirebaseManager.firestore?.collection("deliveries")?.document(parcelId)
+                            ?.set(updates, com.google.firebase.firestore.SetOptions.merge())
+                        onComplete(true, downloadUrl)
+                    }.addOnFailureListener { e ->
+                        android.util.Log.e("PickupPhoto", "Failed to retrieve photo download URL: ${e.message}")
+                        onComplete(false, e.message)
                     }
                 }
-                .addOnFailureListener {
-                    onComplete?.invoke(false, it.message)
+                .addOnFailureListener { e ->
+                    android.util.Log.e("PickupPhoto", "Failed to upload pickup photo: ${e.message}")
+                    onComplete(false, e.message)
                 }
         } catch (e: Exception) {
-            onComplete?.invoke(false, e.message)
+            android.util.Log.e("PickupPhoto", "Exception uploading pickup photo: ${e.message}")
+            onComplete(false, e.message)
         }
     }
 
+    /** Upload delivery proof photo to canonical storage path, update Firestore, and either complete or proceed to signature */
     fun uploadDeliveryPhotoAndVerify(
         parcelId: String,
         photoBytes: ByteArray,
@@ -4811,7 +4813,7 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
-    fun updateDraftSpecs(quantity: Int, weight: Double, itemValue: Double, length: Int, width: Int, height: Int) {
+    fun updateDraftSpecs(quantity: Int, weight: Double, length: Int, width: Int, height: Int, declaredValue: Double = 0.0) {
         _parcelDraft.update {
             it.copy(
                 quantity = quantity,
@@ -4819,7 +4821,7 @@ class DeliveryViewModel : WalletViewModel() {
                 length = length,
                 width = width,
                 height = height,
-                itemValue = itemValue
+                declaredValue = declaredValue
             )
         }
     }
@@ -4838,6 +4840,19 @@ class DeliveryViewModel : WalletViewModel() {
 
     fun updateDraftItemName(itemName: String) {
         _parcelDraft.update { it.copy(itemName = itemName) }
+    }
+
+    fun dismissFeedback(parcelId: String) {
+        if (parcelId.isBlank()) return
+        _parcels.update { list ->
+            list.map { if (it.id == parcelId) it.copy(feedbackDismissed = true) else it }
+        }
+        val db = FirebaseManager.firestore ?: return
+        db.collection("deliveries").document(parcelId)
+            .update("feedbackDismissed", true)
+            .addOnFailureListener {
+                Log.w("DeliveryViewModel", "Could not persist feedbackDismissed: ${it.message}")
+            }
     }
 
     fun populateDraftFromParcel(parcel: com.esdispatch.data.Parcel) {
@@ -6992,15 +7007,9 @@ class DeliveryViewModel : WalletViewModel() {
 
     suspend fun searchAddressAutocompleteItems(query: String): List<com.esdispatch.utils.SearchResultItem> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
-        val context = com.esdispatch.DispatchApplication.instance
-        val googleMatches = try {
-            com.esdispatch.utils.GoogleMapsHelper.searchPlaces(context, query)
-        } catch (e: Throwable) {
-            emptyList()
-        }
         val localMatches = com.esdispatch.data.AddressDatabase.searchItems(query)
         val mapboxMatches = com.esdispatch.utils.GeocoderUtils.fetchMapboxPlacesAutocompleteItems(query)
-        return@withContext (googleMatches + localMatches + mapboxMatches).distinctBy { it.displayInput }
+        return@withContext (localMatches + mapboxMatches).distinctBy { it.displayInput }
     }
 
     suspend fun searchAddressAutocomplete(query: String): List<String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -7016,7 +7025,7 @@ class DeliveryViewModel : WalletViewModel() {
 
     suspend fun pinDropNearestAddress(lat: Double, lng: Double): String {
         val context = com.esdispatch.DispatchApplication.instance
-        return com.esdispatch.utils.GoogleMapsHelper.reverseGeocode(context, lat, lng)
+        return com.esdispatch.utils.GeocoderUtils.reverseGeocodeCoordinates(context, lat, lng)
     }
 
     fun optimizeBatchRoute(batchName: String, stops: List<String>, onResult: (BatchRoutePlan) -> Unit) {
@@ -8317,12 +8326,12 @@ data class ParcelDraft(
     val height: Int = 10,
     val selectedService: String = "Express",
     val price: Double = 0.0,
-    val itemValue: Double = 0.0,
     val selectedCategory: String = "Standard",
     val pickupLat: Double? = null,
     val pickupLng: Double? = null,
     val deliveryLat: Double? = null,
-    val deliveryLng: Double? = null
+    val deliveryLng: Double? = null,
+    val declaredValue: Double = 0.0
 )
 
 /** Discount coupon state resolved from the admin-managed `promotions` collection. */
