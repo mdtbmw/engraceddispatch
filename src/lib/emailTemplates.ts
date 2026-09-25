@@ -528,7 +528,7 @@ export function wrapInMasterLuxuryTemplate(opts: MasterEmailOptions): string {
                     </div>
                   </td>
                   <td style="vertical-align: middle;" align="right" valign="middle">
-                    <a style="display: inline-block; padding: 6px 14px; background: #1F2937; border-radius: 6px; text-decoration: none; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 11px; font-weight: 700; color: #FFB800;" href="https://esdispatch.vercel.app" target="_blank" rel="noopener">
+                    <a style="display: inline-block; padding: 6px 14px; background: #1F2937; border-radius: 6px; text-decoration: none; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 11px; font-weight: 700; color: #FFB800;" href="https://engraceddispatchnew.vercel.app" target="_blank" rel="noopener">
                       PORTAL &#8599;
                     </a>
                   </td>
@@ -543,7 +543,7 @@ export function wrapInMasterLuxuryTemplate(opts: MasterEmailOptions): string {
               <div>&copy; ${currentYear} ESDISPATCH &bull; Premium Logistics &amp; Dispatch &bull; Encrypted 256-Bit SSL Telemetry</div>
               <div style="padding-top: 4px;">
                 <a href="https://www.engracedsmile.com" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Official Website</a> &bull;
-                <a href="https://esdispatch.vercel.app" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Web Portal</a> &bull;
+                <a href="https://engraceddispatchnew.vercel.app" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Web Portal</a> &bull;
                 <a href="mailto:support@engracedsmile.com" style="color: #9CA3AF; text-decoration: underline;">Support Desk</a> &bull;
                 <a href="https://www.engracedsmile.com/privacy" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Privacy</a> &bull;
                 <a href="https://www.engracedsmile.com/unsubscribe" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Unsubscribe</a>
@@ -695,7 +695,7 @@ export function generatePlainTextEmail(opts: MasterEmailOptions): string {
   lines.push('Email: support@engracedsmile.com');
   lines.push('Hotline: +234 905 626 3010');
   lines.push('Headquarters: 17 Upper Adesuwa Rd, GRA, Benin City, Edo State, Nigeria');
-  lines.push('Web Portal: https://esdispatch.vercel.app');
+  lines.push('Web Portal: https://engraceddispatchnew.vercel.app');
   lines.push('Official Website: https://www.engracedsmile.com');
   lines.push('');
   lines.push('To manage preferences or unsubscribe:');
@@ -752,7 +752,7 @@ export function renderSignUpOtpEmail(params: {
       { tag: 'WALLET', title: 'Escrow Safe', description: 'Automated fund protection on bookings.' },
     ],
     ctaText: 'OPEN ESDISPATCH APP',
-    ctaUrl: 'https://esdispatch.vercel.app',
+    ctaUrl: 'https://engraceddispatchnew.vercel.app',
   });
 }
 
@@ -797,7 +797,7 @@ export function renderPasswordResetOtpEmail(params: {
       { tag: 'HOTLINE', title: 'Emergency', description: 'Direct call to +234 905 626 3010.' },
     ],
     ctaText: 'VISIT SECURITY PORTAL',
-    ctaUrl: 'https://esdispatch.vercel.app',
+    ctaUrl: 'https://engraceddispatchnew.vercel.app',
   });
 }
 
@@ -841,7 +841,7 @@ export function renderTwoFactorOtpEmail(params: {
       { tag: 'PROTECTION', title: 'Zero Sharing', description: 'Never forward or send to dispatchers.' },
     ],
     ctaText: 'CONFIRM ON APP',
-    ctaUrl: 'https://esdispatch.vercel.app',
+    ctaUrl: 'https://engraceddispatchnew.vercel.app',
   });
 }
 
@@ -884,7 +884,7 @@ export function renderPinResetOtpEmail(params: {
       { tag: 'SUPPORT', title: 'Questions?', description: 'Call +234 905 626 3010 for immediate support.' },
     ],
     ctaText: 'MANAGE WALLET SETTINGS',
-    ctaUrl: 'https://esdispatch.vercel.app',
+    ctaUrl: 'https://engraceddispatchnew.vercel.app',
   });
 }
 
@@ -943,7 +943,7 @@ export function renderCustomerWelcomeEmail(params: {
       { tag: 'WALLET', title: 'Unified Balance', description: 'Fund your wallet with Paystack for seamless 1-tap bookings.' },
     ],
     ctaText: 'BOOK YOUR FIRST DISPATCH',
-    ctaUrl: 'https://esdispatch.vercel.app',
+    ctaUrl: 'https://engraceddispatchnew.vercel.app',
   });
 }
 
@@ -988,7 +988,7 @@ export function renderPromotionalCampaignEmail(params: {
       { tag: 'LIVE MAP', title: 'Track Anywhere', description: 'Share live tracking links with your parcel recipients.' },
     ],
     ctaText: 'CLAIM PROMO DISCOUNT',
-    ctaUrl: 'https://esdispatch.vercel.app',
+    ctaUrl: 'https://engraceddispatchnew.vercel.app',
   });
 }
 
@@ -1041,7 +1041,7 @@ export function renderDeliveryHandoverOtpEmail(params: {
       { tag: 'BENIN CITY', title: 'Live GPS Telemetry', description: 'Active turn-by-turn map tracking.' },
     ],
     ctaText: 'TRACK LIVE ON MAP',
-    ctaUrl: `https://esdispatch.vercel.app/track?id=${params.trackingNumber}`,
+    ctaUrl: `https://engraceddispatchnew.vercel.app/track?id=${params.trackingNumber}`,
   });
 }
 
@@ -1101,7 +1101,7 @@ export function renderDeliveryInvoiceEmail(params: {
       { tag: 'STATUS', title: 'Dispatched', description: 'Fleet assigned & en route.' },
     ],
     ctaText: 'VIEW LIVE TRACKING',
-    ctaUrl: `https://esdispatch.vercel.app/track?id=${params.trackingNumber}`,
+    ctaUrl: `https://engraceddispatchnew.vercel.app/track?id=${params.trackingNumber}`,
   });
 }
 
@@ -1154,7 +1154,7 @@ export function renderWalletTransactionEmail(params: {
       { tag: 'SETTLEMENT', title: 'Paystack Sync', description: 'Direct automated banking gateway.' },
     ],
     ctaText: 'OPEN WALLET IN APP',
-    ctaUrl: 'https://esdispatch.vercel.app',
+    ctaUrl: 'https://engraceddispatchnew.vercel.app',
   });
 }
 
@@ -1210,7 +1210,7 @@ export function renderPartnerWelcomeEmail(params: {
       { tag: 'SAFETY', title: 'Live Telemetry', description: 'Continuous GPS safety monitoring.' },
     ],
     ctaText: 'ACCESS PARTNER CONSOLE',
-    ctaUrl: params.portalUrl || 'https://esdispatch.vercel.app',
+    ctaUrl: params.portalUrl || 'https://engraceddispatchnew.vercel.app',
   });
 }
 

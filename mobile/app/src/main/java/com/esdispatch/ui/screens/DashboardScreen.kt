@@ -3094,7 +3094,7 @@ fun WaybillInvoiceCard(
                         } else {
                             "Completed"
                         }
-                        val trackingUrl = "https://esdispatch.vercel.app/track?id=${parcel.id}"
+                        val trackingUrl = "https://engraceddispatchnew.vercel.app/track?id=${parcel.id}"
                         val shareText = """
                             📦 ESDISPATCH CONSIGNMENT RECEIPT
                             --------------------------------

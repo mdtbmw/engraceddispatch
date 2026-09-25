@@ -215,7 +215,7 @@ export default function EmailStudioTab({
   const [transactionType, setTransactionType] = useState<"CREDIT" | "DEBIT">("CREDIT");
   const [partnerRole, setPartnerRole] = useState<"rider" | "vendor" | "customer">("rider");
   const [ctaText, setCtaText] = useState("BOOK YOUR FIRST DISPATCH");
-  const [ctaUrl, setCtaUrl] = useState("https://esdispatch.vercel.app");
+  const [ctaUrl, setCtaUrl] = useState("https://engraceddispatchnew.vercel.app");
 
   // Promo & Voucher Specific Parameters
   const [voucherCode, setVoucherCode] = useState("ESDISPATCH20");
@@ -329,7 +329,7 @@ export default function EmailStudioTab({
           "Welcome to ESDispatch — Benin City’s premier on-demand delivery network. Whether you are sending fragile goods, eCommerce merchandise, confidential documents, or urgent parcels, our fleet guarantees precision timing and white-glove handling."
         );
         setCtaText("BOOK YOUR FIRST DISPATCH");
-        setCtaUrl("https://esdispatch.vercel.app");
+        setCtaUrl("https://engraceddispatchnew.vercel.app");
         setCard1({ tag: "SPEED", title: "45-Min Express", description: "Rapid dispatch routes across GRA, Ugbowo, and city center." });
         setCard2({ tag: "SECURITY", title: "All-Risk Insured", description: "Every dispatched package is backed by escrow protection." });
         setCard3({ tag: "WALLET", title: "Unified Balance", description: "Fund your wallet with Paystack for seamless 1-tap bookings." });
@@ -348,7 +348,7 @@ export default function EmailStudioTab({
           "Experience the fastest, most reliable logistics in Edo State with our exclusive partner discount. For a limited time, enjoy priority dispatch and reduced booking fares on all deliveries."
         );
         setCtaText("CLAIM PROMO DISCOUNT");
-        setCtaUrl("https://esdispatch.vercel.app");
+        setCtaUrl("https://engraceddispatchnew.vercel.app");
         setCard1({ tag: "ZERO SURGE", title: "Locked Pricing", description: "No rainy day or peak-hour price surges." });
         setCard2({ tag: "PRIORITY", title: "Express Assignment", description: "Nearest verified courier assigned within 60 seconds." });
         setCard3({ tag: "LIVE MAP", title: "Track Anywhere", description: "Share live tracking links with your parcel recipients." });
@@ -364,7 +364,7 @@ export default function EmailStudioTab({
           "Welcome to ESDispatch — the gold standard in express logistics and courier dispatch. Enter the one-time passcode below into your mobile application to activate your account."
         );
         setCtaText("OPEN ESDISPATCH APP");
-        setCtaUrl("https://esdispatch.vercel.app");
+        setCtaUrl("https://engraceddispatchnew.vercel.app");
         setCard1({ tag: "SECURITY", title: "256-Bit SSL", description: "End-to-end encrypted dispatch network." });
         setCard2({ tag: "DISPATCH", title: "Benin City", description: "Active fleet operating across Edo State." });
         setCard3({ tag: "WALLET", title: "Escrow Safe", description: "Automated fund protection on bookings." });
@@ -380,7 +380,7 @@ export default function EmailStudioTab({
           "We received a formal request to reset the password for your ESDispatch logistics account. If you initiated this request, authorize the update using your confidential passcode below."
         );
         setCtaText("VISIT SECURITY PORTAL");
-        setCtaUrl("https://esdispatch.vercel.app");
+        setCtaUrl("https://engraceddispatchnew.vercel.app");
         setCard1({ tag: "NOTICE", title: "Single Use", description: "Code invalidates after first successful entry." });
         setCard2({ tag: "SHIELD", title: "Keystore Lock", description: "Multi-layer device verification active." });
         setCard3({ tag: "HOTLINE", title: "Emergency", description: "Direct call to +234 905 626 3010." });
@@ -396,7 +396,7 @@ export default function EmailStudioTab({
           "A new sign-in attempt was detected from your verified mobile application. Enter the one-time authentication code below to finalize your session."
         );
         setCtaText("CONFIRM ON APP");
-        setCtaUrl("https://esdispatch.vercel.app");
+        setCtaUrl("https://engraceddispatchnew.vercel.app");
         setCard1({ tag: "DEVICE", title: "Identity Locked", description: "Session locked to active client signature." });
         setCard2({ tag: "EXPIRY", title: "5 Minutes", description: "Instant auto-expiration window." });
         setCard3({ tag: "PROTECTION", title: "Zero Sharing", description: "Never forward or send to dispatchers." });
@@ -412,7 +412,7 @@ export default function EmailStudioTab({
           "You have initiated a change or reset of your ESDispatch transaction security PIN. Your wallet PIN secures all fund transfers, balance deductions, and delivery escrows. Enter the authorization code below to complete this update."
         );
         setCtaText("MANAGE WALLET SETTINGS");
-        setCtaUrl("https://esdispatch.vercel.app");
+        setCtaUrl("https://engraceddispatchnew.vercel.app");
         setCard1({ tag: "ESCROW", title: "Fund Protection", description: "Secures your Naira wallet balance." });
         setCard2({ tag: "SECURITY", title: "Hardware Lock", description: "Validated against device keystore." });
         setCard3({ tag: "SUPPORT", title: "Questions?", description: "Call +234 905 626 3010 for immediate support." });
@@ -428,7 +428,7 @@ export default function EmailStudioTab({
           `Your courier ${courierName} is approaching your delivery destination. Important: Provide this 4-digit confirmation code to your courier only after you have physically inspected your parcel.`
         );
         setCtaText("TRACK LIVE ON MAP");
-        setCtaUrl(`https://esdispatch.vercel.app/track?id=${trackingNumber}`);
+        setCtaUrl(`https://engraceddispatchnew.vercel.app/track?id=${trackingNumber}`);
         setCard1({ tag: "VERIFY", title: "Inspect Package", description: "Check seal and condition before sharing code." });
         setCard2({ tag: "ESCROW", title: "Protected Settlement", description: "Funds release only upon valid OTP submission." });
         setCard3({ tag: "BENIN CITY", title: "Live GPS Telemetry", description: "Active turn-by-turn map tracking." });
@@ -444,7 +444,7 @@ export default function EmailStudioTab({
           `Thank you for booking with ESDispatch. Your payment of ${amountPaid} has been confirmed and escrowed for delivery. Please find your itemized settlement details below.`
         );
         setCtaText("VIEW LIVE TRACKING");
-        setCtaUrl(`https://esdispatch.vercel.app/track?id=${trackingNumber}`);
+        setCtaUrl(`https://engraceddispatchnew.vercel.app/track?id=${trackingNumber}`);
         setCard1({ tag: "SERVICE", title: serviceType, description: "Door-to-door citywide delivery." });
         setCard2({ tag: "TRACKING", title: `#${trackingNumber}`, description: "Real-time telemetry enabled." });
         setCard3({ tag: "STATUS", title: "Dispatched", description: "Fleet assigned & en route." });
@@ -460,7 +460,7 @@ export default function EmailStudioTab({
           `Your ESDispatch wallet balance has been updated successfully. Transaction reference: ${trackingNumber}.`
         );
         setCtaText("OPEN WALLET IN APP");
-        setCtaUrl("https://esdispatch.vercel.app");
+        setCtaUrl("https://engraceddispatchnew.vercel.app");
         setCard1({ tag: "LEDGER", title: "Instant Audit", description: "Immutable transaction logging." });
         setCard2({ tag: "SPEED", title: "Real-Time", description: "Zero waiting for balance updates." });
         setCard3({ tag: "SETTLEMENT", title: "Paystack Sync", description: "Direct automated banking gateway." });
@@ -476,7 +476,7 @@ export default function EmailStudioTab({
           "Congratulations! You have been officially verified and onboarded as an authorized Fleet Courier Partner with ESDispatch. As an esteemed member of our logistics family, you enjoy prompt fleet assignments, automated escrow settlements, and direct dispatcher guidance across Benin City."
         );
         setCtaText("ACCESS PARTNER CONSOLE");
-        setCtaUrl("https://esdispatch.vercel.app");
+        setCtaUrl("https://engraceddispatchnew.vercel.app");
         setCard1({ tag: "STANDARDS", title: "Zero Compromise", description: "Strict timing and secure deliveries." });
         setCard2({ tag: "EARNINGS", title: "Prompt Payouts", description: "Direct wallet settlements & cumulative tips." });
         setCard3({ tag: "SAFETY", title: "Live Telemetry", description: "Continuous GPS safety monitoring." });
