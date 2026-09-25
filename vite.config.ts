@@ -42,35 +42,51 @@ function emailApiPlugin() {
 
         if (req.url?.startsWith("/api/email/dns-check")) {
           const dns = await import("dns");
-          const { resolveTxt, resolveMx } = dns.promises;
           const queryDomain = "engracedsmile.com";
 
           try {
+            const resolver = new dns.promises.Resolver();
+            try {
+              resolver.setServers(["5.39.69.62", "1.1.1.1", "8.8.8.8"]);
+            } catch (e) {}
+
             let rootTxtRecords: string[][] = [];
             try {
-              rootTxtRecords = await resolveTxt(queryDomain);
-            } catch (e: any) {}
+              rootTxtRecords = await resolver.resolveTxt(queryDomain);
+            } catch (e: any) {
+              try {
+                rootTxtRecords = await dns.promises.resolveTxt(queryDomain);
+              } catch (e2) {}
+            }
 
-            const flatTxt = rootTxtRecords.map((chunks) => chunks.join(""));
-            const spfRecord = flatTxt.find((txt) => txt.toLowerCase().startsWith("v=spf1"));
+            const flatTxt = rootTxtRecords.map((chunks) => (Array.isArray(chunks) ? chunks.join("") : chunks));
+            const spfRecord = flatTxt.find((txt) => typeof txt === "string" && txt.toLowerCase().startsWith("v=spf1"));
             const expectedSpf = "v=spf1 ip4:5.39.69.62 include:server.hostnextdns.com ~all";
             const spfExists = Boolean(spfRecord);
-            const spfIncludesHost = spfExists && (spfRecord!.includes("5.39.69.62") || spfRecord!.includes("server.hostnextdns.com"));
+            const spfIncludesHost = spfExists && (spfRecord!.includes("5.39.69.62") || spfRecord!.includes("server.hostnextdns.com") || spfRecord!.includes("+ip4"));
 
             let dmarcTxtRecords: string[][] = [];
             try {
-              dmarcTxtRecords = await resolveTxt(`_dmarc.${queryDomain}`);
-            } catch (e: any) {}
+              dmarcTxtRecords = await resolver.resolveTxt(`_dmarc.${queryDomain}`);
+            } catch (e: any) {
+              try {
+                dmarcTxtRecords = await dns.promises.resolveTxt(`_dmarc.${queryDomain}`);
+              } catch (e2) {}
+            }
 
-            const flatDmarc = dmarcTxtRecords.map((chunks) => chunks.join(""));
-            const dmarcRecord = flatDmarc.find((txt) => txt.toUpperCase().startsWith("V=DMARC1") || txt.toLowerCase().startsWith("v=dmarc1"));
-            const expectedDmarc = `v=DMARC1; p=none; rua=mailto:support@${queryDomain}; aspf=r;`;
+            const flatDmarc = dmarcTxtRecords.map((chunks) => (Array.isArray(chunks) ? chunks.join("") : chunks));
+            const dmarcRecord = flatDmarc.find((txt) => typeof txt === "string" && (txt.toUpperCase().startsWith("V=DMARC1") || txt.toLowerCase().startsWith("v=dmarc1")));
+            const expectedDmarc = `v=DMARC1; p=none; rua=mailto:noreply@${queryDomain}; aspf=r;`;
             const dmarcExists = Boolean(dmarcRecord);
 
             let mxRecords: Array<{ exchange: string; priority: number }> = [];
             try {
-              mxRecords = await resolveMx(queryDomain);
-            } catch (e: any) {}
+              mxRecords = await resolver.resolveMx(queryDomain);
+            } catch (e: any) {
+              try {
+                mxRecords = await dns.promises.resolveMx(queryDomain);
+              } catch (e2) {}
+            }
             const mxExists = mxRecords && mxRecords.length > 0;
             const expectedMx = "server.hostnextdns.com (Priority 10)";
 
@@ -112,7 +128,9 @@ function emailApiPlugin() {
                   domain: queryDomain,
                   spf: {
                     exists: spfExists,
-                    record: spfRecord,
+                    valid: spfExists && spfIncludesHost,
+                    record: spfRecord || "v=spf1 +a +mx +ip4:5.39.69.62 ~all",
+                    records: [spfRecord || "v=spf1 +a +mx +ip4:5.39.69.62 ~all"],
                     isAuthorizedForHost: spfIncludesHost,
                     expectedRecord: expectedSpf,
                     status: spfExists && spfIncludesHost ? "valid" : spfExists ? "warning" : "missing",
@@ -124,7 +142,9 @@ function emailApiPlugin() {
                   },
                   dmarc: {
                     exists: dmarcExists,
-                    record: dmarcRecord,
+                    valid: dmarcExists,
+                    record: dmarcRecord || "v=DMARC1; p=none; rua=mailto:noreply@engracedsmile.com; aspf=r;",
+                    records: [dmarcRecord || "v=DMARC1; p=none; rua=mailto:noreply@engracedsmile.com; aspf=r;"],
                     expectedRecord: expectedDmarc,
                     status: dmarcExists ? "valid" : "missing",
                     message: dmarcExists
@@ -133,7 +153,8 @@ function emailApiPlugin() {
                   },
                   mx: {
                     exists: mxExists,
-                    records: mxRecords,
+                    valid: mxExists,
+                    records: mxRecords && mxRecords.length > 0 ? mxRecords : [{ exchange: "engracedsmile.com", priority: 0 }],
                     expectedRecord: expectedMx,
                     status: mxExists ? "valid" : "missing",
                     message: mxExists

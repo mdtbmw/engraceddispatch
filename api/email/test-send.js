@@ -1,6 +1,6 @@
-import nodemailer from "nodemailer";
+const nodemailer = require("nodemailer");
 
-function extractPlainTextFromHtml(html: string): string {
+function extractPlainText(html) {
   if (!html) return "";
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -28,33 +28,38 @@ function extractPlainTextFromHtml(html: string): string {
     .trim();
 }
 
-export default async function handler(req: any, res: any) {
+module.exports = async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
-    return res.status(405).json({ success: false, error: "Method not allowed. Use POST." });
+    return res.status(405).json({ success: false, error: "Method not allowed" });
   }
 
   try {
-    const { to, subject, html, text, credentials } = req.body || {};
+    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+    const { to, subject, html, text, credentials } = body;
 
     if (!to || !to.includes("@")) {
-      return res.status(400).json({ success: false, error: "A valid recipient email address is required." });
-    }
-
-    if (!subject || !html) {
-      return res.status(400).json({ success: false, error: "Subject and HTML body are required." });
+      return res.status(400).json({ success: false, error: "Valid recipient email required." });
     }
 
     const host = (credentials?.host || process.env.SMTP_HOST || "server.hostnextdns.com").trim();
     const port = Number(credentials?.port || process.env.SMTP_PORT || 465);
-    const secure = credentials?.secure !== undefined ? Boolean(credentials.secure) : port === 465;
+    const secure = port === 465;
     const user = (credentials?.user || process.env.SMTP_USER || "noreply@engracedsmile.com").trim();
     const pass = (credentials?.pass || process.env.SMTP_PASS || "ha;LS.fiewLkDw~x").trim();
-    const fromEmail = (credentials?.fromEmail || credentials?.user || "noreply@engracedsmile.com").trim();
+    const fromEmail = (credentials?.fromEmail || user).trim();
     const fromName = (credentials?.fromName || "ESDispatch Logistics").trim();
 
     const plainText = (text && text.trim().length > 50 && text !== subject)
       ? text.trim()
-      : extractPlainTextFromHtml(html);
+      : extractPlainText(html);
 
     const domain = fromEmail.includes("@") ? fromEmail.split("@")[1] : "engracedsmile.com";
     const randomHex = Math.random().toString(36).substring(2, 10);
@@ -65,9 +70,10 @@ export default async function handler(req: any, res: any) {
       port,
       secure,
       auth: { user, pass },
-      tls: {
-        rejectUnauthorized: false,
-      },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
     });
 
     const info = await transporter.sendMail({
@@ -75,10 +81,10 @@ export default async function handler(req: any, res: any) {
       sender: fromEmail,
       replyTo: `"ESDispatch Support" <support@${domain}>`,
       to: to.trim(),
-      subject: subject.trim(),
+      subject: (subject || "ESDispatch Notification").trim(),
       text: plainText,
       html: html,
-      messageId: messageId,
+      messageId,
       envelope: {
         from: fromEmail,
         to: [to.trim()],
@@ -86,14 +92,12 @@ export default async function handler(req: any, res: any) {
       headers: {
         "X-Mailer": "ESDispatch Logistics Mailer/2026",
         "X-Priority": "3",
-        "List-Unsubscribe": `<mailto:support@${domain}?subject=unsubscribe>, <https://www.engracedsmile.com/unsubscribe>`,
+        "List-Unsubscribe": `<mailto:noreply@${domain}?subject=unsubscribe>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "Feedback-ID": `esdispatch:notification:${Date.now()}`,
         "X-Entity-Ref-ID": `${Date.now()}-${randomHex}`,
       },
     });
-
-    console.log(`[Vercel SMTP Test Send] Sent to ${to}: MessageId ${info.messageId}`);
 
     return res.status(200).json({
       success: true,
@@ -102,11 +106,11 @@ export default async function handler(req: any, res: any) {
       accepted: info.accepted,
       response: info.response,
     });
-  } catch (error: any) {
-    console.error("[Vercel SMTP Test Send Error]", error);
+  } catch (err) {
+    console.error("[Test Send Error]", err);
     return res.status(500).json({
       success: false,
-      error: error.message || "Failed to dispatch email via SMTP.",
+      error: err.message || "Failed to send email",
     });
   }
-}
+};
