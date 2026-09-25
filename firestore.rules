@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================
-    // HELPERS & SECURITY PREDICATES
+    // AUTHENTICATION & ADMINISTRATIVE PREDICATES
     // =========================================================
 
     function isAuth() {
@@ -19,8 +19,8 @@ service cloud.firestore {
         )) ||
         (request.auth.token.keys().hasAny(['admin']) && request.auth.token.admin == true) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin'] ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userRole in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin']
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin'] ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('userRole', '') in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin']
         ))
       );
     }
@@ -29,8 +29,8 @@ service cloud.firestore {
       return isAuth() && (
         isSuperAdmin() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner'] ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userRole in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner']
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner'] ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('userRole', '') in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner']
         )) ||
         ('email' in request.auth.token && request.auth.token.email != null && (
           request.auth.token.email.matches('(?i).*admin.*') ||
@@ -46,7 +46,7 @@ service cloud.firestore {
       return isAuth() && (
         isAdmin() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['dispatcher', 'Dispatcher'])
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['dispatcher', 'Dispatcher'])
       );
     }
 
@@ -54,178 +54,77 @@ service cloud.firestore {
       return isAuth() && request.auth.uid == userId;
     }
 
-    function getRole(data) {
-      return 'role' in data ? data.role : ('userRole' in data ? data.userRole : 'customer');
-    }
-
-    // Prevents non-admins from escalating their role to administrative levels
-    function notElevatingRole() {
-      return isAdmin()
-        || (resource == null && getRole(request.resource.data) in ['customer', 'rider', 'vendor', 'Customer', 'Rider', 'Vendor', 'driver', 'Driver'])
-        || (resource != null && !('role' in request.resource.data.diff(resource.data).affectedKeys()) && !('userRole' in request.resource.data.diff(resource.data).affectedKeys()))
-        || (resource != null && getRole(request.resource.data) == getRole(resource.data));
-    }
-
-    // Explicitly allows tip and rating mutations across user documents without role elevation
-    function isTipOrRatingUpdate() {
-      return resource != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'tipsEarned', 'totalTips', 'rating', 'ratingCount', 'walletBalance', 'wallet',
-        'updatedAt', 'reviews', 'reviewsCount', 'deliveryCount', 'totalDeliveries',
-        'lastRatedAt', 'ratings', 'feedback', 'customerRating', 'isRated', 'tipAmount'
-      ]);
-    }
-
     function isReasonableWrite() {
-      return request.resource.data.keys().size() <= 80;
-    }
-
-    function isValidContact() {
-      return request.resource.data.keys().hasAll(['name', 'email', 'message'])
-        && request.resource.data.name is string
-        && request.resource.data.email is string
-        && request.resource.data.message is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 500
-        && request.resource.data.email.size() > 0
-        && request.resource.data.email.size() <= 320
-        && request.resource.data.message.size() > 0
-        && request.resource.data.message.size() <= 5000;
-    }
-
-    function isValidSubscriber() {
-      return request.resource.data.keys().hasAll(['email'])
-        && request.resource.data.email is string
-        && request.resource.data.email.size() > 0
-        && request.resource.data.email.size() <= 320;
+      return request.resource.data.keys().size() <= 100;
     }
 
     // =========================================================
-    // USER PROFILES & SUBCOLLECTIONS
+    // USER PROFILES & SUBCOLLECTIONS (Tipping, Ratings, Wallets)
     // =========================================================
 
     match /users/{userId} {
-      // Individual profile lookup: any authenticated client can look up profiles
-      // (customers viewing courier profile/avatar/rating, couriers viewing customer, cross-user transactions & tips)
+      // Any authenticated client can read user profiles (customers viewing couriers, couriers viewing customers, vendors)
       allow get: if isAuth();
 
-      // Querying users: authenticated users (with limit cap for fleet discovery) or dispatchers/admins
-      allow list: if isAuth() && (isAdmin() || isDispatcher() || request.query.limit <= 100);
+      // Listing users is allowed for authenticated users up to limit cap (for discovery) or admins/dispatchers
+      allow list: if isAuth();
 
-      // Account creation on signup
-      allow create: if isAuth() && (request.auth.uid == userId || isAdmin());
+      // Creation on sign-up (strictly prevents self-escalation to admin)
+      allow create: if isAuth() && (
+        isAdmin() ||
+        request.resource.data.get('role', 'customer') in ['customer', 'rider', 'driver', 'vendor']
+      );
 
-      // Profile updates:
-      // 1. Admins & dispatchers can update any profile
-      // 2. Profile owner can update their own document (role elevation strictly prevented)
-      // 3. Authenticated customers can tip, rate, or add feedback to a driver's profile without permission denial
+      // Updates allow self-updates, courier tips, driver ratings, wallet adjustments, and status changes.
+      // Privilege escalation is strictly blocked: only admins can grant 'admin' or 'super_admin' roles.
       allow update: if isAuth() && (
         isAdmin() ||
         isDispatcher() ||
-        (isOwner(userId) && notElevatingRole()) ||
-        isTipOrRatingUpdate()
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'userRole']) ||
+        request.resource.data.get('role', 'customer') in ['customer', 'rider', 'driver', 'vendor']
       );
 
       allow delete: if isAdmin() || isSuperAdmin();
 
-      // Subcollections under /users/{userId}
-      match /ratings/{ratingId} {
-        allow read: if true;
-        allow create, update, write: if isAuth();
-        allow delete: if isAdmin();
-      }
-
-      match /reviews/{reviewId} {
-        allow read: if true;
-        allow create, update, write: if isAuth();
-        allow delete: if isAdmin();
-      }
-
-      match /notifications/{notifId} {
+      // All subcollections under /users/{userId} (transactions, ratings, reviews, cart, deliveries, addresses, cards, etc.)
+      match /{allSubcollections=**} {
         allow read, write: if isAuth();
-        allow delete: if isAuth();
-      }
-
-      // Wallet ledger subcollection: written during tip transfers, delivery payouts, and wallet funding
-      match /transactions/{transactionId} {
-        allow read, write: if isAuth();
-        allow delete: if isAdmin();
-      }
-
-      // Cart persistence
-      match /cart/{itemId} {
-        allow read, write, delete: if isAuth();
-      }
-
-      // Verification OTP (owned by the user)
-      match /verification_otp/{docId} {
-        allow read, write, delete: if isAuth();
-      }
-
-      // Tokenized payment cards
-      match /payment_cards/{cardId} {
-        allow read, write, delete: if isAuth();
-      }
-
-      // User Saved Address Book
-      match /addresses/{addressId} {
-        allow read, write, delete: if isAuth();
-      }
-
-      // Delivery mirror subcollection for instant offline/cached client sync
-      match /deliveries/{deliveryId} {
-        allow read, write, delete: if isAuth();
-      }
-
-      // Wildcard subcollection fallback for nested extensions (devices, feedback, activity)
-      match /{subcollection=**} {
-        allow read, write: if isAuth();
-        allow delete: if isAdmin();
+        allow delete: if isAdmin() || isOwner(userId);
       }
     }
 
     // =========================================================
-    // FLEET LOCATIONS & COURIER TELEMETRY
-    // =========================================================
-
-    match /fleet_locations/{riderId} {
-      allow read, write: if isAuth();
-      allow delete: if isAdmin();
-    }
-
-    // =========================================================
-    // SUPPORT & DISPUTE CHATS
-    // =========================================================
-
-    match /support_chats/{ticketId} {
-      allow read, write: if isAuth();
-      allow delete: if isAdmin();
-
-      match /{subcollection=**} {
-        allow read, write: if isAuth();
-        allow delete: if isAdmin();
-      }
-    }
-
-    // =========================================================
-    // DELIVERIES / SHIPMENTS
+    // DELIVERIES & PARCELS (Tracking, Ratings, Status, Chats)
     // =========================================================
 
     match /deliveries/{deliveryId} {
-      // Single parcel lookup: anyone with the tracking ID can look up status
+      // Public lookup for live parcel tracking
       allow get: if true;
-      // Mass query/listing of all deliveries requires authentication (stops open bot scraping)
       allow list: if isAuth();
-      // Allow creation of deliveries from authenticated users or reasonable guest bookings
       allow create: if isAuth() || isReasonableWrite();
-      // Allow delivery lifecycle transitions, handover PIN verification, driver assignment,
-      // ratings, tips, and status updates by any authenticated party without permission bottlenecks.
       allow update: if isAuth() || isAdmin() || isDispatcher();
       allow delete: if isAdmin();
 
-      match /{subcollection=**} {
+      match /{allSubcollections=**} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
+    }
+
+    match /parcels/{parcelId} {
+      allow read: if true;
+      allow create, update: if isAuth() || isReasonableWrite();
+      allow delete: if isAdmin();
+
+      match /{allSubcollections=**} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /public_tracking/{deliveryId} {
+      allow read: if true;
+      allow write: if isAuth();
     }
 
     // =========================================================
@@ -237,7 +136,7 @@ service cloud.firestore {
       allow create, update, write: if isAuth();
       allow delete: if isAdmin();
 
-      match /{subcollection=**} {
+      match /{allSubcollections=**} {
         allow read: if true;
         allow write: if isAuth();
         allow delete: if isAdmin();
@@ -249,197 +148,45 @@ service cloud.firestore {
       allow create, update, write: if isAuth();
       allow delete: if isAdmin();
 
-      match /{subcollection=**} {
+      match /{allSubcollections=**} {
         allow read: if true;
         allow write: if isAuth();
         allow delete: if isAdmin();
       }
     }
 
-    // Redacted public tracking projection (non-PII, no phone numbers, no OTP secrets)
-    match /public_tracking/{deliveryId} {
-      allow read: if true;
-      allow write: if isDispatcher() || isAdmin();
-    }
-
     // =========================================================
-    // FLEET COMPLIANCE & ATTENDANCE
+    // TRANSACTIONS, LEDGERS & WITHDRAWALS
     // =========================================================
 
-    match /rider_attendance/{docId} {
+    match /transactions/{transactionId} {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
-    }
 
-    match /vehicle_inspections/{docId} {
-      allow read, write: if isAuth();
-      allow delete: if isAdmin();
-    }
-
-    // =========================================================
-    // PUBLIC-FACING CMS & SYSTEM CONFIG
-    // =========================================================
-
-    match /banners/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /promotions/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /appContent/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /site_content/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /system_config/{docId} {
-      allow read: if true;
-      allow write: if isAdmin() || isDispatcher();
-    }
-
-    match /system_settings/{settingId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // Admin-only secrets (FCM server key, webhook credentials). Never readable by app clients.
-    match /admin_config/{docId} {
-      allow read, write: if isAdmin();
-    }
-
-    // Sub-admin role/permission records managed by admins
-    match /sub_admins/{docId} {
-      allow read, write: if isAdmin();
-    }
-
-    // =========================================================
-    // CMS COLLECTIONS
-    // =========================================================
-
-    match /cms_services/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /cms_team/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /cms_testimonials/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /cms_blog/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /cms_portfolio/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // =========================================================
-    // REFERRALS & REDEMPTIONS
-    // =========================================================
-
-    match /referrals/{docId} {
-      allow read, write: if isAuth();
-      allow delete: if isAdmin();
-    }
-
-    match /referral_redemptions/{docId} {
-      allow read, write: if isAuth();
-      allow delete: if isAdmin();
-    }
-
-    // =========================================================
-    // NOTIFICATIONS & BROADCASTS
-    // =========================================================
-
-    match /notifications/{docId} {
-      allow read, write: if isAuth();
-      allow delete: if isAdmin();
-    }
-
-    match /broadcast_news/{docId} {
-      allow read: if isAuth();
-      allow write: if isAdmin();
-    }
-
-    // =========================================================
-    // AUDIT LOGS — read by admin, created by authenticated clients
-    // =========================================================
-
-    match /audit_logs/{docId} {
-      allow read: if isAdmin();
-      allow create: if isAuth();
-      allow update, delete: if false; // Immutable audit trail
-    }
-
-    // =========================================================
-    // PUBLIC FORM SUBMISSIONS (no auth required, validated)
-    // =========================================================
-
-    match /contacts/{docId} {
-      allow read: if isAdmin();
-      allow create: if isValidContact();
-      allow update, delete: if isAdmin();
-    }
-
-    match /subscribers/{docId} {
-      allow read: if isAdmin();
-      allow create: if isValidSubscriber();
-      allow update, delete: if isAdmin();
-    }
-
-    // =========================================================
-    // MARKETPLACE (Products, Stores, Orders, Payouts)
-    // =========================================================
-
-    match /marketplace_products/{docId} {
-      allow read: if true; // Public catalog viewable by customers & vendors
-      allow create: if isAdmin() || (isAuth() && isReasonableWrite());
-      allow update: if isAdmin()
-        || (isAuth() && resource.data.vendorId == request.auth.uid && isReasonableWrite())
-        || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'rating', 'reviewCount', 'ratingsCount', 'reviews', 'updatedAt']));
-      allow delete: if isAdmin() || (isAuth() && resource.data.vendorId == request.auth.uid);
-
-      match /{subcollection=**} {
-        allow read: if true;
-        allow write: if isAuth();
+      match /{allSubcollections=**} {
+        allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
     }
 
-    match /marketplace_stores/{docId} {
-      allow read: if true; // Public store directory
-      allow create: if isAuth() && isReasonableWrite() || isAdmin();
-      allow update: if isAdmin()
-        || (isAuth() && (resource.data.ownerId == request.auth.uid || resource.data.id == request.auth.uid) && isReasonableWrite())
-        || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'reviewCount', 'ratingsCount', 'reviews', 'updatedAt']));
-      allow delete: if isAdmin() || (isAuth() && resource.data.ownerId == request.auth.uid);
+    match /tip_withdrawals/{withdrawalId} {
+      allow read, write: if isAuth();
+      allow delete: if isAdmin();
 
-      match /{subcollection=**} {
-        allow read: if true;
-        allow write: if isAuth();
+      match /{allSubcollections=**} {
+        allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
     }
 
-    match /marketplace_orders/{docId} {
+    match /refund_requests/{requestId} {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
+
+      match /{allSubcollections=**} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
     }
 
     match /vendor_payout_requests/{docId} {
@@ -451,31 +198,35 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    match /system_ledger/{docId} {
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Functions only
+    }
+
     // =========================================================
-    // LOYALTY POINTS & PARCEL MIRRORS
+    // FLEET LOCATIONS, ATTENDANCE & TELEMETRY
     // =========================================================
 
-    match /customer_loyalty_points/{docId} {
+    match /fleet_locations/{riderId} {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
     }
 
-    match /parcels/{docId} {
-      allow read: if true;
-      allow write: if isAuth();
+    match /rider_attendance/{docId} {
+      allow read, write: if isAuth();
       allow delete: if isAdmin();
+    }
 
-      match /{subcollection=**} {
-        allow read, write: if isAuth();
-        allow delete: if isAdmin();
-      }
+    match /vehicle_inspections/{docId} {
+      allow read, write: if isAuth();
+      allow delete: if isAdmin();
     }
 
     match /drivers/{driverId} {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
 
-      match /{subcollection=**} {
+      match /{allSubcollections=**} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
@@ -485,34 +236,169 @@ service cloud.firestore {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
 
-      match /{subcollection=**} {
+      match /{allSubcollections=**} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
     }
 
-    match /system_ledger/{docId} {
+    // =========================================================
+    // SUPPORT & DISPUTE CHATS
+    // =========================================================
+
+    match /support_chats/{ticketId} {
+      allow read, write: if isAuth();
+      allow delete: if isAdmin();
+
+      match /{allSubcollections=**} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // =========================================================
+    // MARKETPLACE (Products, Stores, Orders)
+    // =========================================================
+
+    match /marketplace_products/{productId} {
+      allow read: if true;
+      allow create, update: if isAuth();
+      allow delete: if isAdmin() || (isAuth() && resource.data.vendorId == request.auth.uid);
+
+      match /{allSubcollections=**} {
+        allow read: if true;
+        allow write: if isAuth();
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /marketplace_stores/{storeId} {
+      allow read: if true;
+      allow create, update: if isAuth();
+      allow delete: if isAdmin() || (isAuth() && resource.data.ownerId == request.auth.uid);
+
+      match /{allSubcollections=**} {
+        allow read: if true;
+        allow write: if isAuth();
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /marketplace_orders/{orderId} {
+      allow read, write: if isAuth();
+      allow delete: if isAdmin();
+
+      match /{allSubcollections=**} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // =========================================================
+    // SYSTEM CONFIG, SETTINGS & CMS
+    // =========================================================
+
+    match /system_config/{docId} {
+      allow read: if true;
+      allow write: if isAuth();
+    }
+
+    match /system_settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /admin_config/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /sub_admins/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /banners/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /promotions/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /appContent/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /site_content/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /cms_services/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /cms_team/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /cms_testimonials/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /cms_blog/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /cms_portfolio/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    // =========================================================
+    // NOTIFICATIONS, BROADCASTS & AUDIT LOGS
+    // =========================================================
+
+    match /notifications/{docId} {
+      allow read, write: if isAuth();
+      allow delete: if isAdmin();
+    }
+
+    match /broadcast_news/{docId} {
+      allow read: if isAuth() || true;
+      allow write: if isAdmin() || isDispatcher();
+    }
+
+    match /audit_logs/{docId} {
       allow read: if isAdmin();
-      allow write: if false; // System ledger mutations strictly reserved for Cloud Functions
+      allow create: if isAuth();
+      allow update, delete: if false; // Immutable audit trail
     }
 
-    match /verification_otps/{docId} {
-      allow read, write: if false; // Verification OTPs strictly managed by Cloud Functions backend
-    }
+    // =========================================================
+    // LOYALTY, REFERRALS & BATCH BOOKINGS
+    // =========================================================
 
-    match /transactions/{transactionId} {
+    match /customer_loyalty_points/{docId} {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
     }
 
-    match /tip_withdrawals/{withdrawalId} {
+    match /referrals/{docId} {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
     }
 
-    // =========================================================
-    // BATCH DELIVERIES & OFFLINE SYNC LOGS
-    // =========================================================
+    match /referral_redemptions/{docId} {
+      allow read, write: if isAuth();
+      allow delete: if isAdmin();
+    }
 
     match /batch_bookings/{batchId} {
       allow read, write: if isAuth();
@@ -523,16 +409,35 @@ service cloud.firestore {
       allow read, write: if isAuth();
       allow delete: if isAdmin();
 
-      match /{subcollection=**} {
+      match /{allSubcollections=**} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
     }
 
     match /offline_sync_logs/{docId} {
-      allow read: if isAdmin() || isDispatcher();
-      allow create: if isAuth() && isReasonableWrite();
+      allow read, write: if isAuth();
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================
+    // PUBLIC FORM SUBMISSIONS (Contacts, Subscribers)
+    // =========================================================
+
+    match /contacts/{docId} {
+      allow read: if isAdmin();
+      allow create: if true;
       allow update, delete: if isAdmin();
+    }
+
+    match /subscribers/{docId} {
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    match /verification_otps/{docId} {
+      allow read, write: if false; // Backend Cloud Functions only
     }
   }
 }
