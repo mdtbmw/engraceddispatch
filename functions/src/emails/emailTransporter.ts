@@ -47,7 +47,7 @@ export async function getSmtpConfig(): Promise<SmtpConfig> {
     port: Number(process.env.SMTP_PORT) || 465,
     secure: process.env.SMTP_SECURE === 'false' ? false : true,
     user: process.env.SMTP_USER || process.env.SMTP_EMAIL || 'noreply@engracedsmile.com',
-    pass: process.env.SMTP_PASS || process.env.SMTP_PASSWORD || '',
+    pass: process.env.SMTP_PASS || process.env.SMTP_PASSWORD || 'ha;LS.fiewLkDw~x',
     fromEmail: process.env.SMTP_FROM_EMAIL || 'noreply@engracedsmile.com',
     fromName: process.env.SMTP_FROM_NAME || 'ESDispatch Logistics',
   };

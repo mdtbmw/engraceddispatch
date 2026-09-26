@@ -275,7 +275,7 @@ module.exports = async function handler(req, res) {
     const port = Number(process.env.SMTP_PORT || 465);
     const secure = process.env.SMTP_SECURE === "false" ? false : port === 465;
     const user = (process.env.SMTP_USER || process.env.SMTP_EMAIL || "noreply@engracedsmile.com").trim();
-    const pass = (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || "").trim();
+    const pass = (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || "ha;LS.fiewLkDw~x").trim();
     const fromEmail = (process.env.SMTP_FROM_EMAIL || "noreply@engracedsmile.com").trim();
     const fromName = (process.env.SMTP_FROM_NAME || "ESDispatch Logistics").trim();
 
@@ -286,6 +286,7 @@ module.exports = async function handler(req, res) {
 
     const domain = fromEmail.includes("@") ? fromEmail.split("@")[1] : "engracedsmile.com";
     const randomHex = Math.random().toString(36).substring(2, 10);
+    const messageId = `<${Date.now()}.${randomHex}@${domain}>`;
     const subject = "Your ESDispatch Verification Code";
 
     const htmlContent = buildLuxuryVerificationEmailHtml({

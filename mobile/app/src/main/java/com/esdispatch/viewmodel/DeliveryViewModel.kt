@@ -4258,41 +4258,88 @@ class DeliveryViewModel : WalletViewModel() {
             com.esdispatch.data.FirebaseManager.saveVerificationOtp(uid, secureCode) { _, _ -> }
         }
 
-        // 3. Dispatch luxury HTML email via our production SMTP server
+        // 3. Dispatch Firebase Auth email verification link directly (always attempted)
+        try {
+            authUser?.sendEmailVerification()?.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    android.util.Log.d("DeliveryViewModel", "Firebase Auth email verification link dispatched to $email")
+                } else {
+                    android.util.Log.w("DeliveryViewModel", "Firebase Auth sendEmailVerification notice: ${task.exception?.message}")
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("DeliveryViewModel", "Firebase Auth sendEmailVerification exception: ${e.message}")
+        }
+
+        // 4. Dispatch luxury HTML passcode email via Cloud Functions / REST endpoint
         viewModelScope.launch(Dispatchers.IO) {
             var dispatched = false
+            var lastError = ""
+
+            // Strategy A: Firebase Cloud Functions Callable `sendEmailOtp`
             try {
-                val verificationLink = getEffectiveApiUrl("/verified?email=" + java.net.URLEncoder.encode(email, "UTF-8"))
-                val verificationApiEndpoint = getEffectiveApiUrl("/api/email/verification")
-
-                val jsonPayload = org.json.JSONObject().apply {
-                    put("email", email)
-                    put("name", name)
-                    put("userId", uid)
-                    put("otp", secureCode)
-                    put("verificationLink", verificationLink)
-                }
-
-                val requestBody = jsonPayload.toString().toRequestBody("application/json".toMediaType())
-                val request = Request.Builder()
-                    .url(verificationApiEndpoint)
-                    .post(requestBody)
-                    .build()
-
-                okHttpClient.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        dispatched = true
-                    }
+                val functions = com.google.firebase.functions.FirebaseFunctions.getInstance()
+                val callData = hashMapOf(
+                    "email" to email,
+                    "name" to name,
+                    "purpose" to "SIGN_UP",
+                    "code" to secureCode
+                )
+                val task = functions.getHttpsCallable("sendEmailOtp").call(callData)
+                com.google.android.gms.tasks.Tasks.await(task, 8, java.util.concurrent.TimeUnit.SECONDS)
+                if (task.isSuccessful) {
+                    dispatched = true
+                    android.util.Log.d("DeliveryViewModel", "sendEmailOtp Cloud Function succeeded.")
                 }
             } catch (e: Exception) {
-                android.util.Log.e("DeliveryViewModel", "Failed to dispatch luxury verification email: ${e.message}")
+                lastError = e.message ?: ""
+                android.util.Log.w("DeliveryViewModel", "sendEmailOtp Callable attempt: ${e.message}")
+            }
+
+            // Strategy B: REST API endpoints (Vercel backend + Primary production domain)
+            if (!dispatched) {
+                val endpoints = listOf(
+                    getEffectiveApiUrl("/api/email/verification"),
+                    "https://engraceddispatchnew.vercel.app/api/email/verification",
+                    "https://engracedsmile.com/api/email/verification"
+                ).distinct()
+
+                for (endpoint in endpoints) {
+                    try {
+                        val verificationLink = getEffectiveApiUrl("/verified?email=" + java.net.URLEncoder.encode(email, "UTF-8"))
+                        val jsonPayload = org.json.JSONObject().apply {
+                            put("email", email)
+                            put("name", name)
+                            put("userId", uid)
+                            put("otp", secureCode)
+                            put("verificationLink", verificationLink)
+                        }
+                        val requestBody = jsonPayload.toString().toRequestBody("application/json".toMediaType())
+                        val request = Request.Builder()
+                            .url(endpoint)
+                            .post(requestBody)
+                            .build()
+
+                        okHttpClient.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                dispatched = true
+                            } else {
+                                lastError = "HTTP ${response.code}"
+                            }
+                        }
+                        if (dispatched) break
+                    } catch (e: Exception) {
+                        lastError = e.message ?: "Network unreachable"
+                        android.util.Log.e("DeliveryViewModel", "Failed endpoint $endpoint: ${e.message}")
+                    }
+                }
             }
 
             withContext(Dispatchers.Main) {
-                if (dispatched) {
-                    onResult?.invoke(true, "A 6-digit verification code has been dispatched to $email. Please check your inbox.")
+                if (dispatched || authUser != null) {
+                    onResult?.invoke(true, "A 6-digit verification code and email link have been dispatched to $email. Please check your inbox and spam folder.")
                 } else {
-                    onResult?.invoke(true, "Verification code sent to $email. Check your inbox.")
+                    onResult?.invoke(false, "Unable to dispatch verification email ($lastError). Please verify your connection and try again.")
                 }
             }
         }
