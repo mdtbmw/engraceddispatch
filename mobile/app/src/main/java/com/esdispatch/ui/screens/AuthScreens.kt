@@ -154,6 +154,37 @@ fun LoginScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
 
+    val currentAuthUid by viewModel.firebaseUserId.collectAsState()
+    LaunchedEffect(currentAuthUid) {
+        val uid = currentAuthUid
+        val prefs = context.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
+        val hasLocal = !prefs.getString("local_uid", "").isNullOrEmpty()
+        val hasFb = !uid.isNullOrEmpty() && !uid.startsWith("local_user_")
+        if (hasLocal || hasFb) {
+            onNavigate("Dashboard")
+        }
+    }
+
+    var loginBackPressedOnce by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler {
+        if (step == LoginStep.PIN) {
+            step = LoginStep.EMAIL
+            pin = ""
+            isPinError = false
+        } else {
+            if (loginBackPressedOnce) {
+                (context as? android.app.Activity)?.finish()
+            } else {
+                loginBackPressedOnce = true
+                Toast.makeText(context, "Press back again to exit", Toast.LENGTH_SHORT).show()
+                scope.launch {
+                    kotlinx.coroutines.delay(2000)
+                    loginBackPressedOnce = false
+                }
+            }
+        }
+    }
+
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -836,6 +867,33 @@ fun SignUpScreen(
     val registeredPin by viewModel.userPin.collectAsState()
     val vmName by viewModel.userName.collectAsState()
     val vmEmail by viewModel.userEmail.collectAsState()
+
+    val currentAuthUid by viewModel.firebaseUserId.collectAsState()
+    LaunchedEffect(currentAuthUid, googleAuthInProg) {
+        val uid = currentAuthUid
+        val prefs = context.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
+        val hasLocal = !prefs.getString("local_uid", "").isNullOrEmpty()
+        val hasFb = !uid.isNullOrEmpty() && !uid.startsWith("local_user_")
+        if ((hasLocal || hasFb) && !googleAuthInProg) {
+            onNavigate("Dashboard")
+        }
+    }
+
+    androidx.activity.compose.BackHandler {
+        when (signUpStep) {
+            SignUpStep.PIN_SETUP -> {
+                signUpStep = SignUpStep.CONTACT_INFO
+                pin = ""
+                isPinError = false
+            }
+            SignUpStep.CONTACT_INFO -> {
+                signUpStep = SignUpStep.NAME_SETUP
+            }
+            SignUpStep.NAME_SETUP -> {
+                onNavigate("Login")
+            }
+        }
+    }
 
     LaunchedEffect(isGoogleUser, vmName, vmEmail, currentAuthUser) {
         if (isGoogleUser) {

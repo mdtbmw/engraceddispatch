@@ -174,6 +174,23 @@ fun DashboardScreen(
         return
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var backPressedOnce by remember { mutableStateOf(false) }
+
+    androidx.activity.compose.BackHandler {
+        if (backPressedOnce) {
+            (context as? android.app.Activity)?.finish()
+        } else {
+            backPressedOnce = true
+            android.widget.Toast.makeText(context, "Press back again to exit", android.widget.Toast.LENGTH_SHORT).show()
+            coroutineScope.launch {
+                kotlinx.coroutines.delay(2000)
+                backPressedOnce = false
+            }
+        }
+    }
+
     val pendingShortcutRoute by viewModel.pendingShortcutRoute.collectAsState()
     LaunchedEffect(pendingShortcutRoute) {
         pendingShortcutRoute?.let { route ->
@@ -275,7 +292,6 @@ fun DashboardScreen(
         previousDeliveryCount = deliveryCount
     }
 
-    val context = LocalContext.current
     val feedbackPrefs = remember { context.getSharedPreferences("esdispatch_feedback_prefs", android.content.Context.MODE_PRIVATE) }
     var feedbackParcel by remember { mutableStateOf<Parcel?>(null) }
     var dismissedFeedbackParcelId by remember { mutableStateOf<String?>(null) }

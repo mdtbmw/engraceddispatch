@@ -45,6 +45,10 @@ fun VendorPortalScreen(
     val context = LocalContext.current
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
 
+    androidx.activity.compose.BackHandler {
+        onNavigate("BACK")
+    }
+
     // Live Firestore states
     val userName by viewModel.userName.collectAsState()
     val userRole by viewModel.userRole.collectAsState()

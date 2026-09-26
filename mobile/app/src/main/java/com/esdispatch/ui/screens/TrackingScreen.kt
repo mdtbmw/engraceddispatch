@@ -228,6 +228,9 @@ fun ActiveTrackingScreen(
     onNavigate: (String) -> Unit
 ) {
     val selectedParcel by viewModel.selectedParcel.collectAsState()
+    androidx.activity.compose.BackHandler {
+        onNavigate("BACK")
+    }
     val riders by viewModel.aiRiders.collectAsState()
     val isDark by viewModel.darkModeEnabled.collectAsState()
     val isLight = MaterialTheme.colorScheme.background == BackgroundLight

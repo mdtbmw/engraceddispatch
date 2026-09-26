@@ -20,6 +20,10 @@ fun CustomerAssistantScreen(
     viewModel: DeliveryViewModel,
     onBack: () -> Unit
 ) {
+    androidx.activity.compose.BackHandler {
+        onBack()
+    }
+
     val chatMessages by viewModel.aiChatMessages.collectAsState()
     val isThinking by viewModel.aiIsThinking.collectAsState()
     val isLight = MaterialTheme.colorScheme.background == BackgroundLight

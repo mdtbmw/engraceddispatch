@@ -65,6 +65,11 @@ fun ProofOfDeliveryScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    androidx.activity.compose.BackHandler {
+        navController.popBackStack()
+    }
+
     val signatureRequired by viewModel.signatureVerificationEnabled.collectAsState()
 
     val parcels by viewModel.parcels.collectAsState()

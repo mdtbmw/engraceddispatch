@@ -75,6 +75,9 @@ fun ScannerScreen(
     onNavigate: (String) -> Unit
 ) {
     val isDark by viewModel.darkModeEnabled.collectAsState()
+    androidx.activity.compose.BackHandler {
+        onNavigate("BACK")
+    }
     val isLight = MaterialTheme.colorScheme.background == BackgroundLight
     val activeViewMode by viewModel.activeViewMode.collectAsState()
 

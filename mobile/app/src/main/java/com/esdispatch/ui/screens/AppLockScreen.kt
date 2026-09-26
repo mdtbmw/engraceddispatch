@@ -39,6 +39,9 @@ fun AppLockScreen(
     onSignOut: () -> Unit
 ) {
     val context = LocalContext.current
+    androidx.activity.compose.BackHandler {
+        (context as? android.app.Activity)?.finish()
+    }
     val coroutineScope = rememberCoroutineScope()
     val userName by viewModel.userName.collectAsState()
 

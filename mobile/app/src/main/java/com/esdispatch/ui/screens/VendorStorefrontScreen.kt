@@ -53,6 +53,10 @@ fun VendorStorefrontScreen(
     val context = LocalContext.current
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
 
+    androidx.activity.compose.BackHandler {
+        onNavigate("BACK")
+    }
+
     val stores by viewModel.marketplaceStores.collectAsState()
     val products by viewModel.marketplaceProducts.collectAsState()
     val cartItems by viewModel.cartItems.collectAsState()

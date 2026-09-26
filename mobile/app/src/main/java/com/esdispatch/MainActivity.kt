@@ -280,26 +280,67 @@ class MainActivity : FragmentActivity() {
                         route
                     }
                     try {
+                        val currentRoute = navController.currentBackStackEntry?.destination?.route
                         when (effectiveRoute) {
                             "BACK" -> {
-                                val currentRoute = navController.currentBackStackEntry?.destination?.route
-                                if (currentRoute in listOf("OrderLogs", "Marketplace", "Profile", "Wallet")) {
+                                if (currentRoute == "Dashboard" || currentRoute == "RiderDashboard") {
+                                    // Root dashboard level: BackHandler on the screen handles double-back exit confirmation.
+                                    // Never pop backstack here to prevent popping into auth/login screens!
+                                } else if (currentRoute in listOf("OrderLogs", "Marketplace", "Profile", "Wallet")) {
                                     navController.navigate("Dashboard") {
                                         popUpTo("Dashboard") { inclusive = false }
                                         launchSingleTop = true
                                     }
-                                } else if (!navController.popBackStack()) {
-                                    navController.navigate("Dashboard") {
-                                        popUpTo("Dashboard") { inclusive = false }
-                                        launchSingleTop = true
+                                } else {
+                                    val popped = navController.popBackStack()
+                                    if (!popped) {
+                                        navController.navigate("Dashboard") {
+                                            popUpTo(0) { inclusive = true }
+                                            launchSingleTop = true
+                                        }
                                     }
                                 }
                             }
                             "Dashboard" -> {
-                                navController.navigate("Dashboard") {
-                                    popUpTo("Dashboard") {
-                                        inclusive = false
+                                val isComingFromAuth = currentRoute in listOf(
+                                    "Splash", "Preloader", "Onboarding", "Login", "SignUp", "CompleteProfile", "AppLock"
+                                ) || currentRoute?.startsWith("Preloader") == true
+
+                                if (isComingFromAuth) {
+                                    navController.navigate("Dashboard") {
+                                        popUpTo(0) { inclusive = true }
+                                        launchSingleTop = true
                                     }
+                                } else {
+                                    navController.navigate("Dashboard") {
+                                        popUpTo("Dashboard") {
+                                            inclusive = false
+                                        }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            }
+                            "RiderDashboard" -> {
+                                navController.navigate("RiderDashboard") {
+                                    popUpTo(0) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                            "Login" -> {
+                                navController.navigate("Login") {
+                                    popUpTo(0) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                            "Onboarding" -> {
+                                navController.navigate("Onboarding") {
+                                    popUpTo(0) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                            "Preloader" -> {
+                                navController.navigate("Preloader") {
+                                    popUpTo(0) { inclusive = true }
                                     launchSingleTop = true
                                 }
                             }
@@ -412,9 +453,10 @@ class MainActivity : FragmentActivity() {
                 ) {
                     // Onboarding flow
                     composable("Splash") {
-                        SplashScreen(viewModel = viewModel, onNavigate = {
-                            navController.navigate(it) {
-                                popUpTo("Splash") { inclusive = true }
+                        SplashScreen(viewModel = viewModel, onNavigate = { target ->
+                            navController.navigate(target) {
+                                popUpTo(0) { inclusive = true }
+                                launchSingleTop = true
                             }
                         })
                     }
@@ -423,21 +465,24 @@ class MainActivity : FragmentActivity() {
                             viewModel = viewModel,
                             onUnlocked = {
                                 navController.navigate("Preloader/Dashboard") {
-                                    popUpTo("AppLock") { inclusive = true }
+                                    popUpTo(0) { inclusive = true }
+                                    launchSingleTop = true
                                 }
                             },
                             onSignOut = {
                                 viewModel.logout()
                                 navController.navigate("Login") {
-                                    popUpTo("AppLock") { inclusive = true }
+                                    popUpTo(0) { inclusive = true }
+                                    launchSingleTop = true
                                 }
                             }
                         )
                     }
                     composable("Onboarding") {
-                        OnboardingScreen(viewModel = viewModel, onNavigate = {
-                            navController.navigate(it) {
-                                popUpTo("Onboarding") { inclusive = true }
+                        OnboardingScreen(viewModel = viewModel, onNavigate = { target ->
+                            navController.navigate(target) {
+                                popUpTo(0) { inclusive = true }
+                                launchSingleTop = true
                             }
                         })
                     }
@@ -448,24 +493,27 @@ class MainActivity : FragmentActivity() {
                         SignUpScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("CompleteProfile") {
-                        CompleteProfileScreen(viewModel = viewModel, onNavigate = {
-                            navController.navigate(it) {
-                                popUpTo("CompleteProfile") { inclusive = true }
+                        CompleteProfileScreen(viewModel = viewModel, onNavigate = { target ->
+                            navController.navigate(target) {
+                                popUpTo(0) { inclusive = true }
+                                launchSingleTop = true
                             }
                         })
                     }
                     composable("Preloader") {
-                        PreloaderScreen(viewModel = viewModel, onNavigate = {
-                            navController.navigate(it) {
-                                popUpTo("Preloader") { inclusive = true }
+                        PreloaderScreen(viewModel = viewModel, onNavigate = { target ->
+                            navController.navigate(target) {
+                                popUpTo(0) { inclusive = true }
+                                launchSingleTop = true
                             }
                         }, nextRoute = "Dashboard")
                     }
                     composable("Preloader/{nextRoute}") { backStackEntry ->
                         val nextRoute = backStackEntry.arguments?.getString("nextRoute") ?: "Onboarding"
-                        PreloaderScreen(viewModel = viewModel, onNavigate = {
-                            navController.navigate(it) {
-                                popUpTo("Preloader/{nextRoute}") { inclusive = true }
+                        PreloaderScreen(viewModel = viewModel, onNavigate = { target ->
+                            navController.navigate(target) {
+                                popUpTo(0) { inclusive = true }
+                                launchSingleTop = true
                             }
                         }, nextRoute = nextRoute)
                     }

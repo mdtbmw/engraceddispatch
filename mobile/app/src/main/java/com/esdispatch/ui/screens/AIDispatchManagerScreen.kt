@@ -45,6 +45,10 @@ fun AIDispatchManagerScreen(
     viewModel: DeliveryViewModel,
     onBack: () -> Unit
 ) {
+    androidx.activity.compose.BackHandler {
+        onBack()
+    }
+
     val isLight = !isDarkTheme
     AdminAuthGuard(viewModel = viewModel, isLight = isLight, onBack = onBack) {
         AIDispatchManagerContent(viewModel = viewModel, onBack = onBack)

@@ -41,6 +41,8 @@ import com.esdispatch.ui.screens.ParcelCard
 import com.esdispatch.ui.screens.SwipeToArchiveBox
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 @Composable
 fun V2DashboardScreen(
@@ -83,6 +85,21 @@ fun V2DashboardScreen(
     var triggerConfetti by remember { mutableStateOf(false) }
     var quickViewParcel by remember { mutableStateOf<Parcel?>(null) }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var backPressedOnce by remember { mutableStateOf(false) }
+
+    androidx.activity.compose.BackHandler {
+        if (backPressedOnce) {
+            (context as? android.app.Activity)?.finish()
+        } else {
+            backPressedOnce = true
+            android.widget.Toast.makeText(context, "Press back again to exit", android.widget.Toast.LENGTH_SHORT).show()
+            coroutineScope.launch {
+                kotlinx.coroutines.delay(2000)
+                backPressedOnce = false
+            }
+        }
+    }
 
     Scaffold(
         containerColor = LuxuryBlack,

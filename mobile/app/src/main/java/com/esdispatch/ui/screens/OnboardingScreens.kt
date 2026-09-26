@@ -468,6 +468,10 @@ fun PreloaderScreen(
     onNavigate: (String) -> Unit,
     nextRoute: String = "Dashboard"
 ) {
+    androidx.activity.compose.BackHandler {
+        // Intercept back button during preloader progress to prevent breaking splash/sync sequence
+    }
+
     // Animated progress from 0f to 1f over 3.0 seconds
     val progressAnim = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
@@ -733,6 +737,27 @@ fun OnboardingScreen(
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { pages.size })
     val coroutineScope = rememberCoroutineScope()
     val activePage = pages[pagerState.currentPage]
+    val context = LocalContext.current
+    var backPressedOnce by remember { mutableStateOf(false) }
+
+    androidx.activity.compose.BackHandler {
+        if (pagerState.currentPage > 0) {
+            coroutineScope.launch {
+                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+            }
+        } else {
+            if (backPressedOnce) {
+                (context as? android.app.Activity)?.finish()
+            } else {
+                backPressedOnce = true
+                android.widget.Toast.makeText(context, "Press back again to exit", android.widget.Toast.LENGTH_SHORT).show()
+                coroutineScope.launch {
+                    delay(2000)
+                    backPressedOnce = false
+                }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier

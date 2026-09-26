@@ -82,6 +82,22 @@ fun RiderDashboardScreen(
     onNavigate: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var backPressedOnce by remember { mutableStateOf(false) }
+
+    androidx.activity.compose.BackHandler {
+        if (backPressedOnce) {
+            (context as? android.app.Activity)?.finish()
+        } else {
+            backPressedOnce = true
+            android.widget.Toast.makeText(context, "Press back again to exit", android.widget.Toast.LENGTH_SHORT).show()
+            coroutineScope.launch {
+                kotlinx.coroutines.delay(2000)
+                backPressedOnce = false
+            }
+        }
+    }
+
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
 
     // State collections

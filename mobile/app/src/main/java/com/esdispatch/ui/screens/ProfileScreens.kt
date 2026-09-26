@@ -1521,7 +1521,7 @@ fun WalletScreen(
         ) {
             ScreenHeader(
                 title = if (isRider) "Courier Tip Wallet" else "My Wallet",
-                onBack = { onNavigate("Profile") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(
