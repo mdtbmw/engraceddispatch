@@ -3287,7 +3287,9 @@ fun LiveMapView(
             } catch (e: Throwable) {}
             
             try {
-                WebView.setWebContentsDebuggingEnabled(true)
+                if (com.esdispatch.BuildConfig.DEBUG) {
+                    WebView.setWebContentsDebuggingEnabled(true)
+                }
             } catch (e: Throwable) {}
 
             webViewClient = object : WebViewClient() {
@@ -3302,7 +3304,12 @@ fun LiveMapView(
                     handler: android.webkit.SslErrorHandler?,
                     error: android.net.http.SslError?
                 ) {
-                    handler?.proceed()
+                    if (com.esdispatch.BuildConfig.DEBUG) {
+                        handler?.proceed()
+                    } else {
+                        android.util.Log.e("TrackingScreen", "SSL Error blocked in production: ${error?.primaryError}")
+                        handler?.cancel()
+                    }
                 }
             }
 

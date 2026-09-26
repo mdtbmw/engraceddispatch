@@ -12,33 +12,25 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return isAuth() && (
-        ('email' in request.auth.token && request.auth.token.email != null && (
-          request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@engraced\\.com$') ||
-          request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@engraceddispatch\\.com$') ||
-          request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@esdispatch\\.com$')
-        )) ||
         (request.auth.token.keys().hasAny(['admin']) && request.auth.token.admin == true) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin'] ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('userRole', '') in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin']
-        ))
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'owner', 'Owner'] ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('userRole', '') in ['super_admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'owner', 'Owner']
+          )
+        )
       );
     }
 
     function isAdmin() {
       return isAuth() && (
         isSuperAdmin() ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner'] ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('userRole', '') in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner']
-        )) ||
-        ('email' in request.auth.token && request.auth.token.email != null && (
-          request.auth.token.email.matches('(?i).*admin.*') ||
-          request.auth.token.email.matches('(?i).*@engraced\\.com') ||
-          request.auth.token.email.matches('(?i).*@esdispatch\\.com') ||
-          request.auth.token.email.matches('(?i).*engraced.*') ||
-          request.auth.token.email.matches('(?i).*esdispatch.*')
-        ))
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner'] ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('userRole', '') in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner']
+          )
+        )
       );
     }
 
@@ -63,20 +55,31 @@ service cloud.firestore {
     // =========================================================
 
     match /users/{userId} {
-      // User profiles are accessible for customer-courier coordination, driver ratings, and dispatch
-      allow read: if true;
-      allow create: if true;
+      allow read: if isAuth();
+      allow create: if isAuth() && request.auth.uid == userId &&
+        !request.resource.data.keys().hasAny(['role', 'userRole', 'admin', 'isSuperAdmin', 'permissions', 'walletBalance']);
 
-      // Allow updates for self-updates, courier tips, driver ratings, wallet adjustments, and status changes.
-      // Privilege escalation is strictly protected: only admin can set super_admin.
-      allow update: if true;
+      // Protect against privilege escalation and balance tampering
+      allow update: if isAuth() && (
+        isAdmin() ||
+        (
+          isOwner(userId) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'role', 'userRole', 'admin', 'isSuperAdmin', 'permissions', 'walletBalance', 'pin', 'securityPin', 'email'
+          ])
+        ) ||
+        // Allow courier tipping / rating / review count updates from authenticated customers
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'rating', 'totalRatings', 'ratingsCount', 'tipAmount', 'totalTips', 'lastRatedAt', 'reviewsCount'
+        ])
+      );
 
-      allow delete: if isAdmin() || isSuperAdmin();
+      allow delete: if isSuperAdmin();
 
-      // All subcollections under /users/{userId} (transactions, ratings, reviews, cart, deliveries, addresses, etc.)
+      // Scoped subcollections under /users/{userId} (transactions, ratings, reviews, cart, deliveries, addresses)
       match /{allSubcollections=**} {
-        allow read, write: if true;
-        allow delete: if isAdmin() || isOwner(userId);
+        allow read, write: if isOwner(userId) || isAdmin();
+        allow delete: if isOwner(userId) || isSuperAdmin();
       }
     }
 
@@ -85,29 +88,55 @@ service cloud.firestore {
     // =========================================================
 
     match /deliveries/{deliveryId} {
-      // Public lookup for live parcel tracking & status updates
-      allow read: if true;
-      allow create, update: if true;
+      // Public single-document get for tracking by waybill / doc ID; authenticated listing
+      allow get: if true;
+      allow list: if isAuth();
+
+      allow create: if isAuth();
+      allow update: if isAuth() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid ||
+        resource.data.riderId == request.auth.uid ||
+        resource.data.assignedRiderId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid
+      );
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if true;
+        allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
     }
 
     match /parcels/{parcelId} {
-      allow read, write: if true;
+      allow get: if true;
+      allow list: if isAuth();
+
+      allow create: if isAuth();
+      allow update: if isAuth() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid ||
+        resource.data.riderId == request.auth.uid ||
+        resource.data.assignedRiderId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid
+      );
+      allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if true;
+        allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
     }
 
     match /public_tracking/{deliveryId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAuth() && (
+        isAdmin() ||
+        resource.data.riderId == request.auth.uid ||
+        request.resource.data.riderId == request.auth.uid
+      );
     }
 
     // =========================================================
@@ -115,19 +144,23 @@ service cloud.firestore {
     // =========================================================
 
     match /reviews/{reviewId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isAuth();
+      allow update, delete: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
 
       match /{allSubcollections=**} {
-        allow read, write: if true;
+        allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
     }
 
     match /ratings/{ratingId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isAuth();
+      allow update, delete: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
 
       match /{allSubcollections=**} {
-        allow read, write: if true;
+        allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
     }
@@ -137,42 +170,54 @@ service cloud.firestore {
     // =========================================================
 
     match /transactions/{transactionId} {
-      allow read, write: if true;
+      allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && (isAdmin() || request.resource.data.userId == request.auth.uid);
+      allow update: if isAdmin();
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if true;
+        allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
+        allow write: if isAdmin();
         allow delete: if isAdmin();
       }
     }
 
     match /tip_withdrawals/{withdrawalId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth() && (isAdmin() || resource.data.riderId == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && (request.resource.data.riderId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+      allow update: if isAdmin();
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if isAuth();
+        allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
+        allow write: if isAdmin();
         allow delete: if isAdmin();
       }
     }
 
     match /refund_requests/{requestId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if isAuth();
+        allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
+        allow write: if isAdmin();
         allow delete: if isAdmin();
       }
     }
 
     match /vendor_payout_requests/{docId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth() && (isAdmin() || resource.data.vendorId == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.vendorId == request.auth.uid;
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /payout_settlements/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Functions only
     }
 
     match /system_ledger/{docId} {
@@ -185,36 +230,43 @@ service cloud.firestore {
     // =========================================================
 
     match /fleet_locations/{riderId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth();
+      allow write: if isAuth() && (request.auth.uid == riderId || isAdmin());
       allow delete: if isAdmin();
     }
 
     match /rider_attendance/{docId} {
-      allow read, write: if isAuth();
-      allow delete: if isAdmin();
+      allow read: if isAuth() && (isAdmin() || resource.data.riderId == request.auth.uid);
+      allow create: if isAuth() && (isAdmin() || request.resource.data.riderId == request.auth.uid);
+      allow update, delete: if isAdmin();
     }
 
     match /vehicle_inspections/{docId} {
-      allow read, write: if isAuth();
-      allow delete: if isAdmin();
+      allow read: if isAuth() && (isAdmin() || resource.data.riderId == request.auth.uid);
+      allow create: if isAuth() && (isAdmin() || request.resource.data.riderId == request.auth.uid);
+      allow update, delete: if isAdmin();
     }
 
     match /drivers/{driverId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth();
+      allow create: if isAuth() && (request.auth.uid == driverId || isAdmin());
+      allow update: if isAuth() && (request.auth.uid == driverId || isAdmin());
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if isAuth();
+        allow read, write: if isAuth() && (request.auth.uid == driverId || isAdmin());
         allow delete: if isAdmin();
       }
     }
 
     match /riders/{riderId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth();
+      allow create: if isAuth() && (request.auth.uid == riderId || isAdmin());
+      allow update: if isAuth() && (request.auth.uid == riderId || isAdmin());
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if isAuth();
+        allow read, write: if isAuth() && (request.auth.uid == riderId || isAdmin());
         allow delete: if isAdmin();
       }
     }
@@ -224,7 +276,9 @@ service cloud.firestore {
     // =========================================================
 
     match /support_chats/{ticketId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && (isAdmin() || request.resource.data.userId == request.auth.uid);
+      allow update: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
@@ -239,8 +293,8 @@ service cloud.firestore {
 
     match /marketplace_products/{productId} {
       allow read: if true;
-      allow create, update: if isAuth();
-      allow delete: if isAdmin() || (isAuth() && resource.data.vendorId == request.auth.uid);
+      allow create: if isAuth();
+      allow update, delete: if isAuth() && (resource.data.vendorId == request.auth.uid || isAdmin());
 
       match /{allSubcollections=**} {
         allow read: if true;
@@ -251,8 +305,8 @@ service cloud.firestore {
 
     match /marketplace_stores/{storeId} {
       allow read: if true;
-      allow create, update: if isAuth();
-      allow delete: if isAdmin() || (isAuth() && resource.data.ownerId == request.auth.uid);
+      allow create: if isAuth();
+      allow update, delete: if isAuth() && (resource.data.ownerId == request.auth.uid || resource.data.vendorId == request.auth.uid || isAdmin());
 
       match /{allSubcollections=**} {
         allow read: if true;
@@ -262,7 +316,18 @@ service cloud.firestore {
     }
 
     match /marketplace_orders/{orderId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth() && (
+        isAdmin() ||
+        resource.data.buyerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.vendorId == request.auth.uid
+      );
+      allow create: if isAuth();
+      allow update: if isAuth() && (
+        isAdmin() ||
+        resource.data.buyerId == request.auth.uid ||
+        resource.data.vendorId == request.auth.uid
+      );
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
@@ -277,12 +342,12 @@ service cloud.firestore {
 
     match /system_config/{docId} {
       allow read: if true;
-      allow write: if isAuth();
+      allow write: if isAdmin();
     }
 
     match /system_settings/{settingId} {
       allow read: if true;
-      allow write: if isAdmin() || isDispatcher();
+      allow write: if isAdmin();
     }
 
     match /admin_config/{docId} {
@@ -343,19 +408,33 @@ service cloud.firestore {
     // =========================================================
 
     match /notifications/{docId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuth();
+      allow update: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
     match /broadcast_news/{docId} {
-      allow read: if isAuth() || true;
+      allow read: if isAuth();
       allow write: if isAdmin() || isDispatcher();
     }
 
     match /audit_logs/{docId} {
       allow read: if isAdmin();
-      allow create: if isAuth();
+      allow create: if isAuth() && (isAdmin() || request.resource.data.userId == request.auth.uid);
       allow update, delete: if false; // Immutable audit trail
+    }
+
+    match /incident_reports/{docId} {
+      allow read: if isAuth() && (isAdmin() || resource.data.reporterId == request.auth.uid || resource.data.riderId == request.auth.uid);
+      allow create: if isAuth();
+      allow update: if isAuth() && (isAdmin() || resource.data.reporterId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /fleet_broadcasts/{docId} {
+      allow read: if isAuth();
+      allow write: if isAdmin() || isDispatcher();
     }
 
     // =========================================================
@@ -363,27 +442,34 @@ service cloud.firestore {
     // =========================================================
 
     match /customer_loyalty_points/{docId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow write: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
     match /referrals/{docId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth();
+      allow write: if isAuth();
       allow delete: if isAdmin();
     }
 
     match /referral_redemptions/{docId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth();
+      allow write: if isAuth();
       allow delete: if isAdmin();
     }
 
     match /batch_bookings/{batchId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuth();
+      allow update: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
     match /batches/{batchId} {
-      allow read, write: if isAuth();
+      allow read: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuth();
+      allow update: if isAuth() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
@@ -403,13 +489,13 @@ service cloud.firestore {
 
     match /contacts/{docId} {
       allow read: if isAdmin();
-      allow create: if true;
+      allow create: if isReasonableWrite() && request.resource.data.keys().hasAll(['name', 'email', 'message']);
       allow update, delete: if isAdmin();
     }
 
     match /subscribers/{docId} {
       allow read: if isAdmin();
-      allow create: if true;
+      allow create: if isReasonableWrite() && request.resource.data.keys().hasAll(['email']);
       allow update, delete: if isAdmin();
     }
 

@@ -30,6 +30,7 @@ const HeroSection = () => {
   return (
     <>
       <div
+        id="hero"
         className="zubuz-hero-section white-bg"
         style={{
           backgroundImage: "url(/images/v1/hero-shape1.png), url(/images/v1/background.png)",

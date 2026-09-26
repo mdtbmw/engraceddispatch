@@ -36,9 +36,18 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.onDeliveryStatusEmailTrigger = exports.testSmtpConnection = exports.verifyEmailOtp = exports.sendEmailOtp = exports.onContactCreated = exports.onRiderSubcollectionChanged = exports.onNotificationCreated = exports.onRiderDocumentChanged = exports.processVendorPayout = exports.completeDeliveryWithProof = exports.verifyDeliveryOtp = exports.verifyPaymentAndTopUp = exports.onDeliveryStatusUpdated = exports.onDeliveryCreatedAutoDispatch = exports.onUserCreatedSendWelcome = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
+const firestore_1 = require("firebase-admin/firestore");
+const auth_1 = require("firebase-admin/auth");
+const messaging_1 = require("firebase-admin/messaging");
 admin.initializeApp();
-const db = admin.firestore();
-const messaging = admin.messaging();
+const db = (0, firestore_1.getFirestore)();
+const messaging = (0, messaging_1.getMessaging)();
+const auth = (0, auth_1.getAuth)();
+const adminAny = admin;
+adminAny.firestore = firestore_1.getFirestore;
+adminAny.firestore.FieldValue = firestore_1.FieldValue;
+adminAny.auth = auth_1.getAuth;
+adminAny.messaging = messaging_1.getMessaging;
 /**
  * Calculates Haversine distance in kilometers between two lat/lng points.
  */
@@ -122,7 +131,7 @@ exports.onDeliveryCreatedAutoDispatch = functions.firestore
             await db.collection('deliveries').doc(deliveryId).update({
                 status: 'QUEUED',
                 queueReason: 'Waiting for an available fleet rider in Benin City',
-                queuedAt: admin.firestore.FieldValue.serverTimestamp()
+                queuedAt: firestore_1.FieldValue.serverTimestamp()
             });
             return null;
         }
@@ -144,7 +153,7 @@ exports.onDeliveryCreatedAutoDispatch = functions.firestore
             await db.collection('deliveries').doc(deliveryId).update({
                 status: 'QUEUED',
                 queueReason: 'All fleet couriers are currently completing ongoing deliveries',
-                queuedAt: admin.firestore.FieldValue.serverTimestamp()
+                queuedAt: firestore_1.FieldValue.serverTimestamp()
             });
             return null;
         }
@@ -174,7 +183,7 @@ exports.onDeliveryCreatedAutoDispatch = functions.firestore
                 courierLatitude: nearestRider.lat || nearestRider.latitude || pickupLat,
                 courierLongitude: nearestRider.lng || nearestRider.longitude || pickupLng,
                 status: 'ASSIGNED',
-                assignedAt: admin.firestore.FieldValue.serverTimestamp(),
+                assignedAt: firestore_1.FieldValue.serverTimestamp(),
                 autoDispatched: true
             });
             // Notify rider device
@@ -235,7 +244,7 @@ exports.onDeliveryStatusUpdated = functions.firestore
             riderBikeNumber: afterData.riderBikeNumber || '',
             courierLatitude: afterData.courierLatitude || null,
             courierLongitude: afterData.courierLongitude || null,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            updatedAt: firestore_1.FieldValue.serverTimestamp()
         }, { merge: true });
     }
     catch (pubErr) {
@@ -259,33 +268,34 @@ exports.onDeliveryStatusUpdated = functions.firestore
                         if (s.storeId && s.vendorPayout > 0) {
                             const storeRef = db.collection('marketplace_stores').doc(s.storeId);
                             await storeRef.update({
-                                vendorWallet: admin.firestore.FieldValue.increment(s.vendorPayout),
-                                vendorBalance: admin.firestore.FieldValue.increment(s.vendorPayout),
-                                totalSales: admin.firestore.FieldValue.increment(1),
-                                totalSettled: admin.firestore.FieldValue.increment(s.vendorPayout),
-                                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                                vendorWallet: firestore_1.FieldValue.increment(s.vendorPayout),
+                                vendorBalance: firestore_1.FieldValue.increment(s.vendorPayout),
+                                totalSales: firestore_1.FieldValue.increment(1),
+                                totalSettled: firestore_1.FieldValue.increment(s.vendorPayout),
+                                updatedAt: firestore_1.FieldValue.serverTimestamp()
                             }).catch(err => console.warn(`[Escrow Release] Failed store balance credit for ${s.storeId}:`, err));
                         }
                     }
                     await orderSnap.ref.update({
                         status: 'SETTLED',
-                        settledAt: admin.firestore.FieldValue.serverTimestamp()
+                        settledAt: firestore_1.FieldValue.serverTimestamp()
                     });
                     console.log(`[Escrow Release] Marketplace order ${deliveryId} settled successfully.`);
                 }
                 // 2. Credit rider delivery earnings / tip if riderId present
                 const effectiveRiderId = riderId || afterData.driverId;
                 if (effectiveRiderId) {
-                    const tipAmount = Number(afterData.tipAmount) || 0;
+                    const tipAlreadyCredited = afterData.tipCredited === true;
+                    const tipAmount = tipAlreadyCredited ? 0 : (Number(afterData.tipAmount) || 0);
                     const priceOrFee = Number(afterData.deliveryFee) || Number(afterData.price) || (afterData.type === 'EXPRESS' ? 2500 : 1500);
-                    const riderPayout = (priceOrFee * 0.80) + tipAmount; // 80% rider split + 100% customer tip
+                    const riderPayout = (priceOrFee * 0.80) + tipAmount; // 80% rider split + uncredited customer tip
                     if (riderPayout > 0) {
                         const riderRef = db.collection('users').doc(effectiveRiderId);
                         await riderRef.update({
-                            walletBalance: admin.firestore.FieldValue.increment(riderPayout),
-                            deliveryCount: admin.firestore.FieldValue.increment(1),
-                            totalEarned: admin.firestore.FieldValue.increment(riderPayout),
-                            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                            walletBalance: firestore_1.FieldValue.increment(riderPayout),
+                            deliveryCount: firestore_1.FieldValue.increment(1),
+                            totalEarned: firestore_1.FieldValue.increment(riderPayout),
+                            updatedAt: firestore_1.FieldValue.serverTimestamp()
                         });
                         // Ledger log
                         const riderTxRef = riderRef.collection('transactions').doc(`EARN-${deliveryId}`);
@@ -300,7 +310,7 @@ exports.onDeliveryStatusUpdated = functions.firestore
                             reference: deliveryId,
                             date: new Date().toLocaleDateString('en-GB'),
                             timestamp: Date.now(),
-                            createdAt: admin.firestore.FieldValue.serverTimestamp()
+                            createdAt: firestore_1.FieldValue.serverTimestamp()
                         });
                         console.log(`[Escrow Release] Rider ${effectiveRiderId} credited ₦${riderPayout} for delivery ${deliveryId}`);
                     }
@@ -310,12 +320,12 @@ exports.onDeliveryStatusUpdated = functions.firestore
                     deliveryId,
                     riderId: effectiveRiderId || null,
                     status: 'SETTLED',
-                    settledAt: admin.firestore.FieldValue.serverTimestamp()
+                    settledAt: firestore_1.FieldValue.serverTimestamp()
                 });
                 await change.after.ref.update({
                     payoutCredited: true,
                     settlementStatus: 'SETTLED',
-                    settledAt: admin.firestore.FieldValue.serverTimestamp()
+                    settledAt: firestore_1.FieldValue.serverTimestamp()
                 });
             }
         }
@@ -377,7 +387,7 @@ exports.onDeliveryStatusUpdated = functions.firestore
                 read: false,
                 dismissed: false,
                 deliveryStatus: newStatus,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+                createdAt: firestore_1.FieldValue.serverTimestamp()
             }, { merge: true });
             // Push via FCM
             const userDoc = await db.collection('users').doc(userId).get();
@@ -417,7 +427,7 @@ exports.onDeliveryStatusUpdated = functions.firestore
                 read: false,
                 dismissed: false,
                 deliveryStatus: newStatus,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+                createdAt: firestore_1.FieldValue.serverTimestamp()
             }, { merge: true });
             const riderDoc = await db.collection('users').doc(targetRiderId).get();
             const riderFcm = ((_b = riderDoc.data()) === null || _b === void 0 ? void 0 : _b.fcmToken) || '';
@@ -510,7 +520,7 @@ exports.verifyPaymentAndTopUp = functions.https.onCall(async (data, context) => 
             const newBalance = currentBalance + amount;
             txn.update(userRef, {
                 walletBalance: newBalance,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                updatedAt: firestore_1.FieldValue.serverTimestamp()
             });
             const txRef = userRef.collection('transactions').doc(reference);
             txn.set(txRef, {
@@ -524,7 +534,7 @@ exports.verifyPaymentAndTopUp = functions.https.onCall(async (data, context) => 
                 reference: reference,
                 date: new Date().toLocaleDateString('en-GB'),
                 timestamp: Date.now(),
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+                createdAt: firestore_1.FieldValue.serverTimestamp()
             });
             txn.set(ledgerRef, {
                 reference: reference,
@@ -534,7 +544,7 @@ exports.verifyPaymentAndTopUp = functions.https.onCall(async (data, context) => 
                 gateway: 'PAYSTACK',
                 type: 'WALLET_TOPUP',
                 status: 'COMPLETED',
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+                createdAt: firestore_1.FieldValue.serverTimestamp()
             });
             return newBalance;
         });
@@ -588,7 +598,7 @@ exports.verifyDeliveryOtp = functions.https.onCall(async (data, context) => {
     const inputOtp = String(otpInput).trim();
     if (storedOtp !== inputOtp) {
         await deliveryRef.update({
-            otpAttempts: admin.firestore.FieldValue.increment(1)
+            otpAttempts: firestore_1.FieldValue.increment(1)
         });
         throw new functions.https.HttpsError('invalid-argument', 'Invalid OTP code. Please verify with recipient.');
     }
@@ -597,7 +607,7 @@ exports.verifyDeliveryOtp = functions.https.onCall(async (data, context) => {
         otpVerified: true,
         otpAttempts: 0,
         status: 'ARRIVED',
-        handoverVerifiedAt: admin.firestore.FieldValue.serverTimestamp()
+        handoverVerifiedAt: firestore_1.FieldValue.serverTimestamp()
     });
     return { success: true, message: 'OTP verified successfully. Please proceed to capture Proof of Delivery.' };
 });
@@ -633,7 +643,7 @@ exports.completeDeliveryWithProof = functions.https.onCall(async (data, context)
         podUrl: podUrl,
         podType: podType || 'PHOTO',
         podStatus: 'VERIFIED',
-        deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
+        deliveredAt: firestore_1.FieldValue.serverTimestamp(),
         lastUpdated: Date.now()
     });
     return { success: true, message: 'Proof of delivery verified. Shipment marked DELIVERED.' };
@@ -670,7 +680,7 @@ exports.processVendorPayout = functions.https.onCall(async (data, context) => {
     if (action === 'APPROVE') {
         await payoutRef.update({
             status: 'APPROVED',
-            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+            processedAt: firestore_1.FieldValue.serverTimestamp(),
             processedBy: callerUid
         });
         // Record in global ledger
@@ -682,7 +692,7 @@ exports.processVendorPayout = functions.https.onCall(async (data, context) => {
             gateway: 'PAYSTACK_TRANSFER',
             type: 'VENDOR_PAYOUT',
             status: 'COMPLETED',
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: firestore_1.FieldValue.serverTimestamp()
         });
         return { success: true, message: `Payout request of ₦${amount} approved successfully.` };
     }
@@ -690,13 +700,13 @@ exports.processVendorPayout = functions.https.onCall(async (data, context) => {
         // Return funds back to store balance
         const storeRef = db.collection('marketplace_stores').doc(vendorId);
         await storeRef.update({
-            vendorBalance: admin.firestore.FieldValue.increment(amount),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            vendorBalance: firestore_1.FieldValue.increment(amount),
+            updatedAt: firestore_1.FieldValue.serverTimestamp()
         });
         await payoutRef.update({
             status: 'REJECTED',
             rejectionReason: rejectionReason || 'Information mismatch',
-            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+            processedAt: firestore_1.FieldValue.serverTimestamp(),
             processedBy: callerUid
         });
         return { success: true, message: `Payout rejected and ₦${amount} returned to vendor balance.` };
@@ -732,7 +742,7 @@ exports.onRiderDocumentChanged = functions.firestore
         }
         await userRef.set(updateData, { merge: true });
         try {
-            await admin.auth().setCustomUserClaims(riderId, { rider: true, customer: false });
+            await auth.setCustomUserClaims(riderId, { rider: true, customer: false });
         }
         catch (authError) {
             console.warn(`[Rider Sync Trigger] Custom claim update skipped:`, authError);
@@ -759,7 +769,7 @@ exports.onNotificationCreated = functions.firestore
         const batchSize = 500;
         let batch = db.batch();
         let count = 0;
-        usersSnapshot.forEach((userDoc) => {
+        for (const userDoc of usersSnapshot.docs) {
             const notifRef = db.collection('users').doc(userDoc.id).collection('notifications').doc();
             batch.set(notifRef, {
                 title,
@@ -769,15 +779,15 @@ exports.onNotificationCreated = functions.firestore
                 read: false,
                 isRead: false,
                 adminNotifId: notificationId,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                createdAt: firestore_1.FieldValue.serverTimestamp(),
                 timestamp: Date.now(),
             });
             count++;
             if (count % batchSize === 0) {
-                batch.commit();
+                await batch.commit();
                 batch = db.batch();
             }
-        });
+        }
         if (count % batchSize !== 0) {
             await batch.commit();
         }
@@ -803,7 +813,7 @@ exports.onRiderSubcollectionChanged = functions.firestore
             updatedAt: new Date().toISOString()
         });
         try {
-            await admin.auth().setCustomUserClaims(userId, { rider: true, customer: false });
+            await auth.setCustomUserClaims(userId, { rider: true, customer: false });
         }
         catch (authError) {
             console.warn(`[Rider Subcollection Sync] Custom claims warning:`, authError);
@@ -830,7 +840,7 @@ exports.onContactCreated = functions.firestore
             title: 'New contact form submission',
             body: `${data.name || 'Visitor'} (${data.email || 'No email'}) sent a message: "${(data.message || '').slice(0, 100)}"`,
             read: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: firestore_1.FieldValue.serverTimestamp()
         });
         console.log(`[Contact Trigger] Notification created for submission ${context.params.contactId}`);
     }
@@ -916,9 +926,9 @@ exports.verifyEmailOtp = functions.https.onCall(async (data, context) => {
         // If verifying signup, mark user email as verified in Auth if user exists
         if (purpose === 'SIGN_UP') {
             try {
-                const userRecord = await admin.auth().getUserByEmail(email);
+                const userRecord = await auth.getUserByEmail(email);
                 if (userRecord && !userRecord.emailVerified) {
-                    await admin.auth().updateUser(userRecord.uid, { emailVerified: true });
+                    await auth.updateUser(userRecord.uid, { emailVerified: true });
                     await db.collection('users').doc(userRecord.uid).set({ emailVerified: true }, { merge: true });
                 }
             }
@@ -968,14 +978,15 @@ exports.onDeliveryStatusEmailTrigger = functions.firestore
     // 1. Handover Code Alert on Arrival / Out for Delivery
     const becameArrived = before.status !== 'ARRIVED' && after.status === 'ARRIVED';
     const becameOutForDelivery = before.status !== 'IN_TRANSIT' && after.status === 'IN_TRANSIT';
-    if ((becameArrived || becameOutForDelivery) && after.recipientEmail && after.deliveryCode) {
+    const handoverCode = after.deliveryCode || after.otpCode || after.handoverOtp || after.securityCode;
+    if ((becameArrived || becameOutForDelivery) && after.recipientEmail && handoverCode) {
         try {
             const html = (0, emailTemplates_1.renderDeliveryHandoverOtpEmail)({
                 trackingNumber: after.trackingNumber || context.params.deliveryId.slice(0, 8).toUpperCase(),
                 recipientName: after.recipientName || 'Valued Recipient',
                 pickupAddress: after.pickupAddress || 'Dispatch Hub',
                 dropoffAddress: after.dropoffAddress || 'Designated Destination',
-                handoverOtp: after.deliveryCode,
+                handoverOtp: handoverCode,
             });
             await (0, emailTransporter_1.sendEmail)({
                 to: after.recipientEmail,

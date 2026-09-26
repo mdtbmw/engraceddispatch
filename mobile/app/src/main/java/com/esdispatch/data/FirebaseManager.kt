@@ -2192,6 +2192,30 @@ object FirebaseManager {
                         transaction.update(docRef, "otpAttempts", 0)
                         transaction.update(docRef, "otpVerifiedAt", System.currentTimeMillis())
                         transaction.update(docRef, "lastUpdated", System.currentTimeMillis())
+
+                        if (!alreadyPaid && riderId.isNotEmpty() && payoutAmount > 0.0) {
+                            transaction.update(docRef, "payoutCredited", true)
+                            val riderRef = db.collection("users").document(riderId)
+                            val riderSnap = transaction.get(riderRef)
+                            val currentBal = riderSnap.getDouble("walletBalance") ?: 0.0
+                            transaction.update(riderRef, "walletBalance", currentBal + payoutAmount)
+
+                            val txRef = "TX-PAYOUT-${java.util.UUID.randomUUID().toString().take(8).uppercase()}"
+                            val txnMap = hashMapOf(
+                                "id" to txRef,
+                                "userId" to riderId,
+                                "amount" to payoutAmount,
+                                "title" to "Delivery Payout (80%)",
+                                "type" to "CREDIT",
+                                "status" to "SUCCESS",
+                                "isTopUp" to true,
+                                "reference" to txRef,
+                                "deliveryId" to parcelId,
+                                "timestamp" to System.currentTimeMillis()
+                            )
+                            transaction.set(riderRef.collection("transactions").document(txRef), txnMap)
+                            transaction.set(db.collection("transactions").document(txRef), txnMap)
+                        }
                     }.addOnSuccessListener {
                         // Update subcollection to HANDOVER_VERIFIED
                         if (parcelUserId.isNotEmpty()) {
@@ -2396,6 +2420,7 @@ object FirebaseManager {
                     "isRated" to true,
                     "customerRating" to rating,
                     "tipAmount" to actualTip,
+                    "tipCredited" to (actualTip > 0.0),
                     "updatedAt" to com.google.firebase.Timestamp.now()
                 ))
             } else {
@@ -2404,6 +2429,7 @@ object FirebaseManager {
                     "isRated" to true,
                     "customerRating" to rating,
                     "tipAmount" to actualTip,
+                    "tipCredited" to (actualTip > 0.0),
                     "updatedAt" to com.google.firebase.Timestamp.now()
                 ), com.google.firebase.firestore.SetOptions.merge())
             }
@@ -2432,6 +2458,7 @@ object FirebaseManager {
                 "isRated" to true,
                 "customerRating" to rating,
                 "tipAmount" to appliedTip,
+                "tipCredited" to (appliedTip > 0.0),
                 "updatedAt" to com.google.firebase.Timestamp.now()
             ), com.google.firebase.firestore.SetOptions.merge())
 
@@ -2442,6 +2469,7 @@ object FirebaseManager {
                     "isRated" to true,
                     "customerRating" to rating,
                     "tipAmount" to appliedTip,
+                    "tipCredited" to (appliedTip > 0.0),
                     "updatedAt" to com.google.firebase.Timestamp.now()
                 ), com.google.firebase.firestore.SetOptions.merge())
 

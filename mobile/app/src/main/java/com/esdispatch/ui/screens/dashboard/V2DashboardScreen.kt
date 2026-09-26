@@ -56,6 +56,7 @@ fun V2DashboardScreen(
     val photoUrl by viewModel.photoUrl.collectAsState()
     val loyaltyPoints by viewModel.loyaltyPoints.collectAsState()
     val deliveryCount by viewModel.deliveryCount.collectAsState()
+    val promoSavings by viewModel.promoSavings.collectAsState()
     val referralCode by viewModel.referralCode.collectAsState()
     val parcels by viewModel.parcels.collectAsState()
     val archivedParcelIds by viewModel.archivedParcelIds.collectAsState()
@@ -148,7 +149,8 @@ fun V2DashboardScreen(
                         activeCount = activeCount,
                         completedCount = completedParcels.size,
                         deliveryCount = deliveryCount,
-                        loyaltyPoints = loyaltyPoints
+                        loyaltyPoints = loyaltyPoints,
+                        promoSavings = promoSavings
                     )
                 }
 

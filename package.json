@@ -19,6 +19,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "firebase": "^10.14.1",
     "firebase-admin": "^14.2.0",
+    "firebase-functions": "^4.5.0",
     "framer-motion": "^12.43.0",
     "isotope-layout": "^3.0.6",
     "leaflet": "^1.9.4",

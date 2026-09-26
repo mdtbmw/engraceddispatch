@@ -9,7 +9,7 @@ const DEFAULT_CONFIG = {
   port: 465,
   secure: true,
   user: "noreply@engracedsmile.com",
-  pass: "ha;LS.fiewLkDw~x",
+  pass: "",
   fromEmail: "noreply@engracedsmile.com",
   fromName: "ESDispatch Logistics",
 };
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     const domain = fromEmail.includes("@") ? fromEmail.split("@")[1] : "engracedsmile.com";
     const randomHex = Math.random().toString(36).substring(2, 10);
     const messageId = `<verify.${Date.now()}.${randomHex}@${domain}>`;
-    const subject = `Verify Your ESDispatch Account (${otp})`;
+    const subject = "Your ESDispatch Verification Code";
 
     const mailOptions = {
       from: `"${fromName}" <${fromEmail}>`,
@@ -91,7 +91,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `Verification passcode dispatched to ${recipientEmail}.`,
-      otp,
       messageId: info.messageId,
     });
   } catch (error: any) {

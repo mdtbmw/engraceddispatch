@@ -36,7 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createAndStoreOtp = createAndStoreOtp;
 exports.verifyOtpCode = verifyOtpCode;
 const crypto = __importStar(require("crypto"));
-const admin = __importStar(require("firebase-admin"));
+const firestore_1 = require("firebase-admin/firestore");
 const OTP_PEPPER = 'ESDISPATCH_OTP_SECURE_PEPPER_2026';
 const MAX_ATTEMPTS = 5;
 /**
@@ -49,7 +49,7 @@ function hashOtp(code) {
  * Generates a cryptographically strong 6-digit OTP, records it in Firestore, and returns the raw code.
  */
 async function createAndStoreOtp(email, purpose, expiryMinutes = 10) {
-    const db = admin.firestore();
+    const db = (0, firestore_1.getFirestore)();
     const normalizedEmail = email.toLowerCase().trim();
     // Cryptographic 6-digit code (100000 - 999999)
     const codeInt = crypto.randomInt(100000, 1000000);
@@ -78,8 +78,8 @@ async function createAndStoreOtp(email, purpose, expiryMinutes = 10) {
         hashedCode,
         attempts: 0,
         used: false,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+        createdAt: firestore_1.FieldValue.serverTimestamp(),
+        expiresAt: firestore_1.Timestamp.fromDate(expiresAt),
     });
     return { code, docId, expiresAt };
 }
@@ -88,7 +88,7 @@ async function createAndStoreOtp(email, purpose, expiryMinutes = 10) {
  */
 async function verifyOtpCode(email, purpose, rawCode) {
     var _a;
-    const db = admin.firestore();
+    const db = (0, firestore_1.getFirestore)();
     const normalizedEmail = email.toLowerCase().trim();
     const docId = `${normalizedEmail.replace(/[^a-z0-9]/g, '_')}_${purpose.toLowerCase()}`;
     const otpRef = db.collection('verification_otps').doc(docId);
@@ -111,7 +111,7 @@ async function verifyOtpCode(email, purpose, rawCode) {
     const inputHash = hashOtp(rawCode);
     if (inputHash !== data.hashedCode) {
         await otpRef.update({
-            attempts: admin.firestore.FieldValue.increment(1),
+            attempts: firestore_1.FieldValue.increment(1),
         });
         const remaining = MAX_ATTEMPTS - (data.attempts || 0) - 1;
         return { valid: false, message: `Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.` };
@@ -119,7 +119,7 @@ async function verifyOtpCode(email, purpose, rawCode) {
     // Code matches! Mark as used
     await otpRef.update({
         used: true,
-        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        verifiedAt: firestore_1.FieldValue.serverTimestamp(),
     });
     return { valid: true, message: 'Code verified successfully.' };
 }

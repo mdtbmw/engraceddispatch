@@ -6,7 +6,7 @@ import featureDatas from "~/data/featureData.json";
 const FeatureSection = () => {
 
   return (
-    <div className="section zubuz-section-padding3 light-bg">
+    <div id="services" className="section zubuz-section-padding3 light-bg">
       <div className="container">
         <ScrollReveal variant="slideUp">
           <div className="zubuz-section-title center">

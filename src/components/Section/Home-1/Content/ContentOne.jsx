@@ -3,7 +3,7 @@ import { ScrollReveal } from "~/components/Animations";
 
 const ContentSectionOne = () => {
   return (
-    <div className="section zubuz-section-padding2 white-bg">
+    <div id="about" className="section zubuz-section-padding2 white-bg">
       <div className="container">
         <div className="row">
           <div className="col-lg-5">

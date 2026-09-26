@@ -1,9 +1,19 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
+import { getMessaging } from 'firebase-admin/messaging';
 
 admin.initializeApp();
-const db = admin.firestore();
-const messaging = admin.messaging();
+const db = getFirestore();
+const messaging = getMessaging();
+const auth = getAuth();
+
+const adminAny = admin as any;
+adminAny.firestore = getFirestore;
+adminAny.firestore.FieldValue = FieldValue;
+adminAny.auth = getAuth;
+adminAny.messaging = getMessaging;
 
 /**
  * Calculates Haversine distance in kilometers between two lat/lng points.
@@ -97,7 +107,7 @@ export const onDeliveryCreatedAutoDispatch = functions.firestore
         await db.collection('deliveries').doc(deliveryId).update({
           status: 'QUEUED',
           queueReason: 'Waiting for an available fleet rider in Benin City',
-          queuedAt: admin.firestore.FieldValue.serverTimestamp()
+          queuedAt: FieldValue.serverTimestamp()
         });
         return null;
       }
@@ -120,7 +130,7 @@ export const onDeliveryCreatedAutoDispatch = functions.firestore
         await db.collection('deliveries').doc(deliveryId).update({
           status: 'QUEUED',
           queueReason: 'All fleet couriers are currently completing ongoing deliveries',
-          queuedAt: admin.firestore.FieldValue.serverTimestamp()
+          queuedAt: FieldValue.serverTimestamp()
         });
         return null;
       }
@@ -156,7 +166,7 @@ export const onDeliveryCreatedAutoDispatch = functions.firestore
           courierLatitude: nearestRider.lat || nearestRider.latitude || pickupLat,
           courierLongitude: nearestRider.lng || nearestRider.longitude || pickupLng,
           status: 'ASSIGNED',
-          assignedAt: admin.firestore.FieldValue.serverTimestamp(),
+          assignedAt: FieldValue.serverTimestamp(),
           autoDispatched: true
         });
 
@@ -222,7 +232,7 @@ export const onDeliveryStatusUpdated = functions.firestore
         riderBikeNumber: afterData.riderBikeNumber || '',
         courierLatitude: afterData.courierLatitude || null,
         courierLongitude: afterData.courierLongitude || null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
     } catch (pubErr) {
       console.warn(`[Public Tracking Sync Error] ${deliveryId}:`, pubErr);
@@ -247,18 +257,18 @@ export const onDeliveryStatusUpdated = functions.firestore
               if (s.storeId && s.vendorPayout > 0) {
                 const storeRef = db.collection('marketplace_stores').doc(s.storeId);
                 await storeRef.update({
-                  vendorWallet: admin.firestore.FieldValue.increment(s.vendorPayout),
-                  vendorBalance: admin.firestore.FieldValue.increment(s.vendorPayout),
-                  totalSales: admin.firestore.FieldValue.increment(1),
-                  totalSettled: admin.firestore.FieldValue.increment(s.vendorPayout),
-                  updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                  vendorWallet: FieldValue.increment(s.vendorPayout),
+                  vendorBalance: FieldValue.increment(s.vendorPayout),
+                  totalSales: FieldValue.increment(1),
+                  totalSettled: FieldValue.increment(s.vendorPayout),
+                  updatedAt: FieldValue.serverTimestamp()
                 }).catch(err => console.warn(`[Escrow Release] Failed store balance credit for ${s.storeId}:`, err));
               }
             }
 
             await orderSnap.ref.update({
               status: 'SETTLED',
-              settledAt: admin.firestore.FieldValue.serverTimestamp()
+              settledAt: FieldValue.serverTimestamp()
             });
             console.log(`[Escrow Release] Marketplace order ${deliveryId} settled successfully.`);
           }
@@ -266,17 +276,18 @@ export const onDeliveryStatusUpdated = functions.firestore
           // 2. Credit rider delivery earnings / tip if riderId present
           const effectiveRiderId = riderId || afterData.driverId;
           if (effectiveRiderId) {
-            const tipAmount = Number(afterData.tipAmount) || 0;
+            const tipAlreadyCredited = afterData.tipCredited === true;
+            const tipAmount = tipAlreadyCredited ? 0 : (Number(afterData.tipAmount) || 0);
             const priceOrFee = Number(afterData.deliveryFee) || Number(afterData.price) || (afterData.type === 'EXPRESS' ? 2500 : 1500);
-            const riderPayout = (priceOrFee * 0.80) + tipAmount; // 80% rider split + 100% customer tip
+            const riderPayout = (priceOrFee * 0.80) + tipAmount; // 80% rider split + uncredited customer tip
 
             if (riderPayout > 0) {
               const riderRef = db.collection('users').doc(effectiveRiderId);
               await riderRef.update({
-                walletBalance: admin.firestore.FieldValue.increment(riderPayout),
-                deliveryCount: admin.firestore.FieldValue.increment(1),
-                totalEarned: admin.firestore.FieldValue.increment(riderPayout),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                walletBalance: FieldValue.increment(riderPayout),
+                deliveryCount: FieldValue.increment(1),
+                totalEarned: FieldValue.increment(riderPayout),
+                updatedAt: FieldValue.serverTimestamp()
               });
 
               // Ledger log
@@ -292,7 +303,7 @@ export const onDeliveryStatusUpdated = functions.firestore
                 reference: deliveryId,
                 date: new Date().toLocaleDateString('en-GB'),
                 timestamp: Date.now(),
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+                createdAt: FieldValue.serverTimestamp()
               });
               console.log(`[Escrow Release] Rider ${effectiveRiderId} credited ₦${riderPayout} for delivery ${deliveryId}`);
             }
@@ -303,13 +314,13 @@ export const onDeliveryStatusUpdated = functions.firestore
             deliveryId,
             riderId: effectiveRiderId || null,
             status: 'SETTLED',
-            settledAt: admin.firestore.FieldValue.serverTimestamp()
+            settledAt: FieldValue.serverTimestamp()
           });
 
           await change.after.ref.update({
             payoutCredited: true,
             settlementStatus: 'SETTLED',
-            settledAt: admin.firestore.FieldValue.serverTimestamp()
+            settledAt: FieldValue.serverTimestamp()
           });
         }
       } catch (escrowErr) {
@@ -374,7 +385,7 @@ export const onDeliveryStatusUpdated = functions.firestore
           read: false,
           dismissed: false,
           deliveryStatus: newStatus,
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
+          createdAt: FieldValue.serverTimestamp()
         }, { merge: true });
 
         // Push via FCM
@@ -417,7 +428,7 @@ export const onDeliveryStatusUpdated = functions.firestore
           read: false,
           dismissed: false,
           deliveryStatus: newStatus,
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
+          createdAt: FieldValue.serverTimestamp()
         }, { merge: true });
 
         const riderDoc = await db.collection('users').doc(targetRiderId).get();
@@ -516,7 +527,7 @@ export const verifyPaymentAndTopUp = functions.https.onCall(async (data, context
 
       txn.update(userRef, {
         walletBalance: newBalance,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       });
 
       const txRef = userRef.collection('transactions').doc(reference);
@@ -531,7 +542,7 @@ export const verifyPaymentAndTopUp = functions.https.onCall(async (data, context
         reference: reference,
         date: new Date().toLocaleDateString('en-GB'),
         timestamp: Date.now(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: FieldValue.serverTimestamp()
       });
 
       txn.set(ledgerRef, {
@@ -542,7 +553,7 @@ export const verifyPaymentAndTopUp = functions.https.onCall(async (data, context
         gateway: 'PAYSTACK',
         type: 'WALLET_TOPUP',
         status: 'COMPLETED',
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: FieldValue.serverTimestamp()
       });
 
       return newBalance;
@@ -605,7 +616,7 @@ export const verifyDeliveryOtp = functions.https.onCall(async (data, context) =>
 
   if (storedOtp !== inputOtp) {
     await deliveryRef.update({
-      otpAttempts: admin.firestore.FieldValue.increment(1)
+      otpAttempts: FieldValue.increment(1)
     });
     throw new functions.https.HttpsError('invalid-argument', 'Invalid OTP code. Please verify with recipient.');
   }
@@ -615,7 +626,7 @@ export const verifyDeliveryOtp = functions.https.onCall(async (data, context) =>
     otpVerified: true,
     otpAttempts: 0,
     status: 'ARRIVED',
-    handoverVerifiedAt: admin.firestore.FieldValue.serverTimestamp()
+    handoverVerifiedAt: FieldValue.serverTimestamp()
   });
 
   return { success: true, message: 'OTP verified successfully. Please proceed to capture Proof of Delivery.' };
@@ -658,7 +669,7 @@ export const completeDeliveryWithProof = functions.https.onCall(async (data, con
     podUrl: podUrl,
     podType: podType || 'PHOTO',
     podStatus: 'VERIFIED',
-    deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
+    deliveredAt: FieldValue.serverTimestamp(),
     lastUpdated: Date.now()
   });
 
@@ -704,7 +715,7 @@ export const processVendorPayout = functions.https.onCall(async (data, context) 
   if (action === 'APPROVE') {
     await payoutRef.update({
       status: 'APPROVED',
-      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      processedAt: FieldValue.serverTimestamp(),
       processedBy: callerUid
     });
 
@@ -717,7 +728,7 @@ export const processVendorPayout = functions.https.onCall(async (data, context) 
       gateway: 'PAYSTACK_TRANSFER',
       type: 'VENDOR_PAYOUT',
       status: 'COMPLETED',
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: FieldValue.serverTimestamp()
     });
 
     return { success: true, message: `Payout request of ₦${amount} approved successfully.` };
@@ -725,14 +736,14 @@ export const processVendorPayout = functions.https.onCall(async (data, context) 
     // Return funds back to store balance
     const storeRef = db.collection('marketplace_stores').doc(vendorId);
     await storeRef.update({
-      vendorBalance: admin.firestore.FieldValue.increment(amount),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      vendorBalance: FieldValue.increment(amount),
+      updatedAt: FieldValue.serverTimestamp()
     });
 
     await payoutRef.update({
       status: 'REJECTED',
       rejectionReason: rejectionReason || 'Information mismatch',
-      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      processedAt: FieldValue.serverTimestamp(),
       processedBy: callerUid
     });
 
@@ -769,7 +780,7 @@ export const onRiderDocumentChanged = functions.firestore
       await userRef.set(updateData, { merge: true });
       
       try {
-        await admin.auth().setCustomUserClaims(riderId, { rider: true, customer: false });
+        await auth.setCustomUserClaims(riderId, { rider: true, customer: false });
       } catch (authError) {
         console.warn(`[Rider Sync Trigger] Custom claim update skipped:`, authError);
       }
@@ -798,7 +809,7 @@ export const onNotificationCreated = functions.firestore
       let batch = db.batch();
       let count = 0;
 
-      usersSnapshot.forEach((userDoc) => {
+      for (const userDoc of usersSnapshot.docs) {
         const notifRef = db.collection('users').doc(userDoc.id).collection('notifications').doc();
         batch.set(notifRef, {
           title,
@@ -808,15 +819,15 @@ export const onNotificationCreated = functions.firestore
           read: false,
           isRead: false,
           adminNotifId: notificationId,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
           timestamp: Date.now(),
         });
         count++;
         if (count % batchSize === 0) {
-          batch.commit();
+          await batch.commit();
           batch = db.batch();
         }
-      });
+      }
 
       if (count % batchSize !== 0) {
         await batch.commit();
@@ -845,7 +856,7 @@ export const onRiderSubcollectionChanged = functions.firestore
       });
       
       try {
-        await admin.auth().setCustomUserClaims(userId, { rider: true, customer: false });
+        await auth.setCustomUserClaims(userId, { rider: true, customer: false });
       } catch (authError) {
         console.warn(`[Rider Subcollection Sync] Custom claims warning:`, authError);
       }
@@ -870,7 +881,7 @@ export const onContactCreated = functions.firestore
         title: 'New contact form submission',
         body: `${data.name || 'Visitor'} (${data.email || 'No email'}) sent a message: "${(data.message || '').slice(0, 100)}"`,
         read: false,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: FieldValue.serverTimestamp()
       });
       console.log(`[Contact Trigger] Notification created for submission ${context.params.contactId}`);
     } catch (err) {
@@ -976,9 +987,9 @@ export const verifyEmailOtp = functions.https.onCall(async (data, context) => {
     // If verifying signup, mark user email as verified in Auth if user exists
     if (purpose === 'SIGN_UP') {
       try {
-        const userRecord = await admin.auth().getUserByEmail(email);
+        const userRecord = await auth.getUserByEmail(email);
         if (userRecord && !userRecord.emailVerified) {
-          await admin.auth().updateUser(userRecord.uid, { emailVerified: true });
+          await auth.updateUser(userRecord.uid, { emailVerified: true });
           await db.collection('users').doc(userRecord.uid).set({ emailVerified: true }, { merge: true });
         }
       } catch (authErr) {
@@ -1029,14 +1040,15 @@ export const onDeliveryStatusEmailTrigger = functions.firestore
     const becameArrived = before.status !== 'ARRIVED' && after.status === 'ARRIVED';
     const becameOutForDelivery = before.status !== 'IN_TRANSIT' && after.status === 'IN_TRANSIT';
 
-    if ((becameArrived || becameOutForDelivery) && after.recipientEmail && after.deliveryCode) {
+    const handoverCode = after.deliveryCode || after.otpCode || after.handoverOtp || after.securityCode;
+    if ((becameArrived || becameOutForDelivery) && after.recipientEmail && handoverCode) {
       try {
         const html = renderDeliveryHandoverOtpEmail({
           trackingNumber: after.trackingNumber || context.params.deliveryId.slice(0, 8).toUpperCase(),
           recipientName: after.recipientName || 'Valued Recipient',
           pickupAddress: after.pickupAddress || 'Dispatch Hub',
           dropoffAddress: after.dropoffAddress || 'Designated Destination',
-          handoverOtp: after.deliveryCode,
+          handoverOtp: handoverCode,
         });
 
         await sendEmail({

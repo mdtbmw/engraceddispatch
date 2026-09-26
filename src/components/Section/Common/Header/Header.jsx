@@ -60,19 +60,19 @@ const Header = ({ dark = false }) => {
               </div>
               <ul className="site-menu-main">
                 <li className="nav-item">
-                  <Link href="/" className="nav-link-item" onClick={closeMenu}>Home</Link>
+                  <Link href="/#hero" className="nav-link-item" onClick={closeMenu}>Home</Link>
                 </li>
                 <li className="nav-item">
-                  <Link href="/about-us" className="nav-link-item" onClick={closeMenu}>About Us</Link>
+                  <Link href="/#about" className="nav-link-item" onClick={closeMenu}>About Us</Link>
                 </li>
                 <li className="nav-item">
-                  <Link href="/service" className="nav-link-item" onClick={closeMenu}>Services</Link>
+                  <Link href="/#services" className="nav-link-item" onClick={closeMenu}>Services</Link>
                 </li>
                 <li className="nav-item">
-                  <Link href="/blog" className="nav-link-item" onClick={closeMenu}>Blog</Link>
+                  <Link href="/#faq" className="nav-link-item" onClick={closeMenu}>FAQ</Link>
                 </li>
                 <li className="nav-item">
-                  <Link href="/contact-us" className="nav-link-item" onClick={closeMenu}>Contact</Link>
+                  <Link href="/#contact" className="nav-link-item" onClick={closeMenu}>Contact</Link>
                 </li>
               </ul>
             </nav>

@@ -320,7 +320,7 @@ class MainActivity : FragmentActivity() {
                                     }
                                 }
                             }
-                            "RiderDashboard" -> {
+                            "RiderDashboard", "RiderDeliveries" -> {
                                 navController.navigate("RiderDashboard") {
                                     popUpTo(0) { inclusive = true }
                                     launchSingleTop = true
@@ -406,9 +406,7 @@ class MainActivity : FragmentActivity() {
                     pendingShortcutRoute?.let { route ->
                         val currentRoute = navController.currentBackStackEntry?.destination?.route
                         if (currentRoute != "Splash" && currentRoute != "Onboarding" && currentRoute != "Login" && currentRoute != "SignUp") {
-                            navController.navigate(route) {
-                                launchSingleTop = true
-                            }
+                            handleNavigation(route)
                             viewModel.clearPendingShortcutRoute()
                         }
                     }
@@ -622,6 +620,9 @@ class MainActivity : FragmentActivity() {
                         ReferralScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("RiderDashboard") {
+                        RiderDashboardScreen(viewModel = viewModel, onNavigate = handleNavigation)
+                    }
+                    composable("RiderDeliveries") {
                         RiderDashboardScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
 

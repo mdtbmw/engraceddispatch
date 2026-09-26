@@ -195,6 +195,7 @@ class DeliveryViewModel : WalletViewModel() {
         _totalEarned.value = prefs.getString("total_earned", "0.0")?.toDoubleOrNull() ?: 0.0
         _deliveryCount.value = prefs.getInt("delivery_count", 0)
         _loyaltyPoints.value = prefs.getInt("loyalty_points", 0)
+        _promoSavings.value = prefs.getString("promo_savings", "0.0")?.toDoubleOrNull() ?: 0.0
         _welcomeGiftClaimed.value = prefs.getBoolean("welcome_gift_claimed", false)
         _dailyBonusClaimed.value = prefs.getBoolean("daily_bonus_claimed", false)
         _userRating.value = prefs.getString("user_rating", "4.9")?.toDoubleOrNull() ?: 4.9
@@ -251,6 +252,7 @@ class DeliveryViewModel : WalletViewModel() {
         _phoneVerificationRequired.value = prefs.getBoolean("phone_verification_required", false)
         _enableQrCodeHandover.value = prefs.getBoolean("enable_qr_code_handover", false)
         _signatureVerificationEnabled.value = prefs.getBoolean("signature_verification_enabled", false)
+        _dynamicApiBaseUrl.value = prefs.getString("dynamic_api_base_url", "") ?: ""
         _dashboardSectionsEnabled.value = mapOf(
             "promo_banner" to prefs.getBoolean("section_promo_banner", true),
             "active_shipments" to prefs.getBoolean("section_active_shipments", true),
@@ -306,6 +308,13 @@ class DeliveryViewModel : WalletViewModel() {
                         savePref("signature_verification_enabled", it)
                     }
                     (snap.get("maintenanceMode") as? Boolean)?.let { _maintenanceMode.value = it }
+                    val remoteDomain = (snap.getString("apiBaseUrl") 
+                        ?: snap.getString("webDomainUrl") 
+                        ?: snap.getString("customDomain"))?.trim()?.trimEnd('/')
+                    if (!remoteDomain.isNullOrBlank()) {
+                        _dynamicApiBaseUrl.value = remoteDomain
+                        savePref("dynamic_api_base_url", remoteDomain)
+                    }
                     
                     ((snap.get("surgeMultiplier") as? Number)?.toDouble() ?: (snap.get("surgePriceMultiplier") as? Number)?.toDouble())?.let { 
                         _surgeMultiplier.value = it 
@@ -513,6 +522,28 @@ class DeliveryViewModel : WalletViewModel() {
 
     private val _signatureVerificationEnabled = MutableStateFlow(false)
     val signatureVerificationEnabled: StateFlow<Boolean> = _signatureVerificationEnabled.asStateFlow()
+
+    private val _dynamicApiBaseUrl = MutableStateFlow("")
+    val dynamicApiBaseUrl: StateFlow<String> = _dynamicApiBaseUrl.asStateFlow()
+
+    fun getEffectiveApiUrl(endpointPath: String): String {
+        val cleanPath = if (endpointPath.startsWith("/")) endpointPath else "/$endpointPath"
+        
+        // 1. Live remote config from Firestore (Hot-swapped from Admin)
+        val liveRemoteUrl = _dynamicApiBaseUrl.value.trim().trimEnd('/')
+        if (liveRemoteUrl.isNotBlank() && (liveRemoteUrl.startsWith("http://") || liveRemoteUrl.startsWith("https://"))) {
+            return "$liveRemoteUrl$cleanPath"
+        }
+
+        // 2. Build-time environment variable from .env / BuildConfig
+        val envUrl = try { com.esdispatch.BuildConfig.BACKEND_API_URL.trim().trimEnd('/') } catch (e: Throwable) { "" }
+        if (envUrl.isNotBlank() && (envUrl.startsWith("http://") || envUrl.startsWith("https://"))) {
+            return "$envUrl$cleanPath"
+        }
+
+        // 3. Fallback to primary production domain
+        return "https://engracedsmile.com$cleanPath"
+    }
 
     private val _dashboardSectionsEnabled = MutableStateFlow(
         mapOf(
@@ -1372,6 +1403,36 @@ class DeliveryViewModel : WalletViewModel() {
                     uid, _loyaltyPoints.value, updatedCount
                 )
 
+                // Credit 80% payout to rider wallet if not already paid
+                if (payout > 0.0) {
+                    val fs = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    val delDoc = fs.collection("deliveries").document(parcelId)
+                    delDoc.get().addOnSuccessListener { dSnap ->
+                        val alreadyPaid = dSnap.getBoolean("payoutCredited") ?: false
+                        if (!alreadyPaid) {
+                            delDoc.update("payoutCredited", true)
+                            com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, payout) { pSuccess, _ ->
+                                if (pSuccess) {
+                                    val txRef = "TX-PAYOUT-${java.util.UUID.randomUUID().toString().take(8).uppercase()}"
+                                    com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
+                                        userId = uid,
+                                        amount = payout,
+                                        title = "Delivery Payout (80%)",
+                                        isTopUp = true,
+                                        reference = txRef,
+                                        status = "SUCCESS"
+                                    ) {}
+                                    addNotification(
+                                        title = "Payout Credited",
+                                        message = "₦${String.format("%,.2f", payout)} credited to your wallet for delivery #$parcelId.",
+                                        parcelId = parcelId
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Add Notification
                 addNotification(
                     title = "Parcel Delivered",
@@ -2100,6 +2161,9 @@ class DeliveryViewModel : WalletViewModel() {
     private val _loyaltyPoints = MutableStateFlow(0)
     val loyaltyPoints: StateFlow<Int> = _loyaltyPoints.asStateFlow()
     private var hasLoadedPoints = false
+
+    private val _promoSavings = MutableStateFlow(0.0)
+    val promoSavings: StateFlow<Double> = _promoSavings.asStateFlow()
 
     private val _welcomeGiftClaimed = MutableStateFlow(false)
     val welcomeGiftClaimed: StateFlow<Boolean> = _welcomeGiftClaimed.asStateFlow()
@@ -3156,6 +3220,12 @@ class DeliveryViewModel : WalletViewModel() {
                                         _welcomeGiftClaimed.value = giftClaimed
                                         savePref("welcome_gift_claimed", giftClaimed)
                                     }
+
+                                    val savedSavings = (data["promoSavings"] as? Number)?.toDouble() ?: (data["totalPromoSavings"] as? Number)?.toDouble()
+                                    if (savedSavings != null) {
+                                        _promoSavings.value = savedSavings
+                                        savePref("promo_savings", savedSavings.toString())
+                                    }
                                 }
                             }
                         }
@@ -4192,17 +4262,20 @@ class DeliveryViewModel : WalletViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             var dispatched = false
             try {
+                val verificationLink = getEffectiveApiUrl("/verified?email=" + java.net.URLEncoder.encode(email, "UTF-8"))
+                val verificationApiEndpoint = getEffectiveApiUrl("/api/email/verification")
+
                 val jsonPayload = org.json.JSONObject().apply {
                     put("email", email)
                     put("name", name)
                     put("userId", uid)
                     put("otp", secureCode)
-                    put("verificationLink", "https://engraceddispatchnew.vercel.app/verified?email=" + java.net.URLEncoder.encode(email, "UTF-8"))
+                    put("verificationLink", verificationLink)
                 }
 
                 val requestBody = jsonPayload.toString().toRequestBody("application/json".toMediaType())
                 val request = Request.Builder()
-                    .url("https://engraceddispatchnew.vercel.app/api/email/verification")
+                    .url(verificationApiEndpoint)
                     .post(requestBody)
                     .build()
 
@@ -5234,7 +5307,8 @@ class DeliveryViewModel : WalletViewModel() {
 
             // Create new Parcel record
             val newParcel = Parcel(
-                id = "PC-${System.currentTimeMillis().toString().substring(8)}",
+                id = com.esdispatch.data.FirebaseManager.firestore?.collection("deliveries")?.document()?.id
+                    ?: ("PC-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase()),
                 itemName = draft.itemName.ifBlank { if (draft.selectedService == "Express") "Express Parcel" else "New Parcel (${draft.selectedService})" },
                 imageUrl = "https://images.unsplash.com/photo-1589409514187-c21d14bf0d13?w=100&h=100&fit=crop",
                 status = ParcelStatus.PENDING,
@@ -5269,7 +5343,7 @@ class DeliveryViewModel : WalletViewModel() {
             val bookTitle = "Booking Confirmed"
             val bookMsg = "Your parcel shipment '${newParcel.itemName}' (#${newParcel.id}) has been booked via ${draft.selectedService} service! Paid ₦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier."
             val notif = NotificationItem(
-                id = "NT-${System.currentTimeMillis().toString().substring(8)}",
+                id = "NT-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase(),
                 title = bookTitle,
                 message = bookMsg,
                 time = "Just now",
@@ -5278,7 +5352,7 @@ class DeliveryViewModel : WalletViewModel() {
             _notifications.value = listOf(notif) + _notifications.value
 
             val newTx = Transaction(
-                id = "TX-${System.currentTimeMillis().toString().substring(8)}",
+                id = "TX-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase(),
                 title = "Parcel Delivery (${draft.selectedService})",
                 date = "Today",
                 amount = -cost,
@@ -5400,7 +5474,7 @@ class DeliveryViewModel : WalletViewModel() {
         }
 
         val uid = _firebaseUserId.value
-        val batchId = "BATCH-${System.currentTimeMillis().toString().takeLast(6)}"
+        val batchId = "BATCH-" + java.util.UUID.randomUUID().toString().replace("-", "").take(8).uppercase()
         val costPerStop = totalCost / stops.size
 
         fun executeBatchCreation() {
@@ -5409,7 +5483,7 @@ class DeliveryViewModel : WalletViewModel() {
             val currentTime = System.currentTimeMillis()
 
             stops.forEachIndexed { index, stop ->
-                val parcelId = "PC-${currentTime.toString().takeLast(6)}-${index + 1}"
+                val parcelId = "PC-" + java.util.UUID.randomUUID().toString().replace("-", "").take(8).uppercase() + "-${index + 1}"
                 val otp = (1000..9999).random().toString()
                 val itemName = if (stop.itemName.isNotBlank()) stop.itemName else "Batch Delivery #${index + 1}"
                 val effectivePickup = if (stop.pickupAddress.isNotBlank()) stop.pickupAddress else pickupAddress
@@ -5443,7 +5517,7 @@ class DeliveryViewModel : WalletViewModel() {
                 newParcels.add(parcel)
 
                 val notif = NotificationItem(
-                    id = "NT-${currentTime.toString().takeLast(6)}-${index + 1}",
+                    id = "NT-" + java.util.UUID.randomUUID().toString().replace("-", "").take(8).uppercase() + "-${index + 1}",
                     title = "Batch Delivery #${index + 1} Booked",
                     message = "Stop '$itemName' (#$parcelId) to ${stop.destinationAddress} booked successfully! Handover PIN: $otp",
                     time = "Just now",
@@ -5454,7 +5528,7 @@ class DeliveryViewModel : WalletViewModel() {
             }
 
             val batchTx = Transaction(
-                id = "TX-${currentTime.toString().takeLast(6)}",
+                id = "TX-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase(),
                 title = "Batch Delivery (${stops.size} Stops)",
                 date = "Today",
                 amount = -totalCost,
@@ -6166,7 +6240,7 @@ class DeliveryViewModel : WalletViewModel() {
         if (refundAmount > 0) {
             val feeNote = if (deductedFee > 0) " (₦${String.format("%,.0f", deductedFee)} dispatch fee deducted)" else ""
             val refundTx = com.esdispatch.data.Transaction(
-                id = "TX-RF-${System.currentTimeMillis().toString().takeLast(6)}",
+                id = "TX-RF-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase(),
                 title = "Refund: ${parcel.itemName}$feeNote",
                 amount = refundAmount,
                 isTopUp = true,
@@ -6220,7 +6294,7 @@ class DeliveryViewModel : WalletViewModel() {
             if (refundAmount > 0) {
                 val feeNote = if (deductedFee > 0) " (₦${String.format("%,.0f", deductedFee)} dispatch fee deducted)" else ""
                 val refundTx = com.esdispatch.data.Transaction(
-                    id = "TX-RF-${System.currentTimeMillis().toString().takeLast(6)}",
+                    id = "TX-RF-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase(),
                     title = "Refund: ${parcel.itemName}$feeNote",
                     amount = refundAmount,
                     isTopUp = true,
@@ -7633,7 +7707,7 @@ class DeliveryViewModel : WalletViewModel() {
         val deliveryFee = 1500.0
         val pointsDiscount = com.esdispatch.utils.LoyaltyRewards.pointsDiscount(_loyaltyPoints.value, redeemPoints)
         val grandTotal = (subtotal + deliveryFee - pointsDiscount).coerceAtLeast(0.0)
-        val orderRef = "ORD-MKT-" + System.currentTimeMillis().toString().takeLast(6)
+        val orderRef = "ORD-MKT-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase()
         val isWalletPayment = paymentMethod == "Wallet"
         var effectiveSubtotal = subtotal
         var effectiveGrandTotal = grandTotal
@@ -7768,22 +7842,7 @@ class DeliveryViewModel : WalletViewModel() {
                                 val userRef = firestore.collection("users").document(userId)
                                 txn.update(userRef, "loyaltyPoints", com.google.firebase.firestore.FieldValue.increment(-_loyaltyPoints.value.toLong().coerceAtLeast(0L)))
                             }
-                            for (split in splits) {
-                                if (split.storeId.isBlank() || split.vendorPayout <= 0) continue
-                                val storeRef = firestore.collection("marketplace_stores").document(split.storeId)
-                                val storeSnap = try { txn.get(storeRef) } catch (e: Exception) { null }
-                                if (storeSnap != null && storeSnap.exists()) {
-                                    txn.update(
-                                        storeRef,
-                                        mapOf(
-                                            "vendorWallet" to com.google.firebase.firestore.FieldValue.increment(split.vendorPayout),
-                                            "totalSales" to com.google.firebase.firestore.FieldValue.increment(1),
-                                            "totalCommissionPaid" to com.google.firebase.firestore.FieldValue.increment(split.commissionAmount),
-                                            "updatedAt" to com.google.firebase.Timestamp.now()
-                                        )
-                                    )
-                                }
-                            }
+
                             val primaryVendorId = splits.firstOrNull()?.storeId?.ifBlank { currentCart.firstOrNull()?.item?.vendorId } ?: ""
                             txn.set(
                                 firestore.collection("marketplace_orders").document(orderRef),
@@ -7865,25 +7924,31 @@ class DeliveryViewModel : WalletViewModel() {
                                     dispatchDoc
                                 )
                             }
-                            if (isWalletPayment) {
-                                val txRef = "MKT-" + System.currentTimeMillis().toString().takeLast(8)
+                            val txRef = "TX-MKT-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase()
+                            val paymentTitle = if (isWalletPayment) "Marketplace Order (Wallet)" else "Marketplace Order (Paystack)"
+                            val txDoc = mapOf<String, Any>(
+                                "id" to txRef,
+                                "userId" to userId,
+                                "title" to paymentTitle,
+                                "amount" to effectiveGrandTotal,
+                                "isTopUp" to false,
+                                "type" to "DEBIT",
+                                "status" to "SUCCESS",
+                                "reference" to txRef,
+                                "date" to "Today",
+                                "timestamp" to System.currentTimeMillis(),
+                                "createdAt" to com.google.firebase.Timestamp.now()
+                            )
+                            if (userId != "guest_user") {
                                 txn.set(
                                     firestore.collection("users").document(userId).collection("transactions").document(orderRef),
-                                    mapOf<String, Any>(
-                                        "id" to txRef,
-                                        "userId" to userId,
-                                        "title" to "Marketplace Order (${currentCart.size} items)",
-                                        "amount" to effectiveGrandTotal,
-                                        "isTopUp" to false,
-                                        "type" to "DEBIT",
-                                        "status" to "SUCCESS",
-                                        "reference" to txRef,
-                                        "date" to "Today",
-                                        "timestamp" to System.currentTimeMillis(),
-                                        "createdAt" to com.google.firebase.Timestamp.now()
-                                    )
+                                    txDoc
                                 )
                             }
+                            txn.set(
+                                firestore.collection("transactions").document(txRef),
+                                txDoc
+                            )
                             null
                         }
                     )

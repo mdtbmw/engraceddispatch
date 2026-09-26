@@ -17,7 +17,7 @@ const Footer = () => {
   const year = new Date().getFullYear();
   const { content } = useSiteContent();
   return (
-    <footer className="zubuz-footer-section main-footer dark-bg" style={{ paddingTop: 80 }}>
+    <footer id="contact" className="zubuz-footer-section main-footer dark-bg" style={{ paddingTop: 80 }}>
       <div className="container">
         <div className="zubuz-footer-top">
           <div className="row">

@@ -250,6 +250,7 @@ fun DashboardScreen(
 
     val loyaltyPoints by viewModel.loyaltyPoints.collectAsState()
     val deliveryCount by viewModel.deliveryCount.collectAsState()
+    val promoSavings by viewModel.promoSavings.collectAsState()
     val welcomeGiftClaimed by viewModel.welcomeGiftClaimed.collectAsState()
     val isNewRegistration by viewModel.isNewRegistration.collectAsState()
 
@@ -568,10 +569,10 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        val promoSavings = (parcels.count { it.status == ParcelStatus.DELIVERED } * 750) + (loyaltyPoints * 10)
+                        val promoSavingsText = if (promoSavings > 0) "₦${String.format("%,d", promoSavings.toLong())} Saved" else "₦0 Saved"
                         StatsTile(
                             title = "Promo Savings",
-                            value = "₦${String.format("%,d", promoSavings)} Saved",
+                            value = promoSavingsText,
                             icon = Icons.Filled.Redeem,
                             iconColor = Gold,
                             modifier = Modifier.weight(1.3f)
@@ -3110,7 +3111,15 @@ fun WaybillInvoiceCard(
                         } else {
                             "Completed"
                         }
-                        val trackingUrl = "https://engraceddispatchnew.vercel.app/track?id=${parcel.id}"
+                        val dynamicDomain = context.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
+                            .getString("dynamic_api_base_url", null)?.trim()?.trimEnd('/')
+                        val baseDomain = if (!dynamicDomain.isNullOrBlank() && (dynamicDomain.startsWith("http://") || dynamicDomain.startsWith("https://"))) {
+                            dynamicDomain
+                        } else {
+                            val envUrl = try { com.esdispatch.BuildConfig.BACKEND_API_URL.trim().trimEnd('/') } catch (e: Throwable) { "" }
+                            if (envUrl.isNotBlank() && (envUrl.startsWith("http://") || envUrl.startsWith("https://"))) envUrl else "https://engracedsmile.com"
+                        }
+                        val trackingUrl = "$baseDomain/track?id=${parcel.id}"
                         val shareText = """
                             📦 ESDISPATCH CONSIGNMENT RECEIPT
                             --------------------------------

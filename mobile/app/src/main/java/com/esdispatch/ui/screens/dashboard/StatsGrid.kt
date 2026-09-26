@@ -25,7 +25,8 @@ fun StatsGrid(
     activeCount: Int,
     completedCount: Int,
     deliveryCount: Int,
-    loyaltyPoints: Int
+    loyaltyPoints: Int,
+    promoSavings: Double = 0.0
 ) {
     Column(
         modifier = Modifier
@@ -56,10 +57,10 @@ fun StatsGrid(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            val promoSavings = (deliveryCount * 750) + (loyaltyPoints * 10)
+            val promoSavingsText = if (promoSavings > 0) "₦${String.format("%,d", promoSavings.toLong())} Saved" else "₦0 Saved"
             StatsTile(
                 title = "Promo Savings",
-                value = "₦${String.format("%,d", promoSavings)} Saved",
+                value = promoSavingsText,
                 icon = Icons.Filled.Redeem,
                 iconColor = Gold,
                 modifier = Modifier.weight(1.3f)

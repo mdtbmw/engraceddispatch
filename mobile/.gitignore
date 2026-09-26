@@ -20,6 +20,10 @@ backend/
 
 # Keystore
 debug.keystore
+*.jks
+*.keystore
+release-key.jks
+app/release-key.jks
 
 # OS
 .DS_Store

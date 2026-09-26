@@ -41,6 +41,45 @@ open class WalletViewModel : AuthViewModel() {
         val displayAmt = if (amount < 0) -amount else amount
         val txRef = if (!reference.isNullOrBlank()) reference else "TX-PAY-${System.currentTimeMillis()}"
 
+        if (isTopUp && !reference.isNullOrBlank()) {
+            val functions = com.google.firebase.functions.FirebaseFunctions.getInstance()
+            val callData = hashMapOf(
+                "amount" to amount,
+                "reference" to reference
+            )
+            functions.getHttpsCallable("verifyPaymentAndTopUp")
+                .call(callData)
+                .addOnSuccessListener { result ->
+                    val resData = result.data as? Map<*, *>
+                    val newBal = (resData?.get("newBalance") as? Number)?.toDouble() ?: (_walletBalance.value + amount)
+                    _walletBalance.value = newBal
+                    savePref("wallet_balance", newBal)
+
+                    val localTx = Transaction(
+                        id = txRef,
+                        title = title,
+                        date = "Today",
+                        amount = displayAmt,
+                        isTopUp = true,
+                        type = "CREDIT",
+                        status = "SUCCESS",
+                        reference = txRef,
+                        userId = uid
+                    )
+                    _transactions.value = listOf(localTx) + _transactions.value
+
+                    val notifTitle = "Wallet Credited"
+                    val notifMessage = "Your ESDispatch wallet has been topped up with ₦${String.format("%,.2f", displayAmt)}."
+                    addNotification(notifTitle, notifMessage)
+                    onComplete?.invoke(true, "Wallet successfully credited.")
+                }
+                .addOnFailureListener { err ->
+                    android.util.Log.e("WalletTopUp", "Server payment verification failed", err)
+                    onComplete?.invoke(false, err.message ?: "Payment verification failed. If charged, contact support.")
+                }
+            return
+        }
+
         com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, amount) { success, newBalance ->
             if (success) {
                 _walletBalance.value = newBalance

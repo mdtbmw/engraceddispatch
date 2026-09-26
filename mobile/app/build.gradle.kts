@@ -49,6 +49,8 @@ android {
     val googleMapsApiKey = resolveEnv("GOOGLE_MAPS_API_KEY", "AIzaSyCnYpvx0peHOafunoZcPMIIhd7Y-pM0NAs")
     buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsApiKey\"")
     manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
+    val backendApiUrl = resolveEnv("BACKEND_API_URL").ifBlank { resolveEnv("NEXT_PUBLIC_APP_URL", "") }
+    buildConfigField("String", "BACKEND_API_URL", "\"$backendApiUrl\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -61,9 +63,14 @@ android {
       val keystoreFile = file(keystorePath)
       if (keystoreFile.exists()) {
         storeFile = keystoreFile
-        storePassword = System.getenv("STORE_PASSWORD") ?: "android123"
-        keyAlias = "upload"
-        keyPassword = System.getenv("KEY_PASSWORD") ?: "android123"
+        val sPassword = System.getenv("STORE_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD")
+        val kPassword = System.getenv("KEY_PASSWORD")
+        if (System.getenv("CI") == "true" && (sPassword.isNullOrBlank() || kPassword.isNullOrBlank())) {
+          throw GradleException("STORE_PASSWORD and KEY_PASSWORD environment variables are required in CI.")
+        }
+        storePassword = sPassword ?: "android123"
+        keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
+        keyPassword = kPassword ?: "android123"
         enableV1Signing = true
         enableV2Signing = true
       } else {
@@ -164,6 +171,7 @@ dependencies {
   implementation(libs.firebase.crashlytics)
   implementation(libs.firebase.storage)
   implementation(libs.firebase.database)
+  implementation("com.google.firebase:firebase-functions")
   implementation(libs.paystack)
   implementation(libs.zxing)
   implementation(libs.kotlinx.coroutines.android)

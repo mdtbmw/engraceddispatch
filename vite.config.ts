@@ -18,7 +18,7 @@ function emailApiPlugin() {
               const port = Number(creds.port || 465);
               const secure = creds.secure !== undefined ? Boolean(creds.secure) : port === 465;
               const user = (creds.user || "noreply@engracedsmile.com").trim();
-              const pass = (creds.pass || "ha;LS.fiewLkDw~x").trim();
+              const pass = (creds.pass || process.env.SMTP_PASS || "").trim();
 
               const nodemailer = await import("nodemailer");
               const transporter = nodemailer.createTransport({
@@ -196,7 +196,7 @@ function emailApiPlugin() {
               const port = Number(creds.port || 465);
               const secure = creds.secure !== undefined ? Boolean(creds.secure) : port === 465;
               const user = (creds.user || "noreply@engracedsmile.com").trim();
-              const pass = (creds.pass || "ha;LS.fiewLkDw~x").trim();
+              const pass = (creds.pass || process.env.SMTP_PASS || "").trim();
               const fromEmail = (creds.fromEmail || creds.user || "noreply@engracedsmile.com").trim();
               const fromName = (creds.fromName || "ESDispatch Logistics").trim();
 
@@ -304,7 +304,7 @@ function emailApiPlugin() {
               const port = 465;
               const secure = true;
               const user = "noreply@engracedsmile.com";
-              const pass = "ha;LS.fiewLkDw~x";
+              const pass = (process.env.SMTP_PASS || "").trim();
               const fromEmail = "noreply@engracedsmile.com";
               const fromName = "ESDispatch Logistics";
 
@@ -359,7 +359,6 @@ function emailApiPlugin() {
                 JSON.stringify({
                   success: true,
                   message: `Verification passcode dispatched to ${recipientEmail}.`,
-                  otp,
                   messageId: info.messageId,
                 })
               );

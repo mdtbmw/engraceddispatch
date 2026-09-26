@@ -1,5 +1,5 @@
 import * as crypto from 'crypto';
-import * as admin from 'firebase-admin';
+import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 export type OtpPurpose =
   | 'SIGN_UP'
@@ -32,7 +32,7 @@ export async function createAndStoreOtp(
   purpose: OtpPurpose,
   expiryMinutes: number = 10
 ): Promise<GeneratedOtpResult> {
-  const db = admin.firestore();
+  const db = getFirestore();
   const normalizedEmail = email.toLowerCase().trim();
 
   // Cryptographic 6-digit code (100000 - 999999)
@@ -66,8 +66,8 @@ export async function createAndStoreOtp(
     hashedCode,
     attempts: 0,
     used: false,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAt: Timestamp.fromDate(expiresAt),
   });
 
   return { code, docId, expiresAt };
@@ -86,7 +86,7 @@ export async function verifyOtpCode(
   purpose: OtpPurpose,
   rawCode: string
 ): Promise<VerificationResult> {
-  const db = admin.firestore();
+  const db = getFirestore();
   const normalizedEmail = email.toLowerCase().trim();
   const docId = `${normalizedEmail.replace(/[^a-z0-9]/g, '_')}_${purpose.toLowerCase()}`;
   const otpRef = db.collection('verification_otps').doc(docId);
@@ -116,7 +116,7 @@ export async function verifyOtpCode(
   const inputHash = hashOtp(rawCode);
   if (inputHash !== data.hashedCode) {
     await otpRef.update({
-      attempts: admin.firestore.FieldValue.increment(1),
+      attempts: FieldValue.increment(1),
     });
     const remaining = MAX_ATTEMPTS - (data.attempts || 0) - 1;
     return { valid: false, message: `Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.` };
@@ -125,7 +125,7 @@ export async function verifyOtpCode(
   // Code matches! Mark as used
   await otpRef.update({
     used: true,
-    verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+    verifiedAt: FieldValue.serverTimestamp(),
   });
 
   return { valid: true, message: 'Code verified successfully.' };

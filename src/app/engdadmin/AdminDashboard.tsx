@@ -1907,9 +1907,7 @@ function AdminDashboardPage() {
   const [showAdminProfileModal, setShowAdminProfileModal] = useState(false);
   const [userRole, setUserRole] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [signingUp, setSigningUp] = useState(false);
-  const [signupRole, setSignupRole] = useState("super_admin");
-  const [email, setEmail] = useState("admin@engraced.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authErr, setAuthErr] = useState("");
   const [authOk, setAuthOk] = useState("");
@@ -2452,39 +2450,24 @@ function AdminDashboardPage() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault(); setAuthErr(""); setAuthOk("");
     try {
-      if (signingUp) {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        await setDoc(doc(db, "users", cred.user.uid), {
-          uid: cred.user.uid,
-          id: cred.user.uid,
-          email,
-          name: email.split("@")[0],
-          role: signupRole,
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now()
-        });
-        const token = await cred.user.getIdToken();
-        document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`;
-        setAuthOk((signupRole === "dispatcher" ? "Dispatcher" : "Admin") + " account created.");
-      } else {
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        const snap = await getDoc(doc(db, "users", cred.user.uid));
-        if (!snap.exists()) {
-          // Self-heal: If authenticated user was missing a Firestore doc, create it
-          await setDoc(doc(db, "users", cred.user.uid), {
-            uid: cred.user.uid,
-            id: cred.user.uid,
-            email,
-            name: email.split("@")[0],
-            role: "super_admin",
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now()
-          });
-        }
-        const token = await cred.user.getIdToken();
-        document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`;
-        setAuthOk("Signed in. Loading dashboard...");
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const snap = await getDoc(doc(db, "users", cred.user.uid));
+      if (!snap.exists()) {
+        await signOut(auth);
+        setAuthErr("Access Denied: Administrative profile not found.");
+        return;
       }
+      const data = snap.data();
+      const role = (data?.role || data?.userRole || "").toLowerCase();
+      const allowedRoles = ["admin", "super_admin", "dispatcher", "manager", "owner"];
+      if (!allowedRoles.includes(role)) {
+        await signOut(auth);
+        setAuthErr("Access Denied: You do not have permission to access the admin portal.");
+        return;
+      }
+      const token = await cred.user.getIdToken();
+      document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict; Secure`;
+      setAuthOk("Signed in. Loading dashboard...");
     } catch (err: any) { setAuthErr(err?.message || "Operation failed. Please try again."); }
   };
 
@@ -2575,19 +2558,13 @@ function AdminDashboardPage() {
           <form onSubmit={handleAuth} className="space-y-4">
             <div><label className="block text-xs font-bold text-gray-800 dark:text-gray-200 mb-1">Admin Email</label>
               <div className="relative"><Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-gray-400 pointer-events-none" />
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@engraced.com" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@esdispatch.com" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
             <div><label className="block text-xs font-bold text-gray-800 dark:text-gray-200 mb-1">Password</label>
               <div className="relative"><Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-gray-400 pointer-events-none" />
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
-            {signingUp && <div><label className="block text-[10px] font-black text-gray-800 dark:text-gray-200 mb-1 uppercase tracking-wider">ROLE</label>
-                  <Select value={signupRole} onChange={setSignupRole} options={[{value:"super_admin",label:"Super Admin (full access)"},{value:"admin",label:"Admin (restricted)"},{value:"dispatcher",label:"Dispatcher (orders only)"}]} className="w-full" /></div>}
             <button type="submit" className="w-full bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black py-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-sm tracking-wider cursor-pointer">
-              <Lock className="w-4 h-4" /> {signingUp ? "CREATE ADMIN" : "SIGN IN"}</button>
+              <Lock className="w-4 h-4" /> SIGN IN</button>
           </form>
-          <div className="mt-6 text-center">
-            <button type="button" onClick={() => setSigningUp(!signingUp)} className="text-xs text-amber-800 dark:text-[#FFB800] hover:underline font-bold cursor-pointer">
-              {signingUp ? "Already have an account? Sign In" : "Create an admin account"}</button>
-          </div>
         </div>
       </div>
     );

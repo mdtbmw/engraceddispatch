@@ -244,7 +244,7 @@ export default function EmailStudioTab({
   const [smtpPort, setSmtpPort] = useState(465);
   const [smtpSecure, setSmtpSecure] = useState(true);
   const [smtpUser, setSmtpUser] = useState("noreply@engracedsmile.com");
-  const [smtpPass, setSmtpPass] = useState("ha;LS.fiewLkDw~x");
+  const [smtpPass, setSmtpPass] = useState("");
   const [smtpFromEmail, setSmtpFromEmail] = useState("noreply@engracedsmile.com");
   const [smtpFromName, setSmtpFromName] = useState("ESDispatch Logistics");
   const [showSmtpDrawer, setShowSmtpDrawer] = useState(false);

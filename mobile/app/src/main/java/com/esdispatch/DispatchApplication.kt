@@ -112,24 +112,6 @@ class DispatchApplication : Application() {
         } catch (e: Throwable) {
             android.util.Log.e("ESDispatchCrash", "Could not write app crash file: ${e.message}")
         }
-
-        if (Build.VERSION.SDK_INT >= 29) {
-            try {
-                val resolver = contentResolver
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, "esdispatch_crash.txt")
-                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                }
-                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                uri?.let {
-                    resolver.openOutputStream(it)?.use { os -> os.write(trace.toByteArray()) }
-                }
-                android.util.Log.i("ESDispatchCrash", "Crash log written to Downloads folder")
-            } catch (e: Throwable) {
-                android.util.Log.e("ESDispatchCrash", "Could not write Downloads crash file: ${e.message}")
-            }
-        }
     }
 
     private fun initializeFirebaseSafely() {
