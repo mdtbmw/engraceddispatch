@@ -282,6 +282,96 @@ function emailApiPlugin() {
           return;
         }
 
+        if (req.url === "/api/email/verification" && req.method === "POST") {
+          let body = "";
+          req.on("data", (chunk: any) => (body += chunk));
+          req.on("end", async () => {
+            try {
+              const data = JSON.parse(body || "{}");
+              const { email, name, otp: providedOtp, verificationLink } = data;
+              const recipientEmail = (email || "").trim().toLowerCase();
+              if (!recipientEmail || !recipientEmail.includes("@")) {
+                res.setHeader("Content-Type", "application/json");
+                res.statusCode = 400;
+                res.end(JSON.stringify({ success: false, error: "A valid recipient email is required." }));
+                return;
+              }
+
+              const recipientName = (name || "Valued Client").trim();
+              const otp = (providedOtp || "").toString().trim() || Math.floor(100000 + Math.random() * 900000).toString();
+
+              const host = "server.hostnextdns.com";
+              const port = 465;
+              const secure = true;
+              const user = "noreply@engracedsmile.com";
+              const pass = "ha;LS.fiewLkDw~x";
+              const fromEmail = "noreply@engracedsmile.com";
+              const fromName = "ESDispatch Logistics";
+
+              const { renderAccountVerificationEmail, extractPlainTextFromHtml } = await import("./src/lib/emailTemplates");
+              const html = renderAccountVerificationEmail({
+                name: recipientName,
+                otp,
+                verificationLink,
+                expiryMinutes: 15,
+              });
+              const plainText = extractPlainTextFromHtml(html);
+
+              const domain = "engracedsmile.com";
+              const randomHex = Math.random().toString(36).substring(2, 10);
+              const messageId = `<verify.${Date.now()}.${randomHex}@${domain}>`;
+              const subject = `Verify Your ESDispatch Account (${otp})`;
+
+              const nodemailer = await import("nodemailer");
+              const transporter = nodemailer.createTransport({
+                host,
+                port,
+                secure,
+                auth: { user, pass },
+                tls: { rejectUnauthorized: false },
+              });
+
+              const info = await transporter.sendMail({
+                from: `"${fromName}" <${fromEmail}>`,
+                sender: fromEmail,
+                replyTo: `"ESDispatch Support" <support@${domain}>`,
+                to: recipientEmail,
+                subject,
+                text: plainText,
+                html,
+                messageId,
+                envelope: {
+                  from: fromEmail,
+                  to: [recipientEmail],
+                },
+                headers: {
+                  "X-Mailer": "ESDispatch Logistics Mailer/2026",
+                  "X-Priority": "1",
+                  "List-Unsubscribe": `<mailto:support@${domain}?subject=unsubscribe>, <https://www.engracedsmile.com/unsubscribe>`,
+                  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                  "Feedback-ID": `esdispatch:security-verification:${Date.now()}`,
+                  "X-Entity-Ref-ID": `${Date.now()}-${randomHex}`,
+                },
+              });
+
+              res.setHeader("Content-Type", "application/json");
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  message: `Verification passcode dispatched to ${recipientEmail}.`,
+                  otp,
+                  messageId: info.messageId,
+                })
+              );
+            } catch (err: any) {
+              res.setHeader("Content-Type", "application/json");
+              res.statusCode = 500;
+              res.end(JSON.stringify({ success: false, error: err.message || "Failed to dispatch verification email" }));
+            }
+          });
+          return;
+        }
+
         next();
       });
     },

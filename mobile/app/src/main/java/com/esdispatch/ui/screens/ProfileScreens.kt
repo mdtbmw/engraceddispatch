@@ -5286,6 +5286,9 @@ fun VerificationSheet(
     val userPhone by viewModel.userPhone.collectAsState()
     var isChecking by remember { mutableStateOf(false) }
     var isSendingEmail by remember { mutableStateOf(false) }
+    var hasSentCode by remember { mutableStateOf(false) }
+    var otpInput by remember { mutableStateOf("") }
+    var isVerifyingOtp by remember { mutableStateOf(false) }
 
     val dismissWithAnim = {
         scope.launch { sheetState.hide() }.invokeOnCompletion {
@@ -5341,9 +5344,9 @@ fun VerificationSheet(
                 ) {
                     Text("Done", fontWeight = FontWeight.Bold)
                 }
-            } else {
+            } else if (!hasSentCode) {
                 Text(
-                    "Verify your email address to authenticate your shipping identity.",
+                    "Verify your email address to authenticate your shipping identity and unlock VIP dispatch features.",
                     fontSize = 13.sp,
                     color = TextGray
                 )
@@ -5372,6 +5375,9 @@ fun VerificationSheet(
                         isSendingEmail = true
                         viewModel.sendVerificationEmail { success, msg ->
                             isSendingEmail = false
+                            if (success) {
+                                hasSentCode = true
+                            }
                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                         }
                     },
@@ -5383,7 +5389,7 @@ fun VerificationSheet(
                     if (isSendingEmail) {
                         CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(24.dp))
                     } else {
-                        Text("Send Verification Email", fontWeight = FontWeight.Bold)
+                        Text("Send Verification Passcode", fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -5408,6 +5414,111 @@ fun VerificationSheet(
                         CircularProgressIndicator(color = Gold, modifier = Modifier.size(24.dp))
                     } else {
                         Text("I Have Verified My Email", fontWeight = FontWeight.Bold, color = AppOnSurface)
+                    }
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Gold.copy(alpha = 0.12f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Verification Passcode Sent", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Gold)
+                        Text(
+                            "We sent a 6-digit verification passcode to $userEmail. Enter it below to authenticate instantly.",
+                            fontSize = 12.sp,
+                            color = AppOnSurface
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = otpInput,
+                    onValueChange = {
+                        if (it.length <= 6 && it.all { ch -> ch.isDigit() }) {
+                            otpInput = it
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("6-Digit Passcode") },
+                    placeholder = { Text("• • • • • •", textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        letterSpacing = 8.sp,
+                        color = AppOnSurface
+                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Color.Gray.copy(alpha = 0.4f),
+                        cursorColor = Gold
+                    )
+                )
+
+                Button(
+                    onClick = {
+                        isVerifyingOtp = true
+                        viewModel.confirmAccountVerificationOtp(otpInput.trim()) { success, msg ->
+                            isVerifyingOtp = false
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            if (success) {
+                                dismissWithAnim()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                    enabled = otpInput.length == 6 && !isVerifyingOtp
+                ) {
+                    if (isVerifyingOtp) {
+                        CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(24.dp))
+                    } else {
+                        Text("Verify Passcode", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            isSendingEmail = true
+                            viewModel.sendVerificationEmail { success, msg ->
+                                isSendingEmail = false
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = !isSendingEmail && !isVerifyingOtp
+                    ) {
+                        Text("Resend Passcode", fontSize = 12.sp, color = Gold, fontWeight = FontWeight.Bold)
+                    }
+
+                    TextButton(
+                        onClick = {
+                            isChecking = true
+                            viewModel.refreshVerificationStatus { verified ->
+                                isChecking = false
+                                if (verified) {
+                                    Toast.makeText(context, "Verification confirmed!", Toast.LENGTH_SHORT).show()
+                                    dismissWithAnim()
+                                } else {
+                                    Toast.makeText(context, "Email is not yet verified. Please enter the passcode sent to your inbox.", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        enabled = !isChecking && !isVerifyingOtp
+                    ) {
+                        Text("Check Link", fontSize = 12.sp, color = TextGray)
                     }
                 }
             }

@@ -757,6 +757,53 @@ export function renderSignUpOtpEmail(params: {
 }
 
 /**
+ * 1b. Account Identity Verification (OTP + Direct Link)
+ * Clean luxury template with prominent passcode card and direct verification action.
+ */
+export function renderAccountVerificationEmail(params: {
+  name: string;
+  otp: string;
+  verificationLink?: string;
+  expiryMinutes?: number;
+  heroImageUrl?: string;
+}): string {
+  const expiry = params.expiryMinutes || 15;
+  const link = params.verificationLink || `https://engraceddispatchnew.vercel.app/verified?email=${encodeURIComponent(params.name)}&otp=${params.otp}`;
+  return wrapInMasterLuxuryTemplate({
+    title: `Verify Your ESDispatch Account (${params.otp})`,
+    preheader: `Your verification passcode is ${params.otp}. Valid for ${expiry} minutes.`,
+    categoryTag: 'IDENTITY VERIFICATION',
+    recipientName: params.name || 'Valued Client',
+    headline: `Welcome to ESDispatch, ${params.name || 'Client'}`,
+    heroImageUrl: params.heroImageUrl,
+    contentHtml: `
+      <p style="margin: 0 0 12px 0;">
+        Welcome to <strong>ESDispatch</strong> — the gold standard in express logistics and courier dispatch.
+      </p>
+      <p style="margin: 0 0 16px 0;">
+        To authenticate your shipping identity and activate VIP logistics status, please enter the one-time passcode below into your ESDispatch mobile application:
+      </p>
+    `,
+    infoCard: {
+      category: 'CONFIDENTIAL PASSCODE',
+      heading: 'One-Time Verification Passcode',
+      codeDisplay: params.otp,
+      codeSubtext: `Expires in ${expiry} minutes &bull; Single-use only`,
+      badgeText: `⏱ ${expiry} MINUTES VALIDITY`,
+      badgeType: 'warning',
+      bodyText: 'ESDispatch dispatchers, riders, and support staff will never ask for your verification passcode. Do not disclose it to anyone.',
+    },
+    threeCards: [
+      { tag: 'SECURITY', title: '256-Bit SSL', description: 'End-to-end encrypted dispatch network.' },
+      { tag: 'DISPATCH', title: 'Benin City', description: 'Active fleet operating across Edo State.' },
+      { tag: 'WALLET', title: 'Escrow Safe', description: 'Automated fund protection on bookings.' },
+    ],
+    ctaText: 'VERIFY IN APP / BROWSER',
+    ctaUrl: link,
+  });
+}
+
+/**
  * 2. Password Reset OTP
  * Direct security alert with single-use authorization code.
  */
