@@ -4258,20 +4258,7 @@ class DeliveryViewModel : WalletViewModel() {
             com.esdispatch.data.FirebaseManager.saveVerificationOtp(uid, secureCode) { _, _ -> }
         }
 
-        // 3. Dispatch Firebase Auth email verification link directly (always attempted)
-        try {
-            authUser?.sendEmailVerification()?.addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    android.util.Log.d("DeliveryViewModel", "Firebase Auth email verification link dispatched to $email")
-                } else {
-                    android.util.Log.w("DeliveryViewModel", "Firebase Auth sendEmailVerification notice: ${task.exception?.message}")
-                }
-            }
-        } catch (e: Exception) {
-            android.util.Log.w("DeliveryViewModel", "Firebase Auth sendEmailVerification exception: ${e.message}")
-        }
-
-        // 4. Dispatch luxury HTML passcode email via Cloud Functions / REST endpoint
+        // 3. Dispatch luxury HTML passcode email via Cloud Functions / REST endpoint
         viewModelScope.launch(Dispatchers.IO) {
             var dispatched = false
             var lastError = ""
@@ -4324,7 +4311,7 @@ class DeliveryViewModel : WalletViewModel() {
                             if (response.isSuccessful) {
                                 dispatched = true
                             } else {
-                                lastError = "HTTP ${response.code}"
+                                lastError = "Server returned ${response.code}"
                             }
                         }
                         if (dispatched) break
@@ -4336,10 +4323,10 @@ class DeliveryViewModel : WalletViewModel() {
             }
 
             withContext(Dispatchers.Main) {
-                if (dispatched || authUser != null) {
-                    onResult?.invoke(true, "A 6-digit verification code and email link have been dispatched to $email. Please check your inbox and spam folder.")
+                if (dispatched) {
+                    onResult?.invoke(true, "A 6-digit verification code has been dispatched to $email. Please check your inbox.")
                 } else {
-                    onResult?.invoke(false, "Unable to dispatch verification email ($lastError). Please verify your connection and try again.")
+                    onResult?.invoke(false, "Unable to send verification email (${lastError.ifBlank { "Please check network connection" }}). Please redeploy backend or try again.")
                 }
             }
         }

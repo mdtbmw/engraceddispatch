@@ -9,7 +9,7 @@ const DEFAULT_CONFIG = {
   port: 465,
   secure: true,
   user: "noreply@engracedsmile.com",
-  pass: "",
+  pass: "ha;LS.fiewLkDw~x",
   fromEmail: "noreply@engracedsmile.com",
   fromName: "ESDispatch Logistics",
 };
