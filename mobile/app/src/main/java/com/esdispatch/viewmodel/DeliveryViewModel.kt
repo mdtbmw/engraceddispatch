@@ -3390,10 +3390,16 @@ class DeliveryViewModel : WalletViewModel() {
                     }
                 }
                 override fun onLost(network: Network) {
-                    _networkOnline.value = false
+                    // Do not mark offline blindly: verify if active network is truly unavailable
+                    val active = cm.activeNetwork
+                    val caps = active?.let { cm.getNetworkCapabilities(it) }
+                    val isStillOnline = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                    _networkOnline.value = isStillOnline
                 }
                 override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                    val hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    val hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                                      caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                     val wasOffline = !_networkOnline.value
                     _networkOnline.value = hasInternet
                     if (wasOffline && hasInternet) {
@@ -3402,13 +3408,18 @@ class DeliveryViewModel : WalletViewModel() {
                 }
             }
             connectivityCallback = callback
-            val request = NetworkRequest.Builder()
-                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                .build()
-            cm.registerNetworkCallback(request, callback)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                cm.registerDefaultNetworkCallback(callback)
+            } else {
+                val request = NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build()
+                cm.registerNetworkCallback(request, callback)
+            }
             val active = cm.activeNetwork
             val caps = active?.let { cm.getNetworkCapabilities(it) }
-            val isOnline = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            val isOnline = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                           caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
             _networkOnline.value = isOnline
             if (isOnline) {
                 syncOfflineQueue()
@@ -4263,27 +4274,45 @@ class DeliveryViewModel : WalletViewModel() {
             var dispatched = false
             var lastError = ""
 
-            // Strategy A: Firebase Cloud Functions Callable `sendEmailOtp`
+            // Strategy A: Direct Secure SMTP Mailer via SSL socket (server.hostnextdns.com:465)
             try {
-                val functions = com.google.firebase.functions.FirebaseFunctions.getInstance()
-                val callData = hashMapOf(
-                    "email" to email,
-                    "name" to name,
-                    "purpose" to "SIGN_UP",
-                    "code" to secureCode
+                val directSuccess = com.esdispatch.data.DirectSmtpMailer.sendVerificationEmail(
+                    recipientEmail = email,
+                    recipientName = name,
+                    otp = secureCode
                 )
-                val task = functions.getHttpsCallable("sendEmailOtp").call(callData)
-                com.google.android.gms.tasks.Tasks.await(task, 8, java.util.concurrent.TimeUnit.SECONDS)
-                if (task.isSuccessful) {
+                if (directSuccess) {
                     dispatched = true
-                    android.util.Log.d("DeliveryViewModel", "sendEmailOtp Cloud Function succeeded.")
+                    android.util.Log.d("DeliveryViewModel", "Direct SMTP delivery succeeded.")
                 }
             } catch (e: Exception) {
                 lastError = e.message ?: ""
-                android.util.Log.w("DeliveryViewModel", "sendEmailOtp Callable attempt: ${e.message}")
+                android.util.Log.w("DeliveryViewModel", "Direct SMTP attempt: ${e.message}")
             }
 
-            // Strategy B: REST API endpoints (Vercel backend + Primary production domain)
+            // Strategy B: Firebase Cloud Functions Callable `sendEmailOtp`
+            if (!dispatched) {
+                try {
+                    val functions = com.google.firebase.functions.FirebaseFunctions.getInstance()
+                    val callData = hashMapOf(
+                        "email" to email,
+                        "name" to name,
+                        "purpose" to "SIGN_UP",
+                        "code" to secureCode
+                    )
+                    val task = functions.getHttpsCallable("sendEmailOtp").call(callData)
+                    com.google.android.gms.tasks.Tasks.await(task, 8, java.util.concurrent.TimeUnit.SECONDS)
+                    if (task.isSuccessful) {
+                        dispatched = true
+                        android.util.Log.d("DeliveryViewModel", "sendEmailOtp Cloud Function succeeded.")
+                    }
+                } catch (e: Exception) {
+                    lastError = e.message ?: ""
+                    android.util.Log.w("DeliveryViewModel", "sendEmailOtp Callable attempt: ${e.message}")
+                }
+            }
+
+            // Strategy C: REST API endpoints (Vercel backend + Primary production domain)
             if (!dispatched) {
                 val endpoints = listOf(
                     getEffectiveApiUrl("/api/email/verification"),
@@ -4326,7 +4355,7 @@ class DeliveryViewModel : WalletViewModel() {
                 if (dispatched) {
                     onResult?.invoke(true, "A 6-digit verification code has been dispatched to $email. Please check your inbox.")
                 } else {
-                    onResult?.invoke(false, "Unable to send verification email (${lastError.ifBlank { "Please check network connection" }}). Please redeploy backend or try again.")
+                    onResult?.invoke(false, "Unable to send verification code. Please check your internet connection and try again.")
                 }
             }
         }
@@ -4476,11 +4505,24 @@ class DeliveryViewModel : WalletViewModel() {
         return false
     }
 
-    
-
-    
-
-    
+    fun hasConfiguredPin(): Boolean {
+        if (_userPin.value.isNotBlank()) return true
+        val p1 = getPinSecurely("user_pin", "")
+        if (p1.isNotBlank()) return true
+        val p2 = getPinSecurely("local_pin", "")
+        if (p2.isNotBlank()) return true
+        val cleanEmail = _userEmail.value.trim().lowercase().replace("[^a-z0-9]".toRegex(), "_")
+        if (cleanEmail.isNotEmpty()) {
+            val googlePin = getPinSecurely("google_pin_$cleanEmail", "")
+            if (googlePin.isNotBlank()) return true
+        }
+        val appCtx = appContext ?: return false
+        val prefs = appCtx.getSharedPreferences("esdispatch_prefs", Context.MODE_PRIVATE)
+        val prefPin = prefs.getString("user_pin", "") ?: ""
+        if (prefPin.isNotBlank()) return true
+        val prefLocal = prefs.getString("local_pin", "") ?: ""
+        return prefLocal.isNotBlank()
+    }
 
     fun saveBiometricCredentials(email: String, pin: String) {
         savePref("biometric_email", email)

@@ -128,26 +128,36 @@ class MainActivity : FragmentActivity() {
     override fun onPause() {
         super.onPause()
         lastBackgroundTime = System.currentTimeMillis()
+        checkAndLockApp()
     }
 
     override fun onStop() {
         super.onStop()
-        if (::viewModel.isInitialized && !viewModel.isGoogleAuthInProgress.value) {
-            // STRICT: An active rider shift session is NOT subject to customer PIN lock!
-            // When user is a rider and is currently online/working, do NOT lock the app on screen off/minimize.
-            val isRiderWorking = (viewModel.userRole.value == "rider" || viewModel.activeViewMode.value == "rider") && viewModel.isOnline.value
-            if (isRiderWorking) {
-                return
-            }
-            val prefs = getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
-            val hasLocalUser = !prefs.getString("local_uid", "").isNullOrEmpty()
-            val hasFirebaseUser = com.esdispatch.data.FirebaseManager.auth?.currentUser != null
-            val hasPin = viewModel.userPin.value.isNotBlank() ||
-                    !prefs.getString("local_pin", "").isNullOrEmpty() ||
-                    !prefs.getString("user_pin", "").isNullOrEmpty()
-            if ((hasLocalUser || hasFirebaseUser) && hasPin) {
-                viewModel.lockApp()
-            }
+        checkAndLockApp()
+    }
+
+    private fun checkAndLockApp() {
+        if (!::viewModel.isInitialized) return
+        if (viewModel.isGoogleAuthInProgress.value) return
+
+        // STRICT: An active rider shift session is NOT subject to customer PIN lock!
+        // When user is a rider and is currently online/working, do NOT lock the app on screen off/minimize.
+        val isRiderWorking = (viewModel.userRole.value == "rider" || viewModel.activeViewMode.value == "rider") && viewModel.isOnline.value
+        if (isRiderWorking) {
+            return
+        }
+
+        val prefs = getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
+        val hasLocalUser = !prefs.getString("local_uid", "").isNullOrEmpty() ||
+                viewModel.firebaseUserId.value?.isNotBlank() == true ||
+                viewModel.userEmail.value.isNotBlank()
+        val hasFirebaseUser = com.esdispatch.data.FirebaseManager.auth?.currentUser != null
+
+        val hasPin = viewModel.hasConfiguredPin()
+        val hasBiometric = viewModel.biometricEnabled.value && viewModel.biometricRegistered.value
+
+        if ((hasLocalUser || hasFirebaseUser) && (hasPin || hasBiometric)) {
+            viewModel.lockApp()
         }
     }
 
@@ -725,9 +735,19 @@ class MainActivity : FragmentActivity() {
                     }
                 }
 
-                // Offline Connectivity Status Banner (Subtle, non-disruptive, auto-reconnecting)
+                // Offline Connectivity Status Banner (Subtle, non-disruptive, auto-reconnecting, debounced)
+                var showOfflineBanner by remember { mutableStateOf(false) }
+                LaunchedEffect(networkOnline) {
+                    if (!networkOnline) {
+                        delay(2500)
+                        showOfflineBanner = true
+                    } else {
+                        showOfflineBanner = false
+                    }
+                }
+
                 AnimatedVisibility(
-                    visible = !networkOnline,
+                    visible = showOfflineBanner,
                     enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
                     exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
                     modifier = Modifier

@@ -32,6 +32,12 @@ import com.esdispatch.viewmodel.DeliveryViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
+
 @Composable
 fun AppLockScreen(
     viewModel: DeliveryViewModel,
@@ -141,22 +147,40 @@ fun AppLockScreen(
     val keyTextColor = AppTextColor
     val iconColor = AppTextColor
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(screenBg)
-            .navigationBarsPadding()
-            .statusBarsPadding(),
-        contentAlignment = Alignment.Center
+    Dialog(
+        onDismissRequest = { /* Immovable security shield */ },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+                .fillMaxSize()
+                .background(screenBg)
+                .zIndex(999999f)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { it.consume() }
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center
         ) {
-            Spacer(modifier = Modifier.height(20.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Spacer(modifier = Modifier.height(20.dp))
 
             // Header Brand & Greeting
             Column(
@@ -344,4 +368,5 @@ fun AppLockScreen(
             Spacer(modifier = Modifier.height(12.dp))
         }
     }
+}
 }
