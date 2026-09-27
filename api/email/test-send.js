@@ -54,6 +54,11 @@ function normalizeHost(host) {
   return String(host || "").trim().toLowerCase().replace(/^\[|\]$/g, "");
 }
 
+function isKnownServerHost(host) {
+  const norm = normalizeHost(host);
+  return norm === "server.hostnextdns.com" || norm === "mail.engracedsmile.com" || norm === "engracedsmile.com";
+}
+
 function resolveSmtpConfig(credentials) {
   const envHost = (process.env.SMTP_HOST || "server.hostnextdns.com").trim();
   const envPort = Number(process.env.SMTP_PORT || 465);
@@ -82,14 +87,16 @@ function resolveSmtpConfig(credentials) {
   }
 
   const clientHost = credentials && credentials.host ? String(credentials.host).trim() : "";
-  if (clientHost && normalizeHost(clientHost) !== normalizeHost(envHost)) {
+  const isKnownMatch = isKnownServerHost(clientHost) && isKnownServerHost(envHost);
+  if (clientHost && normalizeHost(clientHost) !== normalizeHost(envHost) && !isKnownMatch) {
     return { error: { status: 400, message: "Enter the SMTP password to use custom server settings." } };
   }
+  const effectiveHost = (clientHost && isKnownMatch) ? clientHost : envHost;
   if (!envPass) {
     console.error("[Test Send] SMTP_PASS or SMTP_PASSWORD is not configured in environment variables.");
     return { error: { status: 500, message: "SMTP server credentials are not configured on the server." } };
   }
-  return { config: { host: envHost, port: envPort, secure: envSecure, user: envUser, pass: envPass, fromEmail: envFromEmail, fromName: envFromName, fromEnv: true } };
+  return { config: { host: effectiveHost, port: envPort, secure: envSecure, user: envUser, pass: envPass, fromEmail: envFromEmail, fromName: envFromName, fromEnv: true } };
 }
 
 module.exports = async function handler(req, res) {
