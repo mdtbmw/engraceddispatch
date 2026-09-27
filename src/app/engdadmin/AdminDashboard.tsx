@@ -28,6 +28,7 @@ function useOnlineStatus() {
   return online;
 }
 import { auth, db, getSecondaryAuth } from "@/lib/firebase";
+import { normalizePhoneNumber, phoneIndexKey } from "@/lib/phoneUtils";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy, runTransaction, Transaction, serverTimestamp } from "firebase/firestore";
 import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Minus, ArrowRight, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info, Bike } from "lucide-react";
@@ -3328,6 +3329,8 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
       setPurgeStats({ ...stats });
       setPurgeLog(prev => [...prev, `[FOUND] Retrieved ${userSnap.size} user profile(s). Starting normalization...`]);
 
+      const seenPhones = new Set<string>();
+
       for (const uDoc of userSnap.docs) {
         const uData = uDoc.data();
         const uId = uDoc.id;
@@ -3369,6 +3372,39 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
           if (uData.ratingCount === undefined || uData.ratingCount === null) updates.ratingCount = 1;
           if (uData.tipsEarned === undefined || uData.tipsEarned === null) updates.tipsEarned = 0.0;
           if (uData.totalTips === undefined || uData.totalTips === null) updates.totalTips = 0.0;
+        }
+
+        // Check phone uniqueness, placeholder patterns, and phone_indices alignment
+        const rawPhone = String(uData.phone || "").trim();
+        const normPhone = normalizePhoneNumber(rawPhone);
+        const docKey = phoneIndexKey(rawPhone);
+        const isPlaceholder = docKey === "2348031234567" || docKey === "08000000000" || /^0+$/.test(docKey);
+
+        if (isPlaceholder) {
+          updates.phone = "";
+          stats.usersUpgraded++;
+        } else if (normPhone && docKey.length >= 10) {
+          if (seenPhones.has(docKey)) {
+            // Duplicate phone identity detected!
+            updates.phone = "";
+            updates.duplicatePhoneQuarantined = true;
+            stats.usersUpgraded++;
+            setPurgeLog(prev => [...prev, `[QUARANTINE] User ${uData.name || uId} had duplicate phone ${normPhone} — quarantined to prevent account collision.`]);
+          } else {
+            seenPhones.add(docKey);
+            if (rawPhone !== normPhone) {
+              updates.phone = normPhone;
+            }
+            // Seed authoritative phone_indices document
+            try {
+              await setDoc(doc(db, "phone_indices", docKey), {
+                uid: uId,
+                phone: normPhone,
+                normalized: docKey,
+                updatedAt: now,
+              }, { merge: true });
+            } catch (_) {}
+          }
         }
 
         if (Object.keys(updates).length > 0) {
@@ -8087,6 +8123,17 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         <Toggle label="Maintenance Mode" desc="Disable app access for users" checked={!!sForm.maintenanceMode} onChange={v => upd("maintenanceMode", v)} />
         <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-2xl"><div><p className="text-xs font-bold text-[#111] dark:text-white">Default Role</p></div>
           <Select value={sForm.defaultRole || "customer"} onChange={v => upd("defaultRole", v)} options={[{value:"customer",label:"Customer"},{value:"rider",label:"Rider"},{value:"admin",label:"Admin"}]} className="w-36" /></div>
+        <div className="sm:col-span-2 flex flex-col gap-1 p-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-2xl">
+          <label className="text-xs font-bold text-[#111] dark:text-white">Backend API / Serverless URL (Optional Override)</label>
+          <input 
+            type="text" 
+            placeholder="https://engraceddispatch.vercel.app" 
+            value={sForm.apiBaseUrl || ""} 
+            onChange={e => upd("apiBaseUrl", e.target.value)} 
+            className="w-full text-xs px-3 py-2 rounded-xl bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white focus:outline-none focus:border-[#FFB800]"
+          />
+          <p className="text-[10px] text-gray-500">Live hot-swap endpoint used by mobile apps for verification and serverless dispatches.</p>
+        </div>
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("System Controls")} loading={saving} /></div>
     </div>
@@ -8101,7 +8148,8 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         <Toggle label="Auto-Verify Vendors" desc="Instantly approve vendor stores once KYC + delivery milestone are met" checked={!!sForm.autoVerifyVendors} onChange={v => upd("autoVerifyVendors", v)} />
         <Toggle label="Referral System" desc="Referral rewards and invite codes" checked={!!sForm.referralEnabled} onChange={v => upd("referralEnabled", v)} />
         <Toggle label="Dynamic Pricing" desc="Surge pricing based on demand" checked={!!sForm.dynamicPricing} onChange={v => upd("dynamicPricing", v)} />
-        <Toggle label="Phone Number Required at Sign-Up" desc="Require a valid phone number when a customer creates an account" checked={!!sForm.phoneVerificationRequired} onChange={v => upd("phoneVerificationRequired", v)} />
+        <Toggle label="Require Email Verification (OTP Passcode)" desc="Require new and existing accounts to verify their email address via a 6-digit passcode before completing bookings" checked={!!sForm.emailVerificationRequired} onChange={v => upd("emailVerificationRequired", v)} />
+        <Toggle label="Require Unique Phone Number at Sign-Up" desc="Enforce real-time validation and strict phone uniqueness so no two accounts can share the same mobile number" checked={!!sForm.phoneVerificationRequired} onChange={v => upd("phoneVerificationRequired", v)} />
         <Toggle label="QR Code Delivery Handover" desc="Display QR code alongside 4-digit PIN for parcel handover verification (disabled by default for direct PIN entry)" checked={!!sForm.enableQrCodeHandover} onChange={v => upd("enableQrCodeHandover", v)} />
         <Toggle label="Delivery Signature Verification" desc="Require customer digital signature after capturing mandatory photo proof (OFF by default — photo proof is always required)" checked={!!sForm.signatureVerificationEnabled} onChange={v => upd("signatureVerificationEnabled", v)} />
       </div>

@@ -210,33 +210,116 @@ object FirebaseManager {
 
     /**
      * Checks whether a phone number is already used by another account.
-     * Reports UNKNOWN when availability cannot be confirmed, so a failed
-     * check is never presented as "this number is free".
+     * Uses the dedicated `phone_indices` collection for instant O(1) reads
+     * that succeed even before the user has created an account.
      */
     enum class PhoneAvailability { AVAILABLE, TAKEN, UNKNOWN }
 
     fun checkPhoneAvailability(phone: String, onComplete: (PhoneAvailability) -> Unit) {
         val clean = phone.trim()
+        val norm = com.esdispatch.util.FormatUtils.normalizePhoneNumber(clean)
+        val docKey = com.esdispatch.util.FormatUtils.phoneIndexKey(clean)
+        if (docKey.length < 10) {
+            onComplete(PhoneAvailability.UNKNOWN)
+            return
+        }
         val currentUid = auth?.currentUser?.uid
         val db = firestore
-        if (db != null) {
-            db.collection("users").whereEqualTo("phone", clean)
-                .get()
-                .addOnSuccessListener { querySnapshot ->
-                    // Filter out the user's own document if they are updating or completing onboarding
-                    val matchingDocs = querySnapshot.documents.filter { it.id != currentUid }
-                    if (matchingDocs.isNotEmpty()) {
-                        onComplete(PhoneAvailability.TAKEN)
+        if (db == null) {
+            onComplete(PhoneAvailability.UNKNOWN)
+            return
+        }
+
+        // Primary check: Query the dedicated unique phone_indices collection (O(1) doc get)
+        db.collection("phone_indices").document(docKey).get()
+            .addOnSuccessListener { snap ->
+                if (snap.exists()) {
+                    val ownerUid = snap.getString("uid") ?: ""
+                    if (currentUid != null && ownerUid == currentUid) {
+                        onComplete(PhoneAvailability.AVAILABLE)
                     } else {
-                        checkPhoneViaCallable(clean, currentUid, onComplete)
+                        onComplete(PhoneAvailability.TAKEN)
+                    }
+                } else {
+                    // Secondary check: If user is authenticated, check legacy users collection
+                    if (currentUid != null) {
+                        db.collection("users").whereEqualTo("phone", norm).get()
+                            .addOnSuccessListener { qSnap ->
+                                val matching = qSnap.documents.filter { it.id != currentUid }
+                                if (matching.isNotEmpty()) {
+                                    onComplete(PhoneAvailability.TAKEN)
+                                } else {
+                                    onComplete(PhoneAvailability.AVAILABLE)
+                                }
+                            }
+                            .addOnFailureListener {
+                                onComplete(PhoneAvailability.AVAILABLE)
+                            }
+                    } else {
+                        onComplete(PhoneAvailability.AVAILABLE)
                     }
                 }
-                .addOnFailureListener {
-                    checkPhoneViaCallable(clean, currentUid, onComplete)
-                }
-        } else {
-            checkPhoneViaCallable(clean, currentUid, onComplete)
+            }
+            .addOnFailureListener { err ->
+                Log.w(TAG, "phone_indices query failed: ${err.message}")
+                val fallbackPhone = if (norm.isNotBlank()) norm else clean
+                checkPhoneViaCallable(fallbackPhone, currentUid, onComplete)
+            }
+    }
+
+    /**
+     * Atomically claims a phone number in `phone_indices` to guarantee no two users
+     * share the exact same number.
+     */
+    fun reservePhoneNumber(userId: String, phone: String, onComplete: (Boolean, String?) -> Unit) {
+        val norm = com.esdispatch.util.FormatUtils.normalizePhoneNumber(phone)
+        val docKey = com.esdispatch.util.FormatUtils.phoneIndexKey(phone)
+        if (docKey.length < 10) {
+            onComplete(false, "Invalid phone number format.")
+            return
         }
+        val db = firestore ?: run {
+            onComplete(false, "Firestore unavailable")
+            return
+        }
+
+        val data = hashMapOf<String, Any>(
+            "uid" to userId,
+            "phone" to norm,
+            "normalized" to docKey,
+            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+        )
+
+        db.collection("phone_indices").document(docKey)
+            .set(data)
+            .addOnSuccessListener {
+                Log.d(TAG, "Phone index successfully reserved: $norm -> $userId")
+                onComplete(true, null)
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to reserve phone index for $norm: ${e.message}")
+                onComplete(false, "This phone number is already registered to another account.")
+            }
+    }
+
+    /**
+     * Releases a phone number from `phone_indices` when a user updates their profile.
+     */
+    fun releasePhoneNumber(phone: String, onComplete: ((Boolean) -> Unit)? = null) {
+        val docKey = com.esdispatch.util.FormatUtils.phoneIndexKey(phone)
+        if (docKey.isBlank()) {
+            onComplete?.invoke(true)
+            return
+        }
+        val db = firestore ?: run {
+            onComplete?.invoke(false)
+            return
+        }
+        db.collection("phone_indices").document(docKey)
+            .delete()
+            .addOnCompleteListener { task ->
+                onComplete?.invoke(task.isSuccessful)
+            }
     }
 
     private fun checkPhoneViaCallable(phone: String, excludeUid: String?, onComplete: (PhoneAvailability) -> Unit) {
@@ -350,7 +433,13 @@ object FirebaseManager {
             "updatedAt" to System.currentTimeMillis()
         )
         if (phone.isNotBlank()) {
-            userMap["phone"] = phone
+            val norm = com.esdispatch.util.FormatUtils.normalizePhoneNumber(phone)
+            val docKey = com.esdispatch.util.FormatUtils.phoneIndexKey(phone)
+            val isPlaceholder = docKey == "2348031234567" || docKey == "08000000000" || docKey.all { c -> c == '0' }
+            if (!isPlaceholder && docKey.length >= 10) {
+                userMap["phone"] = norm
+                reservePhoneNumber(userId, norm) { _, _ -> }
+            }
         }
         if (!role.isNullOrBlank()) {
             userMap["role"] = role

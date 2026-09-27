@@ -80,6 +80,24 @@ service cloud.firestore {
     }
 
     // =========================================================
+    // PHONE NUMBER REGISTRY & STRICT UNIQUENESS INDEX
+    // =========================================================
+
+    match /phone_indices/{phoneKey} {
+      // Anyone can read a phone document to check if the number is already taken (used during real-time signup check)
+      allow read: if true;
+
+      // An authenticated user can create a reservation ONLY if it does not already exist,
+      // and they are reserving it for their own authenticated UID!
+      allow create: if isAuth() && 
+                    !exists(/databases/$(database)/documents/phone_indices/$(phoneKey)) &&
+                    request.resource.data.uid == request.auth.uid;
+
+      // Only the account owner or an admin can update or release the reservation
+      allow update, delete: if isAuth() && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    // =========================================================
     // DELIVERIES & PARCELS (Tracking, Ratings, Status, Chats)
     // =========================================================
 
@@ -535,6 +553,21 @@ service cloud.firestore {
 
     match /verification_otps/{docId} {
       allow read, write: if false; // Backend Cloud Functions only
+    }
+
+    // =========================================================
+    // PHONE NUMBER UNIQUENESS REGISTRY
+    // =========================================================
+    match /phone_indices/{phoneKey} {
+      // Public read allows real-time availability checking during signup/profile edit
+      allow read: if true;
+      // Authenticated users can claim an unused phone number for themselves
+      allow create: if isAuth() && 
+        (!exists(/databases/$(database)/documents/phone_indices/$(phoneKey)) || resource.data.uid == request.auth.uid) &&
+        request.resource.data.uid == request.auth.uid;
+      // Owners or admins can update or release their reserved phone number
+      allow update: if isAuth() && (isAdmin() || resource.data.uid == request.auth.uid);
+      allow delete: if isAuth() && (isAdmin() || resource.data.uid == request.auth.uid);
     }
   }
 }

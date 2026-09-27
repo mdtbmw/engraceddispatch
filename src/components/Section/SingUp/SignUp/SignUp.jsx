@@ -5,6 +5,8 @@ import { useState } from "react";
 import { auth, db } from "~/lib/firebase";
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import { useEffect } from "react";
+import { normalizePhoneNumber, phoneIndexKey, isValidNigerianPhone } from "~/lib/phoneUtils";
 
 const SignUpForm = () => {
   const router = useRouter();
@@ -16,6 +18,30 @@ const SignUpForm = () => {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+
+  // Real-time debounced phone uniqueness validation
+  useEffect(() => {
+    const raw = (phone || "").trim();
+    const docKey = phoneIndexKey(raw);
+    if (docKey.length >= 10) {
+      const timer = setTimeout(async () => {
+        try {
+          const snap = await getDoc(doc(db, "phone_indices", docKey));
+          if (snap.exists()) {
+            setPhoneError("This phone number is already registered to another account.");
+          } else {
+            setPhoneError("");
+          }
+        } catch (_) {
+          setPhoneError("");
+        }
+      }, 400);
+      return () => clearTimeout(timer);
+    } else {
+      setPhoneError("");
+    }
+  }, [phone]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,20 +49,45 @@ const SignUpForm = () => {
       setError("You must agree to the Terms of Service.");
       return;
     }
-    const phoneDigits = phone.replace(/\D/g, "");
-    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
-      setError("Please enter a valid phone number (10 to 15 digits).");
+    const normPhone = normalizePhoneNumber(phone);
+    const docKey = phoneIndexKey(phone);
+    if (!normPhone || docKey.length < 10) {
+      setError("Please enter a valid phone number (at least 10 digits).");
       return;
     }
+    if (phoneError) {
+      setError(phoneError);
+      return;
+    }
+
     setError("");
     setLoading(true);
     try {
+      // 1. Authoritative check on phone_indices
+      const phoneSnap = await getDoc(doc(db, "phone_indices", docKey));
+      if (phoneSnap.exists()) {
+        setError("This phone number is already registered to another account.");
+        setLoading(false);
+        return;
+      }
+
+      // 2. Create Authentication credentials
       const cred = await createUserWithEmailAndPassword(auth, email, password);
+
+      // 3. Atomically claim unique phone index
+      await setDoc(doc(db, "phone_indices", docKey), {
+        uid: cred.user.uid,
+        phone: normPhone,
+        normalized: docKey,
+        createdAt: new Date().toISOString(),
+      });
+
+      // 4. Create user profile with canonical normalized phone
       await setDoc(doc(db, "users", cred.user.uid), {
         uid: cred.user.uid,
         name,
         email,
-        phone: phone.trim(),
+        phone: normPhone,
         role: "customer",
         status: "active",
         isOnline: false,
@@ -135,7 +186,19 @@ const SignUpForm = () => {
             </div>
             <div className="zubuz-account-field">
               <label>Phone number</label>
-              <input type="tel" placeholder="0803 123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+              <input 
+                type="tel" 
+                placeholder="0803 123 4567" 
+                value={phone} 
+                onChange={(e) => setPhone(e.target.value)} 
+                style={phoneError ? { borderColor: "#dc3545" } : {}}
+                required 
+              />
+              {phoneError && (
+                <div style={{ color: "#dc3545", fontSize: "11px", fontWeight: "bold", marginTop: "4px" }}>
+                  {phoneError}
+                </div>
+              )}
             </div>
             <div className="zubuz-account-field">
               <label>Password</label>

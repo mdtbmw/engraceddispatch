@@ -543,8 +543,8 @@ class DeliveryViewModel : WalletViewModel() {
             return "$envUrl$cleanPath"
         }
 
-        // 3. Fallback to primary production domain
-        return "https://engracedsmile.com$cleanPath"
+        // 3. Fallback to primary production backend (Vercel Serverless)
+        return "https://engraceddispatch.vercel.app$cleanPath"
     }
 
     private val _dashboardSectionsEnabled = MutableStateFlow(
@@ -3461,13 +3461,18 @@ class DeliveryViewModel : WalletViewModel() {
     // --- Core Methods ---
 
     fun updateProfile(name: String, email: String, phone: String) {
+        val normPhone = if (phone.isNotBlank()) com.esdispatch.util.FormatUtils.normalizePhoneNumber(phone) else ""
+        val previousPhone = _userPhone.value
+        if (previousPhone.isNotBlank() && previousPhone != normPhone) {
+            com.esdispatch.data.FirebaseManager.releasePhoneNumber(previousPhone)
+        }
         _userName.value = name
         _userEmail.value = email
-        _userPhone.value = phone
+        _userPhone.value = normPhone
         _parcelDraft.update {
             it.copy(
                 senderName = it.senderName.ifBlank { name },
-                senderPhone = it.senderPhone.ifBlank { phone }
+                senderPhone = it.senderPhone.ifBlank { normPhone }
             )
         }
         if (_photoUrl.value.isEmpty() || _photoUrl.value.contains("unsplash.com") || _photoUrl.value.contains("dicebear.com")) {
@@ -3479,14 +3484,14 @@ class DeliveryViewModel : WalletViewModel() {
         savePref("account_name", name)
         savePref("user_email", email)
         savePref("local_email", email)
-        savePref("user_phone", phone)
-        savePref("local_phone", phone)
+        savePref("user_phone", normPhone)
+        savePref("local_phone", normPhone)
         savePref("photo_url", _photoUrl.value)
 
         // Persist directly to Firestore 'users' collection if firebase is connected
         val uid = _firebaseUserId.value
         if (_firebaseConnected.value && uid != null) {
-            com.esdispatch.data.FirebaseManager.saveUserProfileToFirestore(uid, name, email, phone)
+            com.esdispatch.data.FirebaseManager.saveUserProfileToFirestore(uid, name, email, normPhone)
         }
     }
 
@@ -3612,11 +3617,15 @@ class DeliveryViewModel : WalletViewModel() {
             savePref("active_view_mode", _activeViewMode.value)
             savePref("bike_number", bikeNumber)
 
-            com.esdispatch.data.FirebaseManager.signUpWithEmailAndPassword(email, pin, name, phone, role, bikeNumber) { success, user, error ->
+            val normPhone = if (phone.isNotBlank()) com.esdispatch.util.FormatUtils.normalizePhoneNumber(phone) else ""
+            com.esdispatch.data.FirebaseManager.signUpWithEmailAndPassword(email, pin, name, normPhone, role, bikeNumber) { success, user, error ->
                 if (success && user != null) {
                     _firebaseUserId.value = user.uid
                     _firebaseConnected.value = true
-                    updateProfile(name, email, phone)
+                    if (normPhone.isNotBlank()) {
+                        com.esdispatch.data.FirebaseManager.reservePhoneNumber(user.uid, normPhone) { _, _ -> }
+                    }
+                    updateProfile(name, email, normPhone)
                     setUserPin(pin)
                     setLoginMode("pin")
                     
@@ -3692,7 +3701,12 @@ class DeliveryViewModel : WalletViewModel() {
             }
             val name = _userName.value.ifBlank { com.esdispatch.data.FirebaseManager.auth?.currentUser?.displayName ?: "Google User" }
 
-            updateProfile(name, email, phone)
+            val normPhone = if (phone.isNotBlank()) com.esdispatch.util.FormatUtils.normalizePhoneNumber(phone) else ""
+            if (normPhone.isNotBlank()) {
+                com.esdispatch.data.FirebaseManager.reservePhoneNumber(uid, normPhone) { _, _ -> }
+            }
+
+            updateProfile(name, email, normPhone)
             setUserPin(pin)
             setLoginMode("google")
 
@@ -3703,10 +3717,10 @@ class DeliveryViewModel : WalletViewModel() {
                     .putString("local_uid", uid)
                     .putString("local_name", name)
                     .putString("local_email", email)
-                    .putString("local_phone", phone)
+                    .putString("local_phone", normPhone)
                     // Also cache under email-keyed keys so signInWithGoogle offline fallback
                     // correctly detects the profile as complete on subsequent sign-ins
-                    .putString("google_phone_$cleanEmail", phone)
+                    .putString("google_phone_$cleanEmail", normPhone)
                     .putString("google_name_$cleanEmail", name)
                     .apply()
                 savePinSecurely("local_pin", pin)
@@ -3830,7 +3844,7 @@ class DeliveryViewModel : WalletViewModel() {
                         val storedEmail = prefs?.getString("local_email", null)
                         val storedPhone = prefs?.getString("local_phone", null)
                         val storedPin = getPinSecurely("local_pin")
-                        if (storedUid != null && storedEmail != null) {
+                        if (storedUid != null && storedEmail != null && storedEmail.trim().equals(email.trim(), ignoreCase = true)) {
                             _firebaseUserId.value = storedUid
                             updateProfile(storedName ?: name, storedEmail, storedPhone ?: "")
                             if (storedPin.isNotEmpty()) setUserPin(storedPin)
@@ -4313,7 +4327,7 @@ class DeliveryViewModel : WalletViewModel() {
             if (!dispatched) {
                 val endpoints = listOf(
                     getEffectiveApiUrl("/api/email/verification"),
-                    "https://engraceddispatchnew.vercel.app/api/email/verification",
+                    "https://engraceddispatch.vercel.app/api/email/verification",
                     "https://engracedsmile.com/api/email/verification"
                 ).distinct()
 
@@ -4357,14 +4371,27 @@ class DeliveryViewModel : WalletViewModel() {
                                 "Verification service is temporarily unavailable. Please try again in a few minutes."
                             }
                         }
-                        android.util.Log.e("DeliveryViewModel", "Failed endpoint $endpoint: ${e.message}")
                     }
+                }
+            }
+
+            // Strategy C: Firebase Auth native email verification as authoritative fallback
+            if (!dispatched && authUser != null && !authUser.isEmailVerified) {
+                try {
+                    val authTask = authUser.sendEmailVerification()
+                    com.google.android.gms.tasks.Tasks.await(authTask, 8, java.util.concurrent.TimeUnit.SECONDS)
+                    if (authTask.isSuccessful) {
+                        dispatched = true
+                        android.util.Log.d("DeliveryViewModel", "Firebase Auth sendEmailVerification succeeded.")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("DeliveryViewModel", "Firebase Auth sendEmailVerification attempt: ${e.message}")
                 }
             }
 
             withContext(Dispatchers.Main) {
                 if (dispatched) {
-                    onResult?.invoke(true, "A 6-digit verification code has been dispatched to $email. Please check your inbox.")
+                    onResult?.invoke(true, "A verification email has been dispatched to $email. Please check your inbox.")
                 } else {
                     android.util.Log.e("DeliveryViewModel", "Verification email not dispatched. Reason: $lastError")
                     onResult?.invoke(false, userError.ifBlank {
@@ -7949,7 +7976,7 @@ class DeliveryViewModel : WalletViewModel() {
                                     "orderId" to orderRef,
                                     "userId" to userId,
                                     "userName" to (_userName.value.ifEmpty { "Valued Customer" }),
-                                    "userPhone" to (_userPhone.value.ifEmpty { "08000000000" }),
+                                    "userPhone" to _userPhone.value,
                                     "shippingAddress" to address,
                                     "paymentMethod" to paymentMethod,
                                     "status" to "PAID",
@@ -7996,9 +8023,9 @@ class DeliveryViewModel : WalletViewModel() {
                                 "pickupAddress" to "$fulfilmentStore - Vendor Fulfilment Point",
                                 "deliveryAddress" to address,
                                 "senderName" to fulfilmentStore,
-                                "senderPhone" to "08000000000",
+                                "senderPhone" to "",
                                 "receiverName" to (_userName.value.ifEmpty { "Valued Customer" }),
-                                "receiverPhone" to (_userPhone.value.ifEmpty { "08000000000" }),
+                                "receiverPhone" to _userPhone.value,
                                 "quantity" to currentCart.sumOf { c -> c.quantity },
                                 "weight" to 2.5,
                                 "price" to effectiveGrandTotal,

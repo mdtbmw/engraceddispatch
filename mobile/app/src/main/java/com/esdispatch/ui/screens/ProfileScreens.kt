@@ -5373,13 +5373,9 @@ fun VerificationSheet(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("Registered Email", fontSize = 11.sp, color = TextGray)
+                        Text("Verification Email", fontSize = 11.sp, color = TextGray)
                         Text(userEmail.ifEmpty { "Not set" }, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
-                        if (userPhone.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Registered Phone", fontSize = 11.sp, color = TextGray)
-                            Text(userPhone, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
-                        }
+                        Text("A 6-digit confidential verification passcode will be dispatched to this inbox.", fontSize = 11.sp, color = TextGray)
                     }
                 }
 

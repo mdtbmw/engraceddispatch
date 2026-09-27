@@ -171,10 +171,42 @@ object FormatUtils {
                 }
             }
         } else {
-            // Default global format - max 15 digits
-            val digits = clean.take(15)
-            return digits
+            return clean.take(15)
         }
+    }
+
+    /**
+     * Canonical E.164 phone normalizer.
+     * Maps local Nigerian variants (0803..., 234803..., +234 803..., 803...)
+     * to a single canonical standard "+2348031234567".
+     */
+    fun normalizePhoneNumber(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return ""
+        val filtered = buildString {
+            trimmed.forEachIndexed { i, c ->
+                if (c == '+' && i == 0) append(c)
+                else if (c.isDigit()) append(c)
+            }
+        }
+        val digitsOnly = filtered.removePrefix("+")
+        if (digitsOnly.isEmpty()) return ""
+
+        return when {
+            digitsOnly.startsWith("0") && digitsOnly.length == 11 -> "+234" + digitsOnly.substring(1)
+            digitsOnly.startsWith("234") && digitsOnly.length == 13 -> "+$digitsOnly"
+            (digitsOnly.startsWith("7") || digitsOnly.startsWith("8") || digitsOnly.startsWith("9")) && digitsOnly.length == 10 -> "+234$digitsOnly"
+            filtered.startsWith("+") -> filtered
+            digitsOnly.length in 10..15 -> "+$digitsOnly"
+            else -> filtered
+        }
+    }
+
+    /**
+     * Digits-only key for unique Firestore index documents (e.g. "2348031234567").
+     */
+    fun phoneIndexKey(raw: String): String {
+        return normalizePhoneNumber(raw).replace("+", "").trim()
     }
 }
 
