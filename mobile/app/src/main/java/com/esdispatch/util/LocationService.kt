@@ -100,10 +100,12 @@ class LocationService : Service() {
         return START_STICKY
     }
 
+    private var lastUserLocationSync = 0L
+
     private fun startLocationUpdates() {
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L)
-            .setMinUpdateIntervalMillis(2000L)
-            .setMinUpdateDistanceMeters(2.0f)
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000L)
+            .setMinUpdateIntervalMillis(10000L)
+            .setMinUpdateDistanceMeters(15.0f)
             .build()
 
         try {
@@ -112,7 +114,7 @@ class LocationService : Service() {
                 locationCallback,
                 Looper.getMainLooper()
             )
-            Log.d(TAG, "FusedLocationProviderClient updates requested.")
+            Log.d(TAG, "FusedLocationProviderClient updates requested (15s / 15m interval).")
         } catch (e: SecurityException) {
             Log.e(TAG, "Location permission missing: ${e.message}")
         }
@@ -143,7 +145,7 @@ class LocationService : Service() {
     private fun broadcastToFirebase(userId: String, location: Location, gpsTimestamp: Long) {
         val db = FirebaseManager.firestore ?: return
 
-        // 1. Broadcast to fleet_locations
+        // 1. Primary write to fleet_locations telemetry document
         val fleetData = hashMapOf<String, Any>(
             "riderId" to userId,
             "latitude" to location.latitude,
@@ -166,35 +168,21 @@ class LocationService : Service() {
                 Log.e(TAG, "Failed to update fleet_locations: ${e.message}")
             }
 
-        // Dual-write to users/{userId} so Cloud Functions auto-dispatch matches actual coordinates
-        val userLocationUpdate = hashMapOf<String, Any>(
-            "lat" to location.latitude,
-            "lng" to location.longitude,
-            "latitude" to location.latitude,
-            "longitude" to location.longitude,
-            "lastGpsTimestamp" to gpsTimestamp
-        )
-        db.collection("users").document(userId)
-            .set(userLocationUpdate, com.google.firebase.firestore.SetOptions.merge())
-            .addOnFailureListener { e ->
-                Log.w(TAG, "Failed to update user GPS coordinates: ${e.message}")
-            }
-
-        // 2. Broadcast to active delivery document if assigned
-        val pId = activeParcelId
-        if (!pId.isNullOrBlank()) {
-            val deliveryUpdate = hashMapOf<String, Any>(
-                "courierLatitude" to location.latitude,
-                "courierLongitude" to location.longitude,
-                "courierBearing" to location.bearing.toDouble(),
-                "courierSpeed" to location.speed.toDouble(),
-                "courierAccuracy" to location.accuracy.toDouble(),
-                "courierLastUpdated" to gpsTimestamp
+        // 2. Throttled sync to users/{userId} (at most once every 5 minutes) for offline dispatch matching
+        val now = System.currentTimeMillis()
+        if (now - lastUserLocationSync > 300000L) {
+            lastUserLocationSync = now
+            val userLocationUpdate = hashMapOf<String, Any>(
+                "lat" to location.latitude,
+                "lng" to location.longitude,
+                "latitude" to location.latitude,
+                "longitude" to location.longitude,
+                "lastGpsTimestamp" to gpsTimestamp
             )
-            db.collection("deliveries").document(pId)
-                .update(deliveryUpdate)
+            db.collection("users").document(userId)
+                .set(userLocationUpdate, com.google.firebase.firestore.SetOptions.merge())
                 .addOnFailureListener { e ->
-                    Log.w(TAG, "Failed to update active delivery telemetry: ${e.message}")
+                    Log.w(TAG, "Failed to update user GPS coordinates: ${e.message}")
                 }
         }
     }

@@ -1539,37 +1539,17 @@ fun AdminSystemControlCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            val emailVerifyReq by viewModel.emailVerificationRequired.collectAsState()
             val phoneVerifyReq by viewModel.phoneVerificationRequired.collectAsState()
 
-            // 3. Email Verification Required Toggle
+            // Phone Number Required Toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Email Verification Required", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                    Text("Require email OTP verification on login/signup", fontSize = 10.sp, color = labelColor)
-                }
-                Switch(
-                    checked = emailVerifyReq,
-                    onCheckedChange = { viewModel.toggleEmailVerification(it) },
-                    colors = SwitchDefaults.colors(checkedThumbColor = if (isLight) Color.White else Obsidian, checkedTrackColor = textHighlight)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 4. Phone Verification Required Toggle
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Phone Number Verification Required", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
-                    Text("Require Firebase OTP phone number validation", fontSize = 10.sp, color = labelColor)
+                    Text("Phone Number Required", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppTextColor)
+                    Text("Require a valid phone number when creating an account", fontSize = 10.sp, color = labelColor)
                 }
                 Switch(
                     checked = phoneVerifyReq,

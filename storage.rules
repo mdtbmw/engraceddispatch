@@ -16,6 +16,13 @@ service firebase.storage {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.keys().hasAny(['admin']) && request.auth.token.admin == true) ||
+        (request.auth.token.keys().hasAny(['role']) && request.auth.token.role in ['admin', 'super_admin'])
+      );
+    }
+
     function isValidImage() {
       return request.resource.contentType.matches('image/.*');
     }

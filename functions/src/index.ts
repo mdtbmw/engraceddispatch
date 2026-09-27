@@ -914,13 +914,19 @@ export const sendEmailOtp = functions.https.onCall(async (data, context) => {
   const email = (data.email || '').trim().toLowerCase();
   const purpose = (data.purpose || 'SIGN_UP') as OtpPurpose;
   const name = (data.name || 'Valued Client').trim();
+  const clientCode = String(data.code || '').trim();
 
   if (!email || !email.includes('@')) {
     throw new functions.https.HttpsError('invalid-argument', 'A valid email address is required.');
   }
 
   try {
-    const { code, expiresAt } = await createAndStoreOtp(email, purpose, 10);
+    const { code, expiresAt } = await createAndStoreOtp(
+      email,
+      purpose,
+      10,
+      /^\d{6}$/.test(clientCode) ? clientCode : undefined
+    );
 
     let subject = 'ESDispatch Authentication Passcode';
     let html = '';
@@ -1026,6 +1032,81 @@ export const testSmtpConnection = functions.https.onCall(async (data, context) =
 });
 
 /**
+ * Callable Function: Reports whether a phone number is already used by another
+ * account. Runs with the Admin SDK so the check works before the caller has an
+ * account (client Firestore rules block the equivalent user-query).
+ */
+const phoneCheckRateLimit = new Map<string, number>();
+
+function buildPhoneVariants(raw: string): string[] {
+  const variants = new Set<string>();
+  const add = (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed.replace(/\D/g, '').length >= 10) variants.add(trimmed);
+  };
+
+  add(raw);
+  const digits = raw.replace(/\D/g, '');
+  add(digits);
+
+  let e164 = digits;
+  if (digits.startsWith('0')) {
+    e164 = '234' + digits.slice(1);
+  } else if (digits.length === 10) {
+    e164 = '234' + digits;
+  }
+  add(e164);
+  add('+' + e164);
+
+  if (e164.startsWith('234') && e164.length === 13) {
+    const national = e164.slice(3);
+    add('0' + national);
+    add(`+234 ${national.slice(0, 3)} ${national.slice(3, 6)} ${national.slice(6)}`);
+    add(`234 ${national.slice(0, 3)} ${national.slice(3, 6)} ${national.slice(6)}`);
+    add(`${national.slice(0, 3)} ${national.slice(3, 6)} ${national.slice(6)}`);
+    add(`0${national.slice(0, 3)} ${national.slice(3, 6)} ${national.slice(6)}`);
+  }
+
+  return [...variants].slice(0, 30);
+}
+
+export const checkPhoneUnique = functions.https.onCall(async (data, context) => {
+  const raw = String(data.phone || '').trim();
+  const excludeUid = String(data.excludeUid || '').trim();
+  const digits = raw.replace(/\D/g, '');
+
+  if (digits.length < 10 || digits.length > 15) {
+    return { available: true, checked: false };
+  }
+
+  const ip = (context.rawRequest && context.rawRequest.ip) || 'unknown';
+  const rateKey = `${digits}:${ip}`;
+  const now = Date.now();
+  const last = phoneCheckRateLimit.get(rateKey) || 0;
+  if (now - last < 3000) {
+    throw new functions.https.HttpsError('resource-exhausted', 'Too many checks. Please wait a moment.');
+  }
+  phoneCheckRateLimit.set(rateKey, now);
+  if (phoneCheckRateLimit.size > 5000) {
+    phoneCheckRateLimit.clear();
+  }
+
+  try {
+    const variants = buildPhoneVariants(raw);
+    const snap = await db
+      .collection('users')
+      .where('phone', 'in', variants)
+      .limit(25)
+      .get();
+    const taken = snap.docs.some((doc) => doc.id !== excludeUid);
+    return { available: !taken, checked: true };
+  } catch (error: any) {
+    console.error('[checkPhoneUnique Error]', error);
+    throw new functions.https.HttpsError('internal', 'Phone availability could not be checked.');
+  }
+});
+
+/**
  * Trigger: When a delivery status updates to 'ARRIVED' or 'PICKED_UP',
  * send the handover code email to the recipient if recipientEmail exists.
  */
@@ -1036,10 +1117,16 @@ export const onDeliveryStatusEmailTrigger = functions.firestore
     const after = change.after.data();
     if (!before || !after) return null;
 
-    // 1. Handover Code Alert on Arrival / Out for Delivery
+    // Check if a relevant status transition occurred
     const becameArrived = before.status !== 'ARRIVED' && after.status === 'ARRIVED';
     const becameOutForDelivery = before.status !== 'IN_TRANSIT' && after.status === 'IN_TRANSIT';
+    const becameDelivered = before.status !== 'DELIVERED' && after.status === 'DELIVERED';
 
+    if (!becameArrived && !becameOutForDelivery && !becameDelivered) {
+      return null;
+    }
+
+    // 1. Handover Code Alert on Arrival / Out for Delivery
     const handoverCode = after.deliveryCode || after.otpCode || after.handoverOtp || after.securityCode;
     if ((becameArrived || becameOutForDelivery) && after.recipientEmail && handoverCode) {
       try {
@@ -1063,7 +1150,6 @@ export const onDeliveryStatusEmailTrigger = functions.firestore
     }
 
     // 2. Official Invoice Receipt on Delivered
-    const becameDelivered = before.status !== 'DELIVERED' && after.status === 'DELIVERED';
     if (becameDelivered) {
       const targetEmail = after.senderEmail || after.customerEmail;
       if (targetEmail) {

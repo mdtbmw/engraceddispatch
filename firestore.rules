@@ -55,7 +55,7 @@ service cloud.firestore {
     // =========================================================
 
     match /users/{userId} {
-      allow read: if isAuth();
+      allow read: if isOwner(userId) || isAdmin() || isDispatcher();
       allow create: if isAuth() && request.auth.uid == userId &&
         !request.resource.data.keys().hasAny(['role', 'userRole', 'admin', 'isSuperAdmin', 'permissions', 'walletBalance']);
 
@@ -67,11 +67,7 @@ service cloud.firestore {
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             'role', 'userRole', 'admin', 'isSuperAdmin', 'permissions', 'walletBalance', 'pin', 'securityPin', 'email'
           ])
-        ) ||
-        // Allow courier tipping / rating / review count updates from authenticated customers
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'rating', 'totalRatings', 'ratingsCount', 'tipAmount', 'totalTips', 'lastRatedAt', 'reviewsCount'
-        ])
+        )
       );
 
       allow delete: if isSuperAdmin();
@@ -88,44 +84,76 @@ service cloud.firestore {
     // =========================================================
 
     match /deliveries/{deliveryId} {
-      // Public single-document get for tracking by waybill / doc ID; authenticated listing
-      allow get: if true;
-      allow list: if isAuth();
-
-      allow create: if isAuth();
-      allow update: if isAuth() && (
+      // Scoped access for participants, fleet couriers, and dispatchers
+      allow get, list: if isAuth() && (
         isAdmin() ||
+        isDispatcher() ||
         resource.data.userId == request.auth.uid ||
         resource.data.senderId == request.auth.uid ||
         resource.data.riderId == request.auth.uid ||
         resource.data.assignedRiderId == request.auth.uid ||
-        resource.data.driverId == request.auth.uid
+        resource.data.driverId == request.auth.uid ||
+        resource.data.reservedRiderId == request.auth.uid ||
+        (resource.data.status in ['PENDING', 'QUEUED', 'OFFERED', 'pending', 'queued'])
+      );
+
+      allow create: if isAuth();
+      allow update: if isAuth() && (
+        isAdmin() ||
+        isDispatcher() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid ||
+        resource.data.riderId == request.auth.uid ||
+        resource.data.assignedRiderId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        resource.data.reservedRiderId == request.auth.uid
       );
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if isAuth();
+        allow read, write: if isAuth() && (
+          isAdmin() ||
+          isDispatcher() ||
+          resource.data.userId == request.auth.uid ||
+          resource.data.riderId == request.auth.uid
+        );
         allow delete: if isAdmin();
       }
     }
 
     match /parcels/{parcelId} {
-      allow get: if true;
-      allow list: if isAuth();
-
-      allow create: if isAuth();
-      allow update: if isAuth() && (
+      allow get, list: if isAuth() && (
         isAdmin() ||
+        isDispatcher() ||
         resource.data.userId == request.auth.uid ||
         resource.data.senderId == request.auth.uid ||
         resource.data.riderId == request.auth.uid ||
         resource.data.assignedRiderId == request.auth.uid ||
-        resource.data.driverId == request.auth.uid
+        resource.data.driverId == request.auth.uid ||
+        resource.data.reservedRiderId == request.auth.uid ||
+        (resource.data.status in ['PENDING', 'QUEUED', 'OFFERED', 'pending', 'queued'])
+      );
+
+      allow create: if isAuth();
+      allow update: if isAuth() && (
+        isAdmin() ||
+        isDispatcher() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid ||
+        resource.data.riderId == request.auth.uid ||
+        resource.data.assignedRiderId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        resource.data.reservedRiderId == request.auth.uid
       );
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if isAuth();
+        allow read, write: if isAuth() && (
+          isAdmin() ||
+          isDispatcher() ||
+          resource.data.userId == request.auth.uid ||
+          resource.data.riderId == request.auth.uid
+        );
         allow delete: if isAdmin();
       }
     }
@@ -145,22 +173,24 @@ service cloud.firestore {
 
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isAuth();
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
 
       match /{allSubcollections=**} {
-        allow read, write: if isAuth();
+        allow read: if true;
+        allow write: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
         allow delete: if isAdmin();
       }
     }
 
     match /ratings/{ratingId} {
       allow read: if true;
-      allow create: if isAuth();
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
 
       match /{allSubcollections=**} {
-        allow read, write: if isAuth();
+        allow read: if true;
+        allow write: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
         allow delete: if isAdmin();
       }
     }
@@ -346,7 +376,7 @@ service cloud.firestore {
     }
 
     match /system_settings/{settingId} {
-      allow read: if true;
+      allow read: if isAdmin();
       allow write: if isAdmin();
     }
 
@@ -421,7 +451,11 @@ service cloud.firestore {
 
     match /audit_logs/{docId} {
       allow read: if isAdmin();
-      allow create: if isAuth() && (isAdmin() || request.resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && (
+        isAdmin() ||
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.actorId == request.auth.uid
+      );
       allow update, delete: if false; // Immutable audit trail
     }
 

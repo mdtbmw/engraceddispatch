@@ -3013,6 +3013,14 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
     setShowDeleteModal(null);
   };
 
+  const normPhone = (value?: string) => {
+    const d = String(value || "").replace(/\D/g, "");
+    if (!d) return "";
+    if (d.startsWith("0")) return "234" + d.slice(1);
+    if (d.length === 10) return "234" + d;
+    return d;
+  };
+
   const handleCreateUser = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newUserForm.name.trim()) {
@@ -3022,6 +3030,14 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
     if (!newUserForm.email.trim() || !newUserForm.email.includes("@")) {
       addToast?.("error", "Valid email address is required");
       return;
+    }
+    const newPhoneNorm = normPhone(newUserForm.phone);
+    if (newPhoneNorm) {
+      const duplicate = visibleUsers.find(u => normPhone(u.phone) === newPhoneNorm);
+      if (duplicate) {
+        addToast?.("error", `This phone number is already used by ${duplicate.name || duplicate.email || "another account"}.`);
+        return;
+      }
     }
 
     const isMobileRole = newUserForm.role === "rider" || newUserForm.role === "customer";
@@ -3175,6 +3191,14 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
 
   const saveUser = async () => {
     if (!editUser) return;
+    const editPhoneNorm = normPhone(form.phone);
+    if (editPhoneNorm) {
+      const duplicate = visibleUsers.find(u => u.id !== editUser.id && normPhone(u.phone) === editPhoneNorm);
+      if (duplicate) {
+        addToast?.("error", `This phone number is already used by ${duplicate.name || duplicate.email || "another account"}.`);
+        return;
+      }
+    }
     try {
       const payload: any = {
         name: form.name,
@@ -8077,7 +8101,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         <Toggle label="Auto-Verify Vendors" desc="Instantly approve vendor stores once KYC + delivery milestone are met" checked={!!sForm.autoVerifyVendors} onChange={v => upd("autoVerifyVendors", v)} />
         <Toggle label="Referral System" desc="Referral rewards and invite codes" checked={!!sForm.referralEnabled} onChange={v => upd("referralEnabled", v)} />
         <Toggle label="Dynamic Pricing" desc="Surge pricing based on demand" checked={!!sForm.dynamicPricing} onChange={v => upd("dynamicPricing", v)} />
-        <Toggle label="Phone Verification (SMS/WhatsApp/Call)" desc="Require phone number OTP verification for order booking and account security" checked={!!sForm.phoneVerificationEnabled} onChange={v => upd("phoneVerificationEnabled", v)} />
+        <Toggle label="Phone Number Required at Sign-Up" desc="Require a valid phone number when a customer creates an account" checked={!!sForm.phoneVerificationRequired} onChange={v => upd("phoneVerificationRequired", v)} />
         <Toggle label="QR Code Delivery Handover" desc="Display QR code alongside 4-digit PIN for parcel handover verification (disabled by default for direct PIN entry)" checked={!!sForm.enableQrCodeHandover} onChange={v => upd("enableQrCodeHandover", v)} />
         <Toggle label="Delivery Signature Verification" desc="Require customer digital signature after capturing mandatory photo proof (OFF by default — photo proof is always required)" checked={!!sForm.signatureVerificationEnabled} onChange={v => upd("signatureVerificationEnabled", v)} />
       </div>

@@ -46,14 +46,17 @@ function hashOtp(code) {
     return crypto.createHmac('sha256', OTP_PEPPER).update(code.trim()).digest('hex');
 }
 /**
- * Generates a cryptographically strong 6-digit OTP, records it in Firestore, and returns the raw code.
+ * Records a 6-digit OTP in Firestore and returns it. When the caller supplies
+ * a code (the app generates and verifies one source of truth), that code is
+ * used; otherwise a cryptographically strong one is generated.
  */
-async function createAndStoreOtp(email, purpose, expiryMinutes = 10) {
+async function createAndStoreOtp(email, purpose, expiryMinutes = 10, providedCode) {
     const db = (0, firestore_1.getFirestore)();
     const normalizedEmail = email.toLowerCase().trim();
-    // Cryptographic 6-digit code (100000 - 999999)
-    const codeInt = crypto.randomInt(100000, 1000000);
-    const code = codeInt.toString();
+    const trimmedProvided = (providedCode || '').trim();
+    const code = /^\d{6}$/.test(trimmedProvided)
+        ? trimmedProvided
+        : crypto.randomInt(100000, 1000000).toString();
     const hashedCode = hashOtp(code);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + expiryMinutes * 60 * 1000);

@@ -1095,7 +1095,7 @@ fun ExpressBookingScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = "Notice: Smiles Dispatch riders reserve the right to inspect package contents before pickup for safety, integrity, and regulatory compliance.",
+                                    text = "Notice: ESDispatch riders reserve the right to inspect package contents before pickup for safety, integrity, and regulatory compliance.",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = if (isDark) GoldLight else Obsidian,

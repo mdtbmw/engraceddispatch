@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.esdispatch.data.*
@@ -845,7 +847,7 @@ class DeliveryViewModel : WalletViewModel() {
                     )
                 }
             }
-        }
+        }.let { listenerRegistrations.add(it) }
     }
 
     
@@ -2759,7 +2761,7 @@ class DeliveryViewModel : WalletViewModel() {
 
                                 val name = if (isLocalNameValid) {
                                     if (isFsNamePlaceholder) {
-                                        com.esdispatch.data.FirebaseManager.saveUserProfileToFirestore(currentUser.uid, localName, localEmail, localPhone)
+                                        com.esdispatch.data.FirebaseManager.saveUserProfileToFirestore(currentUser.uid, localName, localEmail, "")
                                     }
                                     localName
                                 } else if (!isFsNamePlaceholder) {
@@ -2768,7 +2770,7 @@ class DeliveryViewModel : WalletViewModel() {
                                     localName.ifBlank { fsName.ifBlank { "Member" } }
                                 }
                                 val email = if (doc.exists()) doc.getString("email") ?: currentUser.email ?: localEmail else localEmail
-                                val phone = if (doc.exists()) doc.getString("phone") ?: localPhone else localPhone
+                                val phone = if (doc.exists()) doc.getString("phone") ?: "" else ""
                                 val role = if (doc.exists()) doc.getString("role") ?: localRole else localRole
                                 val bikeNumber = if (doc.exists()) doc.getString("bikeNumber") ?: localBike else localBike
 
@@ -3390,16 +3392,13 @@ class DeliveryViewModel : WalletViewModel() {
                     }
                 }
                 override fun onLost(network: Network) {
-                    // Do not mark offline blindly: verify if active network is truly unavailable
                     val active = cm.activeNetwork
                     val caps = active?.let { cm.getNetworkCapabilities(it) }
-                    val isStillOnline = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
-                                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                    val isStillOnline = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
                     _networkOnline.value = isStillOnline
                 }
                 override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                    val hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                                      caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                    val hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                     val wasOffline = !_networkOnline.value
                     _networkOnline.value = hasInternet
                     if (wasOffline && hasInternet) {
@@ -3418,8 +3417,7 @@ class DeliveryViewModel : WalletViewModel() {
             }
             val active = cm.activeNetwork
             val caps = active?.let { cm.getNetworkCapabilities(it) }
-            val isOnline = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
-                           caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            val isOnline = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
             _networkOnline.value = isOnline
             if (isOnline) {
                 syncOfflineQueue()
@@ -3662,9 +3660,14 @@ class DeliveryViewModel : WalletViewModel() {
         com.esdispatch.data.FirebaseManager.checkEmailExists(email, onComplete)
     }
 
-    fun checkPhoneExists(phone: String, onComplete: (Boolean) -> Unit) {
-        com.esdispatch.data.FirebaseManager.checkPhoneExists(phone, onComplete)
+    fun checkPhoneAvailability(phone: String, onComplete: (com.esdispatch.data.FirebaseManager.PhoneAvailability) -> Unit) {
+        com.esdispatch.data.FirebaseManager.checkPhoneAvailability(phone, onComplete)
     }
+
+    suspend fun awaitPhoneAvailability(phone: String): com.esdispatch.data.FirebaseManager.PhoneAvailability =
+        kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+            checkPhoneAvailability(phone) { status -> cont.resume(status) }
+        }
 
     fun completeGoogleSignUp(
         phone: String,
@@ -3903,9 +3906,9 @@ class DeliveryViewModel : WalletViewModel() {
                                     "Engraced Member"
                                 }
                                 val phone = if (doc.exists()) {
-                                    doc.getString("phone") ?: "+234 803 123 4567"
+                                    doc.getString("phone") ?: ""
                                 } else {
-                                    "+234 803 123 4567"
+                                    ""
                                 }
                                 val role = if (doc.exists()) {
                                     doc.getString("role") ?: "customer"
@@ -3958,7 +3961,7 @@ class DeliveryViewModel : WalletViewModel() {
                             }
                     } else {
                         val fallbackName = "Engraced Member"
-                        val fallbackPhone = "+234 803 123 4567"
+                        val fallbackPhone = ""
                         val fallbackRole = "customer"
                         val fallbackBike = ""
                         
@@ -4273,46 +4276,40 @@ class DeliveryViewModel : WalletViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             var dispatched = false
             var lastError = ""
+            var userError = ""
 
-            // Strategy A: Direct Secure SMTP Mailer via SSL socket (server.hostnextdns.com:465)
+            // Strategy A: Firebase Cloud Functions Callable `sendEmailOtp`
             try {
-                val directSuccess = com.esdispatch.data.DirectSmtpMailer.sendVerificationEmail(
-                    recipientEmail = email,
-                    recipientName = name,
-                    otp = secureCode
+                val functions = com.google.firebase.functions.FirebaseFunctions.getInstance()
+                val callData = hashMapOf(
+                    "email" to email,
+                    "name" to name,
+                    "purpose" to "SIGN_UP",
+                    "code" to secureCode
                 )
-                if (directSuccess) {
+                val task = functions.getHttpsCallable("sendEmailOtp").call(callData)
+                com.google.android.gms.tasks.Tasks.await(task, 10, java.util.concurrent.TimeUnit.SECONDS)
+                if (task.isSuccessful) {
                     dispatched = true
-                    android.util.Log.d("DeliveryViewModel", "Direct SMTP delivery succeeded.")
+                    android.util.Log.d("DeliveryViewModel", "sendEmailOtp Cloud Function succeeded.")
                 }
             } catch (e: Exception) {
                 lastError = e.message ?: ""
-                android.util.Log.w("DeliveryViewModel", "Direct SMTP attempt: ${e.message}")
-            }
-
-            // Strategy B: Firebase Cloud Functions Callable `sendEmailOtp`
-            if (!dispatched) {
-                try {
-                    val functions = com.google.firebase.functions.FirebaseFunctions.getInstance()
-                    val callData = hashMapOf(
-                        "email" to email,
-                        "name" to name,
-                        "purpose" to "SIGN_UP",
-                        "code" to secureCode
-                    )
-                    val task = functions.getHttpsCallable("sendEmailOtp").call(callData)
-                    com.google.android.gms.tasks.Tasks.await(task, 8, java.util.concurrent.TimeUnit.SECONDS)
-                    if (task.isSuccessful) {
-                        dispatched = true
-                        android.util.Log.d("DeliveryViewModel", "sendEmailOtp Cloud Function succeeded.")
-                    }
-                } catch (e: Exception) {
-                    lastError = e.message ?: ""
-                    android.util.Log.w("DeliveryViewModel", "sendEmailOtp Callable attempt: ${e.message}")
+                val msg = e.message ?: ""
+                userError = when {
+                    msg.contains("not-found", ignoreCase = true) ||
+                        msg.contains("DEPLOYMENT_NOT_FOUND", ignoreCase = true) ||
+                        msg.contains("unavailable", ignoreCase = true) ->
+                        "Verification service is temporarily unavailable. Please try again in a few minutes."
+                    msg.contains("timeout", ignoreCase = true) ||
+                        msg.contains("timed out", ignoreCase = true) ->
+                        "The verification service took too long to respond. Please try again."
+                    else -> userError
                 }
+                android.util.Log.w("DeliveryViewModel", "sendEmailOtp Callable attempt: ${e.message}")
             }
 
-            // Strategy C: REST API endpoints (Vercel backend + Primary production domain)
+            // Strategy B: REST API endpoints (Vercel backend + Primary production domain)
             if (!dispatched) {
                 val endpoints = listOf(
                     getEffectiveApiUrl("/api/email/verification"),
@@ -4341,11 +4338,25 @@ class DeliveryViewModel : WalletViewModel() {
                                 dispatched = true
                             } else {
                                 lastError = "Server returned ${response.code}"
+                                userError = if (response.code == 429) {
+                                    "Too many attempts. Please wait a few minutes before requesting another code."
+                                } else {
+                                    "Verification service is temporarily unavailable. Please try again in a few minutes."
+                                }
                             }
                         }
                         if (dispatched) break
                     } catch (e: Exception) {
                         lastError = e.message ?: "Network unreachable"
+                        userError = when (e) {
+                            is java.net.UnknownHostException, is java.net.ConnectException ->
+                                "You appear to be offline. Check your internet connection and try again."
+                            is java.net.SocketTimeoutException ->
+                                "The verification service took too long to respond. Please try again."
+                            else -> userError.ifBlank {
+                                "Verification service is temporarily unavailable. Please try again in a few minutes."
+                            }
+                        }
                         android.util.Log.e("DeliveryViewModel", "Failed endpoint $endpoint: ${e.message}")
                     }
                 }
@@ -4355,7 +4366,10 @@ class DeliveryViewModel : WalletViewModel() {
                 if (dispatched) {
                     onResult?.invoke(true, "A 6-digit verification code has been dispatched to $email. Please check your inbox.")
                 } else {
-                    onResult?.invoke(false, "Unable to send verification code. Please check your internet connection and try again.")
+                    android.util.Log.e("DeliveryViewModel", "Verification email not dispatched. Reason: $lastError")
+                    onResult?.invoke(false, userError.ifBlank {
+                        "We couldn't send your verification code right now. Please try again in a few minutes."
+                    })
                 }
             }
         }
@@ -4630,6 +4644,13 @@ class DeliveryViewModel : WalletViewModel() {
         _firebaseUserId.value = null
         _userPin.value = ""
         
+        listenerRegistrations.forEach { runCatching { it.remove() } }
+        listenerRegistrations.clear()
+        chatListenerJob?.cancel()
+        chatListenerJob = null
+        trackingJob?.cancel()
+        trackingJob = null
+
         try {
             com.esdispatch.data.FirebaseManager.auth?.signOut()
         } catch (e: Exception) {
@@ -6215,7 +6236,7 @@ class DeliveryViewModel : WalletViewModel() {
                             }
                         }
                     }
-                }
+                }.let { listenerRegistrations.add(it) }
         }
     }
 
@@ -7337,6 +7358,7 @@ class DeliveryViewModel : WalletViewModel() {
     private fun listenToMarketplaceProducts() {
         val firestore = com.esdispatch.data.FirebaseManager.firestore ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
         firestore.collection("marketplace_products")
+            .limit(100)
             .addSnapshotListener { snapshot, e ->
                 if (e != null) {
                     android.util.Log.e("DeliveryViewModel", "Error fetching marketplace_products: ${e.message}")
@@ -7365,7 +7387,7 @@ class DeliveryViewModel : WalletViewModel() {
                 _rawMarketplaceProducts = items
                 _marketplaceProducts.value = items.filter { it.vendorId !in _demoStoreIds }
                 if (_storeDocs.isNotEmpty()) rebuildStoreList()
-            }
+            }.let { listenerRegistrations.add(it) }
     }
 
     // Raw (unfiltered) product catalog + ids of demo stores (demo products must not surface)
@@ -7423,6 +7445,7 @@ class DeliveryViewModel : WalletViewModel() {
     private fun listenToMarketplaceStores() {
         val firestore = com.esdispatch.data.FirebaseManager.firestore ?: com.google.firebase.firestore.FirebaseFirestore.getInstance()
         firestore.collection("marketplace_stores")
+            .limit(50)
             .addSnapshotListener { snapshot, e ->
                 if (e != null || snapshot == null) {
                     _storeDocs = emptyList()
@@ -7439,7 +7462,7 @@ class DeliveryViewModel : WalletViewModel() {
                 _demoStoreIds.addAll(_storeDocs.filter { it.second["isDemo"] == true }.map { it.first })
                 republishMarketplaceProducts()
                 rebuildStoreList()
-            }
+            }.let { listenerRegistrations.add(it) }
     }
 
     // --- Marketplace & Promos ---
@@ -7592,7 +7615,7 @@ class DeliveryViewModel : WalletViewModel() {
             .addSnapshotListener { snapshot, _ ->
                 if (snapshot == null) return@addSnapshotListener
                 _vendorPayoutRequests.value = snapshot.documents.mapNotNull { it.data }
-            }
+            }.let { listenerRegistrations.add(it) }
     }
 
     fun submitDriverClockIn(lat: Double, lng: Double, onResult: (Boolean, String) -> Unit) {
@@ -7755,7 +7778,7 @@ class DeliveryViewModel : WalletViewModel() {
                     CartItem(item, quantity)
                 }
                 _cartItems.value = loaded
-            }
+            }.let { listenerRegistrations.add(it) }
     }
 
     /** Initialise Paystack SDK once context is available. Key is read from BuildConfig. */
@@ -8129,7 +8152,7 @@ class DeliveryViewModel : WalletViewModel() {
                 }
                 wasVerified = nowVerified
                 listenToVendorOrders()
-            }
+            }.let { listenerRegistrations.add(it) }
     }
 
     /**
@@ -8220,11 +8243,36 @@ class DeliveryViewModel : WalletViewModel() {
         fs.collection("system_config").document("global_settings")
             .addSnapshotListener { snap, _ ->
                 if (snap == null || !snap.exists()) return@addSnapshotListener
+                (snap.get("marketplaceEnabled") as? Boolean)?.let {
+                    _marketplaceEnabled.value = it
+                    savePref("marketplace_enabled", it)
+                }
+                (snap.get("pointsSystemEnabled") as? Boolean)?.let {
+                    _pointsSystemEnabled.value = it
+                    savePref("points_system_enabled", it)
+                }
+                (snap.get("pricingModeDynamic") as? Boolean)?.let {
+                    _isDynamicPricingEnabled.value = it
+                    savePref("pricing_mode_dynamic", it)
+                }
+                (snap.get("tipSystemEnabled") as? Boolean)?.let {
+                    _tipSystemEnabled.value = it
+                    savePref("tip_system_enabled", it)
+                }
+                (snap.get("emailVerificationRequired") as? Boolean)?.let {
+                    _emailVerificationRequired.value = it
+                    savePref("email_verification_required", it)
+                }
+                (snap.get("phoneVerificationRequired") as? Boolean)?.let {
+                    _phoneVerificationRequired.value = it
+                    savePref("phone_verification_required", it)
+                }
                 snap.getBoolean("autoVerifyVendors")?.let { v ->
                     _autoVerifyVendors.value = v
                     savePref("auto_verify_vendors", v)
                 }
-            }
+                (snap.get("maintenanceMode") as? Boolean)?.let { _maintenanceMode.value = it }
+            }.let { listenerRegistrations.add(it) }
     }
 
     fun listenToVendorOrders() {
@@ -8237,7 +8285,7 @@ class DeliveryViewModel : WalletViewModel() {
             .addSnapshotListener { snap, _ ->
                 if (snap == null) return@addSnapshotListener
                 _vendorOrders.value = snap.documents.mapNotNull { it.data }
-            }
+            }.let { listenerRegistrations.add(it) }
     }
 
     fun registerVendorStore(

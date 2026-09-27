@@ -477,7 +477,7 @@ fun ActiveTrackingScreen(
         val activeContactPhone = if (isRider) {
             if (parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT, ParcelStatus.ARRIVED_PICKUP)) parcel.senderPhone else parcel.receiverPhone
         } else {
-            if (parcel.courierPhone.isNotBlank()) parcel.courierPhone else "+234 803 777 8888"
+            if (parcel.courierPhone.isNotBlank()) parcel.courierPhone else ""
         }
         ParcelChatDialog(
             parcelId = parcel.id,
@@ -847,7 +847,7 @@ fun ActiveTrackingScreen(
                 matchedRider?.avatar?.ifBlank { "" } ?: ""
             }
             val resolvedCourierName = if (parcel.courierName.isNotBlank()) parcel.courierName else (matchedRider?.name ?: "Verified Dispatch Courier")
-            val resolvedCourierPhone = if (parcel.courierPhone.isNotBlank()) parcel.courierPhone else (matchedRider?.phone ?: "+234 803 777 8888")
+            val resolvedCourierPhone = if (parcel.courierPhone.isNotBlank()) parcel.courierPhone else (matchedRider?.phone ?: "")
 
             // 1. FULL SCREEN MAP BACKGROUND (Uber-like experience)
             if (isLocalLoading) {
@@ -2874,11 +2874,15 @@ fun ActiveTrackingScreen(
                                                             .background(GoldenWhiteLight)
                                                             .clickable {
                                                                 val cleanPhone = resolvedCourierPhone.filter { it.isDigit() || it == '+' }
-                                                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanPhone"))
-                                                                try {
-                                                                    context.startActivity(dialIntent)
-                                                                } catch (e: Exception) {
-                                                                    Toast.makeText(context, "Call not supported on this device", Toast.LENGTH_SHORT).show()
+                                                                if (cleanPhone.isBlank()) {
+                                                                    Toast.makeText(context, "Courier contact details are not available yet.", Toast.LENGTH_SHORT).show()
+                                                                } else {
+                                                                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanPhone"))
+                                                                    try {
+                                                                        context.startActivity(dialIntent)
+                                                                    } catch (e: Exception) {
+                                                                        Toast.makeText(context, "Call not supported on this device", Toast.LENGTH_SHORT).show()
+                                                                    }
                                                                 }
                                                             },
                                                         contentAlignment = Alignment.Center

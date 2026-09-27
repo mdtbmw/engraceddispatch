@@ -38,8 +38,9 @@
 -keep class okhttp3.** { *; }
 -keep class okio.** { *; }
 
-# Firebase Keep Rules (Auth, Firestore, Messaging, AI)
+# Firebase & Google Play Services Keep Rules (Auth, Firestore, Messaging, Location)
 -dontwarn com.google.firebase.**
+-dontwarn com.google.android.gms.**
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }
 

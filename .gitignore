@@ -28,8 +28,13 @@ mobile/.gradle/
 # Firebase service account (private key - never commit)
 functions/service-account.json
 
+# Android signing keys
+*.jks
+*.keystore
+
 # Scratch & temporary logs
 *.log
+prompt_*.txt
 part*.txt
 509
 mobile/backend/

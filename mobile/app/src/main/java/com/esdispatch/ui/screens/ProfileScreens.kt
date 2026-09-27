@@ -4256,9 +4256,22 @@ fun ProfileEditSheet(
                     Button(
                         onClick = {
                             if (nameInput.isNotBlank() && emailInput.isNotBlank()) {
-                                viewModel.updateProfile(nameInput, emailInput, phoneInput)
-                                viewModel.showCustomToast("Profile details updated!")
-                                dismissWithAnim()
+                                if (phoneInput.isBlank() || phoneInput.trim() == currentPhone.trim()) {
+                                    viewModel.updateProfile(nameInput, emailInput, phoneInput)
+                                    viewModel.showCustomToast("Profile details updated!")
+                                    dismissWithAnim()
+                                } else {
+                                    scope.launch {
+                                        val status = viewModel.awaitPhoneAvailability(phoneInput)
+                                        if (status == com.esdispatch.data.FirebaseManager.PhoneAvailability.TAKEN) {
+                                            Toast.makeText(context, "This phone number is already in use by another account.", Toast.LENGTH_LONG).show()
+                                        } else {
+                                            viewModel.updateProfile(nameInput, emailInput, phoneInput)
+                                            viewModel.showCustomToast("Profile details updated!")
+                                            dismissWithAnim()
+                                        }
+                                    }
+                                }
                             } else {
                                 Toast.makeText(context, "Full Name and Email are required", Toast.LENGTH_SHORT).show()
                             }
@@ -5402,7 +5415,7 @@ fun VerificationSheet(
                                 Toast.makeText(context, "Verification confirmed!", Toast.LENGTH_SHORT).show()
                                 dismissWithAnim()
                             } else {
-                                Toast.makeText(context, "Email is not yet verified. Please open the verification link sent to your inbox.", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, "Email is not yet verified. Please enter the passcode sent to your inbox.", Toast.LENGTH_LONG).show()
                             }
                         }
                     },
@@ -5413,7 +5426,7 @@ fun VerificationSheet(
                     if (isChecking) {
                         CircularProgressIndicator(color = Gold, modifier = Modifier.size(24.dp))
                     } else {
-                        Text("I Have Verified My Email", fontWeight = FontWeight.Bold, color = AppOnSurface)
+                        Text("Check Verification Status", fontWeight = FontWeight.Bold, color = AppOnSurface)
                     }
                 }
             } else {
@@ -5518,7 +5531,7 @@ fun VerificationSheet(
                         },
                         enabled = !isChecking && !isVerifyingOtp
                     ) {
-                        Text("Check Link", fontSize = 12.sp, color = TextGray)
+                        Text("Check Status", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Bold)
                     }
                 }
             }

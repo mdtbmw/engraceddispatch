@@ -209,25 +209,59 @@ object FirebaseManager {
     }
 
     /**
-     * Check if phone number is already taken in real time
+     * Checks whether a phone number is already used by another account.
+     * Reports UNKNOWN when availability cannot be confirmed, so a failed
+     * check is never presented as "this number is free".
      */
-    fun checkPhoneExists(phone: String, onComplete: (Boolean) -> Unit) {
-        val db = firestore
-        if (db == null) {
-            onComplete(false)
-            return
-        }
+    enum class PhoneAvailability { AVAILABLE, TAKEN, UNKNOWN }
+
+    fun checkPhoneAvailability(phone: String, onComplete: (PhoneAvailability) -> Unit) {
+        val clean = phone.trim()
         val currentUid = auth?.currentUser?.uid
-        db.collection("users").whereEqualTo("phone", phone.trim())
-            .get()
-            .addOnSuccessListener { querySnapshot ->
-                // Filter out the user's own document if they are updating or completing onboarding
-                val matchingDocs = querySnapshot.documents.filter { it.id != currentUid }
-                onComplete(matchingDocs.isNotEmpty())
-            }
-            .addOnFailureListener {
-                onComplete(false)
-            }
+        val db = firestore
+        if (db != null) {
+            db.collection("users").whereEqualTo("phone", clean)
+                .get()
+                .addOnSuccessListener { querySnapshot ->
+                    // Filter out the user's own document if they are updating or completing onboarding
+                    val matchingDocs = querySnapshot.documents.filter { it.id != currentUid }
+                    if (matchingDocs.isNotEmpty()) {
+                        onComplete(PhoneAvailability.TAKEN)
+                    } else {
+                        checkPhoneViaCallable(clean, currentUid, onComplete)
+                    }
+                }
+                .addOnFailureListener {
+                    checkPhoneViaCallable(clean, currentUid, onComplete)
+                }
+        } else {
+            checkPhoneViaCallable(clean, currentUid, onComplete)
+        }
+    }
+
+    private fun checkPhoneViaCallable(phone: String, excludeUid: String?, onComplete: (PhoneAvailability) -> Unit) {
+        try {
+            val payload = hashMapOf("phone" to phone, "excludeUid" to (excludeUid ?: ""))
+            com.google.firebase.functions.FirebaseFunctions.getInstance()
+                .getHttpsCallable("checkPhoneUnique")
+                .call(payload)
+                .addOnSuccessListener { taskResult ->
+                    @Suppress("UNCHECKED_CAST")
+                    val data = taskResult.data as? Map<String, Any?>
+                    when (data?.get("available")) {
+                        true -> onComplete(PhoneAvailability.AVAILABLE)
+                        false -> onComplete(PhoneAvailability.TAKEN)
+                        else -> onComplete(PhoneAvailability.UNKNOWN)
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "Phone availability could not be confirmed: ${e.message}")
+                    onComplete(PhoneAvailability.UNKNOWN)
+                }
+        } catch (e: Exception) {
+            Log.w(TAG, "Phone availability check failed: ${e.message}")
+            onComplete(PhoneAvailability.UNKNOWN)
+        }
     }
 
     /**
@@ -313,9 +347,11 @@ object FirebaseManager {
             "uid" to userId,
             "name" to name,
             "email" to email,
-            "phone" to phone,
             "updatedAt" to System.currentTimeMillis()
         )
+        if (phone.isNotBlank()) {
+            userMap["phone"] = phone
+        }
         if (!role.isNullOrBlank()) {
             userMap["role"] = role
         }
@@ -1241,6 +1277,7 @@ object FirebaseManager {
         val listener = db.collection("users").document(userId)
             .collection("transactions")
             .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(50)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to transactions: ${error.message}")
@@ -1298,6 +1335,7 @@ object FirebaseManager {
 
         val listener = db.collection("deliveries")
             .whereEqualTo("userId", userId)
+            .limit(50)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to user deliveries: ${error.message}")
@@ -1402,6 +1440,7 @@ object FirebaseManager {
 
         val listener = db.collection("users").document(userId)
             .collection("notifications")
+            .limit(50)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to user notifications: ${error.message}")
@@ -1475,6 +1514,7 @@ object FirebaseManager {
 
         val listener = db.collection("users").document(userId)
             .collection("addresses")
+            .limit(20)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to user addresses: ${error.message}")
@@ -1686,6 +1726,7 @@ object FirebaseManager {
         val currentUid = auth?.currentUser?.uid ?: ""
         val listener = db.collection("deliveries")
             .whereIn("status", listOf("PENDING", "QUEUED", "OFFERED", "pending", "queued"))
+            .limit(50)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to available deliveries: ${error.message}")
@@ -1737,6 +1778,7 @@ object FirebaseManager {
 
         val activeListener = db.collection("deliveries")
             .whereEqualTo("riderId", riderId)
+            .limit(50)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to active rider assignments: ${error.message}")
@@ -1758,6 +1800,7 @@ object FirebaseManager {
 
         val reservedListener = db.collection("deliveries")
             .whereEqualTo("reservedRiderId", riderId)
+            .limit(50)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to reserved rider assignments: ${error.message}")

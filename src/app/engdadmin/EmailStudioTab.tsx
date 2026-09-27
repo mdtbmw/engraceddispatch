@@ -255,6 +255,7 @@ export default function EmailStudioTab({
   // Live Domain DNS & Deliverability State
   const [dnsCheckLoading, setDnsCheckLoading] = useState(false);
   const [dnsCheckData, setDnsCheckData] = useState<any>(null);
+  const [dnsCheckError, setDnsCheckError] = useState(false);
   const [showDnsModal, setShowDnsModal] = useState(false);
   const [copiedRecordKey, setCopiedRecordKey] = useState<string | null>(null);
 
@@ -266,25 +267,16 @@ export default function EmailStudioTab({
         const json = await res.json();
         if (json.success && json.data) {
           setDnsCheckData(json.data);
+          setDnsCheckError(false);
           return;
         }
       }
-      setDnsCheckData({
-        domain: "engracedsmile.com",
-        spf: { exists: true, valid: true, status: "valid", records: ["v=spf1 +a +mx +ip4:5.39.69.62 ~all"], isAuthorizedForHost: true },
-        dmarc: { exists: true, valid: true, status: "valid", records: ["v=DMARC1; p=none; rua=mailto:noreply@engracedsmile.com; aspf=r;"] },
-        mx: { exists: true, valid: true, status: "valid", records: [{ exchange: "engracedsmile.com", priority: 0 }] },
-        summary: { isInboxReady: true, spamRiskLevel: "LOW" },
-      });
+      setDnsCheckData(null);
+      setDnsCheckError(true);
     } catch (err) {
       console.warn("Failed to check DNS status:", err);
-      setDnsCheckData({
-        domain: "engracedsmile.com",
-        spf: { exists: true, valid: true, status: "valid", records: ["v=spf1 +a +mx +ip4:5.39.69.62 ~all"], isAuthorizedForHost: true },
-        dmarc: { exists: true, valid: true, status: "valid", records: ["v=DMARC1; p=none; rua=mailto:noreply@engracedsmile.com; aspf=r;"] },
-        mx: { exists: true, valid: true, status: "valid", records: [{ exchange: "engracedsmile.com", priority: 0 }] },
-        summary: { isInboxReady: true, spamRiskLevel: "LOW" },
-      });
+      setDnsCheckData(null);
+      setDnsCheckError(true);
     } finally {
       setDnsCheckLoading(false);
     }
@@ -1562,6 +1554,28 @@ export default function EmailStudioTab({
 
             {/* Status Grid */}
             {(() => {
+              if (!dnsCheckData) {
+                return (
+                  <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/20 border border-red-300 dark:border-red-800/40 text-xs text-red-900 dark:text-red-200 space-y-2">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+                      <span>{dnsCheckError ? "DNS records could not be loaded" : "DNS records not loaded yet"}</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-red-800 dark:text-red-300">
+                      The domain check service did not respond, so no verification results are available right now.
+                      Nothing below should be treated as verified until a successful check completes.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={runDnsCheck}
+                      disabled={dnsCheckLoading}
+                      className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[11px] font-black transition-colors cursor-pointer disabled:opacity-60"
+                    >
+                      {dnsCheckLoading ? "Checking..." : "Try Again"}
+                    </button>
+                  </div>
+                );
+              }
               const isSpfValid = Boolean(
                 dnsCheckData?.spf?.valid ||
                 dnsCheckData?.spf?.status === "valid" ||

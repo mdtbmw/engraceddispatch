@@ -4,4 +4,5 @@
     <exclude domain="database" path="."/>
     <exclude domain="sharedpref" path="esdispatch_auth_session.xml"/>
     <exclude domain="sharedpref" path="secure_vault_prefs.xml"/>
+    <exclude domain="sharedpref" path="esdispatch_prefs.xml"/>
 </full-backup-content>

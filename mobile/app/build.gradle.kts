@@ -15,38 +15,39 @@ android {
   namespace = "com.esdispatch"
   compileSdk = 35
 
+  val envFile = rootProject.file("../.env")
+  val envProps = mutableMapOf<String, String>()
+  if (envFile.exists()) {
+    envFile.readLines().forEach { line ->
+      val trimmed = line.trim()
+      if (trimmed.isNotEmpty() && !trimmed.startsWith("#") && trimmed.contains("=")) {
+        val parts = trimmed.split("=", limit = 2)
+        envProps[parts[0].trim()] = parts[1].trim()
+      }
+    }
+  }
+  fun resolveEnv(key: String, defaultVal: String = ""): String {
+    return System.getenv(key)?.removeSurrounding("\"")?.takeIf { it.isNotBlank() }
+      ?: envProps[key]?.removeSurrounding("\"")?.takeIf { it.isNotBlank() }
+      ?: defaultVal
+  }
+
   defaultConfig {
     applicationId = "com.esdispatch.app"
     minSdk = 24
     targetSdk = 34
     versionCode = 2
     versionName = "1.0.1"
-    val envFile = rootProject.file("../.env")
-    val envProps = mutableMapOf<String, String>()
-    if (envFile.exists()) {
-      envFile.readLines().forEach { line ->
-        val trimmed = line.trim()
-        if (trimmed.isNotEmpty() && !trimmed.startsWith("#") && trimmed.contains("=")) {
-          val parts = trimmed.split("=", limit = 2)
-          envProps[parts[0].trim()] = parts[1].trim()
-        }
-      }
-    }
-    fun resolveEnv(key: String, defaultVal: String = ""): String {
-      return System.getenv(key)?.removeSurrounding("\"")?.takeIf { it.isNotBlank() }
-        ?: envProps[key]?.removeSurrounding("\"")?.takeIf { it.isNotBlank() }
-        ?: defaultVal
-    }
 
     val resolvedMapboxToken = resolveEnv("MAPBOX_ACCESS_TOKEN")
     buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"$resolvedMapboxToken\"")
     val paystackKey = resolveEnv("PAYSTACK_PUBLIC_KEY")
     buildConfigField("String", "PAYSTACK_PUBLIC_KEY", "\"$paystackKey\"")
-    val googleWebClientId = resolveEnv("GOOGLE_WEB_CLIENT_ID", "858437923778-pgdqbbcebljr9jvkjn8tv9ujm905erfa.apps.googleusercontent.com")
+    val googleWebClientId = resolveEnv("GOOGLE_WEB_CLIENT_ID")
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
-    val geminiApiKey = resolveEnv("GEMINI_API_KEY", "AIzaSyCnYpvx0peHOafunoZcPMIIhd7Y-pM0NAs")
+    val geminiApiKey = resolveEnv("GEMINI_API_KEY")
     buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
-    val googleMapsApiKey = resolveEnv("GOOGLE_MAPS_API_KEY", "AIzaSyCnYpvx0peHOafunoZcPMIIhd7Y-pM0NAs")
+    val googleMapsApiKey = resolveEnv("GOOGLE_MAPS_API_KEY")
     buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsApiKey\"")
     manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
     val backendApiUrl = resolveEnv("BACKEND_API_URL").ifBlank { resolveEnv("NEXT_PUBLIC_APP_URL", "") }
@@ -63,14 +64,11 @@ android {
       val keystoreFile = file(keystorePath)
       if (keystoreFile.exists()) {
         storeFile = keystoreFile
-        val sPassword = System.getenv("STORE_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD")
-        val kPassword = System.getenv("KEY_PASSWORD")
-        if (System.getenv("CI") == "true" && (sPassword.isNullOrBlank() || kPassword.isNullOrBlank())) {
-          throw GradleException("STORE_PASSWORD and KEY_PASSWORD environment variables are required in CI.")
-        }
-        storePassword = sPassword ?: "android123"
-        keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
-        keyPassword = kPassword ?: "android123"
+        val sPassword = System.getenv("STORE_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD") ?: resolveEnv("STORE_PASSWORD", "")
+        val kPassword = System.getenv("KEY_PASSWORD") ?: resolveEnv("KEY_PASSWORD", "")
+        storePassword = if (sPassword.isNotBlank()) sPassword else "android123"
+        keyAlias = System.getenv("KEY_ALIAS") ?: resolveEnv("KEY_ALIAS", "upload")
+        keyPassword = if (kPassword.isNotBlank()) kPassword else "android123"
         enableV1Signing = true
         enableV2Signing = true
       } else {

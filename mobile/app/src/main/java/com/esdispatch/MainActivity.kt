@@ -472,12 +472,16 @@ class MainActivity : FragmentActivity() {
                         AppLockScreen(
                             viewModel = viewModel,
                             onUnlocked = {
-                                navController.navigate("Preloader/Dashboard") {
-                                    popUpTo(0) { inclusive = true }
-                                    launchSingleTop = true
+                                viewModel.unlockApp()
+                                if (!navController.popBackStack()) {
+                                    navController.navigate("Dashboard") {
+                                        popUpTo(0) { inclusive = true }
+                                        launchSingleTop = true
+                                    }
                                 }
                             },
                             onSignOut = {
+                                viewModel.unlockApp()
                                 viewModel.logout()
                                 navController.navigate("Login") {
                                     popUpTo(0) { inclusive = true }
@@ -735,6 +739,14 @@ class MainActivity : FragmentActivity() {
                     }
                 }
 
+                LaunchedEffect(isAppLocked) {
+                    if (isAppLocked) {
+                        viewModel.dismissCustomToast()
+                        activeToastData = null
+                        dismissJob?.cancel()
+                    }
+                }
+
                 // Offline Connectivity Status Banner (Subtle, non-disruptive, auto-reconnecting, debounced)
                 var showOfflineBanner by remember { mutableStateOf(false) }
                 LaunchedEffect(networkOnline) {
@@ -747,7 +759,7 @@ class MainActivity : FragmentActivity() {
                 }
 
                 AnimatedVisibility(
-                    visible = showOfflineBanner,
+                    visible = showOfflineBanner && !isAppLocked,
                     enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
                     exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
                     modifier = Modifier
@@ -784,7 +796,7 @@ class MainActivity : FragmentActivity() {
 
                 val currentToast = activeToastData
                 AnimatedVisibility(
-                    visible = currentToast != null,
+                    visible = currentToast != null && !isAppLocked,
                     enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
                     exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
                     modifier = Modifier
@@ -843,25 +855,33 @@ class MainActivity : FragmentActivity() {
                 }
 
                 if (maintenanceMode) {
-                    ConfigurationErrorScreen(isDark = darkModeEnabled)
-                    return@Box
-                }
-
-                if (isAppLocked) {
-                    AppLockScreen(
-                        viewModel = viewModel,
-                        onUnlocked = {
-                            viewModel.unlockApp()
-                        },
-                        onSignOut = {
-                            viewModel.unlockApp()
-                            viewModel.logout()
-                            navController.navigate("Login") {
-                                popUpTo(0) { inclusive = true }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(999999f)
+                    ) {
+                        ConfigurationErrorScreen(isDark = darkModeEnabled)
+                    }
+                } else if (isAppLocked) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(999999f)
+                    ) {
+                        AppLockScreen(
+                            viewModel = viewModel,
+                            onUnlocked = {
+                                viewModel.unlockApp()
+                            },
+                            onSignOut = {
+                                viewModel.unlockApp()
+                                viewModel.logout()
+                                navController.navigate("Login") {
+                                    popUpTo(0) { inclusive = true }
+                                }
                             }
-                        }
-                    )
-                    return@Box
+                        )
+                    }
                 }
         }
     }

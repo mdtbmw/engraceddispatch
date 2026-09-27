@@ -10,6 +10,7 @@ const SignUpForm = () => {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -22,6 +23,11 @@ const SignUpForm = () => {
       setError("You must agree to the Terms of Service.");
       return;
     }
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+      setError("Please enter a valid phone number (10 to 15 digits).");
+      return;
+    }
     setError("");
     setLoading(true);
     try {
@@ -30,7 +36,7 @@ const SignUpForm = () => {
         uid: cred.user.uid,
         name,
         email,
-        phone: "",
+        phone: phone.trim(),
         role: "customer",
         status: "active",
         isOnline: false,
@@ -126,6 +132,10 @@ const SignUpForm = () => {
             <div className="zubuz-account-field">
               <label>Email address</label>
               <input type="email" placeholder="example@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+            <div className="zubuz-account-field">
+              <label>Phone number</label>
+              <input type="tel" placeholder="0803 123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} required />
             </div>
             <div className="zubuz-account-field">
               <label>Password</label>

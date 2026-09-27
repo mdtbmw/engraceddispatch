@@ -182,6 +182,7 @@ fun RiderDashboardScreen(
     val dailyTargetPoints by viewModel.dailyRiderTargetPoints.collectAsState()
     val pointNairaVal by viewModel.pointNairaValue.collectAsState()
     val fleetRank by viewModel.riderFleetRank.collectAsState()
+    val userRating by viewModel.userRating.collectAsState()
 
     val arrivedParcel = remember(riderAssignments) {
         riderAssignments.firstOrNull { 
@@ -856,12 +857,35 @@ fun RiderDashboardScreen(
                                     color = Gold
                                 ) {
                                     Text(
-                                        text = "Smiles Dispatch Rider",
+                                        text = "ESDispatch Rider",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Obsidian,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Gold.copy(alpha = 0.2f),
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Text(
+                                            text = "★",
+                                            fontSize = 10.sp,
+                                            color = Gold
+                                        )
+                                        Text(
+                                            text = String.format(java.util.Locale.US, "%.1f", userRating),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Gold
+                                        )
+                                    }
                                 }
                                 Text(
                                     text = "PREMIUM LOGISTICS & DISPATCH",
@@ -2348,7 +2372,7 @@ fun RiderUpdateBottomSheetContent(
                     onClick = {
                         val phone = parcel.receiverPhone.ifBlank { parcel.senderPhone }
                         if (phone.isNotBlank()) {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:$phone?body=Hello, your Smiles Dispatch courier has arrived with your package #${parcel.id.take(8).uppercase()}. Please meet me for handover."))
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:$phone?body=Hello, your ESDispatch courier has arrived with your package #${parcel.id.take(8).uppercase()}. Please meet me for handover."))
                             context.startActivity(intent)
                         } else {
                             Toast.makeText(context, "No receiver phone available", Toast.LENGTH_SHORT).show()
@@ -2388,7 +2412,7 @@ fun RiderUpdateBottomSheetContent(
                     )
                     Text(
                         text = if (remainingSeconds == 0) {
-                            "⚠️ 7-minute wait window expired. Smiles Dispatch policy: If receiver is unreachable, parcel must be returned to central hub for customer rebooking."
+                            "⚠️ 7-minute wait window expired. ESDispatch policy: If receiver is unreachable, parcel must be returned to central hub for customer rebooking."
                         } else {
                             "Policy: 7-minute maximum arrival wait window. If receiver cannot be reached within 7 minutes, package will be returned to central hub."
                         },
