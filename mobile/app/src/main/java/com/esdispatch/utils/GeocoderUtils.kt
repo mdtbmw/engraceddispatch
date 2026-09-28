@@ -265,7 +265,19 @@ object GeocoderUtils {
             }
         }
 
-        // 3. Mapbox Places Autocomplete (Fast, included tier)
+        // 3. Google Places API Autocomplete (Primary high-accuracy tier with Benin City bias)
+        if (cleanQ.length >= 3 && results.size < 6) {
+            try {
+                val googleItems = fetchGooglePlacesAutocompleteItems(query)
+                for (gItem in googleItems) {
+                    if (results.none { it.displayInput.contains(gItem.title, ignoreCase = true) || gItem.title.contains(it.title, ignoreCase = true) }) {
+                        results.add(gItem)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 4. Mapbox Places Autocomplete (Secondary backup tier)
         if (cleanQ.length >= 3 && results.size < 4) {
             try {
                 val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
@@ -320,18 +332,6 @@ object GeocoderUtils {
                                 }
                             }
                         }
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-
-        // 4. Google Places API Autocomplete (Gated fallback: requires >= 4 chars, only if local/Mapbox has < 3 results)
-        if (cleanQ.length >= 4 && results.size < 3) {
-            try {
-                val googleItems = fetchGooglePlacesAutocompleteItems(query)
-                for (gItem in googleItems) {
-                    if (results.none { it.displayInput.contains(gItem.title, ignoreCase = true) || gItem.title.contains(it.title, ignoreCase = true) }) {
-                        results.add(gItem)
                     }
                 }
             } catch (_: Exception) {}
@@ -396,7 +396,33 @@ object GeocoderUtils {
             }
         } catch (_: Exception) {}
 
-        // 2. High-Accuracy Mapbox Reverse Geocoding (Fast, included tier)
+        // 2. High-Accuracy Google Geocoding API (Primary external tier)
+        try {
+            val apiKey = com.esdispatch.BuildConfig.GOOGLE_MAPS_API_KEY
+            if (!apiKey.isNullOrBlank()) {
+                val urlString = "https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=$apiKey"
+                val conn = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 3500
+                conn.readTimeout = 3500
+                if (conn.responseCode == 200) {
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val jsonObj = org.json.JSONObject(jsonStr)
+                    val results = jsonObj.optJSONArray("results")
+                    if (results != null && results.length() > 0) {
+                        val formattedAddress = results.getJSONObject(0).optString("formatted_address")
+                        if (formattedAddress.isNotBlank()) {
+                            val clean = formattedAddress.replace(", Nigeria", "").replace(", Edo", "").trim()
+                            reverseGeocodeCache[cacheKey] = clean
+                            return@withContext clean
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ReverseGeocode", "Google Geocoding error: ${e.message}")
+        }
+
+        // 3. Mapbox Reverse Geocoding (Secondary backup tier)
         try {
             val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
             if (!token.isNullOrBlank()) {
@@ -435,32 +461,6 @@ object GeocoderUtils {
             }
         } catch (e: Exception) {
             android.util.Log.e("ReverseGeocode", "Mapbox reverse geocode error: ${e.message}")
-        }
-
-        // 3. High-Accuracy Google Geocoding API (Fallback tier)
-        try {
-            val apiKey = com.esdispatch.BuildConfig.GOOGLE_MAPS_API_KEY
-            if (!apiKey.isNullOrBlank()) {
-                val urlString = "https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=$apiKey"
-                val conn = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 3500
-                conn.readTimeout = 3500
-                if (conn.responseCode == 200) {
-                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    val jsonObj = org.json.JSONObject(jsonStr)
-                    val results = jsonObj.optJSONArray("results")
-                    if (results != null && results.length() > 0) {
-                        val formattedAddress = results.getJSONObject(0).optString("formatted_address")
-                        if (formattedAddress.isNotBlank()) {
-                            val clean = formattedAddress.replace(", Nigeria", "").replace(", Edo", "").trim()
-                            reverseGeocodeCache[cacheKey] = clean
-                            return@withContext clean
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            android.util.Log.w("ReverseGeocode", "Google Geocoding error: ${e.message}")
         }
 
         // 4. Android System Geocoder fallback
@@ -507,37 +507,7 @@ object GeocoderUtils {
             return@withContext res
         }
 
-        // 3. Mapbox Geocoding (Fast, included tier)
-        try {
-            val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
-            if (!token.isNullOrBlank()) {
-                val expandedAddress = expandQuery(cleanAddr)
-                val encoded = java.net.URLEncoder.encode(expandedAddress, "UTF-8")
-                val url = java.net.URL("https://api.mapbox.com/geocoding/v5/mapbox.places/$encoded.json?access_token=$token&limit=1")
-                val conn = url.openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 3500
-                conn.readTimeout = 3500
-                if (conn.responseCode == 200) {
-                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    val obj = org.json.JSONObject(jsonStr)
-                    val features = obj.optJSONArray("features")
-                    if (features != null && features.length() > 0) {
-                        val center = features.getJSONObject(0).optJSONArray("center")
-                        if (center != null && center.length() >= 2) {
-                            val lng = center.getDouble(0)
-                            val lat = center.getDouble(1)
-                            val res = Pair(lat, lng)
-                            geocodeCache[cacheKey] = res
-                            return@withContext res
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            android.util.Log.w("GeocoderUtils", "Mapbox geocode error: ${e.message}")
-        }
-
-        // 4. Google Maps Geocoding API (Fallback tier)
+        // 3. Google Maps Geocoding API (Primary external tier)
         try {
             val apiKey = com.esdispatch.BuildConfig.GOOGLE_MAPS_API_KEY
             if (!apiKey.isNullOrBlank()) {
@@ -568,6 +538,36 @@ object GeocoderUtils {
             }
         } catch (e: Exception) {
             android.util.Log.w("GeocoderUtils", "Google Geocoding error: ${e.message}")
+        }
+
+        // 4. Mapbox Geocoding (Secondary backup tier)
+        try {
+            val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
+            if (!token.isNullOrBlank()) {
+                val expandedAddress = expandQuery(cleanAddr)
+                val encoded = java.net.URLEncoder.encode(expandedAddress, "UTF-8")
+                val url = java.net.URL("https://api.mapbox.com/geocoding/v5/mapbox.places/$encoded.json?access_token=$token&limit=1")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 3500
+                conn.readTimeout = 3500
+                if (conn.responseCode == 200) {
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val obj = org.json.JSONObject(jsonStr)
+                    val features = obj.optJSONArray("features")
+                    if (features != null && features.length() > 0) {
+                        val center = features.getJSONObject(0).optJSONArray("center")
+                        if (center != null && center.length() >= 2) {
+                            val lng = center.getDouble(0)
+                            val lat = center.getDouble(1)
+                            val res = Pair(lat, lng)
+                            geocodeCache[cacheKey] = res
+                            return@withContext res
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("GeocoderUtils", "Mapbox geocode error: ${e.message}")
         }
 
         // 5. Android Geocoder fallback

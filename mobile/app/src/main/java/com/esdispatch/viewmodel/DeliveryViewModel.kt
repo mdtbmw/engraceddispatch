@@ -7058,9 +7058,69 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    fun checkRouteTrafficViaGoogleRoutes(pickupAddr: String, deliveryAddr: String) {
+        if (pickupAddr.isBlank() || deliveryAddr.isBlank()) {
+            _aiTrafficCongested.value = false
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val apiKey = BuildConfig.GOOGLE_MAPS_API_KEY
+                if (apiKey.isNotBlank()) {
+                    val url = java.net.URL("https://routes.googleapis.com/directions/v2:computeRoutes")
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.setRequestProperty("X-Goog-Api-Key", apiKey)
+                    conn.setRequestProperty("X-Goog-FieldMask", "routes.duration,routes.distanceMeters,routes.travelAdvisory.speedReadingIntervals")
+                    conn.connectTimeout = 4000
+                    conn.readTimeout = 4000
+                    conn.doOutput = true
+
+                    val safePickup = if (pickupAddr.contains("Benin", ignoreCase = true)) pickupAddr else "$pickupAddr, Benin City, Nigeria"
+                    val safeDelivery = if (deliveryAddr.contains("Benin", ignoreCase = true)) deliveryAddr else "$deliveryAddr, Benin City, Nigeria"
+
+                    val jsonPayload = org.json.JSONObject().apply {
+                        put("origin", org.json.JSONObject().put("address", safePickup))
+                        put("destination", org.json.JSONObject().put("address", safeDelivery))
+                        put("travelMode", "TWO_WHEELER")
+                        put("routingPreference", "TRAFFIC_AWARE")
+                    }
+
+                    conn.outputStream.bufferedWriter().use { it.write(jsonPayload.toString()) }
+                    if (conn.responseCode == 200) {
+                        val resp = conn.inputStream.bufferedReader().use { it.readText() }
+                        val obj = org.json.JSONObject(resp)
+                        val routes = obj.optJSONArray("routes")
+                        if (routes != null && routes.length() > 0) {
+                            val r = routes.getJSONObject(0)
+                            val advisory = r.optJSONObject("travelAdvisory")
+                            val intervals = advisory?.optJSONArray("speedReadingIntervals")
+                            var isCongested = false
+                            if (intervals != null) {
+                                for (i in 0 until intervals.length()) {
+                                    val item = intervals.getJSONObject(i)
+                                    val speed = item.optString("speed")
+                                    if (speed.equals("SLOW", ignoreCase = true) || speed.equals("TRAFFIC_JAM", ignoreCase = true)) {
+                                        isCongested = true
+                                        break
+                                    }
+                                }
+                            }
+                            _aiTrafficCongested.value = isCongested
+                            return@launch
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("RoutesAPI", "Traffic check error: ${e.message}")
+            }
+            _aiTrafficCongested.value = false
+        }
+    }
+
     fun checkRouteTrafficViaMapbox(pickupAddr: String, deliveryAddr: String) {
-        // Mapbox deprecated. Routing calculations handled locally or via Google Directions
-        _aiTrafficCongested.value = false
+        checkRouteTrafficViaGoogleRoutes(pickupAddr, deliveryAddr)
     }
 
     /**

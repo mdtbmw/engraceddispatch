@@ -1,7 +1,6 @@
 "use client";
-import { useEffect, useRef } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import React, { useEffect, useMemo, useState } from "react";
+import { APIProvider, Map, AdvancedMarker, Pin, useMap } from "@vis.gl/react-google-maps";
 
 export interface Coord { lat: number; lng: number; }
 
@@ -14,8 +13,6 @@ export interface RegistryEntry {
   zone: string;
   active: boolean;
 }
-
-type LatLng = [number, number];
 
 /** Documented default map center (system_config/geo). Only used before the geo doc loads. */
 export const DEFAULT_GEO_CENTER: Coord = { lat: 6.3350, lng: 5.6037 };
@@ -73,126 +70,181 @@ interface Props {
   geoCenter: Coord;
 }
 
+/** Camera bounds controller inside the Google Maps context */
+function MapCameraBounds({ points, geoCenter }: { points: google.maps.LatLngLiteral[]; geoCenter: Coord }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map) return;
+    if (points.length > 1 && typeof google !== "undefined" && google.maps?.LatLngBounds) {
+      const bounds = new google.maps.LatLngBounds();
+      points.forEach(p => bounds.extend(p));
+      map.fitBounds(bounds, 50);
+    } else if (points.length === 1) {
+      map.panTo(points[0]);
+      map.setZoom(15);
+    } else {
+      map.panTo({ lat: geoCenter.lat, lng: geoCenter.lng });
+      map.setZoom(13);
+    }
+  }, [map, points, geoCenter]);
+
+  return null;
+}
+
 export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSelect, addressRegistry, geoCenter }: Props) {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<L.Map | null>(null);
-  const markersLayer = useRef<L.LayerGroup | null>(null);
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
-  useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
-    const map = L.map(mapRef.current, {
-      center: [DEFAULT_GEO_CENTER.lat, DEFAULT_GEO_CENTER.lng],
-      zoom: 12,
-      zoomControl: true,
-      attributionControl: false,
-    });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
-    markersLayer.current = L.layerGroup().addTo(map);
-    mapInstance.current = map;
-    return () => { map.remove(); mapInstance.current = null; };
-  }, []);
-
-  useEffect(() => {
-    const map = mapInstance.current;
-    const layer = markersLayer.current;
-    if (!map || !layer) return;
-    layer.clearLayers();
-
-    const pts: LatLng[] = [];
-
-    const goldIcon = L.divIcon({
-      className: "",
-      html: `<div style="width:20px;height:20px;background:#FFB800;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>`,
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
-    });
-    const darkIcon = L.divIcon({
-      className: "",
-      html: `<div style="width:20px;height:20px;background:#111;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>`,
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
-    });
-    const riderIcon = L.divIcon({
-      className: "",
-      html: `<div style="width:22px;height:22px;background:#FFB800;border-radius:50%;border:3px solid #fff;box-shadow:0 0 12px rgba(255,197,66,0.6);display:flex;align-items:center;justify-content:center;font-size:10px;">&#127949;</div>`,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
-    });
-    const selIcon = L.divIcon({
-      className: "",
-      html: `<div style="width:28px;height:28px;background:#FFB800;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 4px rgba(255,197,66,0.4);display:flex;align-items:center;justify-content:center;color:#111;font-weight:bold;font-size:12px;">&#128205;</div>`,
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-    });
+  // Compute active map markers
+  const { pickupMarkers, deliveryMarkers, driverMarkers, courierMarker, allPoints } = useMemo(() => {
+    const pickups: { id: string; pos: Coord; title: string; desc: string; isSelected: boolean }[] = [];
+    const dropoffs: { id: string; pos: Coord; title: string; desc: string; isSelected: boolean }[] = [];
+    const couriers: { id: string; pos: Coord; name: string; status: string }[] = [];
+    let activeCourier: { id: string; pos: Coord; name: string } | null = null;
+    const pts: google.maps.LatLngLiteral[] = [];
 
     deliveries.forEach((d) => {
+      const isSelected = d.id === selectedId;
       const pickup = resolveEndpoint(d.pickupLat, d.pickupLng, d.pickupAddress || "", addressRegistry);
       const delivery = resolveEndpoint(d.deliveryLat, d.deliveryLng, d.deliveryAddress || "", addressRegistry);
-      const isSelected = d.id === selectedId;
 
       if (pickup) {
-        const pLatLng: LatLng = [pickup.lat, pickup.lng];
-        const marker = L.marker(pLatLng, { icon: isSelected ? selIcon : goldIcon })
-          .addTo(layer)
-          .bindPopup(`<b>Pickup</b><br>${d.itemName || "Parcel"}<br>${d.pickupAddress}`);
-        marker.on("click", () => onSelect(d.id));
-        pts.push(pLatLng);
+        pickups.push({
+          id: d.id,
+          pos: pickup,
+          title: `Pickup: ${d.itemName || "Shipment"}`,
+          desc: d.pickupAddress || "",
+          isSelected
+        });
+        pts.push(pickup);
       }
       if (delivery) {
-        const dLatLng: LatLng = [delivery.lat, delivery.lng];
-        const marker = L.marker(dLatLng, { icon: darkIcon })
-          .addTo(layer)
-          .bindPopup(`<b>Delivery</b><br>${d.receiverName}<br>${d.deliveryAddress}`);
-        marker.on("click", () => onSelect(d.id));
-        pts.push(dLatLng);
-      }
-      if (pickup && delivery) {
-        L.polyline([[pickup.lat, pickup.lng], [delivery.lat, delivery.lng]], {
-          color: "#FFB800",
-          weight: 3,
-          dashArray: "8, 8",
-          opacity: isSelected ? 0.95 : 0.4,
-        }).addTo(layer);
+        dropoffs.push({
+          id: d.id,
+          pos: delivery,
+          title: `Delivery: ${d.receiverName || "Customer"}`,
+          desc: d.deliveryAddress || "",
+          isSelected
+        });
+        pts.push(delivery);
       }
     });
 
     drivers.forEach((r) => {
       if (typeof r.lat === "number" && typeof r.lng === "number" && isFinite(r.lat) && isFinite(r.lng)) {
-        const rLatLng: LatLng = [r.lat, r.lng];
-        L.marker(rLatLng, { icon: riderIcon })
-          .addTo(layer)
-          .bindPopup(`<b>${r.name}</b><br>${r.status || "idle"}<br>${r.deliveryCount || 0} deliveries`);
-        if (isBeninCityCoord(r.lat, r.lng)) pts.push(rLatLng);
+        if (isBeninCityCoord(r.lat, r.lng)) {
+          couriers.push({
+            id: r.id || r.uid || Math.random().toString(),
+            pos: { lat: r.lat, lng: r.lng },
+            name: r.name || "Driver",
+            status: r.status || "idle"
+          });
+          pts.push({ lat: r.lat, lng: r.lng });
+        }
       }
     });
 
-    // Live courier position for the selected shipment (real telemetry only)
+    // Selected courier live position
     const selected = selectedId ? deliveries.find(d => d.id === selectedId) : null;
     if (selected && isBeninCityCoord(selected.courierLatitude, selected.courierLongitude)) {
-      const cLatLng: LatLng = [selected.courierLatitude, selected.courierLongitude];
-      const courierMarker = L.circleMarker(cLatLng, {
-        radius: 9,
-        color: "#111",
-        weight: 2,
-        fillColor: "#FFB800",
-        fillOpacity: 1,
-      })
-        .addTo(layer)
-        .bindTooltip("Courier", { direction: "top", permanent: false, opacity: 1 })
-        .bindPopup(`<b>Courier</b><br>${selected.courierName || "Assigned rider"}<br>Live position`);
-      courierMarker.on("click", () => onSelect(selected.id));
-      pts.push(cLatLng);
+      const cPos = { lat: selected.courierLatitude, lng: selected.courierLongitude };
+      activeCourier = {
+        id: selected.id,
+        pos: cPos,
+        name: selected.courierName || "Assigned Courier"
+      };
+      pts.push(cPos);
     }
 
-    if (pts.length > 0) {
-      map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 14 });
-    } else {
-      map.setView([geoCenter.lat, geoCenter.lng], 13);
-    }
-  }, [deliveries, drivers, selectedId, addressRegistry, geoCenter, onSelect]);
+    return {
+      pickupMarkers: pickups,
+      deliveryMarkers: dropoffs,
+      driverMarkers: couriers,
+      courierMarker: activeCourier,
+      allPoints: pts
+    };
+  }, [deliveries, drivers, selectedId, addressRegistry]);
 
-  return <div ref={mapRef} className="w-full h-[400px] rounded-3xl overflow-hidden border border-black/10 dark:border-white/10 shadow-sm" />;
+  return (
+    <div className="w-full h-[440px] rounded-3xl overflow-hidden border border-black/10 dark:border-white/10 shadow-sm relative bg-[#111216]">
+      <APIProvider apiKey={apiKey}>
+        <Map
+          style={{ width: "100%", height: "100%" }}
+          defaultCenter={{ lat: geoCenter.lat, lng: geoCenter.lng }}
+          defaultZoom={13}
+          mapId="DEMO_MAP_ID"
+          internalUsageAttributionIds={["gmp_git_agentskills_v1"]}
+          gestureHandling="greedy"
+          disableDefaultUI={false}
+        >
+          <MapCameraBounds points={allPoints} geoCenter={geoCenter} />
+
+          {/* 1. Pickup Markers */}
+          {pickupMarkers.map((p) => (
+            <AdvancedMarker
+              key={`pickup-${p.id}`}
+              position={p.pos}
+              onClick={() => onSelect(p.id)}
+              title={p.title}
+            >
+              <div className={`cursor-pointer transition-transform duration-200 ${p.isSelected ? "scale-125 z-30" : "scale-100 z-10"}`}>
+                <Pin
+                  background="#FFB800"
+                  glyphColor="#0E0E10"
+                  borderColor="#0E0E10"
+                  scale={p.isSelected ? 1.2 : 0.9}
+                />
+              </div>
+            </AdvancedMarker>
+          ))}
+
+          {/* 2. Destination Markers */}
+          {deliveryMarkers.map((d) => (
+            <AdvancedMarker
+              key={`dropoff-${d.id}`}
+              position={d.pos}
+              onClick={() => onSelect(d.id)}
+              title={d.title}
+            >
+              <div className={`cursor-pointer transition-transform duration-200 ${d.isSelected ? "scale-125 z-30" : "scale-100 z-10"}`}>
+                <Pin
+                  background="#0E0E10"
+                  glyphColor="#FFB800"
+                  borderColor="#FFB800"
+                  scale={d.isSelected ? 1.2 : 0.9}
+                />
+              </div>
+            </AdvancedMarker>
+          ))}
+
+          {/* 3. Driver Fleet Markers */}
+          {driverMarkers.map((r) => (
+            <AdvancedMarker
+              key={`driver-${r.id}`}
+              position={r.pos}
+              title={`${r.name} (${r.status})`}
+            >
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#0E0E10] text-white border border-[#FFB800] rounded-full shadow-lg text-[11px] font-semibold">
+                <span className="text-sm">🏍️</span>
+                <span>{r.name}</span>
+              </div>
+            </AdvancedMarker>
+          ))}
+
+          {/* 4. Active Selected Courier Live Position */}
+          {courierMarker && (
+            <AdvancedMarker
+              position={courierMarker.pos}
+              title={`Live: ${courierMarker.name}`}
+            >
+              <div className="relative flex items-center justify-center">
+                <div className="absolute w-8 h-8 rounded-full bg-[#FFB800]/40 animate-ping" />
+                <div className="w-5 h-5 rounded-full bg-[#FFB800] border-2 border-[#0E0E10] shadow-md z-10" />
+              </div>
+            </AdvancedMarker>
+          )}
+        </Map>
+      </APIProvider>
+    </div>
+  );
 }
