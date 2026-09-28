@@ -266,7 +266,7 @@ function EdLogoSvg({ size = 36, className = "", dark = false }: { size?: number;
   </svg>;
 }
 
-function fmt(n: number): string { return "â‚¦" + n.toLocaleString("en-US"); }
+function fmt(n: number): string { return "₦" + n.toLocaleString("en-US"); }
 function idShort(id: string): string { return id.length > 8 ? id.slice(-8) : id; }
 function rBadge(role: string): string {
   switch (role) {
@@ -347,7 +347,7 @@ function InlineEdit({ value, onSave, type = "text" }: { value: string; onSave: (
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value);
   useEffect(() => setVal(value), [value]);
-  if (!editing) return <span onClick={() => setEditing(true)} className="cursor-pointer hover:bg-[#FFB800]/10 px-1.5 py-0.5 rounded group inline-flex items-center gap-1.5 -ml-1.5 transition-colors text-gray-900 dark:text-white font-medium">{value || "â€”"} <Edit3 className="w-3 h-3 text-[#FFB800]/0 group-hover:text-amber-700 dark:group-hover:text-[#FFB800]" /></span>;
+  if (!editing) return <span onClick={() => setEditing(true)} className="cursor-pointer hover:bg-[#FFB800]/10 px-1.5 py-0.5 rounded group inline-flex items-center gap-1.5 -ml-1.5 transition-colors text-gray-900 dark:text-white font-medium">{value || "—"} <Edit3 className="w-3 h-3 text-[#FFB800]/0 group-hover:text-amber-700 dark:group-hover:text-[#FFB800]" /></span>;
   return <input type={type} value={val} onChange={e => setVal(e.target.value)} onBlur={() => { onSave(val); setEditing(false); }} onKeyDown={e => { if (e.key === "Enter") { onSave(val); setEditing(false); } if (e.key === "Escape") { setVal(value); setEditing(false); }}} className="h-8 bg-white dark:bg-[#222] border border-[#FFB800]/50 rounded-lg px-2 text-xs text-gray-900 dark:text-white w-full shadow-xs focus:outline-none focus:ring-1 focus:ring-[#FFB800]" autoFocus />;
 }
 function ConfirmModal({ show, title, message, confirmLabel, onConfirm, onCancel }: { show: boolean; title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void }) {
@@ -773,7 +773,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                       {a.title}
                     </h3>
                     <p className={"text-xs z-10 line-clamp-1 " + subColor}>
-                      {a.total} total scheduled â€¢ {a.inTransit || 0} active on road
+                      {a.total} total scheduled • {a.inTransit || 0} active on road
                     </p>
                   </div>
 
@@ -811,7 +811,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                             ))
                           ) : (
                             <div className={"w-7 h-7 rounded-full ring-2 " + ringColor + " " + (isGold ? "bg-black/15 text-[#111]" : "bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-white/5") + " text-[10px] font-bold flex items-center justify-center"}>
-                              â€”
+                              —
                             </div>
                           )}
                           {extraCount > 0 && (
@@ -885,7 +885,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                     <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-[#FFB800] text-[#111]">{inspectingCategory.tag}</span>
                     <h3 className="text-base font-black text-gray-900 dark:text-white">Active Dispatch Queue ({categoryDeliveries.length})</h3>
                   </div>
-                  <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium mt-0.5">Real-time live queue for today in Benin City â€¢ Ordered FIFO (Oldest requests first)</p>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium mt-0.5">Real-time live queue for today in Benin City • Ordered FIFO (Oldest requests first)</p>
                 </div>
                 <button onClick={() => setInspectingCategory(null)} className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer">
                   <X size={18} />
@@ -991,7 +991,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                         onClick={() => setModalStatusFilter("ASSIGNED")}
                         className="mt-3 px-4 py-1.5 rounded-xl bg-[#FFB800] text-[#111] text-xs font-black hover:bg-[#FFB800]/90 transition-all cursor-pointer shadow-xs"
                       >
-                        View Assigned Fleet ({assignedList.length}) â†’
+                        View Assigned Fleet ({assignedList.length}) →
                       </button>
                     )}
                   </div>
@@ -1013,11 +1013,11 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                 <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-semibold">#{idShort(d.id)}</span>
                                 <span className={"text-[9px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status}</span>
                                 <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-900 dark:text-amber-300">
-                                  FIFO #{qIdx + 1} â€¢ {createdAgo}
+                                  FIFO #{qIdx + 1} • {createdAgo}
                                 </span>
                               </div>
                               <p className="text-[11px] font-bold text-gray-800 dark:text-gray-200 mt-1">
-                                â‚¦{(d.price || 0).toLocaleString()} â€¢ {d.paymentStatus || "PAID"}
+                                ₦{(d.price || 0).toLocaleString()} • {d.paymentStatus || "PAID"}
                               </p>
                             </div>
                           </div>
@@ -1035,7 +1035,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                               className="px-3.5 py-1.5 bg-[#FFB800] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFB800]/90 transition-all cursor-pointer shadow-xs flex items-center gap-1"
                               title="Open full shipment workspace"
                             >
-                              Open Full View â†’
+                              Open Full View →
                             </button>
                           </div>
                         </div>
@@ -1100,7 +1100,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                   <option value="" disabled className="text-gray-500">Select rider to assign...</option>
                                   {drivers.map((drv: any) => (
                                     <option key={drv.id} value={drv.id} className="text-gray-900 dark:text-white bg-white dark:bg-[#1a1a1a]">
-                                      {drv.name} ({drv.phone || "Active"}) â€¢ {drv.isOnline ? "ðŸŸ¢ Online" : "âšª Offline"}
+                                      {drv.name} ({drv.phone || "Active"}) • {drv.isOnline ? "🟢 Online" : "⚪ Offline"}
                                     </option>
                                   ))}
                                 </select>
@@ -1170,7 +1170,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                                      disabled
                                                      className="text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#222]"
                                                    >
-                                                     âœ“ {step.label} (Passed)
+                                                     ✓ {step.label} (Passed)
                                                    </option>
                                                  );
                                                }
@@ -1182,7 +1182,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                                      value={step.value}
                                                      className="font-black text-amber-900 dark:text-[#FFB800] bg-amber-50 dark:bg-[#1a1a1a]"
                                                    >
-                                                     {isDelivered ? `âœ“ ${step.label} (Completed)` : `â— ${step.label} (Current)`}
+                                                     {isDelivered ? `✓ ${step.label} (Completed)` : `● ${step.label} (Current)`}
                                                    </option>
                                                  );
                                                }
@@ -1203,7 +1203,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                                disabled={isDelivered}
                                                className={isCancelled ? "font-bold text-red-600 dark:text-red-400" : "text-red-600 dark:text-red-400"}
                                              >
-                                               {isCancelled ? "â— CANCELLED (Current)" : "CANCELLED"}
+                                               {isCancelled ? "● CANCELLED (Current)" : "CANCELLED"}
                                              </option>
                                            </>
                                          );
@@ -1241,7 +1241,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                   }} 
                   className="px-4 py-2 bg-[#FFB800] text-[#111] font-black text-xs rounded-xl hover:bg-[#FFB800]/90 transition-all cursor-pointer shadow-xs"
                 >
-                  Open All in Shipments Tab â†’
+                  Open All in Shipments Tab →
                 </button>
               </div>
             </div>
@@ -1284,7 +1284,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300 truncate mt-0.5">
                         <span className="font-medium text-[#111] dark:text-white truncate max-w-[140px] sm:max-w-[260px]">{d.pickupAddress || "Pickup"}</span>
-                        <span className="text-gray-500 dark:text-gray-400 shrink-0 font-bold">â†’</span>
+                        <span className="text-gray-500 dark:text-gray-400 shrink-0 font-bold">→</span>
                         <span className="truncate max-w-[160px] sm:max-w-[340px]">{d.deliveryAddress || "Destination"}</span>
                       </div>
                     </div>
@@ -1553,7 +1553,7 @@ function Header({
                 )}
               </div>
 
-              {/* High-Density Clean List â€” Compact 2-Line Items Without Leaked Paragraph Margins */}
+              {/* High-Density Clean List — Compact 2-Line Items Without Leaked Paragraph Margins */}
               <div className="max-h-[300px] overflow-y-auto divide-y divide-gray-100 dark:divide-white/5">
                 {notifications.length === 0 ? (
                   <div className="py-8 px-4 text-center">
@@ -1633,7 +1633,7 @@ function Header({
                 {adminProfile?.name || currentUser?.email?.split("@")[0] || "Admin"}
               </div>
               <div className="text-gray-600 dark:text-gray-400 font-bold text-[10px] uppercase tracking-wider leading-tight mt-0.5 flex items-center gap-1">
-                {adminProfile?.staffId && <span className="text-[#FFB800]">{adminProfile.staffId} â€¢</span>}
+                {adminProfile?.staffId && <span className="text-[#FFB800]">{adminProfile.staffId} •</span>}
                 <span>{(userRole || "admin").replace("_", " ")}</span>
               </div>
             </div>
@@ -2135,7 +2135,7 @@ function AdminDashboardPage() {
                 price: data.price || 0,
               };
               setNewOrderAlert(newOrder);
-              addToast("info", `ðŸ”” New order incoming: ${newOrder.itemName} for ${newOrder.receiverName}!`);
+              addToast("info", `🔔 New order incoming: ${newOrder.itemName} for ${newOrder.receiverName}!`);
             }
           } else if (change.type === "modified" || change.type === "removed") {
             const data = change.doc.data();
@@ -2525,7 +2525,7 @@ function AdminDashboardPage() {
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@esdispatch.com" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
             <div><label className="block text-xs font-bold text-gray-800 dark:text-gray-200 mb-1">Password</label>
               <div className="relative"><Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-gray-400 pointer-events-none" />
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
             <button type="submit" className="w-full bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black py-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-sm tracking-wider cursor-pointer">
               <Lock className="w-4 h-4" /> SIGN IN</button>
           </form>
@@ -2534,7 +2534,7 @@ function AdminDashboardPage() {
     );
   }
 
-  // Purely real active deliveries for today â€” no simulated default tiers
+  // Purely real active deliveries for today — no simulated default tiers
   const todayStr = new Date().toISOString().slice(0, 10);
   const isDeliveryToday = (d: any) => {
     if (!d.dateString) return true;
@@ -2628,7 +2628,7 @@ function AdminDashboardPage() {
                   <span className="text-xs text-gray-700 dark:text-gray-300 font-mono font-bold">#{idShort(newOrderAlert.id)}</span>
                 </div>
                 <p className="text-xs sm:text-sm font-bold text-[#111] dark:text-white mt-1 truncate">
-                  {newOrderAlert.itemName} â€¢ Deliver to <span className="text-amber-900 dark:text-[#FFB800] font-black">{newOrderAlert.receiverName}</span> ({newOrderAlert.deliveryAddress})
+                  {newOrderAlert.itemName} • Deliver to <span className="text-amber-900 dark:text-[#FFB800] font-black">{newOrderAlert.receiverName}</span> ({newOrderAlert.deliveryAddress})
                 </p>
               </div>
             </div>
@@ -3355,7 +3355,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
             updates.phone = "";
             updates.duplicatePhoneQuarantined = true;
             stats.usersUpgraded++;
-            setPurgeLog(prev => [...prev, `[QUARANTINE] User ${uData.name || uId} had duplicate phone ${normPhone} â€” quarantined to prevent account collision.`]);
+            setPurgeLog(prev => [...prev, `[QUARANTINE] User ${uData.name || uId} had duplicate phone ${normPhone} — quarantined to prevent account collision.`]);
           } else {
             seenPhones.add(docKey);
             if (rawPhone !== normPhone) {
@@ -3582,7 +3582,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
         <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs col-span-2 sm:col-span-1">
           <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Vendors & Staff</span>
           <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{vendorsCount + adminsCount}</p>
-          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">{vendorsCount} stores â€¢ {adminsCount} staff</span>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">{vendorsCount} stores • {adminsCount} staff</span>
         </div>
       </div>
 
@@ -3832,7 +3832,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                             <span className="text-emerald-600 dark:text-emerald-400 font-bold">
                               {fmt(riderStatsMap[u.id]?.totalTips ?? 0)} tips
                             </span>
-                            <span>â€¢</span>
+                            <span>•</span>
                             <span className="flex items-center gap-0.5 text-amber-800 dark:text-[#FFB800] font-bold">
                               <Star className="w-2.5 h-2.5 fill-current" /> {u.rating ? u.rating.toFixed(1) : "5.0"}
                             </span>
@@ -3845,7 +3845,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                           </span>
                           <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
                             <span>{u.deliveryCount || 0} sales</span>
-                            <span>â€¢</span>
+                            <span>•</span>
                             <span className="flex items-center gap-0.5 text-amber-800 dark:text-[#FFB800] font-bold">
                               <Star className="w-2.5 h-2.5 fill-current" /> {u.rating ? u.rating.toFixed(1) : "5.0"}
                             </span>
@@ -3867,7 +3867,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                           </span>
                           <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
                             <span>{u.deliveryCount || 0} orders</span>
-                            <span>â€¢</span>
+                            <span>•</span>
                             <span className="text-[#FFB800] font-bold">{u.loyaltyPoints || 0} pts</span>
                           </div>
                         </div>
@@ -4059,7 +4059,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                 What this maintenance utility does:
               </p>
               <ul className="list-disc list-inside space-y-1 text-[11px] text-gray-600 dark:text-gray-400 font-medium">
-                <li>Normalizes legacy accounts with missing or null <code className="text-[#FFB800]">walletBalance</code> (sets to â‚¦0.0).</li>
+                <li>Normalizes legacy accounts with missing or null <code className="text-[#FFB800]">walletBalance</code> (sets to ₦0.0).</li>
                 <li>Initializes missing <code className="text-[#FFB800]">loyaltyPoints</code> (sets default 350 welcome points).</li>
                 <li>Standardizes user roles and statuses across all accounts.</li>
                 <li>Audits rider profiles: fixes missing tip counters, ratings, and attendance defaults.</li>
@@ -4270,7 +4270,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                 </div>
                 <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
                   <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Store Rating</span>
-                  <span className="text-sm font-black text-amber-800 dark:text-[#FFB800] block mt-0.5">â­ {previewUser.rating ? previewUser.rating.toFixed(1) : "5.0"}</span>
+                  <span className="text-sm font-black text-amber-800 dark:text-[#FFB800] block mt-0.5">⭐ {previewUser.rating ? previewUser.rating.toFixed(1) : "5.0"}</span>
                 </div>
                 <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
                   <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Sales Orders</span>
@@ -4524,11 +4524,11 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
               {/* Amount Entry */}
               <div className="space-y-1.5">
                 <label className="block text-[11px] font-black text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                  Transaction Amount (â‚¦)
+                  Transaction Amount (₦)
                 </label>
                 <div className="relative flex items-center">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-base font-black text-gray-900 dark:text-[#FFB800] pointer-events-none">
-                    â‚¦
+                    ₦
                   </div>
                   <input
                     type="number"
@@ -4571,7 +4571,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                           : "bg-white hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 border-gray-200 dark:border-white/10 text-gray-800 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
                       }`}
                     >
-                      +{fmt(amt).replace("â‚¦", "")}
+                      +{fmt(amt).replace("₦", "")}
                     </button>
                   ))}
                   <button
@@ -5168,14 +5168,14 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
 
     const scoreRiderForDelivery = (rider: UserProfile, targetDelivery: Delivery | null, load: number) => {
       if (rider.isOnline === false) {
-        return { score: 15, badge: "OFFLINE" as const, explanation: "Offline â€¢ Unavailable for dispatch" };
+        return { score: 15, badge: "OFFLINE" as const, explanation: "Offline • Unavailable for dispatch" };
       }
       if (rider.status === "SUSPENDED" || rider.status === "DEACTIVATED") {
-        return { score: 0, badge: "OFFLINE" as const, explanation: "Blocked â€¢ Account under review" };
+        return { score: 0, badge: "OFFLINE" as const, explanation: "Blocked • Account under review" };
       }
 
       let proximityScore = 24;
-      let etaText = "5â€“10 min to pickup";
+      let etaText = "5–10 min to pickup";
 
       if (rider.lat && rider.lng && targetDelivery?.pickupLat && targetDelivery?.pickupLng) {
         const lat1 = rider.lat;
@@ -5249,16 +5249,16 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
 
       if (load === 0 && totalScore >= 70) {
         badge = "BEST_FIT";
-        explanation = `Best Fit: Free now â€¢ ${etaText} â€¢ ${gpsAge}`;
+        explanation = `Best Fit: Free now • ${etaText} • ${gpsAge}`;
       } else if (load === 1 && totalScore >= 55) {
         badge = "RESERVE_NEXT";
-        explanation = `Reserve Next: Finishing drop â€¢ ${etaText} â€¢ ${gpsAge}`;
+        explanation = `Reserve Next: Finishing drop • ${etaText} • ${gpsAge}`;
       } else if (load >= 2) {
         badge = "BUSY";
-        explanation = `Busy (${load} active drops) â€¢ ${etaText}`;
+        explanation = `Busy (${load} active drops) • ${etaText}`;
       } else {
         badge = "ELIGIBLE";
-        explanation = `Eligible â€¢ ${etaText} â€¢ ${gpsAge}`;
+        explanation = `Eligible • ${etaText} • ${gpsAge}`;
       }
 
       return { score: totalScore, badge, explanation };
@@ -5446,7 +5446,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                 reference: del.id,
                 createdAt: Timestamp.now()
               });
-              addLog("Refund", `â‚¦${del.price} credited to customer wallet (${del.userId})`);
+              addLog("Refund", `₦${del.price} credited to customer wallet (${del.userId})`);
             } catch (refundErr) {
               console.error("Failed to execute cancellation refund:", refundErr);
             }
@@ -5550,7 +5550,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           courierAvatar: rider.photoUrl || "",
           status: "ASSIGNED", updatedAt: Timestamp.now()
         });
-        addLog("Assign Rider", `${rider.name} â†’ ${idShort(deliveryId)}`);
+        addLog("Assign Rider", `${rider.name} → ${idShort(deliveryId)}`);
 
         const targetUserId = assignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
         if (targetUserId) {
@@ -5604,7 +5604,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           status: "RESERVED_NEXT",
           updatedAt: Timestamp.now()
         });
-        addLog("Reserve Rider", `${rider.name} (Next) â†’ ${idShort(deliveryId)}`);
+        addLog("Reserve Rider", `${rider.name} (Next) → ${idShort(deliveryId)}`);
 
         const targetUserId = assignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
         if (targetUserId) {
@@ -5644,7 +5644,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           courierAvatar: rider.photoUrl || "",
           updatedAt: Timestamp.now()
         });
-        addLog("Reassign Rider", `${del?.courierName || "Previous"} â†’ ${rider.name} for #${idShort(deliveryId)}`);
+        addLog("Reassign Rider", `${del?.courierName || "Previous"} → ${rider.name} for #${idShort(deliveryId)}`);
 
         // Notify customer
         const targetUserId = del?.userId;
@@ -5689,7 +5689,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           await setDoc(notifRef, {
             id: notifRef.id,
             title: "New Delivery Assigned!",
-            message: `You have been assigned to delivery #${idShort(deliveryId)}: ${del?.pickupAddress || "Pickup"} â†’ ${del?.deliveryAddress || "Dropoff"}.`,
+            message: `You have been assigned to delivery #${idShort(deliveryId)}: ${del?.pickupAddress || "Pickup"} → ${del?.deliveryAddress || "Dropoff"}.`,
             time: "Just now",
             isRead: false,
             parcelId: deliveryId,
@@ -5718,7 +5718,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
         const del = deliveries.find(d => d.id === id);
         if (del) {
           if (!isValidStatusTransition(del.status, bulkStatus)) {
-            invalidTransitions.push(`${idShort(id)} (${del.status} â†’ ${bulkStatus})`);
+            invalidTransitions.push(`${idShort(id)} (${del.status} → ${bulkStatus})`);
           }
           if (requiresRider(bulkStatus) && !del.riderId && !del.driverId) {
             missingRiders.push(idShort(id));
@@ -5804,12 +5804,12 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
       setBulkAssignModal(false);
     };
 
-    // Coordinates must come from the address book or a manual entry inside Benin City â€” never invented.
+    // Coordinates must come from the address book or a manual entry inside Benin City — never invented.
     const resolveEndpointCoords = (label: string, address: string, lat: number | null, lng: number | null): { coords: { lat: number; lng: number } | null; error: string | null } => {
       if (!address.trim()) return { coords: null, error: null };
       const stored = typeof lat === "number" && typeof lng === "number" && !isNaN(lat) && !isNaN(lng) ? { lat, lng } : null;
       const resolved = stored || resolveFromRegistry(address, addressRegistry);
-      if (!resolved) return { coords: null, error: `Set ${label} coordinates â€” choose a listed landmark or enter coordinates within Benin City.` };
+      if (!resolved) return { coords: null, error: `Set ${label} coordinates — choose a listed landmark or enter coordinates within Benin City.` };
       if (!isBeninCityCoord(resolved.lat, resolved.lng)) return { coords: null, error: `${label} coordinates must be within Benin City.` };
       return { coords: resolved, error: null };
     };
@@ -5852,7 +5852,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           updatedAt: Timestamp.now()
         });
         await updateDoc(ref, { id: ref.id });
-        addLog("Create Delivery", ref.id + " â€” " + newForm.itemName);
+        addLog("Create Delivery", ref.id + " — " + newForm.itemName);
 
         if (newForm.userId) {
           try {
@@ -6076,7 +6076,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                   }
                   let count = 0;
                   for (const p of pendingList) {
-                    // Rank only on real coordinates â€” no fallback position is ever invented.
+                    // Rank only on real coordinates — no fallback position is ever invented.
                     const pLat = typeof p.pickupLat === "number" ? p.pickupLat : null;
                     const pLng = typeof p.pickupLng === "number" ? p.pickupLng : null;
                     let best = onlineList[0];
@@ -6379,13 +6379,13 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                                 const isThisCurrent = !isCancelled && (step.value === normCurrent || (step.stage === currentIdx && isDelivered));
                                 return {
                                   value: step.value,
-                                  label: isPassed ? `âœ“ ${step.label} (Passed)` : isThisCurrent ? (isDelivered ? `âœ“ ${step.label} (Completed)` : `â— ${step.label} (Current)`) : step.label,
+                                  label: isPassed ? `✓ ${step.label} (Passed)` : isThisCurrent ? (isDelivered ? `✓ ${step.label} (Completed)` : `● ${step.label} (Current)`) : step.label,
                                   disabled: isPassed || (isDelivered && step.value !== "DELIVERED"),
                                 };
                               }),
                               {
                                 value: "CANCELLED",
-                                label: isCancelled ? "â— CANCELLED (Current)" : "CANCELLED",
+                                label: isCancelled ? "● CANCELLED (Current)" : "CANCELLED",
                                 disabled: isDelivered,
                               }
                             ];
@@ -6424,7 +6424,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                             className="px-3 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black text-xs rounded-xl shadow-xs flex items-center gap-1 cursor-pointer transition-all"
                             title="Open Dedicated Shipment Workspace"
                           >
-                            Manage â†’
+                            Manage →
                           </button>
                           <button
                             onClick={() => setWaybillModal({ delivery: d, show: true })}
@@ -6490,14 +6490,14 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                   <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sender</p>
                     <p className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.senderName || "Sender"}</p>
-                    <p className="text-gray-700 dark:text-gray-300 font-medium">{detailsModal.delivery.senderPhone || "â€”"}</p>
+                    <p className="text-gray-700 dark:text-gray-300 font-medium">{detailsModal.delivery.senderPhone || "—"}</p>
                     <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium mt-1">{detailsModal.delivery.pickupAddress}</p>
                   </div>
 
                   <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Receiver</p>
                     <p className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.receiverName || "Receiver"}</p>
-                    <p className="text-gray-700 dark:text-gray-300 font-medium">{detailsModal.delivery.receiverPhone || "â€”"}</p>
+                    <p className="text-gray-700 dark:text-gray-300 font-medium">{detailsModal.delivery.receiverPhone || "—"}</p>
                     <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium mt-1">{detailsModal.delivery.deliveryAddress}</p>
                   </div>
                 </div>
@@ -6505,7 +6505,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                 <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5">
                   <p className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Parcel Details</p>
                   <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div><span className="text-gray-600 dark:text-gray-400 font-medium">Item:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.itemName || "â€”"}</span></div>
+                    <div><span className="text-gray-600 dark:text-gray-400 font-medium">Item:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.itemName || "—"}</span></div>
                     <div><span className="text-gray-600 dark:text-gray-400 font-medium">Category:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.category || "Standard"}</span></div>
                     <div><span className="text-gray-600 dark:text-gray-400 font-medium">Weight:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.weight || 1} kg</span></div>
                     <div><span className="text-gray-600 dark:text-gray-400 font-medium">Quantity:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.quantity || 1}</span></div>
@@ -6517,7 +6517,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                 <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5 flex items-center justify-between">
                   <div>
                     <p className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Handover Verification PIN</p>
-                    <p className="font-mono font-black text-lg text-[#111] dark:text-white tracking-widest">{detailsModal.delivery.otpCode || "â€”"}</p>
+                    <p className="font-mono font-black text-lg text-[#111] dark:text-white tracking-widest">{detailsModal.delivery.otpCode || "—"}</p>
                   </div>
                   {detailsModal.delivery.status !== "DELIVERED" && detailsModal.delivery.status !== "CANCELLED" && (
                     <button
@@ -6594,13 +6594,13 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                   <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200">
                     <p className="text-[9px] font-black uppercase text-gray-500">Shipper / Sender</p>
                     <p className="font-bold text-sm text-[#111]">{waybillModal.delivery.senderName || "Sender"}</p>
-                    <p className="text-[11px] font-semibold text-gray-700">{waybillModal.delivery.senderPhone || "â€”"}</p>
+                    <p className="text-[11px] font-semibold text-gray-700">{waybillModal.delivery.senderPhone || "—"}</p>
                     <p className="text-[10px] text-gray-600 mt-1 leading-tight">{waybillModal.delivery.pickupAddress}</p>
                   </div>
                   <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200">
                     <p className="text-[9px] font-black uppercase text-gray-500">Consignee / Receiver</p>
                     <p className="font-bold text-sm text-[#111]">{waybillModal.delivery.receiverName || "Receiver"}</p>
-                    <p className="text-[11px] font-semibold text-gray-700">{waybillModal.delivery.receiverPhone || "â€”"}</p>
+                    <p className="text-[11px] font-semibold text-gray-700">{waybillModal.delivery.receiverPhone || "—"}</p>
                     <p className="text-[10px] text-gray-600 mt-1 leading-tight">{waybillModal.delivery.deliveryAddress}</p>
                   </div>
                 </div>
@@ -6730,7 +6730,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                       { value: "", label: "Walk-in / Unregistered Customer" },
                       ...(users || []).filter(u => u.role !== "driver").map(u => ({
                         value: u.id,
-                        label: `${u.name || u.email}${u.phone ? ` â€¢ ${u.phone}` : ""}`
+                        label: `${u.name || u.email}${u.phone ? ` • ${u.phone}` : ""}`
                       }))
                     ]}
                     className="w-full"
@@ -6887,7 +6887,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-600 dark:text-gray-400 mb-0.5">Fare Price (â‚¦) *</label>
+                    <label className="block text-[10px] font-bold text-gray-600 dark:text-gray-400 mb-0.5">Fare Price (₦) *</label>
                     <input
                       type="number"
                       min="500"
@@ -6951,7 +6951,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
 
               <div className="bg-[#FFB800]/10 rounded-2xl p-3.5 border border-[#FFB800]/30 space-y-1">
                 <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-bold">#{idShort(assignModal.delivery.id)}</span></p>
-                <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{assignModal.delivery.pickupAddress} â†’ {assignModal.delivery.deliveryAddress}</p>
+                <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{assignModal.delivery.pickupAddress} → {assignModal.delivery.deliveryAddress}</p>
                 <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Recipient: <b className="text-[#111] dark:text-white font-bold">{assignModal.delivery.receiverName}</b> ({assignModal.delivery.receiverPhone || "No phone"})</p>
               </div>
 
@@ -7001,14 +7001,14 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                                 <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
                                 <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline === true ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline === true ? "Online" : "Offline"} />
                                 {rec.badge === "BEST_FIT" && (
-                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">â˜… BEST FIT ({rec.score})</span>
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">★ BEST FIT ({rec.score})</span>
                                 )}
                                 {rec.badge === "RESERVE_NEXT" && (
-                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-600 text-white">âš¡ RESERVE NEXT ({rec.score})</span>
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-600 text-white">⚡ RESERVE NEXT ({rec.score})</span>
                                 )}
                               </div>
                               <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium truncate">
-                                {r.phone || r.email} {r.bikeNumber ? `â€¢ ${r.bikeNumber}` : ""}
+                                {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
                               </p>
                               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                                 <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border " + loadClass}>
@@ -7058,7 +7058,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
               <div className="bg-[#FFB800]/10 rounded-2xl p-3.5 border border-[#FFB800]/30 space-y-1">
                 <p className="text-xs font-bold text-[#111] dark:text-white">{reassignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-bold">#{idShort(reassignModal.delivery.id)}</span></p>
                 <p className="text-[10px] text-gray-600 dark:text-gray-400">Currently: <b className="text-[#111] dark:text-white font-bold">{reassignModal.delivery.courierName || "Unassigned"}</b></p>
-                <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{reassignModal.delivery.pickupAddress} â†’ {reassignModal.delivery.deliveryAddress}</p>
+                <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{reassignModal.delivery.pickupAddress} → {reassignModal.delivery.deliveryAddress}</p>
               </div>
 
               {/* Rider Search & Online Filter */}
@@ -7107,14 +7107,14 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                                 <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
                                 <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline === true ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline === true ? "Online" : "Offline"} />
                                 {rec.badge === "BEST_FIT" && (
-                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">â˜… BEST FIT ({rec.score})</span>
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">★ BEST FIT ({rec.score})</span>
                                 )}
                                 {rec.badge === "RESERVE_NEXT" && (
-                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-600 text-white">âš¡ RESERVE NEXT ({rec.score})</span>
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-600 text-white">⚡ RESERVE NEXT ({rec.score})</span>
                                 )}
                               </div>
                               <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium truncate">
-                                {r.phone || r.email} {r.bikeNumber ? `â€¢ ${r.bikeNumber}` : ""}
+                                {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
                               </p>
                               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                                 <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border " + loadClass}>
@@ -7208,7 +7208,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                               <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline === true ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline === true ? "Online" : "Offline"} />
                             </div>
                             <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium truncate">
-                              {r.phone || r.email} {r.bikeNumber ? `â€¢ ${r.bikeNumber}` : ""}
+                              {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
                             </p>
                             <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border mt-1 " + loadClass}>
                               {loadText}
@@ -7239,7 +7239,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                 <p className="text-gray-700 dark:text-gray-300">Are you sure you want to change the status of shipment <span className="font-bold text-[#111] dark:text-white">#{idShort(confirmStatusModal.delivery.id)}</span>?</p>
                 <div className="flex items-center gap-2">
                   <span className={"px-2 py-1 rounded-lg text-[10px] font-bold " + sStyle(confirmStatusModal.delivery.status)}>{confirmStatusModal.delivery.status}</span>
-                  <span className="text-gray-500 dark:text-gray-400 font-bold">â†’</span>
+                  <span className="text-gray-500 dark:text-gray-400 font-bold">→</span>
                   <span className={"px-2 py-1 rounded-lg text-[10px] font-bold " + sStyle(confirmStatusModal.newStatus)}>{confirmStatusModal.newStatus}</span>
                 </div>
 
@@ -7633,7 +7633,7 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
                       {/* Code */}
                       <td className="p-4 hidden sm:table-cell">
                         <span className="inline-flex items-center font-black text-[11px] px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-[#111] dark:text-white tracking-wider">
-                          {r.code || "â€”"}
+                          {r.code || "—"}
                         </span>
                       </td>
 
@@ -7641,7 +7641,7 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
                       <td className="p-4 hidden md:table-cell">
                         <div className="flex flex-col">
                           <span className="font-black text-xs text-gray-900 dark:text-white flex items-center gap-1.5">
-                            <span className="text-[#FFB800]">â‚¦</span>
+                            <span className="text-[#FFB800]">₦</span>
                             {Number(r.rewardAmount || 0).toLocaleString("en-US")}
                           </span>
                           <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
@@ -8128,7 +8128,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
     <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Settings2 className="w-5 h-5 text-[#FFB800]" /> Settings</h1>
       <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">System preferences and configuration</p></div>
 
-    {/* Section 1 â€” System Controls */}
+    {/* Section 1 — System Controls */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><Shield className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">System Controls</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
@@ -8152,7 +8152,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("System Controls")} loading={saving} /></div>
     </div>
 
-    {/* Section 2 â€” Feature Toggles */}
+    {/* Section 2 — Feature Toggles */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><Zap className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Feature Toggles</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
@@ -8165,12 +8165,12 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         <Toggle label="Require Email Verification (OTP Passcode)" desc="Require new and existing accounts to verify their email address via a 6-digit passcode before completing bookings" checked={!!sForm.emailVerificationRequired} onChange={v => upd("emailVerificationRequired", v)} />
         <Toggle label="Require Unique Phone Number at Sign-Up" desc="Enforce real-time validation and strict phone uniqueness so no two accounts can share the same mobile number" checked={!!sForm.phoneVerificationRequired} onChange={v => upd("phoneVerificationRequired", v)} />
         <Toggle label="QR Code Delivery Handover" desc="Display QR code alongside 4-digit PIN for parcel handover verification (disabled by default for direct PIN entry)" checked={!!sForm.enableQrCodeHandover} onChange={v => upd("enableQrCodeHandover", v)} />
-        <Toggle label="Delivery Signature Verification" desc="Require customer digital signature after capturing mandatory photo proof (OFF by default â€” photo proof is always required)" checked={!!sForm.signatureVerificationEnabled} onChange={v => upd("signatureVerificationEnabled", v)} />
+        <Toggle label="Delivery Signature Verification" desc="Require customer digital signature after capturing mandatory photo proof (OFF by default — photo proof is always required)" checked={!!sForm.signatureVerificationEnabled} onChange={v => upd("signatureVerificationEnabled", v)} />
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Feature Toggles")} loading={saving} /></div>
     </div>
 
-    {/* Section 2b â€” Courier Fleet & Working Days Controls */}
+    {/* Section 2b — Courier Fleet & Working Days Controls */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10">
         <Bike className="w-4 h-4 text-[#FFB800]" />
@@ -8229,7 +8229,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       </div>
     </div>
 
-    {/* Section 2c â€” System Recalibration & Fleet Maintenance */}
+    {/* Section 2c — System Recalibration & Fleet Maintenance */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10">
         <RefreshCw className="w-4 h-4 text-[#FFB800]" />
@@ -8275,10 +8275,10 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       </div>
     </div>
 
-    {/* Section 3 â€” Delivery Types */}
+    {/* Section 3 — Delivery Types */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><Truck className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Delivery Types</span></div>
-      <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Manage delivery categories â€” rename, enable/disable, set per-type pricing</p>
+      <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Manage delivery categories — rename, enable/disable, set per-type pricing</p>
       <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">
         <table className="w-full text-xs">
           <thead className="bg-gray-50 dark:bg-[#222]">
@@ -8286,7 +8286,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
               <th className="p-2 text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] w-10">On</th>
               <th className="p-2 text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px]">Name</th>
               <th className="p-2 text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] hidden md:table-cell">Desc</th>
-              <th className="p-2 text-right font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] w-20">Base (â‚¦)</th>
+              <th className="p-2 text-right font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] w-20">Base (₦)</th>
               <th className="p-2 text-right font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] w-16">/km</th>
               <th className="p-2 text-right font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] w-16">/kg</th>
               <th className="p-2 w-8"></th>
@@ -8351,15 +8351,15 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Delivery Types")} loading={saving} /></div>
     </div>
 
-    {/* Section 4 â€” Pricing */}
+    {/* Section 4 — Pricing */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><DollarSign className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Pricing</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">BASE FARE (â‚¦)</label>
+        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">BASE FARE (₦)</label>
           <input type="number" value={sForm.baseFare ?? ""} onChange={e => upd("baseFare", parseFloat(e.target.value) || 0)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
-        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">PER KG RATE (â‚¦)</label>
+        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">PER KG RATE (₦)</label>
           <input type="number" step="0.1" value={sForm.perKgRate ?? ""} onChange={e => upd("perKgRate", parseFloat(e.target.value) || 0)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
-        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">EXPRESS SURCHARGE (â‚¦)</label>
+        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">EXPRESS SURCHARGE (₦)</label>
           <input type="number" value={sForm.expressSurcharge ?? ""} onChange={e => upd("expressSurcharge", parseFloat(e.target.value) || 0)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
         <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">SURGE MULTIPLIER (Ã—)</label>
           <input type="number" step="0.1" min="1" value={sForm.surgeMultiplier ?? ""} onChange={e => upd("surgeMultiplier", parseFloat(e.target.value) || 1)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
@@ -8367,7 +8367,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Pricing")} loading={saving} /></div>
     </div>
 
-    {/* Section 4 â€” Points & Rewards Configuration */}
+    {/* Section 4 — Points & Rewards Configuration */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><Award className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Points & Rewards</span></div>
       <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Configure loyalty tiers, welcome gift, and referral rewards</p>
@@ -8413,10 +8413,10 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Daily Bonus Points</label>
           <input type="number" value={sForm.appContent?.loyalty?.dailyBonus ?? 10} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), dailyBonus: parseInt(e.target.value) || 10 } })}
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Welcome Gift (â‚¦)</label>
+        <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Welcome Gift (₦)</label>
           <input type="number" value={sForm.appContent?.welcomeGift?.credit ?? 2500} onChange={e => upd("appContent", { ...(sForm.appContent || {}), welcomeGift: { ...(sForm.appContent?.welcomeGift || {}), credit: parseFloat(e.target.value) || 0 } })}
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Referral Reward (â‚¦)</label>
+        <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Referral Reward (₦)</label>
           <input type="number" value={sForm.referralReward ?? 500} onChange={e => upd("referralReward", parseFloat(e.target.value) || 0)}
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
       </div>
@@ -8434,7 +8434,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" />
         </div>
         <div>
-          <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Point Naira Value (â‚¦ per pt)</label>
+          <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Point Naira Value (₦ per pt)</label>
           <input type="number" min="1" value={sForm.pointNairaValue ?? 10} onChange={e => upd("pointNairaValue", parseInt(e.target.value) || 10)}
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" />
         </div>
@@ -8442,7 +8442,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Points & Rewards")} loading={saving} /></div>
     </div>
 
-    {/* Section 5 â€” Branding & Communication */}
+    {/* Section 5 — Branding & Communication */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><Globe className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Branding & Communication</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -8471,7 +8471,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
 
 
 
-    {/* Section 7 â€” Administrative Staff & Sub-Admins */}
+    {/* Section 7 — Administrative Staff & Sub-Admins */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3 pb-2 border-b border-gray-100 dark:border-white/10">
         <div className="flex items-center gap-2">
@@ -8538,7 +8538,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
                     </span>
                   </td>
                   <td className="p-3 font-mono text-gray-600 dark:text-gray-300 text-[11px]">
-                    {staff.phone || "â€”"}
+                    {staff.phone || "—"}
                   </td>
                   <td className="p-3">
                     <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -8758,7 +8758,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
         vendorStore: pVendor, description: pDesc, imageUrl: pImg || "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=500",
         status: statusStr, rating: 5.0, createdAt: Timestamp.now()
       });
-      addLog("Create Product", `Added product '${pName}' (â‚¦${priceNum.toLocaleString()})`);
+      addLog("Create Product", `Added product '${pName}' (₦${priceNum.toLocaleString()})`);
       addToast("success", `Product '${pName}' created successfully`);
       setShowAddModal(false);
       setPName(""); setPPrice(""); setPStock(""); setPDesc(""); setPImg("");
@@ -8772,7 +8772,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
     if (!sName || !sOwner || !sEmail) { addToast("error", "Store name, owner, and email are required"); return; }
     setSavingStore(true);
     try {
-      // Resolve owner user â€” link to an existing account (by email) or create a vendor user doc
+      // Resolve owner user — link to an existing account (by email) or create a vendor user doc
       let ownerId = "";
       let ownerEmail = sEmail.trim().toLowerCase();
       const matched = await getDocs(query(collection(db, "users"), where("email", "==", ownerEmail)));
@@ -8965,7 +8965,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
   const handleUpdateProductPrice = async (productId: string, name: string, price: number) => {
     try {
       await updateDoc(doc(db, "marketplace_products", productId), { price, updatedAt: Timestamp.now() });
-      addLog("Update Price", `Updated '${name}' price to â‚¦${price.toLocaleString()}`);
+      addLog("Update Price", `Updated '${name}' price to ₦${price.toLocaleString()}`);
       addToast("success", `Price updated for '${name}'`);
     } catch (err: any) {
       addToast("error", "Price update failed: " + err.message);
@@ -9039,7 +9039,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <StatCard icon={<Package className="w-4 h-4 text-[#FFB800]" />} label="CATALOG PRODUCTS" value={totalProducts.toString()} sub={`${products.filter(p => p.status === "In Stock").length} in stock Â· ${products.filter(p => p.status === "Low Stock").length} low stock`} />
       <StatCard icon={<Store className="w-4 h-4 text-[#FFB800]" />} label="ACTIVE VENDOR STORES" value={approvedStores.length.toString()} sub={`${pendingStores.length} pending enlistment requests`} />
-      <StatCard icon={<DollarSign className="w-4 h-4 text-[#FFB800]" />} label="MARKETPLACE SALES" value={`â‚¦${totalMarketplaceSales.toLocaleString()}`} sub={`${orders.length} completed transactions`} />
+      <StatCard icon={<DollarSign className="w-4 h-4 text-[#FFB800]" />} label="MARKETPLACE SALES" value={`₦${totalMarketplaceSales.toLocaleString()}`} sub={`${orders.length} completed transactions`} />
       <StatCard icon={<Percent className="w-4 h-4 text-[#FFB800]" />} label="AVG COMMISSION" value="8.5%" sub="Revenue split per store transaction" />
     </div>
 
@@ -9047,17 +9047,17 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/10 dark:border-white/10 pb-3">
       <div className="flex gap-2 flex-wrap">
         <button onClick={() => setActiveSubTab("products")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all flex items-center cursor-pointer " + (activeSubTab === "products" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          ðŸ“¦ Products ({totalProducts})
+          📦 Products ({totalProducts})
         </button>
         <button onClick={() => setActiveSubTab("stores")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all relative flex items-center cursor-pointer " + (activeSubTab === "stores" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          ðŸª Vendor Stores ({stores.length})
+          🏪 Vendor Stores ({stores.length})
           {pendingStores.length > 0 && <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">{pendingStores.length}</span>}
         </button>
         <button onClick={() => setActiveSubTab("orders")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all flex items-center cursor-pointer " + (activeSubTab === "orders" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          ðŸ›’ Orders ({orders.length})
+          🛒 Orders ({orders.length})
         </button>
         <button onClick={() => setActiveSubTab("payouts")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all relative flex items-center cursor-pointer " + (activeSubTab === "payouts" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          ðŸ’³ Payouts ({payoutRequests.length})
+          💳 Payouts ({payoutRequests.length})
           {payoutRequests.filter(p => p.status === "PENDING").length > 0 && (
             <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">
               {payoutRequests.filter(p => p.status === "PENDING").length}
@@ -9087,7 +9087,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Product</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Category</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Vendor Store</th>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Price (â‚¦)</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Price (₦)</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Stock Qty</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Status</th>
                   <th className="text-right font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Actions</th>
@@ -9237,7 +9237,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Order #</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Customer</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Store</th>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Total (â‚¦)</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Total (₦)</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Status</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Date</th>
                 </tr>
@@ -9248,7 +9248,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                     <td className="p-4 font-black text-sm text-amber-800 dark:text-[#FFB800]">{o.orderNumber}</td>
                     <td className="p-4 font-bold text-[#111] dark:text-white">{o.customerName}</td>
                     <td className="p-4 font-semibold text-gray-800 dark:text-gray-200">{o.storeName}</td>
-                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">â‚¦{o.totalPrice.toLocaleString()}</td>
+                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">₦{o.totalPrice.toLocaleString()}</td>
                     <td className="p-4">
                       <span className="px-3 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-full font-bold text-[10px]">{o.status}</span>
                     </td>
@@ -9277,7 +9277,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
               <thead className="bg-gray-50 dark:bg-[#222]">
                 <tr>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Vendor Store</th>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Amount (â‚¦)</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Amount (₦)</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Bank Details</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Status</th>
                   <th className="text-right font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Actions</th>
@@ -9287,7 +9287,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                 {payoutRequests.map(p => (
                   <tr key={p.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                     <td className="p-4 font-extrabold text-[#111] dark:text-white">{p.storeName}</td>
-                    <td className="p-4 font-black text-sm text-gray-900 dark:text-white">â‚¦{p.amount.toLocaleString()}</td>
+                    <td className="p-4 font-black text-sm text-gray-900 dark:text-white">₦{p.amount.toLocaleString()}</td>
                     <td className="p-4">
                       <div className="font-bold text-[#111] dark:text-white">{p.bankName}</div>
                       <div className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">{p.accountNumber}</div>
@@ -9322,7 +9322,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                                 await updateDoc(doc(db, "vendor_payout_requests", p.id), { status: "REJECTED", processedAt: Timestamp.now() });
                                 const storeRef = doc(db, "marketplace_stores", p.vendorId);
                                 await updateDoc(storeRef, { vendorBalance: increment(p.amount) });
-                                addLog("Reject Payout", `Rejected â‚¦${p.amount.toLocaleString()} for ${p.storeName}`);
+                                addLog("Reject Payout", `Rejected ₦${p.amount.toLocaleString()} for ${p.storeName}`);
                                 addToast("info", "Payout rejected and funds returned to vendor");
                               } catch (err: any) { addToast("error", err.message); }
                             }}
@@ -9355,8 +9355,8 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
           
           <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl space-y-1">
             <p className="text-xs font-extrabold text-emerald-900 dark:text-emerald-200">{settlePayoutTarget.storeName || "Vendor Store"}</p>
-            <p className="text-xl font-black text-[#111] dark:text-white">â‚¦{settlePayoutTarget.amount.toLocaleString()}</p>
-            <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium">{settlePayoutTarget.bankName} â€¢ {settlePayoutTarget.accountNumber}</p>
+            <p className="text-xl font-black text-[#111] dark:text-white">₦{settlePayoutTarget.amount.toLocaleString()}</p>
+            <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium">{settlePayoutTarget.bankName} • {settlePayoutTarget.accountNumber}</p>
           </div>
 
           <div className="space-y-3">
@@ -9416,8 +9416,8 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                     createdAt: Timestamp.now(),
                     timestamp: Date.now()
                   });
-                  addLog("Approve Payout", `Approved â‚¦${settlePayoutTarget.amount.toLocaleString()} for ${settlePayoutTarget.storeName} (Ref: ${settleBankRef.trim()})`);
-                  addToast("success", `Approved â‚¦${settlePayoutTarget.amount.toLocaleString()} payout with reference ${settleBankRef.trim()}`);
+                  addLog("Approve Payout", `Approved ₦${settlePayoutTarget.amount.toLocaleString()} for ${settlePayoutTarget.storeName} (Ref: ${settleBankRef.trim()})`);
+                  addToast("success", `Approved ₦${settlePayoutTarget.amount.toLocaleString()} payout with reference ${settleBankRef.trim()}`);
                   setSettlePayoutTarget(null);
                 } catch (err: any) {
                   addToast("error", "Settlement failed: " + err.message);
@@ -9463,7 +9463,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                 ]} className="w-full" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Price (â‚¦)</label>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Price (₦)</label>
                 <input type="number" value={pPrice} onChange={e => setPPrice(e.target.value)} placeholder="35000" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" required />
               </div>
             </div>
@@ -9535,7 +9535,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Store Description (shown on storefront)</label>
-              <textarea value={sDesc} onChange={e => setSDesc(e.target.value)} rows={2} placeholder="Premium spare parts and delivery accessories in Benin Cityâ€¦" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
+              <textarea value={sDesc} onChange={e => setSDesc(e.target.value)} rows={2} placeholder="Premium spare parts and delivery accessories in Benin City…" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Store Address (full detail, shown on storefront)</label>
@@ -9610,7 +9610,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                 <input type="number" value={editStoreTarget.commissionRate} onChange={e => setEditStoreTarget({ ...editStoreTarget, commissionRate: parseFloat(e.target.value) || 0 })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Featured Rank (1â€“10, 0 = off)</label>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Featured Rank (1–10, 0 = off)</label>
                 <input type="number" min={0} max={10} value={editStoreTarget.isFeatured ? (editStoreTarget.featuredRank || 1) : 0} onChange={e => { const r = parseInt(e.target.value) || 0; setEditStoreTarget({ ...editStoreTarget, featuredRank: r, isFeatured: r > 0 }); }} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
               </div>
             </div>
@@ -9947,7 +9947,7 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">Ticket: {selectedTicket.ticketId} â€¢ Consignment: #{selectedTicket.parcelId?.slice(0, 8).toUpperCase() || selectedTicket.id.slice(0, 8).toUpperCase()}</p>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">Ticket: {selectedTicket.ticketId} • Consignment: #{selectedTicket.parcelId?.slice(0, 8).toUpperCase() || selectedTicket.id.slice(0, 8).toUpperCase()}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -10420,7 +10420,7 @@ function TrackingTab({ deliveries, drivers, addressRegistry, geoCenter, onNewDis
         return <div key={d.id} onClick={() => setTSelectedId(tSelectedId === d.id ? null : d.id)} className={"bg-white dark:bg-[#1a1a1a] border rounded-3xl p-5 shadow-sm animate-fade-in cursor-pointer transition-all " + (tSelectedId === d.id ? "border-[#FFB800] ring-2 ring-[#FFB800]/30" : "border-gray-200 dark:border-white/10 hover:border-[#FFB800]/50")}>
           <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
             <div><p className="font-bold text-[#111] dark:text-white">{d.itemName || "Parcel"}</p>
-              <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">#{idShort(d.id)} â€¢ {d.receiverName} â†’ {d.deliveryAddress}</p>
+              <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">#{idShort(d.id)} • {d.receiverName} → {d.deliveryAddress}</p>
               {d.courierName && <p className="text-[10px] text-amber-800 dark:text-[#FFB800] mt-0.5 font-bold">{d.courierName}</p>}</div>
             <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status.replace(/_/g, " ")}</span>
           </div>
@@ -10481,20 +10481,20 @@ function TipPayoutsTab({
     const targetUserId = p.riderId || p.userId;
     const targetName = p.riderName || p.userName || "User";
     const userRole = p.userRole || "rider";
-    if (!confirm(`Approve ${userRole === "rider" ? "tip" : "cash"} payout of â‚¦${p.amount.toLocaleString()} to ${targetName}?`)) return;
+    if (!confirm(`Approve ${userRole === "rider" ? "tip" : "cash"} payout of ₦${p.amount.toLocaleString()} to ${targetName}?`)) return;
     setActionLoading(p.id);
     try {
       await updateDoc(doc(db, "tip_withdrawals", p.id), {
         status: "APPROVED",
         approvedAt: Timestamp.now(),
       });
-      await addLog("Approve Payout", `Approved â‚¦${p.amount.toLocaleString()} for ${targetName} (${p.bankName} - ${p.accountNumber})`);
-      addToast("success", `Payout of â‚¦${p.amount.toLocaleString()} approved!`);
+      await addLog("Approve Payout", `Approved ₦${p.amount.toLocaleString()} for ${targetName} (${p.bankName} - ${p.accountNumber})`);
+      addToast("success", `Payout of ₦${p.amount.toLocaleString()} approved!`);
       if (targetUserId) {
         try {
           await addDoc(collection(db, "users", targetUserId, "notifications"), {
             title: "Withdrawal Approved",
-            description: `Your withdrawal request of â‚¦${p.amount.toLocaleString()} has been approved and processed to ${p.bankName} (${p.accountNumber}).`,
+            description: `Your withdrawal request of ₦${p.amount.toLocaleString()} has been approved and processed to ${p.bankName} (${p.accountNumber}).`,
             read: false,
             time: "Just now",
             createdAt: Timestamp.now(),
@@ -10546,7 +10546,7 @@ function TipPayoutsTab({
         try {
           await addDoc(collection(db, "users", targetUserId, "notifications"), {
             title: "Withdrawal Declined",
-            description: `Your withdrawal request of â‚¦${p.amount.toLocaleString()} was declined (${rejectReason || "Administrative decision"}). The funds have been refunded to your wallet.`,
+            description: `Your withdrawal request of ₦${p.amount.toLocaleString()} was declined (${rejectReason || "Administrative decision"}). The funds have been refunded to your wallet.`,
             read: false,
             time: "Just now",
             createdAt: Timestamp.now(),
@@ -10556,7 +10556,7 @@ function TipPayoutsTab({
           console.error("Error sending user notif:", e);
         }
       }
-      await addLog("Reject Payout", `Rejected â‚¦${p.amount.toLocaleString()} for ${targetName}. Funds refunded.`);
+      await addLog("Reject Payout", `Rejected ₦${p.amount.toLocaleString()} for ${targetName}. Funds refunded.`);
       addToast("info", "Payout rejected and funds refunded to user wallet.");
       setRejectModalTarget(null);
       setRejectReason("");
@@ -10601,14 +10601,14 @@ function TipPayoutsTab({
         <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-5 shadow-xs">
           <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Pending Approvals</div>
           <div className="text-2xl font-black text-amber-600 dark:text-[#FFB800] mt-1.5 flex items-baseline gap-2">
-            â‚¦{pendingAmount.toLocaleString()}
+            ₦{pendingAmount.toLocaleString()}
             <span className="text-xs font-bold text-gray-500">({pendingCount} requests)</span>
           </div>
         </div>
         <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-5 shadow-xs">
           <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Total Disbursed</div>
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1.5">
-            â‚¦{totalDisbursed.toLocaleString()}
+            ₦{totalDisbursed.toLocaleString()}
           </div>
         </div>
         <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-5 shadow-xs">
@@ -10688,7 +10688,7 @@ function TipPayoutsTab({
                       </td>
                       <td className="p-4">
                         <div className="font-black text-base text-gray-900 dark:text-white">
-                          â‚¦{p.amount.toLocaleString()}
+                          ₦{p.amount.toLocaleString()}
                         </div>
                       </td>
                       <td className="p-4">
@@ -10764,7 +10764,7 @@ function TipPayoutsTab({
               </button>
             </div>
             <p className="text-xs text-gray-600 dark:text-gray-400">
-              Rejecting will automatically refund â‚¦{rejectModalTarget.amount.toLocaleString()} back to {rejectModalTarget.riderName || "the rider"}&apos;s wallet balance.
+              Rejecting will automatically refund ₦{rejectModalTarget.amount.toLocaleString()} back to {rejectModalTarget.riderName || "the rider"}&apos;s wallet balance.
             </p>
             <div>
               <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">Reason for Rejection</label>

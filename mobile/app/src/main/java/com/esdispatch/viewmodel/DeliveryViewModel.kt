@@ -1821,7 +1821,7 @@ class DeliveryViewModel : WalletViewModel() {
         )
         viewModelScope.launch {
             repository?.saveShiftAttendance(attendance)
-            showCustomToast("Shift status updated: $status â±ï¸")
+            showCustomToast("Shift status updated: $status ⏱️")
         }
     }
 
@@ -1853,10 +1853,10 @@ class DeliveryViewModel : WalletViewModel() {
         viewModelScope.launch {
             repository?.saveVehicleInspection(inspection)
             if (passed) {
-                showCustomToast("Vehicle Pre-Trip Inspection PASSED âœ…. Ready for dispatch.")
+                showCustomToast("Vehicle Pre-Trip Inspection PASSED ✅. Ready for dispatch.")
                 onComplete(true, "Passed successfully")
             } else {
-                showCustomToast("Inspection FAILED âŒ. Correct safety issues before dispatch.")
+                showCustomToast("Inspection FAILED ❌. Correct safety issues before dispatch.")
                 onComplete(false, "Pre-trip inspection failed mandatory safety checks.")
             }
         }
@@ -2459,7 +2459,7 @@ class DeliveryViewModel : WalletViewModel() {
         savePref("show_onboarding_tooltip", false)
     }
 
-    // Invite Code â€” generated per user from Firebase UID
+    // Invite Code — generated per user from Firebase UID
     private val _referralCode = MutableStateFlow("SHARE-ENGRACED")
     val referralCode: StateFlow<String> = _referralCode.asStateFlow()
     
@@ -2736,7 +2736,7 @@ class DeliveryViewModel : WalletViewModel() {
         appContext = context.applicationContext
         loadPreferences(context)
         
-        // Initialize Firebase safely â€” relies on google-services.json or DispatchApplication.kt programmatic init
+        // Initialize Firebase safely — relies on google-services.json or DispatchApplication.kt programmatic init
         try {
             val isAlreadyInitialized = try {
                 com.google.firebase.FirebaseApp.getInstance() != null
@@ -2749,7 +2749,7 @@ class DeliveryViewModel : WalletViewModel() {
                     if (resId != 0) {
                         com.google.firebase.FirebaseApp.initializeApp(context)
                     } else {
-                        android.util.Log.w("DeliveryViewModel", "google_app_id resource not found â€” Firebase may not be available.")
+                        android.util.Log.w("DeliveryViewModel", "google_app_id resource not found — Firebase may not be available.")
                     }
                 } catch (e: Exception) {
                     android.util.Log.w("DeliveryViewModel", "Default FirebaseApp init failed: ${e.message}")
@@ -6959,7 +6959,7 @@ class DeliveryViewModel : WalletViewModel() {
             val reasonString = "Selected ${bestRider.name} (${bestRider.vehicleType}) with a confidence Match Score of ${confidence}%.\n" +
                     "Decision factors:\n" +
                     " Distance to pickup: ${bestRider.distanceToPickupKm}km (Penalty minimized)\n" +
-                    " Rating: ${bestRider.rating}â˜… (High courier experience)\n" +
+                    " Rating: ${bestRider.rating}★ (High courier experience)\n" +
                     " Workload: ${bestRider.currentWorkload} active order(s)\n" +
                     " Vehicle Type matches package weight limits (${weight}kg)\n" +
                     " Battery: ${bestRider.batteryLevel}% remaining"
