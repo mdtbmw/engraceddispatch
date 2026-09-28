@@ -707,12 +707,12 @@ fun ActiveTrackingScreen(
                         }
                     }
 
-                    if (distanceMeters <= 1609.34f && !hasNotifiedWithinOneMile) { // 1 mile = 1609.34 meters
+                    if (!isRider && distanceMeters <= 1609.34f && !hasNotifiedWithinOneMile) { // 1 mile = 1609.34 meters
                         hasNotifiedWithinOneMile = true
                         showInAppNotificationBanner = true
                         com.esdispatch.util.CustomToastBridge.show("Delivery Notice: Courier is within 1 mile of your location!", com.esdispatch.viewmodel.ToastType.INFO)
                     }
-                    if (distanceMeters > 1609.34f) {
+                    if (distanceMeters > 1609.34f || isRider) {
                         hasNotifiedWithinOneMile = false
                         showInAppNotificationBanner = false
                     }
@@ -725,12 +725,12 @@ fun ActiveTrackingScreen(
         realDistanceKm = null
         
         // Fallback to simulated progress if no real coordinates
-        if (parcel.progress >= 0.85f && parcel.progress < 0.98f && !hasNotifiedWithinOneMile) {
+        if (!isRider && parcel.progress >= 0.85f && parcel.progress < 0.98f && !hasNotifiedWithinOneMile) {
             hasNotifiedWithinOneMile = true
             showInAppNotificationBanner = true
             com.esdispatch.util.CustomToastBridge.show("Delivery Notice: Courier is within 1 mile of your location!", com.esdispatch.viewmodel.ToastType.INFO)
         }
-        if (parcel.progress < 0.85f) {
+        if (parcel.progress < 0.85f || isRider) {
             hasNotifiedWithinOneMile = false
             showInAppNotificationBanner = false
         }
@@ -772,7 +772,7 @@ fun ActiveTrackingScreen(
                 .background(headerBgColor)
         ) {
             ScreenHeader(
-                title = "Track Shipment",
+                title = if (isRider) "Delivery Navigation" else "Track Shipment",
                 onBack = { onNavigate("Dashboard") },
                 rightContent = {
                     SupportButton(onClick = { showSupportDialog = true })
@@ -811,7 +811,7 @@ fun ActiveTrackingScreen(
                                         .background(if (isSelected) chipText else SuccessGreen)
                                 )
                                 Text(
-                                    text = "${p.itemName.ifBlank { "Shipment" }.take(14)} (#${p.id.takeLast(4)})",
+                                    text = "${p.itemName.ifBlank { "Shipment" }.take(14)} (${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(p.id)})",
                                     fontSize = 11.sp,
                                     fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
                                     color = chipText
@@ -958,9 +958,9 @@ fun ActiveTrackingScreen(
                 }
             }
 
-            // FLOATING BANNER (1-Mile Proximity Simulation Overlay)
+            // FLOATING BANNER (1-Mile Proximity Simulation Overlay - Customer Only)
             androidx.compose.animation.AnimatedVisibility(
-                visible = showInAppNotificationBanner,
+                visible = showInAppNotificationBanner && !isRider,
                 enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
                 exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top),
                 modifier = Modifier
@@ -1821,12 +1821,15 @@ fun ActiveTrackingScreen(
                                             }
                                         }
 
-                                        // Dynamic Delivery Estimation Component
-                                        DeliveryEstimationCard(
-                                            status = parcel.status,
-                                            progress = parcel.progress,
-                                            isDark = isDark
-                                        )
+                                        // Dynamic Delivery Estimation Component (In Transit Only)
+                                        if (parcel.status !in listOf(ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED, ParcelStatus.DELIVERED, ParcelStatus.CANCELLED)) {
+                                            DeliveryEstimationCard(
+                                                status = parcel.status,
+                                                progress = parcel.progress,
+                                                isDark = isDark,
+                                                isRider = isRider
+                                            )
+                                        }
 
                                         // 3. Sender to Receiver addresses overview panel — full detail, Uber-style
                                         Column(
@@ -4189,8 +4192,13 @@ fun LiveMapView(
                 function setUserLocation(lat, lng) {
                     if (!lat || !lng) return;
                     userLoc = [lat, lng];
-                    if (isRiderMode && !courierLoc) {
-                        updateCourierLocation(lat, lng, currentBearing, 0);
+                    if (isRiderMode) {
+                        if (!courierLoc) {
+                            updateCourierLocation(lat, lng, currentBearing, 0);
+                        }
+                        if (liveUserMarker && map) {
+                            try { map.removeLayer(liveUserMarker); liveUserMarker = null; } catch(e){}
+                        }
                         return;
                     }
                     if (!map) return;
@@ -4281,7 +4289,9 @@ fun LiveMapView(
                 function recenterMap() {
                     userInteracted = false;
                     if (!map) return;
-                    if (courierMarker && hasBooking) {
+                    if (isRiderMode && courierMarker) {
+                        map.setView(courierMarker.getLatLng(), 16.5, { animate: true, duration: 0.8 });
+                    } else if (courierMarker && hasBooking) {
                         map.panTo(courierMarker.getLatLng(), { animate: true, duration: 0.8 });
                     } else if (activeRouteLine) {
                         var bounds = activeRouteLine.getBounds();
@@ -4499,7 +4509,8 @@ fun LiveMapView(
 fun DeliveryEstimationCard(
     status: ParcelStatus,
     progress: Float,
-    isDark: Boolean
+    isDark: Boolean,
+    isRider: Boolean = false
 ) {
     val isLight = !isDark
     val now = remember { java.util.Date() }
@@ -4509,35 +4520,35 @@ fun DeliveryEstimationCard(
     val currentTimeStr = remember(now) { timeFormat.format(now) }
 
     val estimationText = when (status) {
-        ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Waiting for rider"
-        ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Rider assigned"
-        ParcelStatus.ARRIVED_PICKUP -> "Preparing for pickup"
-        ParcelStatus.PICKED_UP -> "In transit"
+        ParcelStatus.PENDING, ParcelStatus.QUEUED -> if (isRider) "Available for pickup" else "Waiting for rider"
+        ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> if (isRider) "Navigate to pickup" else "Rider assigned"
+        ParcelStatus.ARRIVED_PICKUP -> if (isRider) "At pickup location" else "Preparing for pickup"
+        ParcelStatus.PICKED_UP -> if (isRider) "Heading to drop-off" else "In transit"
         ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
             val remainingMins = (35 * (1f - progress.coerceIn(0f, 0.95f))).toInt()
             if (remainingMins <= 3) {
-                "Arriving soon"
+                if (isRider) "Approaching destination" else "Arriving soon"
             } else {
                 val minRange = (remainingMins - 3).coerceAtLeast(2)
                 val maxRange = remainingMins + 4
                 "$minRange–$maxRange mins"
             }
         }
-        ParcelStatus.ARRIVED -> "Courier has arrived!"
-        ParcelStatus.HANDOVER_VERIFIED -> "Verifying delivery"
+        ParcelStatus.ARRIVED -> if (isRider) "At delivery location" else "Courier has arrived!"
+        ParcelStatus.HANDOVER_VERIFIED -> if (isRider) "Take delivery photo" else "Verifying delivery"
         ParcelStatus.DELIVERED -> "Delivered"
         ParcelStatus.CANCELLED -> "Cancelled"
-        else -> "Active Dispatch"
+        else -> if (isRider) "Active Delivery" else "Active Dispatch"
     }
 
     val windowText = when (status) {
-        ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Dispatching order..."
-        ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Heading to pickup"
-        ParcelStatus.ARRIVED_PICKUP -> "Courier at pickup location"
-        ParcelStatus.PICKED_UP -> "Package collected • On route"
-        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> "In transit • On schedule"
-        ParcelStatus.ARRIVED -> "Courier arrived at destination"
-        ParcelStatus.HANDOVER_VERIFIED -> "Photo proof in progress"
+        ParcelStatus.PENDING, ParcelStatus.QUEUED -> if (isRider) "Order ready in pool" else "Dispatching order..."
+        ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> if (isRider) "Head to sender address" else "Heading to pickup"
+        ParcelStatus.ARRIVED_PICKUP -> if (isRider) "Collect package & confirm pickup" else "Courier at pickup location"
+        ParcelStatus.PICKED_UP -> if (isRider) "Package collected • Proceed to drop-off" else "Package collected • On route"
+        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> if (isRider) "Navigate along highlighted route" else "In transit • On schedule"
+        ParcelStatus.ARRIVED -> if (isRider) "Recipient PIN required for handover" else "Courier arrived at destination"
+        ParcelStatus.HANDOVER_VERIFIED -> if (isRider) "Snap photo to finalize delivery" else "Photo proof in progress"
         ParcelStatus.DELIVERED -> "Delivery completed"
         ParcelStatus.CANCELLED -> "Order was cancelled"
         else -> "Active delivery"

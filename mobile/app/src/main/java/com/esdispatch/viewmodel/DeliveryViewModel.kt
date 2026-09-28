@@ -4247,28 +4247,64 @@ class DeliveryViewModel : WalletViewModel() {
                     }
                     val localUri = "file://${avatarFile.absolutePath}"
 
-                    val base64Str = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                    val dataUrl = "data:image/jpeg;base64,$base64Str"
-                    
                     withContext(Dispatchers.Main) {
                         _photoUrl.value = localUri
                         savePref("photo_url", localUri)
+                        com.esdispatch.util.CustomToastBridge.show("Uploading profile picture...", ToastType.INFO)
                     }
-                    
-                    com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users").document(uid)
-                        .set(
-                            mapOf(
-                                "photoUrl" to dataUrl,
-                                "avatarBase64" to base64Str,
-                                "updatedAt" to com.google.firebase.Timestamp.now()
-                            ),
-                            com.google.firebase.firestore.SetOptions.merge()
-                        )
+
+                    val storage = try {
+                        com.google.firebase.storage.FirebaseStorage.getInstance("gs://engraceddispatch-ffba4.firebasestorage.app")
+                    } catch (_: Exception) {
+                        com.google.firebase.storage.FirebaseStorage.getInstance()
+                    }
+                    val canonicalPath = "avatars/$uid/avatar.jpg"
+                    val ref = storage.reference.child(canonicalPath)
+                    val metadata = com.google.firebase.storage.StorageMetadata.Builder()
+                        .setContentType("image/jpeg")
+                        .build()
+
+                    ref.putBytes(bytes, metadata)
                         .addOnSuccessListener {
-                            com.esdispatch.util.CustomToastBridge.show("Profile picture updated!", ToastType.SUCCESS)
+                            ref.downloadUrl.addOnSuccessListener { remoteUri ->
+                                val downloadUrl = remoteUri.toString()
+                                _photoUrl.value = downloadUrl
+                                savePref("photo_url", downloadUrl)
+
+                                com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                    .collection("users").document(uid)
+                                    .set(
+                                        mapOf(
+                                            "photoUrl" to downloadUrl,
+                                            "avatarBase64" to android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
+                                            "updatedAt" to com.google.firebase.Timestamp.now()
+                                        ),
+                                        com.google.firebase.firestore.SetOptions.merge()
+                                    )
+                                    .addOnSuccessListener {
+                                        com.esdispatch.util.CustomToastBridge.show("Profile picture updated!", ToastType.SUCCESS)
+                                    }
+                            }.addOnFailureListener { e ->
+                                android.util.Log.e("AvatarUpload", "Failed to get download URL: ${e.message}")
+                            }
                         }
                         .addOnFailureListener { e ->
-                            android.util.Log.e("AvatarUpload", "Failed to update profile doc: ${e.message}")
+                            android.util.Log.e("AvatarUpload", "Storage upload failed: ${e.message}, falling back to base64")
+                            val base64Str = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                            val dataUrl = "data:image/jpeg;base64,$base64Str"
+                            com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                .collection("users").document(uid)
+                                .set(
+                                    mapOf(
+                                        "photoUrl" to dataUrl,
+                                        "avatarBase64" to base64Str,
+                                        "updatedAt" to com.google.firebase.Timestamp.now()
+                                    ),
+                                    com.google.firebase.firestore.SetOptions.merge()
+                                )
+                                .addOnSuccessListener {
+                                    com.esdispatch.util.CustomToastBridge.show("Profile picture updated!", ToastType.SUCCESS)
+                                }
                         }
                 }
             } catch (e: Exception) {
@@ -5563,7 +5599,7 @@ class DeliveryViewModel : WalletViewModel() {
 
             // Add to Notifications
             val bookTitle = "Booking Confirmed"
-            val bookMsg = "Your parcel shipment '${newParcel.itemName}' (#${newParcel.id}) has been booked via ${draft.selectedService} service! Paid ₦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier."
+            val bookMsg = "Your parcel shipment '${newParcel.itemName}' (${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(newParcel.id)}) has been booked via ${draft.selectedService} service! Paid ₦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier."
             val notif = NotificationItem(
                 id = "NT-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase(),
                 title = bookTitle,
@@ -5754,7 +5790,7 @@ class DeliveryViewModel : WalletViewModel() {
                 val notif = NotificationItem(
                     id = "NT-" + java.util.UUID.randomUUID().toString().replace("-", "").take(8).uppercase() + "-${index + 1}",
                     title = "Batch Delivery #${index + 1} Booked",
-                    message = "Stop '$itemName' (#$parcelId) to ${stop.destinationAddress} booked successfully! Handover PIN: $otp",
+                    message = "Stop '$itemName' (${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcelId)}) to ${stop.destinationAddress} booked successfully! Handover PIN: $otp",
                     time = "Just now",
                     parcelId = parcelId,
                     timestamp = currentTime
@@ -6311,34 +6347,35 @@ class DeliveryViewModel : WalletViewModel() {
                                 val otpCode = doc.getString("otpCode") ?: ""
                                 val pinNotice = if (otpCode.isNotBlank()) " Handover PIN: $otpCode. Give this PIN to the courier upon delivery." else ""
 
+                                val trkId = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(id)
                                 val (title, message) = when (status) {
                                     "ASSIGNED" -> Pair(
                                         "Courier Assigned!",
-                                        if (courierName.isNotBlank()) "Courier $courierName has been assigned to your order '$itemName' (#${id.take(8)})." else "A courier has been assigned to your order '$itemName' (#${id.take(8)})."
+                                        if (courierName.isNotBlank()) "Courier $courierName has been assigned to your order '$itemName' ($trkId)." else "A courier has been assigned to your order '$itemName' ($trkId)."
                                     )
                                     "PICKED_UP" -> Pair(
                                         "Parcel Picked Up",
-                                        "Courier has picked up '$itemName' (#${id.take(8)}) and started transit."
+                                        "Courier has picked up '$itemName' ($trkId) and started transit."
                                     )
                                     "TRANSIT", "OUT_FOR_DELIVERY" -> Pair(
                                         "Shipment In Transit",
-                                        "Your parcel '$itemName' (#${id.take(8)}) is on the way to destination."
+                                        "Your parcel '$itemName' ($trkId) is on the way to destination."
                                     )
                                     "ARRIVED" -> Pair(
                                         "Courier Arrived!",
-                                        "Courier has arrived at your destination for '$itemName' (#${id.take(8)})!$pinNotice"
+                                        "Courier has arrived at your destination for '$itemName' ($trkId)!$pinNotice"
                                     )
                                     "DELIVERED" -> Pair(
                                         "Delivery Completed!",
-                                        "Your shipment '$itemName' (#${id.take(8)}) has been successfully delivered and verified."
+                                        "Your shipment '$itemName' ($trkId) has been successfully delivered and verified."
                                     )
                                     "CANCELLED" -> Pair(
                                         "Delivery Cancelled",
-                                        "Shipment '$itemName' (#${id.take(8)}) was cancelled."
+                                        "Shipment '$itemName' ($trkId) was cancelled."
                                     )
                                     else -> Pair(
                                         "Order Update",
-                                        "Order '$itemName' (#${id.take(8)}) status: $status"
+                                        "Order '$itemName' ($trkId) status: $status"
                                     )
                                 }
 
@@ -6572,7 +6609,7 @@ class DeliveryViewModel : WalletViewModel() {
 
         val feeStr = if (deductedFee > 0) " (₦${String.format("%,.0f", deductedFee)} dispatch mobilization deducted)" else ""
         val refundMsg = if (refundAmount > 0) "₦${String.format("%,.2f", refundAmount)} refunded to wallet$feeStr." else "Order cancelled."
-        showInAppNotification("Delivery Cancelled", "Shipment #${parcelId.take(8)} has been cancelled. $refundMsg")
+        showInAppNotification("Delivery Cancelled", "Shipment ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcelId)} has been cancelled. $refundMsg")
         onComplete?.invoke(true)
     }
 
@@ -6629,7 +6666,7 @@ class DeliveryViewModel : WalletViewModel() {
                         "senderId" to uid,
                         "senderName" to senderName,
                         "senderRole" to "customer",
-                        "messageText" to "Dispute reported on consignment #${parcelId.take(8).uppercase()}: $issueType. Details: $description",
+                        "messageText" to "Dispute reported on consignment ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcelId)}: $issueType. Details: $description",
                         "timestamp" to now
                     )
                     db.collection("support_chats").document(parcelId)
@@ -6653,7 +6690,7 @@ class DeliveryViewModel : WalletViewModel() {
                     com.esdispatch.data.MyFirebaseMessagingService.showNotification(
                         context = ctx,
                         title = "Dispute Registered",
-                        message = "Dispute for consignment #${parcelId.take(8).uppercase()} sent to HQ Dispatchers.",
+                        message = "Dispute for consignment ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcelId)} sent to HQ Dispatchers.",
                         parcelId = parcelId,
                         status = "DISPUTED"
                     )
@@ -6755,7 +6792,7 @@ class DeliveryViewModel : WalletViewModel() {
                 val isPlaceholderKey = apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY" || apiKey.contains("PLACEHOLDER")
 
                 val activeParcelsStr = _parcels.value.filter { it.status == ParcelStatus.TRANSIT }
-                    .joinToString("\n") { "Parcel #${it.id}: ${it.itemName}, Pickup: ${it.pickupAddress}, Delivery: ${it.deliveryAddress}, Status: ${it.status}, Progress: ${it.progress}" }
+                    .joinToString("\n") { "Parcel ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(it.id)}: ${it.itemName}, Pickup: ${it.pickupAddress}, Delivery: ${it.deliveryAddress}, Status: ${it.status}, Progress: ${it.progress}" }
 
                 val ridersStr = _aiRiders.value.joinToString("\n") { "Rider ${it.name}: ID: ${it.id}, Veh: ${it.vehicleType}, Batt: ${it.batteryLevel}%, Rating: ${it.rating}, Online: ${it.status}" }
 
@@ -6866,7 +6903,7 @@ class DeliveryViewModel : WalletViewModel() {
             lower.contains("status") || lower.contains("track") || lower.contains("where") || lower.contains("rolex") || lower.contains("mac") -> {
                 val active = _parcels.value.firstOrNull { it.status == ParcelStatus.TRANSIT || it.status == ParcelStatus.OUT_FOR_DELIVERY }
                 if (active != null) {
-                    "**Live Delivery Status for #${active.id}**:\n" +
+                    "**Live Delivery Status for ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(active.id)}**:\n" +
                     "• **Item**: ${active.itemName}\n" +
                     "• **Current Rider**: ${active.courierName.ifBlank { "Assigned Fleet Rider" }}\n" +
                     "• **Operating Hub**: Benin City Fleet Hub\n" +

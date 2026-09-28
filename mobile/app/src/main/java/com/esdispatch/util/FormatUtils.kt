@@ -37,12 +37,15 @@ object FormatUtils {
         val trimmed = rawId.trim()
         if (trimmed.isEmpty()) return "ESD-PENDING"
         val upper = trimmed.uppercase()
-        if (upper.startsWith("ESD-")) return upper
-        if (upper.startsWith("TRK-")) return "ESD-" + upper.removePrefix("TRK-")
-        if (upper.startsWith("ORD-")) return "ESD-" + upper.removePrefix("ORD-")
         if (upper.startsWith("RDR-")) return upper
-        val clean = upper.replace("-", "").replace("#", "").filter { it.isLetterOrDigit() }
-        val slice = if (clean.length > 8) clean.take(8) else clean
+        val stripped = upper
+            .removePrefix("ESD-")
+            .removePrefix("TRK-")
+            .removePrefix("ORD-")
+            .replace("-", "")
+            .replace("#", "")
+            .filter { it.isLetterOrDigit() }
+        val slice = if (stripped.length > 8) stripped.take(8) else stripped
         return "ESD-$slice"
     }
 

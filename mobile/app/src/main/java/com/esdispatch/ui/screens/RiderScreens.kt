@@ -710,8 +710,12 @@ fun RiderDashboardScreen(
                             parcel = parcel,
                             distanceKm = distanceKm,
                             onUpdateStatus = {
-                                selectedParcelForUpdate = parcel
-                                showUpdateBottomSheet = true
+                                if (parcel.status == ParcelStatus.ARRIVED) {
+                                    onNavigate("ProofOfDelivery/${parcel.id}")
+                                } else {
+                                    selectedParcelForUpdate = parcel
+                                    showUpdateBottomSheet = true
+                                }
                             },
                             onViewWaybill = {
                                 selectedParcelForWaybill = parcel
@@ -1652,7 +1656,7 @@ fun RiderParcelCard(
                                 parcel.status == ParcelStatus.ASSIGNED -> "CONFIRM PICKUP"
                                 parcel.status == ParcelStatus.PICKED_UP -> "START TRANSIT"
                                 parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.OUT_FOR_DELIVERY -> "MARK ARRIVED"
-                                parcel.status == ParcelStatus.ARRIVED -> "ENTER PIN & DELIVER"
+                                parcel.status == ParcelStatus.ARRIVED -> "COMPLETE HANDOVER"
                                 else -> "VIEW DETAILS"
                             },
                             fontSize = 10.sp,
@@ -2275,72 +2279,43 @@ fun RiderUpdateBottomSheetContent(
                 Text("CLOSE", fontWeight = FontWeight.Bold)
             }
         } else {
-            // Arrived / Handover -> 7-min wait countdown, Receiver Contact, and Handover PIN Verification
-            var remainingSeconds by remember { mutableStateOf(420) }
-            LaunchedEffect(parcel.id) {
-                while (remainingSeconds > 0) {
-                    kotlinx.coroutines.delay(1000L)
-                    remainingSeconds--
-                }
-            }
-
+            // Arrived / Handover -> Direct navigation to Handover Verification (PIN & Photo)
             Surface(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
                 shape = RoundedCornerShape(12.dp),
                 color = if (isDark) Charcoal else GoldenWhiteLight,
                 border = BorderStroke(1.dp, Gold)
             ) {
                 Row(
-                    modifier = Modifier.padding(12.dp),
+                    modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Gold, modifier = Modifier.size(20.dp))
-                    Text(
-                        text = "Arrived at Destination — Awaiting Handover PIN",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDark) GoldLight else Obsidian
-                    )
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Gold, modifier = Modifier.size(22.dp))
+                    Column {
+                        Text(
+                            text = "Arrived at Destination",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) GoldLight else Obsidian
+                        )
+                        Text(
+                            text = "Ready for recipient handover & photo verification",
+                            fontSize = 11.sp,
+                            color = TextGray
+                        )
+                    }
                 }
             }
 
-            // Direct Call & SMS Receiver Action Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            val phone = parcel.receiverPhone.ifBlank { parcel.senderPhone }
+            if (phone.isNotBlank()) {
                 Button(
                     onClick = {
-                        val phone = parcel.receiverPhone.ifBlank { parcel.senderPhone }
-                        if (phone.isNotBlank()) {
-                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
-                            context.startActivity(intent)
-                        } else {
-                            Toast.makeText(context, "No receiver phone available", Toast.LENGTH_SHORT).show()
-                        }
+                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                        context.startActivity(intent)
                     },
-                    modifier = Modifier.weight(1f).height(46.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Filled.Call, contentDescription = null, modifier = Modifier.size(16.dp), tint = Obsidian)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("CALL RECEIVER", fontSize = 12.sp, fontWeight = FontWeight.Black)
-                }
-
-                Button(
-                    onClick = {
-                        val phone = parcel.receiverPhone.ifBlank { parcel.senderPhone }
-                        if (phone.isNotBlank()) {
-                            val displayId = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:$phone?body=Hello, your ESDispatch courier has arrived with your package $displayId. Please meet me for handover."))
-                            context.startActivity(intent)
-                        } else {
-                            Toast.makeText(context, "No receiver phone available", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.weight(1f).height(46.dp),
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isDark) Charcoal else GoldenWhiteLight,
                         contentColor = if (isDark) GoldLight else Obsidian
@@ -2348,57 +2323,25 @@ fun RiderUpdateBottomSheetContent(
                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.5f)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (isDark) GoldLight else Obsidian)
+                    Icon(Icons.Filled.Call, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (isDark) GoldLight else Obsidian)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("SMS RECEIVER", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("CALL RECEIVER ($phone)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
+                Spacer(modifier = Modifier.height(14.dp))
             }
-
-            Text(
-                text = "Enter Recipient 4-Digit PIN",
-                color = AppTextColor,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            PinInputField(
-                pin = otpInput,
-                onPinChange = { if (it.length <= 4 && it.all { char -> char.isDigit() }) otpInput = it },
-                obscureText = false,
-                modifier = Modifier.padding(vertical = 4.dp)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
 
             Button(
                 onClick = {
-                    if (otpInput.length != 4) {
-                        Toast.makeText(context, "Please enter the 4-digit PIN", Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-                    isSubmitting = true
-                    viewModel.verifyDeliveryOtpByRider(parcel.id, otpInput) { success, err ->
-                        isSubmitting = false
-                        if (success) {
-                            Toast.makeText(context, "Handover verified! Please capture proof of delivery photo.", Toast.LENGTH_LONG).show()
-                            onDismiss()
-                            onNavigateToPOD("ProofOfDelivery/${parcel.id}")
-                        } else {
-                            Toast.makeText(context, err ?: "Incorrect PIN", Toast.LENGTH_SHORT).show()
-                        }
-                    }
+                    onDismiss()
+                    onNavigateToPOD("ProofOfDelivery/${parcel.id}")
                 },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp).tactilePress(scaleDown = 0.96f),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
-                shape = RoundedCornerShape(14.dp),
-                enabled = !isSubmitting && otpInput.length == 4
+                shape = RoundedCornerShape(14.dp)
             ) {
-                if (isSubmitting) {
-                    CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(20.dp))
-                } else {
-                    Text("VERIFY & COMPLETE HANDOVER", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Obsidian)
-                }
+                Icon(Icons.Filled.Check, contentDescription = null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("PROCEED TO HANDOVER (PIN & PHOTO)", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Obsidian)
             }
         }
 

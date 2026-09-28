@@ -3124,7 +3124,7 @@ fun WaybillInvoiceCard(
                             📦 ESDISPATCH CONSIGNMENT RECEIPT
                             --------------------------------
                             Waybill: $waybillNumber
-                            Tracking ID: #${parcel.id}
+                            Tracking ID: ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)}
                             Item: ${parcel.itemName}
                             Status: ${parcel.status.name}
                             Date/Time: $deliveryTimestamp

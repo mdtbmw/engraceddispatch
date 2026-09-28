@@ -20,8 +20,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
@@ -85,6 +87,9 @@ fun ProofOfDeliveryScreen(
         parcel?.status == ParcelStatus.ARRIVED_PICKUP
     }
 
+    val isAlreadyOtpVerified = remember(parcel?.otpVerified) { parcel?.otpVerified == true }
+    var isPinVerified by remember(isAlreadyOtpVerified, isPickup) { mutableStateOf(isPickup || isAlreadyOtpVerified) }
+
     var otpInput by remember { mutableStateOf("") }
     var isVerifyingOtp by remember { mutableStateOf(false) }
     var otpErrorMessage by remember { mutableStateOf<String?>(null) }
@@ -99,6 +104,8 @@ fun ProofOfDeliveryScreen(
             isSignatureStep = false
         } else if (capturedBitmap != null) {
             capturedBitmap = null
+        } else if (isPinVerified && !isPickup && !isAlreadyOtpVerified) {
+            isPinVerified = false
         } else {
             navController.popBackStack()
         }
@@ -131,8 +138,8 @@ fun ProofOfDeliveryScreen(
         }
     }
 
-    LaunchedEffect(hasCameraPermission, lifecycleOwner, capturedBitmap, isSignatureStep) {
-        if (hasCameraPermission && capturedBitmap == null && !isSignatureStep) {
+    LaunchedEffect(hasCameraPermission, lifecycleOwner, capturedBitmap, isSignatureStep, isPinVerified) {
+        if (hasCameraPermission && capturedBitmap == null && !isSignatureStep && isPinVerified) {
             try {
                 cameraController.unbind()
                 cameraController.bindToLifecycle(lifecycleOwner)
@@ -158,14 +165,17 @@ fun ProofOfDeliveryScreen(
                 title = when {
                     isPickup -> "Pickup Photo Proof"
                     isSignatureStep -> "Customer Signature"
-                    capturedBitmap != null -> "Handover & PIN"
-                    else -> "Proof of Delivery"
+                    !isPinVerified -> "Recipient Handover PIN"
+                    capturedBitmap != null -> "Confirm Delivery Photo"
+                    else -> "Capture Delivery Photo"
                 },
                 onBack = {
                     if (isSignatureStep) {
                         isSignatureStep = false
                     } else if (capturedBitmap != null) {
                         capturedBitmap = null
+                    } else if (isPinVerified && !isPickup && !isAlreadyOtpVerified) {
+                        isPinVerified = false
                     } else {
                         navController.popBackStack()
                     }
@@ -216,9 +226,10 @@ fun ProofOfDeliveryScreen(
                     ) {
                         val stepBadgeText = when {
                             isPickup -> "STEP 1/1 • PICKUP PHOTO"
-                            isSignatureStep -> if (signatureRequired) "STEP 3/3 • SIGNATURE" else "STEP 2/2 • SIGNATURE"
-                            capturedBitmap != null -> if (signatureRequired) "STEP 2/3 • RECIPIENT PIN" else "STEP 2/2 • RECIPIENT PIN"
-                            else -> if (signatureRequired) "STEP 1/3 • PHOTO PROOF" else "STEP 1/2 • PHOTO PROOF"
+                            !isPinVerified -> if (signatureRequired) "STEP 1/3 • RECIPIENT PIN" else "STEP 1/2 • RECIPIENT PIN"
+                            isSignatureStep -> "STEP 3/3 • SIGNATURE"
+                            capturedBitmap != null -> "CONFIRM PHOTO"
+                            else -> if (signatureRequired) "STEP 2/3 • PHOTO PROOF" else "STEP 2/2 • PHOTO PROOF"
                         }
                         Text(
                             text = stepBadgeText,
@@ -270,14 +281,216 @@ fun ProofOfDeliveryScreen(
                                     context,
                                     if (success) "Signature saved & delivery completed!" else "Delivery updated.",
                                     Toast.LENGTH_SHORT
-                               ).show()
+                                ).show()
                                 navController.popBackStack()
                             }
                         }
                     }
                 }
 
-                // STEP 2: Photo Captured -> Enter PIN (Delivery) or Confirm Pickup (Pickup)
+                // STEP 1 (Delivery Handover): Enter Recipient PIN
+                !isPinVerified -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f)
+                            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                            .imePadding()
+                            .padding(horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        val receiverPhone = parcel?.receiverPhone ?: ""
+                        val receiverName = parcel?.receiverName?.ifBlank { "Recipient" } ?: "Recipient"
+
+                        // Recipient Contact Card with Direct Call Action (NO SMS button)
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Charcoal,
+                            border = BorderStroke(1.dp, Slate.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
+                                    Text(
+                                        text = "Recipient",
+                                        fontSize = 11.sp,
+                                        color = TextGray,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = receiverName,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    if (receiverPhone.isNotBlank()) {
+                                        Text(
+                                            text = receiverPhone,
+                                            fontSize = 12.sp,
+                                            color = Gold,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+
+                                if (receiverPhone.isNotBlank()) {
+                                    Surface(
+                                        onClick = {
+                                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$receiverPhone"))
+                                            context.startActivity(intent)
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Gold.copy(alpha = 0.15f),
+                                        border = BorderStroke(1.dp, Gold)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Filled.Phone, contentDescription = "Call", tint = Gold, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Call", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Text(
+                            text = "Recipient Handover PIN",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Text(
+                            text = "Ask the recipient for their 4-digit security PIN to confirm handover.",
+                            fontSize = 13.sp,
+                            color = TextGray,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 6.dp, bottom = 20.dp)
+                        )
+
+                        // 4-Digit Numeric PIN Input
+                        OutlinedTextField(
+                            value = otpInput,
+                            onValueChange = { input ->
+                                val digitsOnly = input.filter { it.isDigit() }.take(4)
+                                otpInput = digitsOnly
+                                otpErrorMessage = null
+                            },
+                            placeholder = {
+                                Text(
+                                    text = "• • • •",
+                                    fontSize = 28.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = TextGray.copy(alpha = 0.4f),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                            ),
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontSize = 30.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Gold,
+                                textAlign = TextAlign.Center,
+                                letterSpacing = 14.sp
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Gold,
+                                unfocusedBorderColor = Gold.copy(alpha = 0.35f),
+                                focusedContainerColor = Charcoal,
+                                unfocusedContainerColor = Charcoal,
+                                cursorColor = Gold
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth(0.75f)
+                                .height(68.dp)
+                        )
+
+                        if (otpErrorMessage != null) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = otpErrorMessage!!,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFFF5252),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(28.dp))
+
+                        // VERIFY PIN BUTTON -> ADVANCES TO CAMERA
+                        Button(
+                            onClick = {
+                                if (otpInput.length == 4 && !isVerifyingOtp) {
+                                    isVerifyingOtp = true
+                                    otpErrorMessage = null
+
+                                    viewModel.verifyDeliveryOtpByRider(parcelId, otpInput) { otpSuccess, err ->
+                                        isVerifyingOtp = false
+                                        if (otpSuccess) {
+                                            isPinVerified = true
+                                        } else {
+                                            otpErrorMessage = err ?: "Invalid 4-digit PIN. Please verify with recipient."
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp)
+                                .tactilePress(scaleDown = 0.96f),
+                            enabled = otpInput.length == 4 && !isVerifyingOtp,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Gold,
+                                contentColor = Obsidian,
+                                disabledContainerColor = Gold.copy(alpha = 0.3f),
+                                disabledContentColor = Obsidian.copy(alpha = 0.5f)
+                            )
+                        ) {
+                            if (isVerifyingOtp) {
+                                CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(22.dp), strokeWidth = 2.5.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Verifying PIN...", color = Obsidian, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = Obsidian,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "VERIFY PIN & TAKE PHOTO",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 13.sp,
+                                    color = Obsidian
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // STEP 2: Photo Captured -> Review & Complete
                 capturedBitmap != null -> {
                     if (isPickup) {
                         // PICKUP CONFIRMATION
@@ -392,245 +605,72 @@ fun ProofOfDeliveryScreen(
                             }
                         }
                     } else {
-                        // DELIVERY HANDOVER: PHOTO PREVIEW + RECIPIENT PIN & CONTACT
+                        // DELIVERY HANDOVER: PHOTO PREVIEW -> COMPLETE DELIVERY
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .weight(1f),
+                                .weight(1f)
+                                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            // Top Compact Photo Preview Card with Retake Action
-                            Surface(
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(110.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                color = Charcoal,
-                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                                    .height(340.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(Color.Black)
+                                    .border(1.5.dp, Gold, RoundedCornerShape(18.dp))
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Image(
-                                        bitmap = capturedBitmap!!.asImageBitmap(),
-                                        contentDescription = "Delivery Proof Thumbnail",
-                                        modifier = Modifier
-                                            .size(94.dp)
-                                            .clip(RoundedCornerShape(12.dp)),
-                                        contentScale = ContentScale.Crop
-                                    )
-
-                                    Spacer(modifier = Modifier.width(12.dp))
-
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.Center
-                                    ) {
-                                        Text(
-                                            text = "Arrival Photo Captured",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                        Text(
-                                            text = "Photo proof ready for upload",
-                                            fontSize = 11.sp,
-                                            color = TextGray
-                                        )
-
-                                        Spacer(modifier = Modifier.height(6.dp))
-
-                                        Surface(
-                                            onClick = { if (!isUploading && !isVerifyingOtp) capturedBitmap = null },
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = Gold.copy(alpha = 0.15f),
-                                            border = BorderStroke(0.8.dp, Gold)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(Icons.Filled.Refresh, contentDescription = null, tint = Gold, modifier = Modifier.size(14.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Retake Photo", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Gold)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Receiver Name & Quick Contact Action Buttons
-                            val receiverPhone = parcel?.receiverPhone ?: ""
-                            val receiverName = parcel?.receiverName?.ifBlank { "Recipient" } ?: "Recipient"
-
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(16.dp),
-                                color = Charcoal,
-                                border = BorderStroke(1.dp, Slate.copy(alpha = 0.5f))
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f, fill = false)) {
-                                        Text(
-                                            text = "Recipient",
-                                            fontSize = 10.sp,
-                                            color = TextGray,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                        Text(
-                                            text = receiverName,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
-
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        // Call Receiver Button
-                                        Surface(
-                                            onClick = {
-                                                if (receiverPhone.isNotBlank()) {
-                                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$receiverPhone"))
-                                                    context.startActivity(intent)
-                                                } else {
-                                                    Toast.makeText(context, "Recipient phone number not available", Toast.LENGTH_SHORT).show()
-                                                }
-                                            },
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = Gold.copy(alpha = 0.15f),
-                                            border = BorderStroke(1.dp, Gold)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(Icons.Filled.Phone, contentDescription = "Call", tint = Gold, modifier = Modifier.size(14.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Call", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Gold)
-                                            }
-                                        }
-
-                                        // SMS Receiver Button
-                                        Surface(
-                                            onClick = {
-                                                if (receiverPhone.isNotBlank()) {
-                                                    val formattedId = FormatUtils.formatDisplayTrackingId(parcelId)
-                                                    val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$receiverPhone")).apply {
-                                                        putExtra("sms_body", "Hello $receiverName, your ESDispatch courier has arrived with delivery ($formattedId). Please provide your 4-digit handover PIN.")
-                                                    }
-                                                    context.startActivity(intent)
-                                                } else {
-                                                    Toast.makeText(context, "Recipient phone number not available", Toast.LENGTH_SHORT).show()
-                                                }
-                                            },
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = Charcoal,
-                                            border = BorderStroke(1.dp, TextGray.copy(alpha = 0.5f))
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(Icons.Filled.Sms, contentDescription = "SMS", tint = Color.White, modifier = Modifier.size(14.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("SMS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Text(
-                                text = "Recipient Handover PIN",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                textAlign = TextAlign.Center
-                            )
-
-                            Text(
-                                text = "Ask the recipient for their 4-digit security PIN to complete handover.",
-                                fontSize = 12.sp,
-                                color = TextGray,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
-                            )
-
-                            // 4-Digit Numeric PIN Input
-                            OutlinedTextField(
-                                value = otpInput,
-                                onValueChange = { input ->
-                                    val digitsOnly = input.filter { it.isDigit() }.take(4)
-                                    otpInput = digitsOnly
-                                    otpErrorMessage = null
-                                },
-                                placeholder = {
-                                    Text(
-                                        text = "• • • •",
-                                        fontSize = 26.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = TextGray.copy(alpha = 0.4f),
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                singleLine = true,
-                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
-                                ),
-                                textStyle = androidx.compose.ui.text.TextStyle(
-                                    fontSize = 28.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Gold,
-                                    textAlign = TextAlign.Center,
-                                    letterSpacing = 12.sp
-                                ),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Gold,
-                                    unfocusedBorderColor = Gold.copy(alpha = 0.35f),
-                                    focusedContainerColor = Charcoal,
-                                    unfocusedContainerColor = Charcoal,
-                                    cursorColor = Gold
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth(0.72f)
-                                    .height(66.dp)
-                            )
-
-                            if (otpErrorMessage != null) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = otpErrorMessage!!,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFFF5252),
-                                    textAlign = TextAlign.Center
+                                Image(
+                                    bitmap = capturedBitmap!!.asImageBitmap(),
+                                    contentDescription = "Delivery Proof Thumbnail",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
                                 )
+
+                                Surface(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(12.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Obsidian.copy(alpha = 0.85f),
+                                    border = BorderStroke(1.dp, Gold)
+                                ) {
+                                    Text(
+                                        text = "Handover Photo Preview",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Gold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
+                                }
                             }
 
-                            Spacer(modifier = Modifier.weight(1f))
+                            Spacer(modifier = Modifier.height(20.dp))
 
-                            // VERIFY & COMPLETE HANDOVER BUTTON
-                            Button(
-                                onClick = {
-                                    if (otpInput.length == 4 && !isVerifyingOtp && !isUploading) {
-                                        isVerifyingOtp = true
-                                        otpErrorMessage = null
-                                        uploadStatusText = "Verifying PIN & Finalizing..."
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { if (!isUploading) capturedBitmap = null },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(54.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.2.dp, Color.Gray.copy(alpha = 0.5f)),
+                                    enabled = !isUploading
+                                ) {
+                                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Retake", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (isUploading) return@Button
+                                        isUploading = true
+                                        uploadStatusText = "Finalizing Handover..."
 
                                         val bitmap = capturedBitmap!!
                                         val maxDim = 1024
@@ -646,55 +686,43 @@ fun ProofOfDeliveryScreen(
                                         scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
                                         val photoBytes = stream.toByteArray()
 
-                                        viewModel.verifyDeliveryOtpByRider(parcelId, otpInput) { otpSuccess, err ->
-                                            if (otpSuccess) {
-                                                viewModel.uploadDeliveryPhotoAndVerify(parcelId, photoBytes, "proof") { photoSuccess, _ ->
-                                                    isVerifyingOtp = false
-                                                    if (signatureRequired) {
-                                                        isSignatureStep = true
-                                                    } else {
-                                                        Toast.makeText(context, "Handover verified & delivery completed!", Toast.LENGTH_SHORT).show()
-                                                        navController.popBackStack()
-                                                    }
-                                                }
+                                        viewModel.uploadDeliveryPhotoAndVerify(parcelId, photoBytes, "proof") { photoSuccess, _ ->
+                                            isUploading = false
+                                            if (signatureRequired) {
+                                                isSignatureStep = true
                                             } else {
-                                                isVerifyingOtp = false
-                                                otpErrorMessage = err ?: "Invalid 4-digit PIN. Please verify with recipient."
+                                                Toast.makeText(context, "Handover verified & delivery completed!", Toast.LENGTH_SHORT).show()
+                                                navController.popBackStack()
                                             }
                                         }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1.8f)
+                                        .height(54.dp)
+                                        .tactilePress(scaleDown = 0.96f),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                    enabled = !isUploading
+                                ) {
+                                    if (isUploading) {
+                                        CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(22.dp), strokeWidth = 2.5.dp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(uploadStatusText, color = Obsidian, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    } else {
+                                        Icon(
+                                            imageVector = if (signatureRequired) Icons.Filled.DriveFileRenameOutline else Icons.Filled.Check,
+                                            contentDescription = null,
+                                            tint = Obsidian,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (signatureRequired) "SAVE PHOTO & SIGN" else "COMPLETE DELIVERY",
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 13.sp,
+                                            color = Obsidian
+                                        )
                                     }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(54.dp)
-                                    .tactilePress(scaleDown = 0.96f),
-                                enabled = otpInput.length == 4 && !isVerifyingOtp && !isUploading,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Gold,
-                                    contentColor = Obsidian,
-                                    disabledContainerColor = Gold.copy(alpha = 0.3f),
-                                    disabledContentColor = Obsidian.copy(alpha = 0.5f)
-                                )
-                            ) {
-                                if (isVerifyingOtp || isUploading) {
-                                    CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(22.dp), strokeWidth = 2.5.dp)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(uploadStatusText, color = Obsidian, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                } else {
-                                    Icon(
-                                        imageVector = if (signatureRequired) Icons.Filled.DriveFileRenameOutline else Icons.Filled.Check,
-                                        contentDescription = null,
-                                        tint = Obsidian,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = if (signatureRequired) "VERIFY PIN & PROCEED TO SIGNATURE" else "VERIFY PIN & COMPLETE HANDOVER",
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 13.sp,
-                                        color = Obsidian
-                                    )
                                 }
                             }
                         }
@@ -750,7 +778,7 @@ fun ProofOfDeliveryScreen(
                                         border = BorderStroke(1.dp, Gold.copy(alpha = 0.6f))
                                     ) {
                                         Text(
-                                            text = if (isPickup) "Position collected parcel inside frame" else "Position parcel proof inside frame",
+                                            text = if (isPickup) "Position collected parcel inside frame" else "PIN Verified • Position parcel inside frame",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = Gold,

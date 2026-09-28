@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from "react";
 import { createPortal } from "react-dom";
 
@@ -267,7 +267,19 @@ function EdLogoSvg({ size = 36, className = "", dark = false }: { size?: number;
 }
 
 function fmt(n: number): string { return "₦" + n.toLocaleString("en-US"); }
-function idShort(id: string): string { return id.length > 8 ? id.slice(-8) : id; }
+function idShort(id: string): string {
+  if (!id) return "ESD-PENDING";
+  const trimmed = id.trim();
+  const upper = trimmed.toUpperCase();
+  if (upper.startsWith("RDR-")) return upper;
+  const stripped = upper
+    .replace(/^ESD-/, "")
+    .replace(/^TRK-/, "")
+    .replace(/^ORD-/, "")
+    .replace(/[^A-Z0-9]/g, "");
+  const slice = stripped.length > 8 ? stripped.slice(0, 8) : stripped;
+  return `ESD-${slice || "SHIPMENT"}`;
+}
 function rBadge(role: string): string {
   switch (role) {
     case "rider": return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
@@ -523,7 +535,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
           await setDoc(notifRef, {
             id: notifRef.id,
             title: "Rider Assigned!",
-            message: `${rider.name} (${rider.phone || "Courier"}) has been assigned to your shipment #${idShort(deliveryId)}.`,
+            message: `${rider.name} (${rider.phone || "Courier"}) has been assigned to your shipment ${idShort(deliveryId)}.`,
             time: "Just now",
             isRead: false,
             parcelId: deliveryId,
@@ -531,7 +543,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
           });
         } catch (_) {}
       }
-      if (addToast) addToast("success", `Assigned ${rider.name} to shipment #${idShort(deliveryId)}`);
+      if (addToast) addToast("success", `Assigned ${rider.name} to shipment ${idShort(deliveryId)}`);
     } catch (err: any) {
       console.error("Failed to assign rider:", err);
       if (addToast) addToast("error", "Could not assign rider: " + err.message);
@@ -1010,7 +1022,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-extrabold text-xs text-gray-900 dark:text-white">{d.itemName || "Consignment"}</span>
-                                <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-semibold">#{idShort(d.id)}</span>
+                                <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-semibold">{idShort(d.id)}</span>
                                 <span className={"text-[9px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status}</span>
                                 <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-900 dark:text-amber-300">
                                   FIFO #{qIdx + 1} • {createdAgo}
@@ -1280,7 +1292,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="font-extrabold text-sm text-[#111] dark:text-white truncate">{d.itemName || "Consignment"}</p>
-                        <span className="text-[10px] font-mono font-bold text-gray-700 dark:text-gray-300">#{idShort(d.id)}</span>
+                        <span className="text-[10px] font-mono font-bold text-gray-700 dark:text-gray-300">{idShort(d.id)}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300 truncate mt-0.5">
                         <span className="font-medium text-[#111] dark:text-white truncate max-w-[140px] sm:max-w-[260px]">{d.pickupAddress || "Pickup"}</span>
@@ -2144,7 +2156,7 @@ function AdminDashboardPage() {
               setNewOrderAlert(prev => {
                 if (prev?.id === change.doc.id) {
                   if (status === "CANCELLED") {
-                    addToast("info", `Order #${idShort(change.doc.id)} was cancelled by user.`);
+                    addToast("info", `Order ${idShort(change.doc.id)} was cancelled by user.`);
                   }
                   return null;
                 }
@@ -2625,7 +2637,7 @@ function AdminDashboardPage() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 dark:text-[#FFB800] bg-amber-200/80 dark:bg-black/60 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-[#FFB800]/30">New Booking Received</span>
-                  <span className="text-xs text-gray-700 dark:text-gray-300 font-mono font-bold">#{idShort(newOrderAlert.id)}</span>
+                  <span className="text-xs text-gray-700 dark:text-gray-300 font-mono font-bold">{idShort(newOrderAlert.id)}</span>
                 </div>
                 <p className="text-xs sm:text-sm font-bold text-[#111] dark:text-white mt-1 truncate">
                   {newOrderAlert.itemName} • Deliver to <span className="text-amber-900 dark:text-[#FFB800] font-black">{newOrderAlert.receiverName}</span> ({newOrderAlert.deliveryAddress})
@@ -5041,7 +5053,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
             const newPin = Math.floor(1000 + Math.random() * 9000).toString();
             rootUpdates.otpCode = newPin;
             generatedPinCount++;
-            logMsg(`Generated Handover PIN (${newPin}) for active shipment #${idShort(delId)}`);
+            logMsg(`Generated Handover PIN (${newPin}) for active shipment ${idShort(delId)}`);
           }
 
           // Check 2: Completed timestamp exists but status is stuck in ARRIVED / TRANSIT / OUT_FOR_DELIVERY
@@ -5050,7 +5062,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
             rootUpdates.progress = 1.0;
             rootUpdates.otpVerified = true;
             resolvedStatusCount++;
-            logMsg(`Resolved stuck delivery #${idShort(delId)} to DELIVERED status`);
+            logMsg(`Resolved stuck delivery ${idShort(delId)} to DELIVERED status`);
           }
 
           // Check 3: Status is DELIVERED but progress is < 1.0 or otpVerified is false
@@ -5439,7 +5451,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
               await setDoc(refundTxRef, {
                 id: refundTxRef.id,
                 userId: del.userId,
-                title: `Refund: Order #${idShort(del.id)} Cancelled`,
+                title: `Refund: Order ${idShort(del.id)} Cancelled`,
                 amount: del.price,
                 type: "CREDIT",
                 status: "SUCCESS",
@@ -5458,7 +5470,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
               await setDoc(riderNotifRef, {
                 id: riderNotifRef.id,
                 title: "Dispatch Cancelled",
-                message: `Shipment #${idShort(del.id)} (${del.itemName || "Delivery"}) was cancelled by administrative dispatch.`,
+                message: `Shipment ${idShort(del.id)} (${del.itemName || "Delivery"}) was cancelled by administrative dispatch.`,
                 time: "Just now",
                 isRead: false,
                 parcelId: del.id,
@@ -5481,7 +5493,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
               TRANSIT: "Your shipment is in transit and on the way to the delivery address.",
               OUT_FOR_DELIVERY: `Your rider ${del.courierName || ""} is out for final delivery handover.`,
               DELIVERED: "Your package has been safely delivered. Thank you for choosing ESDispatch!",
-              CANCELLED: `Your shipment order #${idShort(del.id)} has been cancelled and any paid funds have been refunded to your wallet.`
+              CANCELLED: `Your shipment order ${idShort(del.id)} has been cancelled and any paid funds have been refunded to your wallet.`
             };
             if (statusMessages[newStatus]) {
               const notifRef = doc(collection(db, "users", del.userId, "notifications"));
@@ -5526,7 +5538,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
             await setDoc(notifRef, {
               id: notifRef.id,
               title: "New Handover Verification PIN",
-              message: `Your updated 4-digit handover PIN for delivery #${idShort(delivery.id)} is: ${newOtp}. Valid for 24 hours.`,
+              message: `Your updated 4-digit handover PIN for delivery ${idShort(delivery.id)} is: ${newOtp}. Valid for 24 hours.`,
               time: "Just now",
               isRead: false,
               parcelId: delivery.id,
@@ -5559,7 +5571,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
             await setDoc(notifRef, {
               id: notifRef.id,
               title: "Rider Assigned!",
-              message: `${rider.name} (${rider.phone || "Active Courier"}) has been assigned to your shipment #${idShort(deliveryId)}.`,
+              message: `${rider.name} (${rider.phone || "Active Courier"}) has been assigned to your shipment ${idShort(deliveryId)}.`,
               time: "Just now",
               isRead: false,
               parcelId: deliveryId,
@@ -5576,7 +5588,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           await setDoc(notifRef, {
             id: notifRef.id,
             title: "New Delivery Assigned!",
-            message: `You have been assigned to delivery #${idShort(deliveryId)}. Tap to view route.`,
+            message: `You have been assigned to delivery ${idShort(deliveryId)}. Tap to view route.`,
             time: "Just now",
             isRead: false,
             parcelId: deliveryId,
@@ -5586,7 +5598,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           console.error("Failed to notify rider of assignment:", err);
         }
 
-        addToast?.("success", `Rider ${rider.name} successfully assigned to shipment #${idShort(deliveryId)}`);
+        addToast?.("success", `Rider ${rider.name} successfully assigned to shipment ${idShort(deliveryId)}`);
       } catch (err: any) {
         console.error("Failed to assign rider:", err);
         addToast?.("error", `Could not assign rider: ${err?.message || err}`);
@@ -5613,7 +5625,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
             await setDoc(notifRef, {
               id: notifRef.id,
               title: "Rider Reserved",
-              message: `${rider.name} has been reserved for your shipment #${idShort(deliveryId)} and will be dispatched once their current drop is finished.`,
+              message: `${rider.name} has been reserved for your shipment ${idShort(deliveryId)} and will be dispatched once their current drop is finished.`,
               time: "Just now",
               isRead: false,
               parcelId: deliveryId,
@@ -5624,7 +5636,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           }
         }
 
-        addToast?.("success", `Rider ${rider.name} reserved as next courier for shipment #${idShort(deliveryId)}`);
+        addToast?.("success", `Rider ${rider.name} reserved as next courier for shipment ${idShort(deliveryId)}`);
       } catch (err: any) {
         console.error("Failed to reserve rider:", err);
         addToast?.("error", `Could not reserve rider: ${err?.message || err}`);
@@ -5644,7 +5656,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           courierAvatar: rider.photoUrl || "",
           updatedAt: Timestamp.now()
         });
-        addLog("Reassign Rider", `${del?.courierName || "Previous"} → ${rider.name} for #${idShort(deliveryId)}`);
+        addLog("Reassign Rider", `${del?.courierName || "Previous"} → ${rider.name} for ${idShort(deliveryId)}`);
 
         // Notify customer
         const targetUserId = del?.userId;
@@ -5654,7 +5666,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
             await setDoc(notifRef, {
               id: notifRef.id,
               title: "Rider Reassigned",
-              message: `${rider.name} (${rider.phone || "Active Courier"}) has been reassigned to your shipment #${idShort(deliveryId)}.`,
+              message: `${rider.name} (${rider.phone || "Active Courier"}) has been reassigned to your shipment ${idShort(deliveryId)}.`,
               time: "Just now",
               isRead: false,
               parcelId: deliveryId,
@@ -5672,7 +5684,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
             await setDoc(notifRef, {
               id: notifRef.id,
               title: "Mission Reassigned",
-              message: `Delivery #${idShort(deliveryId)} has been reassigned to another courier. You are no longer assigned to this delivery.`,
+              message: `Delivery ${idShort(deliveryId)} has been reassigned to another courier. You are no longer assigned to this delivery.`,
               time: "Just now",
               isRead: false,
               parcelId: deliveryId,
@@ -5689,7 +5701,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           await setDoc(notifRef, {
             id: notifRef.id,
             title: "New Delivery Assigned!",
-            message: `You have been assigned to delivery #${idShort(deliveryId)}: ${del?.pickupAddress || "Pickup"} → ${del?.deliveryAddress || "Dropoff"}.`,
+            message: `You have been assigned to delivery ${idShort(deliveryId)}: ${del?.pickupAddress || "Pickup"} → ${del?.deliveryAddress || "Dropoff"}.`,
             time: "Just now",
             isRead: false,
             parcelId: deliveryId,
@@ -5699,7 +5711,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           console.error("Failed to notify new rider:", err);
         }
 
-        addToast?.("success", `Shipment #${idShort(deliveryId)} successfully reassigned to ${rider.name}`);
+        addToast?.("success", `Shipment ${idShort(deliveryId)} successfully reassigned to ${rider.name}`);
       } catch (err: any) {
         console.error("Failed to reassign rider:", err);
         addToast?.("error", `Could not reassign rider: ${err?.message || err}`);
@@ -5754,7 +5766,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           batch.set(notifRef, {
             id: notifRef.id,
             title: bulkStatus === "DELIVERED" ? "Package Delivered" : `Shipment ${bulkStatus.replace(/_/g, " ")}`,
-            message: `Shipment #${idShort(id)} status updated to ${bulkStatus.replace(/_/g, " ")}.`,
+            message: `Shipment ${idShort(id)} status updated to ${bulkStatus.replace(/_/g, " ")}.`,
             time: "Just now",
             isRead: false,
             parcelId: id,
@@ -5789,7 +5801,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           batch.set(notifRef, {
             id: notifRef.id,
             title: "Rider Assigned!",
-            message: `${rider.name} (${rider.phone || "Active Courier"}) has been assigned to your shipment #${idShort(id)}.`,
+            message: `${rider.name} (${rider.phone || "Active Courier"}) has been assigned to your shipment ${idShort(id)}.`,
             time: "Just now",
             isRead: false,
             parcelId: id,
@@ -5860,7 +5872,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
             await setDoc(notifRef, {
               id: notifRef.id,
               title: "Shipment Booked",
-              message: `Your delivery #${idShort(ref.id)} (${newForm.itemName || "Parcel"}) has been successfully booked.`,
+              message: `Your delivery ${idShort(ref.id)} (${newForm.itemName || "Parcel"}) has been successfully booked.`,
               time: "Just now",
               isRead: false,
               parcelId: ref.id,
@@ -5871,7 +5883,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           }
         }
 
-        if (addToast) addToast("success", `Created new shipment #${idShort(ref.id)} (${newForm.itemName || "Parcel"})`);
+        if (addToast) addToast("success", `Created new shipment ${idShort(ref.id)} (${newForm.itemName || "Parcel"})`);
         setShowNew(false);
         setNewForm({ ...emptyNewForm });
       } catch (e: any) { 
@@ -5956,7 +5968,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                 }
               }
 
-              addLog("Status Update", `Shipment #${idShort(delId)} status updated to ${newStatus.toUpperCase()}`, "Shipments");
+              addLog("Status Update", `Shipment ${idShort(delId)} status updated to ${newStatus.toUpperCase()}`, "Shipments");
               if (addToast) addToast("success", `Status updated to ${newStatus.replace(/_/g, " ")}`);
             }}
             onPrintWaybill={(del: any) => setWaybillModal({ delivery: del, show: true })}
@@ -5977,7 +5989,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
           <p className="text-xs text-gray-600 dark:text-gray-400 font-medium max-w-sm mx-auto">
             {deliveries.length === 0
               ? "Syncing live delivery records from Firestore. Please hold on..."
-              : `Shipment #${idShort(selectedShipmentId)} could not be located in active records.`}
+              : `Shipment ${idShort(selectedShipmentId)} could not be located in active records.`}
           </p>
           <button
             onClick={() => {
@@ -6288,7 +6300,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
                           )}
                         </p>
                         <p className="text-[10px] font-mono text-gray-600 dark:text-gray-400 font-semibold mt-0.5 flex items-center gap-1">
-                          #{idShort(d.id)}
+                          {idShort(d.id)}
                         </p>
                       </td>
                       <td className="p-3.5 hidden md:table-cell cursor-pointer" onClick={() => setSelectedShipmentId(d.id)}>
@@ -6950,7 +6962,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
               </div>
 
               <div className="bg-[#FFB800]/10 rounded-2xl p-3.5 border border-[#FFB800]/30 space-y-1">
-                <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-bold">#{idShort(assignModal.delivery.id)}</span></p>
+                <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-bold">{idShort(assignModal.delivery.id)}</span></p>
                 <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{assignModal.delivery.pickupAddress} → {assignModal.delivery.deliveryAddress}</p>
                 <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Recipient: <b className="text-[#111] dark:text-white font-bold">{assignModal.delivery.receiverName}</b> ({assignModal.delivery.receiverPhone || "No phone"})</p>
               </div>
@@ -7056,7 +7068,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
               </div>
 
               <div className="bg-[#FFB800]/10 rounded-2xl p-3.5 border border-[#FFB800]/30 space-y-1">
-                <p className="text-xs font-bold text-[#111] dark:text-white">{reassignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-bold">#{idShort(reassignModal.delivery.id)}</span></p>
+                <p className="text-xs font-bold text-[#111] dark:text-white">{reassignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-bold">{idShort(reassignModal.delivery.id)}</span></p>
                 <p className="text-[10px] text-gray-600 dark:text-gray-400">Currently: <b className="text-[#111] dark:text-white font-bold">{reassignModal.delivery.courierName || "Unassigned"}</b></p>
                 <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{reassignModal.delivery.pickupAddress} → {reassignModal.delivery.deliveryAddress}</p>
               </div>
@@ -7236,7 +7248,7 @@ function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], search
             <div className="animate-scale-in bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
               <h3 className="text-base font-black text-[#111] dark:text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-[#FFB800]" /> Confirm Status Change</h3>
               <div className="space-y-2 text-xs">
-                <p className="text-gray-700 dark:text-gray-300">Are you sure you want to change the status of shipment <span className="font-bold text-[#111] dark:text-white">#{idShort(confirmStatusModal.delivery.id)}</span>?</p>
+                <p className="text-gray-700 dark:text-gray-300">Are you sure you want to change the status of shipment <span className="font-bold text-[#111] dark:text-white">{idShort(confirmStatusModal.delivery.id)}</span>?</p>
                 <div className="flex items-center gap-2">
                   <span className={"px-2 py-1 rounded-lg text-[10px] font-bold " + sStyle(confirmStatusModal.delivery.status)}>{confirmStatusModal.delivery.status}</span>
                   <span className="text-gray-500 dark:text-gray-400 font-bold">→</span>
@@ -10420,7 +10432,7 @@ function TrackingTab({ deliveries, drivers, addressRegistry, geoCenter, onNewDis
         return <div key={d.id} onClick={() => setTSelectedId(tSelectedId === d.id ? null : d.id)} className={"bg-white dark:bg-[#1a1a1a] border rounded-3xl p-5 shadow-sm animate-fade-in cursor-pointer transition-all " + (tSelectedId === d.id ? "border-[#FFB800] ring-2 ring-[#FFB800]/30" : "border-gray-200 dark:border-white/10 hover:border-[#FFB800]/50")}>
           <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
             <div><p className="font-bold text-[#111] dark:text-white">{d.itemName || "Parcel"}</p>
-              <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">#{idShort(d.id)} • {d.receiverName} → {d.deliveryAddress}</p>
+              <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">{idShort(d.id)} • {d.receiverName} → {d.deliveryAddress}</p>
               {d.courierName && <p className="text-[10px] text-amber-800 dark:text-[#FFB800] mt-0.5 font-bold">{d.courierName}</p>}</div>
             <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status.replace(/_/g, " ")}</span>
           </div>

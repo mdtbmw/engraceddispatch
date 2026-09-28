@@ -2512,12 +2512,7 @@ object FirebaseManager {
         val effectiveCustomerId = customerId.ifBlank { auth?.currentUser?.uid ?: "" }
         val parcelDoc = db.collection("deliveries").document(parcelId)
         
-        parcelDoc.get().addOnSuccessListener { parcelSnap ->
-            val effectiveRiderId = riderId.ifBlank {
-                if (parcelSnap.exists()) {
-                    parcelSnap.getString("riderId") ?: parcelSnap.getString("driverId") ?: ""
-                } else ""
-            }
+        val proceedWithRatingAndTip: (String) -> Unit = { resolvedRiderId ->
             val actualTip = tipAmount.coerceAtLeast(0.0)
             val now = System.currentTimeMillis()
             val ratingId = "RATE-$parcelId-$now"
@@ -2533,23 +2528,27 @@ object FirebaseManager {
             )
 
             // 1. Update primary deliveries document
-            parcelDoc.set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
-
-            // 2. Dual write to parcels collection
-            db.collection("parcels").document(parcelId)
-                .set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
-
-            // 3. Dual write to customer user delivery subcollection
-            if (effectiveCustomerId.isNotEmpty()) {
-                db.collection("users").document(effectiveCustomerId).collection("deliveries").document(parcelId)
+            try {
+                parcelDoc.set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
+                db.collection("parcels").document(parcelId)
                     .set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
+            } catch (e: Exception) {
+                Log.w(TAG, "Notice: could not update delivery doc rating fields: ${e.message}")
             }
 
-            // 4. Record customer review/rating in root ratings collection
+            // 2. Dual write to customer user delivery subcollection
+            if (effectiveCustomerId.isNotEmpty()) {
+                try {
+                    db.collection("users").document(effectiveCustomerId).collection("deliveries").document(parcelId)
+                        .set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
+                } catch (_: Exception) {}
+            }
+
+            // 3. Record customer review/rating in root ratings collection
             val ratingData = hashMapOf(
                 "id" to ratingId,
                 "parcelId" to parcelId,
-                "riderId" to effectiveRiderId,
+                "riderId" to resolvedRiderId,
                 "userId" to effectiveCustomerId,
                 "customerId" to effectiveCustomerId,
                 "rating" to rating,
@@ -2558,12 +2557,12 @@ object FirebaseManager {
             db.collection("ratings").document(ratingId)
                 .set(ratingData, com.google.firebase.firestore.SetOptions.merge())
 
-            // 5. If tip is provided, create tip record in /rider_tips
+            // 4. If tip is provided, create tip record in /rider_tips
             if (actualTip > 0.0) {
                 val tipData = hashMapOf(
                     "id" to tipId,
                     "parcelId" to parcelId,
-                    "riderId" to effectiveRiderId,
+                    "riderId" to resolvedRiderId,
                     "userId" to effectiveCustomerId,
                     "customerId" to effectiveCustomerId,
                     "amount" to actualTip,
@@ -2592,9 +2591,18 @@ object FirebaseManager {
             }
 
             onComplete(true, null)
+        }
+
+        parcelDoc.get().addOnSuccessListener { parcelSnap ->
+            val effectiveRiderId = riderId.ifBlank {
+                if (parcelSnap.exists()) {
+                    parcelSnap.getString("riderId") ?: parcelSnap.getString("driverId") ?: ""
+                } else ""
+            }
+            proceedWithRatingAndTip(effectiveRiderId)
         }.addOnFailureListener { e ->
-            Log.e(TAG, "Failed to submit rating & tip: ${e.message}", e)
-            onComplete(false, e.message ?: "Failed to submit rating & tip.")
+            Log.w(TAG, "parcelDoc fetch failed (${e.message}), proceeding with direct rating and tip")
+            proceedWithRatingAndTip(riderId)
         }
     }
 
