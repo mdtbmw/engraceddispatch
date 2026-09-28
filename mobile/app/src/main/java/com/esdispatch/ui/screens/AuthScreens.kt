@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.sp
 import com.esdispatch.ui.components.RoundedSheet
 import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.components.PinInputField
+import com.esdispatch.ui.components.TermsOfServiceSheet
+import com.esdispatch.ui.components.PrivacyPolicySheet
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 import kotlinx.coroutines.delay
@@ -196,8 +198,10 @@ fun LoginScreen(
                 val googleEmail = account.email ?: ""
                 val idToken = account.idToken ?: "google_oauth_token_${googleEmail}"
                 
+                viewModel.showPreloader("Authenticating with Google...")
                 isValidatingPin = true
                 viewModel.signInWithGoogle(idToken, name, googleEmail) { success, result ->
+                    viewModel.hidePreloader()
                     if (success) {
                         if (result == "incomplete") {
                             // Profile in Firestore has no phone or PIN — user hasn't finished onboarding yet
@@ -216,9 +220,11 @@ fun LoginScreen(
                     isValidatingPin = false
                 }
             } else {
+                viewModel.hidePreloader()
                 Toast.makeText(context, "Google Sign-In failed", Toast.LENGTH_SHORT).show()
             }
         } catch (e: ApiException) {
+            viewModel.hidePreloader()
             android.util.Log.w("GoogleSignIn", "Google Sign-In caught exception with code: ${e.statusCode}.", e)
             val isCancelled = e.statusCode == 12501 || e.statusCode == 12502 || e.statusCode == 16 || e.statusCode == 4
             if (isCancelled) {
@@ -821,6 +827,9 @@ fun SignUpScreen(
     var isPinError by remember { mutableStateOf(false) }
     var isRegistering by remember { mutableStateOf(false) }
     var agreeToTerms by remember { mutableStateOf(true) }
+    var showTermsSheet by remember { mutableStateOf(false) }
+    var showPrivacySheet by remember { mutableStateOf(false) }
+    val shakeOffset = remember { Animatable(0f) }
     
     var isEmailTaken by remember { mutableStateOf(false) }
     var isPhoneTaken by remember { mutableStateOf(false) }
@@ -924,6 +933,7 @@ fun SignUpScreen(
                 val googleEmail = account.email ?: ""
                 val idToken = account.idToken ?: "google_oauth_token_${googleEmail}"
                 
+                viewModel.showPreloader("Authenticating with Google...")
                 isRegistering = true
                 val finalName = if (firstName.isNotBlank()) "$firstName $lastName".trim() else name
                 val finalEmail = if (email.isNotBlank()) email.trim() else googleEmail
@@ -937,6 +947,7 @@ fun SignUpScreen(
                     customPhone = finalPhone,
                     customPin = finalPin
                 ) { success, result ->
+                    viewModel.hidePreloader()
                     if (success) {
                         if (result == "incomplete") {
                             // Firebase Auth succeeded but Firestore has no phone/PIN yet — stay on this screen
@@ -954,9 +965,11 @@ fun SignUpScreen(
                     isRegistering = false
                 }
             } else {
+                viewModel.hidePreloader()
                 Toast.makeText(context, "Google Sign-In failed", Toast.LENGTH_SHORT).show()
             }
         } catch (e: ApiException) {
+            viewModel.hidePreloader()
             android.util.Log.w("GoogleSignIn", "Google Sign-In caught exception with code: ${e.statusCode}.", e)
             val isCancelled = e.statusCode == 12501 || e.statusCode == 12502 || e.statusCode == 16 || e.statusCode == 4
             if (isCancelled) {
@@ -1481,102 +1494,162 @@ fun SignUpScreen(
                             // STEP 3: Choose 4-Digit PIN Setup
                             Text(
                                 text = "Choose Security PIN",
-                                fontSize = 30.sp,
+                                fontSize = 26.sp,
                                 fontWeight = FontWeight.Black,
                                 color = AppOnSurface,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Secure your new account with a personalized access PIN.",
-                                fontSize = 14.sp,
-                                color = TextGray,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // User identity pill
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(if (isLight) GoldenWhiteLight else Charcoal)
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isLight) Obsidian else Gold),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Lock,
+                                        contentDescription = null,
+                                        tint = if (isLight) Gold else Obsidian,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "$firstName $lastName".trim().ifEmpty { "New Account" },
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AppOnSurface
+                                )
+                            }
 
                             Spacer(modifier = Modifier.height(24.dp))
 
-                            // Custom interactive personalization summary card
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(24.dp))
-                                    .background(if (isLight) GoldenWhiteLight else Charcoal)
-                                    .padding(16.dp)
+                            // PIN dots with shake animation on error
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.offset(x = shakeOffset.value.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
+                                for (i in 0 until 4) {
+                                    val isFilled = i < pin.length
+                                    val dotColor = when {
+                                        isPinError -> Color(0xFFEF4444)
+                                        isFilled -> Gold
+                                        else -> if (isDark) Color(0xFF2C2C2C) else Color(0xFFE2E8F0)
+                                    }
                                     Box(
                                         modifier = Modifier
-                                            .size(44.dp)
+                                            .size(16.dp)
                                             .clip(CircleShape)
-                                            .background(if (isLight) Obsidian else Gold),
-                                        contentAlignment = Alignment.Center
+                                            .background(dotColor)
+                                            .border(
+                                                1.5.dp,
+                                                if (isFilled || isPinError) dotColor else if (isDark) Color(0xFF404040) else Color(0xFFCBD5E1),
+                                                CircleShape
+                                            )
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            // Keypad (4 rows: 1-3, 4-6, 7-9, blank/0/Delete)
+                            val keyBg = Charcoal
+                            val keyBorder = if (isDark) Color(0xFF2C2C2C) else BorderLight
+                            val keyTextColor = AppTextColor
+                            val iconColor = AppTextColor
+
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                val rows = listOf(
+                                    listOf("1", "2", "3"),
+                                    listOf("4", "5", "6"),
+                                    listOf("7", "8", "9"),
+                                    listOf("", "0", "DEL")
+                                )
+
+                                rows.forEach { row ->
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(28.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Lock,
-                                            contentDescription = null,
-                                            tint = if (isLight) Gold else Obsidian,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "$firstName $lastName".trim(),
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = AppOnSurface
-                                        )
-                                        Text(
-                                            text = email,
-                                            fontSize = 12.sp,
-                                            color = TextGray
-                                        )
+                                        row.forEach { key ->
+                                            when (key) {
+                                                "" -> {
+                                                    Spacer(modifier = Modifier.size(68.dp))
+                                                }
+                                                "DEL" -> {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(68.dp)
+                                                            .clip(CircleShape)
+                                                            .background(keyBg)
+                                                            .border(1.dp, keyBorder, CircleShape)
+                                                            .clickable {
+                                                                if (pin.isNotEmpty()) {
+                                                                    pin = pin.dropLast(1)
+                                                                    isPinError = false
+                                                                }
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Backspace,
+                                                            contentDescription = "Delete",
+                                                            tint = iconColor,
+                                                            modifier = Modifier.size(24.dp)
+                                                        )
+                                                    }
+                                                }
+                                                else -> {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(68.dp)
+                                                            .clip(CircleShape)
+                                                            .background(keyBg)
+                                                            .border(1.dp, keyBorder, CircleShape)
+                                                            .clickable {
+                                                                if (pin.length < 4) {
+                                                                    pin += key
+                                                                    isPinError = false
+                                                                }
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = key,
+                                                            fontSize = 24.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = keyTextColor
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(32.dp))
-
-                            Text(
-                                text = "Choose Secure 4-Digit PIN",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AppOnSurface,
-                                modifier = Modifier.align(Alignment.Start).padding(start = 12.dp, bottom = 8.dp)
-                            )
-
-                            // Secure 4-Digit PIN Card Input
-                            PinInputField(
-                                pin = pin,
-                                onPinChange = {
-                                    pin = it
-                                    isPinError = false
-                                },
-                                isError = isPinError,
-                                obscureText = false // let them see what they chose
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Text(
-                                text = "This PIN serves as your high-security password for future sign-ins.",
-                                fontSize = 12.sp,
-                                color = TextGray,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            )
-
-                            Spacer(modifier = Modifier.height(32.dp))
+                            Spacer(modifier = Modifier.height(20.dp))
 
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { agreeToTerms = !agreeToTerms }
-                                    .padding(vertical = 8.dp),
+                                    .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Checkbox(
@@ -1588,121 +1661,157 @@ fun SignUpScreen(
                                         checkmarkColor = if (isLight) Gold else Obsidian
                                     )
                                 )
-                                Text(
-                                    text = "I agree to the Terms of Service & Privacy Policy",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = AppOnSurface.copy(alpha = 0.7f),
-                                    modifier = Modifier.padding(start = 4.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // SignUp Button
-                            Button(
-                                onClick = {
-                                    keyboardController?.hide()
-                                    focusManager.clearFocus()
-                                    if (!agreeToTerms) {
-                                        Toast.makeText(context, "Please agree to the Terms & Conditions to proceed.", Toast.LENGTH_SHORT).show()
-                                        return@Button
-                                    }
-                                    if (pin.isBlank()) {
-                                        Toast.makeText(context, "Please choose a 4-digit security PIN", Toast.LENGTH_SHORT).show()
-                                        return@Button
-                                    }
-                                    if (pin.length != 4) {
-                                        isPinError = true
-                                        Toast.makeText(context, "PIN must be exactly 4 digits", Toast.LENGTH_SHORT).show()
-                                        return@Button
-                                    }
-                                    if (viewModel.phoneVerificationRequired.value && !viewModel.isValidNigerianPhoneNumber(phone)) {
-                                        Toast.makeText(context, "Phone Verification is enabled. Please enter a valid Nigerian mobile number.", Toast.LENGTH_LONG).show()
-                                        return@Button
-                                    }
-                                    isRegistering = true
-                                    val fullName = "$firstName $lastName".trim()
-                                    scope.launch {
-                                        val phoneStatus = viewModel.awaitPhoneAvailability(phone)
-                                        if (phoneStatus == com.esdispatch.data.FirebaseManager.PhoneAvailability.TAKEN) {
-                                            isRegistering = false
-                                            Toast.makeText(context, "This phone number is already registered to another account.", Toast.LENGTH_LONG).show()
-                                            return@launch
-                                        }
-                                        if (isGoogleUser) {
-                                            viewModel.completeGoogleSignUp(phone, pin) { success, errorText ->
-                                                isRegistering = false
-                                                if (success) {
-                                                    viewModel.setGoogleAuthInProgress(false)
-                                                    com.esdispatch.util.CustomToastBridge.show("Google Registration Complete!", com.esdispatch.viewmodel.ToastType.SUCCESS)
-                                                    onNavigate("Preloader")
-                                                } else {
-                                                    com.esdispatch.util.CustomToastBridge.show(errorText ?: "Registration failed. Try again.", com.esdispatch.viewmodel.ToastType.ERROR)
-                                                }
-                                            }
-                                        } else {
-                                            viewModel.signUpWithFirebase(fullName, email, phone, pin, "customer", "") { success, errorText ->
-                                                isRegistering = false
-                                                if (success) {
-                                                    com.esdispatch.util.CustomToastBridge.show("Account Created with Security PIN!", com.esdispatch.viewmodel.ToastType.SUCCESS)
-                                                    onNavigate("Preloader")
-                                                } else {
-                                                    com.esdispatch.util.CustomToastBridge.show(errorText ?: "Registration failed. Try again.", com.esdispatch.viewmodel.ToastType.ERROR)
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                enabled = !isRegistering,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(60.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isLight) Obsidian else Gold,
-                                    contentColor = if (isLight) Gold else Obsidian
-                                )
-                            ) {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
+                                    modifier = Modifier.padding(start = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    if (isRegistering) {
-                                        CircularProgressIndicator(
-                                            color = if (isLight) Gold else Obsidian,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    } else {
-                                        Text(
-                                            text = "Register Now",
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = if (isLight) Gold else Obsidian
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Icon(
-                                            imageVector = Icons.Filled.ArrowForward,
-                                            contentDescription = null,
-                                            tint = if (isLight) Gold else Obsidian,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
+                                    Text(
+                                        text = "I agree to the ",
+                                        fontSize = 12.sp,
+                                        color = AppOnSurface.copy(alpha = 0.7f)
+                                    )
+                                    Text(
+                                        text = "Terms of Service",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isLight) Obsidian else Gold,
+                                        modifier = Modifier.clickable { showTermsSheet = true }
+                                    )
+                                    Text(
+                                        text = " & ",
+                                        fontSize = 12.sp,
+                                        color = AppOnSurface.copy(alpha = 0.7f)
+                                    )
+                                    Text(
+                                        text = "Privacy Policy",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isLight) Obsidian else Gold,
+                                        modifier = Modifier.clickable { showPrivacySheet = true }
+                                    )
                                 }
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // Back to contact info link
-                            Text(
-                                text = "Change Registration Info",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isLight) Obsidian else Gold,
-                                modifier = Modifier
-                                    .clickable { signUpStep = SignUpStep.NAME_SETUP }
-                                    .padding(vertical = 8.dp)
-                            )
+                            // Dual Action Buttons Row: [Change Info] [Register]
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        signUpStep = if (isGoogleUser) SignUpStep.CONTACT_INFO else SignUpStep.NAME_SETUP
+                                        pin = ""
+                                        isPinError = false
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(58.dp),
+                                    shape = RoundedCornerShape(22.dp),
+                                    border = BorderStroke(1.5.dp, if (isLight) Obsidian else Gold),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = if (isLight) Obsidian else Gold
+                                    )
+                                ) {
+                                    Text(
+                                        text = "Change Info",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Button(
+                                    onClick = {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus()
+                                        if (!agreeToTerms) {
+                                            Toast.makeText(context, "Please agree to the Terms & Conditions to proceed.", Toast.LENGTH_SHORT).show()
+                                            return@Button
+                                        }
+                                        if (pin.isBlank() || pin.length != 4) {
+                                            isPinError = true
+                                            scope.launch {
+                                                shakeOffset.animateTo(
+                                                    targetValue = 24f,
+                                                    animationSpec = keyframes {
+                                                        durationMillis = 350
+                                                        0f at 0
+                                                        -24f at 70
+                                                        24f at 140
+                                                        -16f at 210
+                                                        16f at 280
+                                                        0f at 350
+                                                    }
+                                                )
+                                            }
+                                            Toast.makeText(context, "Please enter a 4-digit security PIN", Toast.LENGTH_SHORT).show()
+                                            return@Button
+                                        }
+                                        if (viewModel.phoneVerificationRequired.value && !viewModel.isValidNigerianPhoneNumber(phone)) {
+                                            Toast.makeText(context, "Phone Verification is enabled. Please enter a valid Nigerian mobile number.", Toast.LENGTH_LONG).show()
+                                            return@Button
+                                        }
+                                        isRegistering = true
+                                        val fullName = "$firstName $lastName".trim()
+                                        scope.launch {
+                                            val phoneStatus = viewModel.awaitPhoneAvailability(phone)
+                                            if (phoneStatus == com.esdispatch.data.FirebaseManager.PhoneAvailability.TAKEN) {
+                                                isRegistering = false
+                                                Toast.makeText(context, "This phone number is already registered to another account.", Toast.LENGTH_LONG).show()
+                                                return@launch
+                                            }
+                                            if (isGoogleUser) {
+                                                viewModel.completeGoogleSignUp(phone, pin) { success, errorText ->
+                                                    isRegistering = false
+                                                    if (success) {
+                                                        viewModel.setGoogleAuthInProgress(false)
+                                                        com.esdispatch.util.CustomToastBridge.show("Google Registration Complete!", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                                                        onNavigate("Preloader")
+                                                    } else {
+                                                        com.esdispatch.util.CustomToastBridge.show(errorText ?: "Registration failed. Try again.", com.esdispatch.viewmodel.ToastType.ERROR)
+                                                    }
+                                                }
+                                            } else {
+                                                viewModel.signUpWithFirebase(fullName, email, phone, pin, "customer", "") { success, errorText ->
+                                                    isRegistering = false
+                                                    if (success) {
+                                                        com.esdispatch.util.CustomToastBridge.show("Account Created with Security PIN!", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                                                        onNavigate("Preloader")
+                                                    } else {
+                                                        com.esdispatch.util.CustomToastBridge.show(errorText ?: "Registration failed. Try again.", com.esdispatch.viewmodel.ToastType.ERROR)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    enabled = !isRegistering,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(58.dp),
+                                    shape = RoundedCornerShape(22.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isLight) Obsidian else Gold,
+                                        contentColor = if (isLight) Gold else Obsidian
+                                    )
+                                ) {
+                                    if (isRegistering) {
+                                        CircularProgressIndicator(
+                                            color = if (isLight) Gold else Obsidian,
+                                            modifier = Modifier.size(24.dp),
+                                            strokeWidth = 2.5.dp
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "Register",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isLight) Gold else Obsidian
+                                        )
+                                    }
+                                }
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
@@ -1811,6 +1920,13 @@ fun SignUpScreen(
             },
             containerColor = if (isDark) Obsidian else Color.White
         )
+    }
+
+    if (showTermsSheet) {
+        TermsOfServiceSheet(onDismiss = { showTermsSheet = false })
+    }
+    if (showPrivacySheet) {
+        PrivacyPolicySheet(onDismiss = { showPrivacySheet = false })
     }
 }
 

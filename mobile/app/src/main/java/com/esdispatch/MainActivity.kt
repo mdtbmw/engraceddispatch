@@ -38,6 +38,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import com.esdispatch.ui.components.GlobalPreloaderOverlay
 import com.esdispatch.ui.screens.*
 import com.esdispatch.ui.theme.MyApplicationTheme
 import com.esdispatch.ui.theme.Gold
@@ -425,6 +426,7 @@ class MainActivity : FragmentActivity() {
                 val isFirebaseConfigured by viewModel.isFirebaseConfigured.collectAsState()
                 val maintenanceMode by viewModel.maintenanceMode.collectAsState()
                 val isAppLocked by viewModel.isAppLocked.collectAsState()
+                val globalPreloaderState by viewModel.globalPreloaderState.collectAsState()
 
                 Box(
                     modifier = Modifier
@@ -885,6 +887,9 @@ class MainActivity : FragmentActivity() {
                         )
                     }
                 }
+
+                // Global Preloader (Luxury Pulsing Brand Logo Touch Blocker)
+                GlobalPreloaderOverlay(state = globalPreloaderState)
         }
     }
 }

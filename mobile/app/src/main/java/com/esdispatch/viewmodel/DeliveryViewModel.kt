@@ -48,6 +48,11 @@ data class ToastData(
     val id: Long = System.nanoTime()
 )
 
+data class GlobalPreloaderState(
+    val isVisible: Boolean = false,
+    val message: String = ""
+)
+
 enum class AppView {
     Dashboard,
     Booking,
@@ -1728,10 +1733,14 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun verifyDeliveryOtpByRider(parcelId: String, otpInput: String, onComplete: (Boolean, String?) -> Unit) {
+        showPreloader("Verifying handover PIN...")
         com.esdispatch.data.FirebaseManager.verifyDeliveryOtpByRider(
             parcelId = parcelId,
             otpInput = otpInput,
-            onComplete = onComplete
+            onComplete = { success, errorMsg ->
+                hidePreloader()
+                onComplete(success, errorMsg)
+            }
         )
     }
 
@@ -2426,6 +2435,18 @@ class DeliveryViewModel : WalletViewModel() {
 
     private val _customToastData = MutableStateFlow<ToastData?>(null)
     val customToastData: StateFlow<ToastData?> = _customToastData.asStateFlow()
+
+    // Global Preloader (Luxury Pulsing Logo Touch Blocker)
+    private val _globalPreloaderState = MutableStateFlow(GlobalPreloaderState())
+    val globalPreloaderState: StateFlow<GlobalPreloaderState> = _globalPreloaderState.asStateFlow()
+
+    fun showPreloader(message: String = "") {
+        _globalPreloaderState.value = GlobalPreloaderState(isVisible = true, message = message)
+    }
+
+    fun hidePreloader() {
+        _globalPreloaderState.value = GlobalPreloaderState(isVisible = false, message = "")
+    }
 
     fun showCustomToast(message: String, type: ToastType = ToastType.INFO) {
         showToast(message, type)
@@ -3655,6 +3676,7 @@ class DeliveryViewModel : WalletViewModel() {
         }
 
         viewModelScope.launch {
+            showPreloader("Creating your account...")
             _userRole.value = role
             _bikeNumber.value = bikeNumber
             if (role == "rider" || role == "customer") {
@@ -3704,8 +3726,10 @@ class DeliveryViewModel : WalletViewModel() {
                     }
 
                     triggerWelcomeNotification(name)
+                    hidePreloader()
                     onComplete(true, null)
                 } else {
+                    hidePreloader()
                     onComplete(false, error ?: "Registration failed. Please try again.")
                 }
             }
@@ -3736,13 +3760,16 @@ class DeliveryViewModel : WalletViewModel() {
         }
 
         viewModelScope.launch {
+            showPreloader("Setting up account...")
             val uid = _firebaseUserId.value ?: com.esdispatch.data.FirebaseManager.auth?.currentUser?.uid
             if (uid.isNullOrEmpty()) {
+                hidePreloader()
                 onComplete(false, "Google authentication session missing. Please tap Google sign-in again.")
                 return@launch
             }
             val email = _userEmail.value.ifBlank { com.esdispatch.data.FirebaseManager.auth?.currentUser?.email ?: "" }
             if (email.isBlank()) {
+                hidePreloader()
                 onComplete(false, "Google email not available. Please sign in again.")
                 return@launch
             }
@@ -3784,6 +3811,7 @@ class DeliveryViewModel : WalletViewModel() {
             resetTourGuidePreference()
             triggerWelcomeNotification(name)
 
+            hidePreloader()
             onComplete(true, null)
         }
     }
@@ -3797,6 +3825,7 @@ class DeliveryViewModel : WalletViewModel() {
         customPin: String? = null,
         onComplete: (Boolean, String?) -> Unit
     ) {
+        showPreloader("Authenticating with Google...")
         viewModelScope.launch {
             com.esdispatch.data.FirebaseManager.signInWithGoogleIdToken(idToken) { success, firebaseUser, error ->
                 if (success && firebaseUser != null) {
@@ -3850,6 +3879,7 @@ class DeliveryViewModel : WalletViewModel() {
                             } catch (_: Exception) {}
 
                             val isProfileComplete = finalPhone.isNotBlank() && finalPin.isNotBlank()
+                            hidePreloader()
                             if (isProfileComplete) {
                                 triggerWelcomeNotification(finalName)
                                 onComplete(true, null)
@@ -3876,6 +3906,7 @@ class DeliveryViewModel : WalletViewModel() {
                             savePref("is_verified", true)
 
                             val isProfileComplete = finalPhone.isNotBlank() && finalPin.isNotBlank()
+                            hidePreloader()
                             if (isProfileComplete) {
                                 triggerWelcomeNotification(finalName)
                                 onComplete(true, null)
@@ -3900,11 +3931,13 @@ class DeliveryViewModel : WalletViewModel() {
                             savePref("is_verified", true)
                             val isProfileComplete = (storedPhone ?: "").isNotBlank() && storedPin.isNotBlank()
                             if (isProfileComplete) triggerWelcomeNotification(storedName ?: name)
+                            hidePreloader()
                             onComplete(true, if (isProfileComplete) null else "incomplete")
                             return@signInWithGoogleIdToken
                         }
                     }
                     android.util.Log.e("DeliveryViewModel", "Google sign-in failed: ${error ?: "Unknown error"}")
+                    hidePreloader()
                     onComplete(false, error ?: "Google sign-in failed. Please try again.")
                 }
             }
@@ -5550,6 +5583,7 @@ class DeliveryViewModel : WalletViewModel() {
         }
 
         isBookingSubmissionInProgress = true
+        showPreloader("Securing booking...")
 
         val cost = applyPromoDiscount(rawCost)
         val uid = _firebaseUserId.value
@@ -5667,6 +5701,7 @@ class DeliveryViewModel : WalletViewModel() {
         if (uid != null) {
             if (_walletBalance.value < cost) {
                 isBookingSubmissionInProgress = false
+                hidePreloader()
                 com.esdispatch.util.SoundManager.playErrorBuzz()
                 onComplete?.invoke(false, "Insufficient wallet balance (₦${String.format("%,.0f", cost)} needed).")
                 return
@@ -5675,6 +5710,7 @@ class DeliveryViewModel : WalletViewModel() {
             com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, -cost) { success, newBalance ->
                 if (!success) {
                     isBookingSubmissionInProgress = false
+                    hidePreloader()
                     com.esdispatch.util.SoundManager.playErrorBuzz()
                     onComplete?.invoke(false, "Payment debit could not be verified. Please check your wallet balance and try again.")
                     return@updateUserWalletBalance
@@ -5682,12 +5718,14 @@ class DeliveryViewModel : WalletViewModel() {
                 _walletBalance.value = newBalance
                 savePref("wallet_balance", newBalance)
                 createBooking()
+                hidePreloader()
                 onComplete?.invoke(true, "Booking confirmed")
             }
         } else {
             // Unauthenticated / guest fallback: local-only booking (no wallet debit)
             if (_walletBalance.value < cost) {
                 isBookingSubmissionInProgress = false
+                hidePreloader()
                 com.esdispatch.util.SoundManager.playErrorBuzz()
                 onComplete?.invoke(false, "Insufficient wallet balance.")
                 return
@@ -5695,6 +5733,7 @@ class DeliveryViewModel : WalletViewModel() {
             _walletBalance.value -= cost
             savePref("wallet_balance", _walletBalance.value)
             createBooking()
+            hidePreloader()
             onComplete?.invoke(true, "Booking confirmed (offline)")
         }
     }

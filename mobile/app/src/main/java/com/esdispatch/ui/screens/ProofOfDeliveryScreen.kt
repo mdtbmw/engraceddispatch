@@ -58,6 +58,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.esdispatch.data.ParcelStatus
+import com.esdispatch.ui.components.PinInputField
 import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.theme.*
 import com.esdispatch.util.FormatUtils
@@ -73,6 +74,13 @@ fun ProofOfDeliveryScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    val isDark = isDarkTheme
+    val pageBg = if (isDark) BackgroundDark else GoldenWhite
+    val cardBg = if (isDark) Obsidian else GoldenWhiteLight
+    val primaryText = if (isDark) Color.White else Obsidian
+    val secondaryText = if (isDark) TextGray else Color(0xFF666666)
+    val cardBorder = if (isDark) Gold.copy(alpha = 0.35f) else Slate
 
     val signatureRequired by viewModel.signatureVerificationEnabled.collectAsState()
 
@@ -182,7 +190,7 @@ fun ProofOfDeliveryScreen(
                 }
             )
         },
-        containerColor = Color(0xFF0D0D11)
+        containerColor = pageBg
     ) { padding ->
         Column(
             modifier = Modifier
@@ -197,8 +205,8 @@ fun ProofOfDeliveryScreen(
                     .fillMaxWidth()
                     .padding(bottom = 12.dp),
                 shape = RoundedCornerShape(14.dp),
-                color = Charcoal,
-                border = BorderStroke(1.dp, Gold.copy(alpha = 0.3f))
+                color = cardBg,
+                border = BorderStroke(1.dp, cardBorder)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -209,20 +217,20 @@ fun ProofOfDeliveryScreen(
                         Text(
                             text = "Shipment ID",
                             fontSize = 11.sp,
-                            color = TextGray,
+                            color = secondaryText,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
                             text = FormatUtils.formatDisplayTrackingId(parcelId),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = primaryText
                         )
                     }
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Gold.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.5f))
+                        color = if (isDark) Gold.copy(alpha = 0.15f) else Gold,
+                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Gold)
                     ) {
                         val stepBadgeText = when {
                             isPickup -> "STEP 1/1 • PICKUP PHOTO"
@@ -235,7 +243,7 @@ fun ProofOfDeliveryScreen(
                             text = stepBadgeText,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
-                            color = Gold,
+                            color = if (isDark) Gold else Obsidian,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
@@ -255,12 +263,12 @@ fun ProofOfDeliveryScreen(
                             text = "Customer Signature Required",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = primaryText
                         )
                         Text(
                             text = "Please ask the recipient to sign inside the signature pad below to confirm receipt.",
                             fontSize = 12.sp,
-                            color = TextGray,
+                            color = secondaryText,
                             textAlign = TextAlign.Center,
                             lineHeight = 16.sp,
                             modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -308,8 +316,8 @@ fun ProofOfDeliveryScreen(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
-                            color = Charcoal,
-                            border = BorderStroke(1.dp, Slate.copy(alpha = 0.5f))
+                            color = cardBg,
+                            border = BorderStroke(1.dp, cardBorder)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -322,20 +330,20 @@ fun ProofOfDeliveryScreen(
                                     Text(
                                         text = "Recipient",
                                         fontSize = 11.sp,
-                                        color = TextGray,
+                                        color = secondaryText,
                                         fontWeight = FontWeight.Medium
                                     )
                                     Text(
                                         text = receiverName,
-                                        fontSize = 15.sp,
+                                        fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = primaryText
                                     )
                                     if (receiverPhone.isNotBlank()) {
                                         Text(
                                             text = receiverPhone,
-                                            fontSize = 12.sp,
-                                            color = Gold,
+                                            fontSize = 13.sp,
+                                            color = if (isDark) Gold else Obsidian,
                                             fontWeight = FontWeight.SemiBold
                                         )
                                     }
@@ -348,84 +356,63 @@ fun ProofOfDeliveryScreen(
                                             context.startActivity(intent)
                                         },
                                         shape = RoundedCornerShape(12.dp),
-                                        color = Gold.copy(alpha = 0.15f),
+                                        color = Gold,
                                         border = BorderStroke(1.dp, Gold)
                                     ) {
                                         Row(
                                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(Icons.Filled.Phone, contentDescription = "Call", tint = Gold, modifier = Modifier.size(16.dp))
+                                            Icon(
+                                                Icons.Filled.Phone,
+                                                contentDescription = "Call",
+                                                tint = Obsidian,
+                                                modifier = Modifier.size(16.dp)
+                                            )
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Call", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                            Text(
+                                                "Call",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Obsidian
+                                            )
                                         }
                                     }
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(28.dp))
 
                         Text(
                             text = "Recipient Handover PIN",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Black,
+                            color = primaryText,
                             textAlign = TextAlign.Center
                         )
 
                         Text(
-                            text = "Ask the recipient for their 4-digit security PIN to confirm handover.",
+                            text = "Ask recipient for their 4-digit handover PIN to confirm delivery.",
                             fontSize = 13.sp,
-                            color = TextGray,
+                            color = secondaryText,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 6.dp, bottom = 20.dp)
+                            modifier = Modifier.padding(top = 6.dp, bottom = 24.dp)
                         )
 
-                        // 4-Digit Numeric PIN Input
-                        OutlinedTextField(
-                            value = otpInput,
-                            onValueChange = { input ->
-                                val digitsOnly = input.filter { it.isDigit() }.take(4)
-                                otpInput = digitsOnly
+                        // Unified 4-Digit Numeric PIN Input
+                        PinInputField(
+                            pin = otpInput,
+                            onPinChange = { input ->
+                                otpInput = input.filter { it.isDigit() }.take(4)
                                 otpErrorMessage = null
                             },
-                            placeholder = {
-                                Text(
-                                    text = "• • • •",
-                                    fontSize = 28.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = TextGray.copy(alpha = 0.4f),
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            },
-                            singleLine = true,
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
-                            ),
-                            textStyle = androidx.compose.ui.text.TextStyle(
-                                fontSize = 30.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Gold,
-                                textAlign = TextAlign.Center,
-                                letterSpacing = 14.sp
-                            ),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Gold,
-                                unfocusedBorderColor = Gold.copy(alpha = 0.35f),
-                                focusedContainerColor = Charcoal,
-                                unfocusedContainerColor = Charcoal,
-                                cursorColor = Gold
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth(0.75f)
-                                .height(68.dp)
+                            isError = otpErrorMessage != null,
+                            obscureText = false
                         )
 
                         if (otpErrorMessage != null) {
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = otpErrorMessage!!,
                                 fontSize = 12.sp,
@@ -459,12 +446,12 @@ fun ProofOfDeliveryScreen(
                                 .height(54.dp)
                                 .tactilePress(scaleDown = 0.96f),
                             enabled = otpInput.length == 4 && !isVerifyingOtp,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Gold,
                                 contentColor = Obsidian,
-                                disabledContainerColor = Gold.copy(alpha = 0.3f),
-                                disabledContentColor = Obsidian.copy(alpha = 0.5f)
+                                disabledContainerColor = if (isDark) Gold.copy(alpha = 0.25f) else Slate.copy(alpha = 0.5f),
+                                disabledContentColor = if (isDark) Obsidian.copy(alpha = 0.4f) else TextGray
                             )
                         ) {
                             if (isVerifyingOtp) {
@@ -545,12 +532,12 @@ fun ProofOfDeliveryScreen(
                                         .weight(1f)
                                         .height(54.dp),
                                     shape = RoundedCornerShape(14.dp),
-                                    border = BorderStroke(1.2.dp, Color.Gray.copy(alpha = 0.5f)),
+                                    border = BorderStroke(1.2.dp, if (isDark) Slate.copy(alpha = 0.5f) else Slate),
                                     enabled = !isUploading
                                 ) {
-                                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = primaryText, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Retake", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Retake", color = primaryText, fontWeight = FontWeight.Bold)
                                 }
 
                                 Button(
@@ -658,12 +645,12 @@ fun ProofOfDeliveryScreen(
                                         .weight(1f)
                                         .height(54.dp),
                                     shape = RoundedCornerShape(14.dp),
-                                    border = BorderStroke(1.2.dp, Color.Gray.copy(alpha = 0.5f)),
+                                    border = BorderStroke(1.2.dp, if (isDark) Slate.copy(alpha = 0.5f) else Slate),
                                     enabled = !isUploading
                                 ) {
-                                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = primaryText, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Retake", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Retake", color = primaryText, fontWeight = FontWeight.Bold)
                                 }
 
                                 Button(
@@ -814,7 +801,7 @@ fun ProofOfDeliveryScreen(
                                         text = "Camera Permission Required",
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = primaryText
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
@@ -907,6 +894,10 @@ fun ProofOfDeliveryScreen(
 
 @Composable
 fun SignaturePadView(onComplete: (Bitmap) -> Unit) {
+    val isLight = MaterialTheme.colorScheme.background == BackgroundLight
+    val isDark = !isLight
+    val primaryText = if (isDark) Color.White else Obsidian
+
     var paths by remember { mutableStateOf(listOf<Path>()) }
     var currentPath by remember { mutableStateOf<Path?>(null) }
     var padPx by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
@@ -968,9 +959,9 @@ fun SignaturePadView(onComplete: (Bitmap) -> Unit) {
                     .weight(1f)
                     .height(54.dp),
                 shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.2.dp, Color.Gray.copy(alpha = 0.5f))
+                border = BorderStroke(1.2.dp, if (isDark) Slate.copy(alpha = 0.5f) else Slate)
             ) {
-                Text("Clear", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("Clear", color = primaryText, fontWeight = FontWeight.Bold)
             }
 
             Button(
