@@ -85,7 +85,13 @@ function CmsEditor({ content, setContent, sections, activeSection, setActiveSect
       </div>}
       {activeSection === "footer" && <div className="grid sm:grid-cols-2 gap-4">
         {field("Copyright Text", content.footerCopyright, upd("footerCopyright"), { large: true })}
+        {field("Office Address", content.contactAddress, upd("contactAddress"), { large: true })}
+        {field("Contact Email", content.contactEmail, upd("contactEmail"))}
+        {field("Contact Phone", content.contactPhone, upd("contactPhone"))}
       </div>}
+      {!["hero", "about", "services", "team", "contact", "footer"].includes(activeSection) && (
+        <p className="text-xs text-black/40 dark:text-white/40 text-center py-6">Nothing to edit in this section.</p>
+      )}
     </div>
   </>;
 }
@@ -255,9 +261,9 @@ export default function CMSTab({ db, addLog, userRole }: { db: any; addLog: any;
     { id: "hero", label: "Hero Banner" },
     { id: "about", label: "About Section" },
     { id: "services", label: "Services Header" },
-    { id: "cta", label: "Call to Action" },
+    { id: "team", label: "Team Header" },
+    { id: "contact", label: "Contact & Social" },
     { id: "footer", label: "Footer Info" },
-    { id: "meta", label: "SEO & Brand" },
   ];
 
   const serviceFields = [

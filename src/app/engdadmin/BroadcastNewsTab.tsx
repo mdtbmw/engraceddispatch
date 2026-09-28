@@ -25,7 +25,9 @@ import {
   Timestamp, 
   writeBatch, 
   query, 
-  orderBy 
+  orderBy, 
+  getDocs, 
+  where 
 } from "firebase/firestore";
 
 export interface BroadcastItem {
@@ -60,6 +62,7 @@ export default function BroadcastNewsTab({
   const [broadcasts, setBroadcasts] = useState<BroadcastItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   // Form states
   const [title, setTitle] = useState("");
@@ -183,6 +186,7 @@ export default function BroadcastNewsTab({
           read: false,
           targetAudience,
           priority,
+          broadcastId: broadcastRef.id,
           createdAt: Timestamp.now(),
           timestamp: Date.now(),
         });
@@ -204,23 +208,82 @@ export default function BroadcastNewsTab({
     }
   };
 
+  // Pulls a broadcast's copies back out of every member inbox and the web feed mirror,
+  // so a revoked notice disappears instead of sitting unread on people's devices.
+  const pullBroadcastFromInboxes = async (id: string): Promise<{ removed: number; marked: number }> => {
+    let removed = 0;
+    let marked = 0;
+    const targets = users.filter(u => !u.isDeleted && (u.id || u.uid));
+    const chunkSize = 100;
+
+    for (let i = 0; i < targets.length; i += chunkSize) {
+      const chunk = targets.slice(i, i + chunkSize);
+      const refs: any[] = [];
+      for (const u of chunk) {
+        try {
+          const snap = await getDocs(query(collection(db, "users", u.id || u.uid, "notifications"), where("broadcastId", "==", id)));
+          snap.forEach(n => refs.push(n.ref));
+        } catch (_) {
+          // Inbox unreadable for this member — skip and continue with the rest.
+        }
+      }
+      if (refs.length === 0) continue;
+
+      try {
+        const batch = writeBatch(db);
+        refs.forEach(r => batch.delete(r));
+        await batch.commit();
+        removed += refs.length;
+      } catch (_) {
+        // Deleting needs owner/super-admin rights; fall back to marking the copies revoked.
+        try {
+          const batch = writeBatch(db);
+          refs.forEach(r => batch.update(r, { active: false, revoked: true, revokedAt: Timestamp.now() }));
+          await batch.commit();
+          marked += refs.length;
+        } catch (_) {}
+      }
+    }
+
+    try {
+      const rootSnap = await getDocs(query(collection(db, "notifications"), where("broadcastId", "==", id)));
+      if (!rootSnap.empty) {
+        const batch = writeBatch(db);
+        rootSnap.forEach(n => batch.delete(n.ref));
+        await batch.commit();
+        removed += rootSnap.size;
+      }
+    } catch (_) {}
+
+    return { removed, marked };
+  };
+
   const handleRevokeBroadcast = async (id: string, itemTitle: string) => {
+    setRevokingId(id);
     try {
       await updateDoc(doc(db, "broadcast_news", id), {
         active: false,
         revokedAt: Timestamp.now(),
       });
-      addLog("Revoke Broadcast", `Deactivated broadcast "${itemTitle}"`);
-      addToast("info", "Announcement has been deactivated.");
+      const { removed, marked } = await pullBroadcastFromInboxes(id);
+      addLog("Revoke Broadcast", `Deactivated broadcast "${itemTitle}" and pulled it from ${removed + marked} notification inbox(es)`);
+      if (removed > 0 || marked > 0) {
+        addToast("info", `Announcement revoked and removed from ${removed + marked} member inboxes.`);
+      } else {
+        addToast("info", "Announcement has been deactivated.");
+      }
     } catch (err: any) {
       addToast("error", "Could not revoke broadcast: " + err.message);
+    } finally {
+      setRevokingId(null);
     }
   };
 
   const handleDeleteBroadcast = async (id: string, itemTitle: string) => {
     try {
+      await pullBroadcastFromInboxes(id);
       await deleteDoc(doc(db, "broadcast_news", id));
-      addLog("Delete Broadcast", `Deleted broadcast record "${itemTitle}"`);
+      addLog("Delete Broadcast", `Deleted broadcast record "${itemTitle}" and cleared its notification copies`);
       addToast("success", "Broadcast record removed.");
     } catch (err: any) {
       addToast("error", "Delete failed: " + err.message);
@@ -508,9 +571,10 @@ export default function BroadcastNewsTab({
                         {b.active && (
                           <button
                             onClick={() => handleRevokeBroadcast(b.id, b.title)}
-                            className="px-3 py-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 rounded-xl text-[10px] font-bold hover:bg-amber-500/20 transition-colors cursor-pointer"
+                            disabled={revokingId === b.id}
+                            className="px-3 py-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 rounded-xl text-[10px] font-bold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                           >
-                            Revoke
+                            {revokingId === b.id ? "Revoking..." : "Revoke"}
                           </button>
                         )}
                         <button

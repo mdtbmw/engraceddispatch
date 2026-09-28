@@ -311,6 +311,7 @@ function emailApiPlugin() {
               const { renderAccountVerificationEmail, extractPlainTextFromHtml } = await import("./src/lib/emailTemplates");
               const html = renderAccountVerificationEmail({
                 name: recipientName,
+                email: recipientEmail,
                 otp,
                 verificationLink,
                 expiryMinutes: 15,

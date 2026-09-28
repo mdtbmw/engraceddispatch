@@ -593,7 +593,7 @@ data class DetectedLocation(
     val lng: Double
 )
 
-suspend fun detectUserLocationDetailed(context: android.content.Context): DetectedLocation = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+suspend fun detectUserLocationDetailed(context: android.content.Context): DetectedLocation? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     try {
         if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -613,9 +613,10 @@ suspend fun detectUserLocationDetailed(context: android.content.Context): Detect
     } catch (e: Exception) {
         android.util.Log.e("DetectLocation", "GPS detection failed: ${e.message}")
     }
-    return@withContext DetectedLocation("Ring Road (King's Square), City Center, Benin City", 6.3350, 5.6037)
+    // No fix found - callers surface an honest "could not detect" state.
+    null
 }
 
 suspend fun detectUserLocation(context: android.content.Context): String {
-    return detectUserLocationDetailed(context).address
+    return detectUserLocationDetailed(context)?.address ?: ""
 }

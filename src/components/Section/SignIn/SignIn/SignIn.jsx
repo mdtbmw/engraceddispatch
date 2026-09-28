@@ -1,13 +1,12 @@
 "use client";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { auth, db } from "~/lib/firebase";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
 const SignInForm = () => {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,9 +24,9 @@ const SignInForm = () => {
       if (role === "admin" || role === "super_admin" || role === "dispatcher") {
         const token = await cred.user.getIdToken();
         document.cookie = `admin_token=${token};path=/;max-age=86400;SameSite=Strict;Secure`;
-        router.push("/engdadmin");
+        navigate("/engdadmin");
       } else {
-        router.push("/");
+        navigate("/");
       }
     } catch (err) {
       if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
@@ -78,9 +77,9 @@ const SignInForm = () => {
       if (userRole === "admin" || userRole === "super_admin" || userRole === "dispatcher") {
         const token = await result.user.getIdToken();
         document.cookie = `admin_token=${token};path=/;max-age=86400;SameSite=Strict;Secure`;
-        router.push("/engdadmin");
+        navigate("/engdadmin");
       } else {
-        router.push("/");
+        navigate("/");
       }
     } catch (err) {
       if (err.code === "auth/popup-closed-by-user") {
@@ -119,7 +118,7 @@ const SignInForm = () => {
                 <input type="checkbox" id="check" />
                 <label htmlFor="check">Remember me</label>
               </div>
-              <Link className="forgot-password" href="/reset-password">
+              <Link className="forgot-password" to="/reset-password">
                 Forgot password?
               </Link>
             </div>
@@ -139,13 +138,9 @@ const SignInForm = () => {
               <img src="/images/icon/google.svg" alt="" />
               <span>{googleLoading ? "Connecting to Google..." : "Sign in with Google"}</span>
             </button>
-            <Link href="#" className="zubuz-connect-login">
-              <img src="/images/icon/facebook.svg" alt="" />
-              Sign in with Facebook
-            </Link>
             <div className="zubuz-account-bottom">
               <p>
-                Don&apos;t have an account? <Link href="/sign-up">Sign up here</Link>
+                Don&apos;t have an account? <Link to="/sign-up">Sign up here</Link>
               </p>
             </div>
           </form>

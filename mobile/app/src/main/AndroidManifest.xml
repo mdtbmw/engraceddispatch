@@ -39,6 +39,11 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/gold" />
 
+        <!-- Disable Firebase Sessions IPC to avoid SessionLifecycleClient Messenger NPE -->
+        <meta-data
+            android:name="firebase_sessions_enabled"
+            android:value="false" />
+
         <!-- Google Maps Platform API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"

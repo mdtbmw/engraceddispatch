@@ -204,7 +204,7 @@ interface OfflineSyncQueueDao {
         ShiftRoster::class,
         OfflineSyncQueue::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(DatabaseConverters::class)
@@ -280,6 +280,31 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                fun addColumnIfNotExists(column: String, definition: String) {
+                    try {
+                        val cursor = db.query("PRAGMA table_info(parcels)")
+                        var exists = false
+                        while (cursor.moveToNext()) {
+                            val nameIndex = cursor.getColumnIndex("name")
+                            if (nameIndex >= 0 && cursor.getString(nameIndex) == column) {
+                                exists = true
+                                break
+                            }
+                        }
+                        cursor.close()
+                        if (!exists) {
+                            db.execSQL("ALTER TABLE parcels ADD COLUMN $column $definition")
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("AppDatabase", "Column $column migration check: ${e.message}")
+                    }
+                }
+                addColumnIfNotExists("senderEmail", "TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 try {
@@ -288,7 +313,7 @@ abstract class AppDatabase : RoomDatabase() {
                         AppDatabase::class.java,
                         "gold_delivery_offline_db"
                     )
-                    .addMigrations(MIGRATION_9_10, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_9_10, MIGRATION_11_12, MIGRATION_12_13)
                     .fallbackToDestructiveMigration()
                     .build()
                     INSTANCE = instance

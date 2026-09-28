@@ -474,7 +474,9 @@ class MainActivity : FragmentActivity() {
                             onUnlocked = {
                                 viewModel.unlockApp()
                                 if (!navController.popBackStack()) {
-                                    navController.navigate("Dashboard") {
+                                    val isRider = viewModel.userRole.value.equals("RIDER", ignoreCase = true)
+                                    val target = if (isRider) "RiderDashboard" else "Dashboard"
+                                    navController.navigate(target) {
                                         popUpTo(0) { inclusive = true }
                                         launchSingleTop = true
                                     }

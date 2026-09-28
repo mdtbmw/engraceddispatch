@@ -82,7 +82,7 @@ fun HistoryOrderCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "#${parcel.id} • ${parcel.dateString.ifBlank { "Completed" }}",
+                    text = "${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)} • ${parcel.dateString.ifBlank { "Completed" }}",
                     fontSize = 11.sp,
                     fontFamily = Poppins,
                     fontWeight = FontWeight.SemiBold,

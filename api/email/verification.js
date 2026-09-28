@@ -28,9 +28,10 @@ function extractPlainText(html) {
     .trim();
 }
 
-function buildLuxuryVerificationEmailHtml({ name, otp, verificationLink, expiryMinutes = 15, currentDomain = "engracedsmile.com" }) {
+function buildLuxuryVerificationEmailHtml({ name, email, otp, verificationLink, expiryMinutes = 15 }) {
   const currentYear = new Date().getFullYear();
-  const directLink = verificationLink || `https://${currentDomain}/verified?email=${encodeURIComponent(name || "")}&otp=${otp}`;
+  const appOrigin = "https://engraceddispatch.vercel.app";
+  const directLink = verificationLink || `${appOrigin}/verified?email=${encodeURIComponent(email || "")}&otp=${encodeURIComponent(otp || "")}`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -208,12 +209,12 @@ function buildLuxuryVerificationEmailHtml({ name, otp, verificationLink, expiryM
                       ESDISPATCH PREMIUM LOGISTICS & DISPATCH
                     </div>
                     <div>
-                      Headquarters: Benin City, Edo State, Nigeria &bull; Support: support@${currentDomain}
+                      Headquarters: Benin City, Edo State, Nigeria &bull; Support: <a href="mailto:support@engracedsmile.com" style="color: #9CA3AF; text-decoration: underline;">support@engracedsmile.com</a>
                     </div>
                     <div style="margin-top: 10px; color: #6B7280; font-size: 10px;">
                       &copy; ${currentYear} ESDispatch. All rights reserved. &bull; 
-                      <a href="https://${currentDomain}/privacy" style="color: #FFB800; text-decoration: none;">Privacy Policy</a> &bull; 
-                      <a href="https://${currentDomain}/terms" style="color: #FFB800; text-decoration: none;">Terms of Service</a>
+                      <a href="${appOrigin}/privacy" style="color: #FFB800; text-decoration: none;">Privacy Policy</a> &bull; 
+                      <a href="${appOrigin}/terms" style="color: #FFB800; text-decoration: none;">Terms of Service</a>
                     </div>
                   </td>
                 </tr>
@@ -291,10 +292,10 @@ module.exports = async function handler(req, res) {
 
     const htmlContent = buildLuxuryVerificationEmailHtml({
       name: recipientName,
+      email: recipientEmail,
       otp,
       verificationLink,
       expiryMinutes: 15,
-      currentDomain: domain,
     });
 
     const plainText = extractPlainText(htmlContent);
@@ -328,7 +329,7 @@ module.exports = async function handler(req, res) {
       headers: {
         "X-Mailer": "ESDispatch Logistics Mailer/2026",
         "X-Priority": "1",
-        "List-Unsubscribe": `<mailto:support@${domain}?subject=unsubscribe>, <https://www.${domain}/unsubscribe>`,
+        "List-Unsubscribe": `<mailto:support@engracedsmile.com?subject=unsubscribe>, <https://www.engracedsmile.com/unsubscribe>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "Feedback-ID": `esdispatch:security-verification:${Date.now()}`,
         "X-Entity-Ref-ID": `${Date.now()}-${randomHex}`,

@@ -89,7 +89,7 @@ fun DeliveryCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "#${parcel.id}",
+                        text = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id),
                         fontSize = 12.sp,
                         fontFamily = Poppins,
                         fontWeight = FontWeight.SemiBold,

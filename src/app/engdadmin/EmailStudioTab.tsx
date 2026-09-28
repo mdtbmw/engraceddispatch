@@ -207,7 +207,7 @@ export default function EmailStudioTab({
   const [expiryMinutes, setExpiryMinutes] = useState(10);
   const [trackingNumber, setTrackingNumber] = useState("ES-BEN-92041");
   const [courierName, setCourierName] = useState("Godwin Enoma (Courier 04)");
-  const [pickupAddress, setPickupAddress] = useState("17 Upper Adesuwa Road, GRA, Benin City");
+  const [pickupAddress, setPickupAddress] = useState("No 18, Sakponba Road, Benin City, Edo State.");
   const [dropoffAddress, setDropoffAddress] = useState("Plot 12, Boundary Road, GRA, Benin City");
   const [serviceType, setServiceType] = useState("Express Door-to-Door");
   const [amountPaid, setAmountPaid] = useState("₦3,500");
@@ -437,7 +437,7 @@ export default function EmailStudioTab({
           `Your courier ${courierName} is approaching your delivery destination. Important: Provide this 4-digit confirmation code to your courier only after you have physically inspected your parcel.`
         );
         setCtaText("TRACK LIVE ON MAP");
-        setCtaUrl(`https://engraceddispatch.vercel.app/track?id=${trackingNumber}`);
+        setCtaUrl(`https://engraceddispatch.vercel.app/track/${trackingNumber}`);
         setCard1({ tag: "VERIFY", title: "Inspect Package", description: "Check seal and condition before sharing code." });
         setCard2({ tag: "ESCROW", title: "Protected Settlement", description: "Funds release only upon valid OTP submission." });
         setCard3({ tag: "BENIN CITY", title: "Live GPS Telemetry", description: "Active turn-by-turn map tracking." });
@@ -453,7 +453,7 @@ export default function EmailStudioTab({
           `Thank you for booking with ESDispatch. Your payment of ${amountPaid} has been confirmed and escrowed for delivery. Please find your itemized settlement details below.`
         );
         setCtaText("VIEW LIVE TRACKING");
-        setCtaUrl(`https://engraceddispatch.vercel.app/track?id=${trackingNumber}`);
+        setCtaUrl(`https://engraceddispatch.vercel.app/track/${trackingNumber}`);
         setCard1({ tag: "SERVICE", title: serviceType, description: "Door-to-door citywide delivery." });
         setCard2({ tag: "TRACKING", title: `#${trackingNumber}`, description: "Real-time telemetry enabled." });
         setCard3({ tag: "STATUS", title: "Dispatched", description: "Fleet assigned & en route." });
@@ -501,7 +501,7 @@ export default function EmailStudioTab({
           "We are pleased to introduce enhanced express dispatch coverage across Benin City, extending service corridors into GRA, Uselu, Ikpoba Hill, and Airport Road with guaranteed 45-minute drop-offs."
         );
         setCtaText("DISCOVER NEW SERVICES");
-        setCtaUrl("https://www.esdispatch.com.ng");
+        setCtaUrl("https://engraceddispatch.vercel.app");
         setCard1({ tag: "SERVICE", title: "Express Dispatch", description: "Guaranteed 45-minute delivery." });
         setCard2({ tag: "COVERAGE", title: "Edo State", description: "Expanded delivery routes." });
         setCard3({ tag: "HOTLINE", title: "Support 24/7", description: "+234 905 626 3010." });

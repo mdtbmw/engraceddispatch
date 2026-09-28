@@ -524,7 +524,7 @@ export function wrapInMasterLuxuryTemplate(opts: MasterEmailOptions): string {
                       ESDISPATCH
                     </div>
                     <div style="padding-top: 2px; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 10px; line-height: 14px; color: #9CA3AF;">
-                      PREMIUM LOGISTICS &bull; SPEED &amp; PRECISION
+                      PREMIUM LOGISTICS &amp; DISPATCH
                     </div>
                   </td>
                   <td style="vertical-align: middle;" align="right" valign="middle">
@@ -540,12 +540,12 @@ export function wrapInMasterLuxuryTemplate(opts: MasterEmailOptions): string {
           <!-- ENCRYPTED COPYRIGHT & CAN-SPAM COMPLIANCE BAR -->
           <tr>
             <td style="padding: 12px 20px; background: #000000; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 9.5px; line-height: 15px; color: #6B7280;" align="center">
-              <div>&copy; ${currentYear} ESDISPATCH &bull; Premium Logistics &amp; Dispatch &bull; Encrypted 256-Bit SSL Telemetry</div>
+              <div>&copy; ${currentYear} ESDISPATCH &bull; PREMIUM LOGISTICS &amp; DISPATCH &bull; Encrypted 256-Bit SSL Telemetry</div>
               <div style="padding-top: 4px;">
                 <a href="https://www.engracedsmile.com" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Official Website</a> &bull;
                 <a href="https://engraceddispatch.vercel.app" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Web Portal</a> &bull;
                 <a href="mailto:support@engracedsmile.com" style="color: #9CA3AF; text-decoration: underline;">Support Desk</a> &bull;
-                <a href="https://www.engracedsmile.com/privacy" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Privacy</a> &bull;
+                <a href="https://engraceddispatch.vercel.app/privacy" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Privacy</a> &bull;
                 <a href="https://www.engracedsmile.com/unsubscribe" style="color: #9CA3AF; text-decoration: underline;" target="_blank" rel="noopener">Unsubscribe</a>
               </div>
             </td>
@@ -762,13 +762,15 @@ export function renderSignUpOtpEmail(params: {
  */
 export function renderAccountVerificationEmail(params: {
   name: string;
+  email?: string;
   otp: string;
   verificationLink?: string;
   expiryMinutes?: number;
   heroImageUrl?: string;
 }): string {
   const expiry = params.expiryMinutes || 15;
-  const link = params.verificationLink || `https://engraceddispatch.vercel.app/verified?email=${encodeURIComponent(params.name)}&otp=${params.otp}`;
+  const recipientEmail = (params.email || "").trim();
+  const link = params.verificationLink || `https://engraceddispatch.vercel.app/verified?email=${encodeURIComponent(recipientEmail)}&otp=${encodeURIComponent(params.otp)}`;
   return wrapInMasterLuxuryTemplate({
     title: `Verify Your ESDispatch Account (${params.otp})`,
     preheader: `Your verification passcode is ${params.otp}. Valid for ${expiry} minutes.`,
@@ -1088,7 +1090,7 @@ export function renderDeliveryHandoverOtpEmail(params: {
       { tag: 'BENIN CITY', title: 'Live GPS Telemetry', description: 'Active turn-by-turn map tracking.' },
     ],
     ctaText: 'TRACK LIVE ON MAP',
-    ctaUrl: `https://engraceddispatch.vercel.app/track?id=${params.trackingNumber}`,
+    ctaUrl: `https://engraceddispatch.vercel.app/track/${params.trackingNumber}`,
   });
 }
 
@@ -1148,7 +1150,7 @@ export function renderDeliveryInvoiceEmail(params: {
       { tag: 'STATUS', title: 'Dispatched', description: 'Fleet assigned & en route.' },
     ],
     ctaText: 'VIEW LIVE TRACKING',
-    ctaUrl: `https://engraceddispatch.vercel.app/track?id=${params.trackingNumber}`,
+    ctaUrl: `https://engraceddispatch.vercel.app/track/${params.trackingNumber}`,
   });
 }
 

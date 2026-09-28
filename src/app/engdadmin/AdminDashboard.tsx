@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from "react";
 import { createPortal } from "react-dom";
 
@@ -33,8 +33,9 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, on
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy, runTransaction, Transaction, serverTimestamp } from "firebase/firestore";
 import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Minus, ArrowRight, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info, Bike } from "lucide-react";
 import CMSTab from "./CMSTab";
-import LiveTrackingMap from "./LiveTrackingMap";
+import LiveTrackingMap, { RegistryEntry, resolveEndpoint, resolveFromRegistry, isBeninCityCoord, DEFAULT_GEO_CENTER } from "./LiveTrackingMap";
 import BroadcastNewsTab from "./BroadcastNewsTab";
+import AddressBookTab from "./AddressBookTab";
 import { SoundEngine } from "@/lib/interaction/SoundEngine";
 import { StatusBadge } from "@/components/design-system/StatusBadge";
 import { RouteDisplay } from "@/components/design-system/RouteDisplay";
@@ -44,7 +45,7 @@ import { NotificationLifecycleManager } from "@/components/design-system/Notific
 import { ShipmentMicroPage } from "@/components/design-system/ShipmentMicroPage";
 import AdminDispatchBookingModal from "@/components/AdminDispatchBookingModal";
 import EmailStudioTab from "./EmailStudioTab";
-type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "broadcast" | "emails" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support" | "payouts";
+type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "addresses" | "broadcast" | "emails" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support" | "payouts";
 interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; lastPing?: any; lastHeartbeat?: any; lastActive?: any; createdAt?: any; vendorBalance?: number; pin?: string; userPin?: string; securityPin?: string; }
 
 /** Safely parse any Firestore Timestamp, millisecond/second number, or date string into ms */
@@ -148,7 +149,8 @@ interface Delivery {
   disputedAt?: any;
 }
 interface Banner { id: string; title: string; subtitle: string; imageUrl: string; interval: number; order: number; active: boolean; }
-interface Referral { id: string; referrerId: string; referrerName: string; referrerEmail: string; refereeId: string; refereeName: string; refereeEmail: string; rewardAmount: number; status: string; }
+/** One row of the referral_redemptions ledger (written by the app on code redemption). */
+interface Referral { id: string; code: string; userId: string; rewardAmount: number; status: string; redeemedAt?: any; name?: string; email?: string; }
 interface Promotion { id: string; title: string; description: string; discountType: string; discountValue: number; discountDisplay: string; minOrderAmount: number; maxDiscount: number; code: string; usageLimit: number; usedCount: number; active: boolean; }
 interface AuditEntry { id: string; time: string; action: string; details: string; admin: string; timestamp: number; staffId?: string; adminEmail?: string; category?: string; }
 
@@ -264,7 +266,7 @@ function EdLogoSvg({ size = 36, className = "", dark = false }: { size?: number;
   </svg>;
 }
 
-function fmt(n: number): string { return "₦" + n.toLocaleString("en-US"); }
+function fmt(n: number): string { return "â‚¦" + n.toLocaleString("en-US"); }
 function idShort(id: string): string { return id.length > 8 ? id.slice(-8) : id; }
 function rBadge(role: string): string {
   switch (role) {
@@ -345,7 +347,7 @@ function InlineEdit({ value, onSave, type = "text" }: { value: string; onSave: (
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value);
   useEffect(() => setVal(value), [value]);
-  if (!editing) return <span onClick={() => setEditing(true)} className="cursor-pointer hover:bg-[#FFB800]/10 px-1.5 py-0.5 rounded group inline-flex items-center gap-1.5 -ml-1.5 transition-colors text-gray-900 dark:text-white font-medium">{value || "—"} <Edit3 className="w-3 h-3 text-[#FFB800]/0 group-hover:text-amber-700 dark:group-hover:text-[#FFB800]" /></span>;
+  if (!editing) return <span onClick={() => setEditing(true)} className="cursor-pointer hover:bg-[#FFB800]/10 px-1.5 py-0.5 rounded group inline-flex items-center gap-1.5 -ml-1.5 transition-colors text-gray-900 dark:text-white font-medium">{value || "â€”"} <Edit3 className="w-3 h-3 text-[#FFB800]/0 group-hover:text-amber-700 dark:group-hover:text-[#FFB800]" /></span>;
   return <input type={type} value={val} onChange={e => setVal(e.target.value)} onBlur={() => { onSave(val); setEditing(false); }} onKeyDown={e => { if (e.key === "Enter") { onSave(val); setEditing(false); } if (e.key === "Escape") { setVal(value); setEditing(false); }}} className="h-8 bg-white dark:bg-[#222] border border-[#FFB800]/50 rounded-lg px-2 text-xs text-gray-900 dark:text-white w-full shadow-xs focus:outline-none focus:ring-1 focus:ring-[#FFB800]" autoFocus />;
 }
 function ConfirmModal({ show, title, message, confirmLabel, onConfirm, onCancel }: { show: boolean; title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void }) {
@@ -438,83 +440,6 @@ function ToastContainer({ toasts }: { toasts: Toast[] }) {
     ))}
   </div>;
 }
-
-async function seedUsers(db: any, addLog: any, addToast: any, createNotification: any) {
-  try {
-    const batch = writeBatch(db);
-    const users = [
-      { uid: "seed_u1", name: "John Doe", email: "john@example.com", phone: "08012345678", role: "rider", status: "offline", isOnline: false, rating: 4.8, deliveryCount: 120, walletBalance: 5000, loyaltyPoints: 100, photoUrl: "" },
-      { uid: "seed_u2", name: "Jane Smith", email: "jane@example.com", phone: "08087654321", role: "customer", status: "offline", isOnline: false, rating: 5.0, deliveryCount: 0, walletBalance: 2000, loyaltyPoints: 0, photoUrl: "" },
-      { uid: "seed_u3", name: "Samuel Ade", email: "sam@example.com", phone: "08055544433", role: "rider", status: "offline", isOnline: false, rating: 4.5, deliveryCount: 85, walletBalance: 1200, loyaltyPoints: 50, photoUrl: "" },
-    ];
-    users.forEach(u => batch.set(doc(collection(db, "users")), u));
-    await batch.commit();
-    addLog("Initialize", "Standard user profiles initialized"); addToast("success", "Standard user accounts initialized"); createNotification("User Profiles Ready", "Initial system accounts initialized");
-  } catch (e: any) { addToast("error", "Initialization failed: " + e.message); }
-}
-
-async function seedDeliveries(db: any, addLog: any, addToast: any, createNotification: any) {
-  try {
-    const batch = writeBatch(db);
-    const couriers = ["John Doe", "Samuel Ade", "Michael Obi", "Esther Frank", "David Okafor", "Grace Eze"];
-    const now = new Date();
-    const ds = (d: number) => new Date(now.getTime() + d * 86400000).toISOString().slice(0, 10);
-    const deliveries = [
-      { receiverName: "Osasere Igbinedion", deliveryAddress: "14 Ihama Road, GRA, Benin City", senderName: "Shopify Hub", senderPhone: "08011122233", receiverPhone: "08044455566", price: 2500, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Laptop", pickupAddress: "Ring Road, Kings Square, Benin City", quantity: 1, weight: 1.5, dateString: ds(-1), tipAmount: 500, userId: "seed_u2", otpCode: "1234", status: "DELIVERED", category: "Express" },
-      { receiverName: "Nosakhare Edokpayi", deliveryAddress: "Airport Road, GRA, Benin City", senderName: "Amazon Hub", senderPhone: "08099988877", receiverPhone: "08077766655", price: 1500, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Books", pickupAddress: "Ekehuan Road, UNIBEN Ekehuan, Benin City", quantity: 2, weight: 0.8, dateString: ds(0), tipAmount: 200, userId: "seed_u2", otpCode: "5678", status: "TRANSIT", category: "Standard" },
-      { receiverName: "Efosa Osagie", deliveryAddress: "Ugbowo Campus, University of Benin, Benin City", senderName: "Fresh Foods", senderPhone: "08022233344", receiverPhone: "08055566677", price: 3000, riderId: "seed_u1", courierName: couriers[2], courierPhone: "08066677788", itemName: "Groceries", pickupAddress: "Sapele Road, Benin City", quantity: 5, weight: 4.2, dateString: ds(0), tipAmount: 0, userId: "seed_u2", otpCode: "9012", status: "PENDING", category: "Cold Chain" },
-      { receiverName: "Ekiuwa Omoruyi", deliveryAddress: "UBTH, Ugbowo, Benin City", senderName: "Jumia Hub", senderPhone: "08033344455", receiverPhone: "08088899900", price: 1800, riderId: "seed_u3", courierName: couriers[3], courierPhone: "08011122200", itemName: "Documents", pickupAddress: "Mission Road, Benin City", quantity: 1, weight: 0.3, dateString: ds(1), tipAmount: 100, userId: "seed_u2", otpCode: "3456", status: "DELIVERED", category: "Economy" },
-      { receiverName: "Efe Martins", deliveryAddress: "Ikpoba Hill, Benin City", senderName: "PharmaCo", senderPhone: "08055566688", receiverPhone: "08099900011", price: 4200, riderId: "", courierName: couriers[4], courierPhone: "08022233300", itemName: "Medical Supplies", pickupAddress: "Upper Sakponba Road, Benin City", quantity: 3, weight: 6.0, dateString: ds(2), tipAmount: 0, userId: "seed_u2", otpCode: "7890", status: "ASSIGNED", category: "Express" },
-      { receiverName: "Aisosa Obasuyi", deliveryAddress: "Boundary Road, GRA, Benin City", senderName: "MegaMart", senderPhone: "08077788899", receiverPhone: "08011122255", price: 3500, riderId: "", courierName: couriers[5], courierPhone: "08044455500", itemName: "Home Appliances", pickupAddress: "Akpakpava Road, Benin City", quantity: 2, weight: 8.0, dateString: ds(1), tipAmount: 300, userId: "seed_u2", otpCode: "2345", status: "TRANSIT", category: "Batch" },
-      { receiverName: "Isoken Agho", deliveryAddress: "New Lagos Road, Benin City", senderName: "PrintHub", senderPhone: "08033322211", receiverPhone: "08066655544", price: 2200, riderId: "seed_u1", courierName: couriers[0], courierPhone: "08012345678", itemName: "Print Materials", pickupAddress: "Siluko Road, Benin City", quantity: 4, weight: 2.5, dateString: ds(3), tipAmount: 150, userId: "seed_u2", otpCode: "6789", status: "PENDING", category: "Multi" },
-      { receiverName: "Amenze Osunde", deliveryAddress: "Country Home Motel Road, Benin City", senderName: "TechWorld", senderPhone: "08044455566", receiverPhone: "08077788822", price: 2800, riderId: "seed_u3", courierName: couriers[1], courierPhone: "08055544433", itemName: "Smartphone", pickupAddress: "Adesuwa Road, GRA, Benin City", quantity: 1, weight: 0.6, dateString: ds(4), tipAmount: 250, userId: "seed_u2", otpCode: "1111", status: "PENDING", category: "Standard" },
-    ];
-    deliveries.forEach(d => batch.set(doc(collection(db, "deliveries")), d));
-    await batch.commit();
-    addLog("Initialize", "Standard logistics activity initialized"); addToast("success", "Standard shipments initialized"); createNotification("Shipments Initialized", "Operational routes and categories initialized");
-  } catch (e: any) { addToast("error", "Shipment initialization failed: " + e.message); }
-}
-
-async function seedBanners(db: any, addLog: any, addToast: any, createNotification: any) {
-  try {
-    const batch = writeBatch(db);
-    [{ title: "Premium Logistics at Your Doorstep", subtitle: "Fast, secure, and reliable delivery across the city.", imageUrl: "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=800", interval: 5, order: 0, active: true },
-    { title: "Send Packages with Ease", subtitle: "Real-time tracking and professional riders at your service.", imageUrl: "https://images.unsplash.com/photo-1566576912320-8a9549693bb9?w=800", interval: 5, order: 1, active: true },
-    { title: "Your Trusted Delivery Partner", subtitle: "Join thousands of happy customers.", imageUrl: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800", interval: 5, order: 2, active: true }]
-      .forEach(s => batch.set(doc(collection(db, "banners")), s)); await batch.commit();
-    addLog("Initialize", "Default hero banners published"); addToast("success", "Hero banners initialized"); createNotification("Banners Active", "Default carousel slides configured");
-  } catch (e: any) { addToast("error", "Banner setup failed: " + e.message); }
-}
-
-async function seedPromos(db: any, addLog: any, addToast: any, createNotification: any) {
-  try {
-    const batch = writeBatch(db);
-    [{ title: "Festive Save", description: "Enjoy exclusive seasonal discounts.", discountType: "percentage", discountValue: 25, discountDisplay: "25% OFF", minOrderAmount: 1000, maxDiscount: 5000, code: "FESTIVE25", usageLimit: 500, usedCount: 0, active: true },
-    { title: "First Delivery Free", description: "New users get their first delivery free.", discountType: "percentage", discountValue: 100, discountDisplay: "100% OFF", minOrderAmount: 2000, maxDiscount: 7000, code: "FIRSTFREE", usageLimit: 200, usedCount: 0, active: true },
-    { title: "Weekend Rush", description: "Flat discount on weekend deliveries.", discountType: "fixed", discountValue: 1500, discountDisplay: "₦1,500 OFF", minOrderAmount: 3000, maxDiscount: 1500, code: "WEEKEND30", usageLimit: 300, usedCount: 0, active: true }]
-      .forEach(s => batch.set(doc(collection(db, "promotions")), s)); await batch.commit();
-    addLog("Initialize", "Standard promotions configured"); addToast("success", "Promotional campaigns initialized"); createNotification("Promotions Initialized", "Default coupon campaigns active");
-  } catch (e: any) { addToast("error", "Promotion setup failed: " + e.message); }
-}
-
-async function seedReferrals(db: any, addLog: any, addToast: any, createNotification: any) {
-  try {
-    const batch = writeBatch(db);
-    [{ referrerId: "seed1", referrerName: "Aisha Bello", referrerEmail: "aisha@example.com", refereeId: "seed2", refereeName: "Chidi Okonkwo", refereeEmail: "chidi@example.com", rewardAmount: 500, status: "completed" },
-    { referrerId: "seed3", referrerName: "Fatima Musa", referrerEmail: "fatima@example.com", refereeId: "seed4", refereeName: "Emeka Nwosu", refereeEmail: "emeka@example.com", rewardAmount: 500, status: "pending" }]
-      .forEach(s => batch.set(doc(collection(db, "referrals")), s)); await batch.commit();
-    addLog("Initialize", "Referral ledger initialized"); addToast("success", "Referral ledger initialized"); createNotification("Referrals Initialized", "Default referral tracks configured");
-  } catch (e: any) { addToast("error", "Referral setup failed: " + e.message); }
-}
-
-async function seedAppContent(db: any, addLog: any, addToast: any, createNotification: any, setSettings: any) {
-  try {
-    const content = { referral: { benefitText: "Invite your friends and earn ₦500 in wallet credit for each successful referral!", referrerCode: "", reward: 500, active: true }, aiAssistant: { title: "Dispatch Assistant", description: "Need help with your delivery? Our assistant is here 24/7.", tag: "Support Intelligence", active: true }, welcomeGift: { title: "Welcome to ESDispatch!", credit: 2500, coins: 10, active: true }, weatherTraffic: { optimalMessage: "Light traffic conditions — optimal transit window.", congestedMessage: "Heavy traffic on major routes — slight delays expected.", optimalBadge: "Optimal Routes", congestedBadge: "Heavy Traffic", active: true }, loyalty: { bronzeThreshold: 10, silverThreshold: 25, goldThreshold: 50, platinumThreshold: 100, ordersForBronze: 3, ordersForSilver: 5, ordersForGold: 10, dailyBonus: 25, active: true }, statsConfig: { promoSavingsPerBooking: 3500, statLabels: ["Deliveries", "Saved", "Earned", "Redeemed"], active: true } };
-    await setDoc(doc(db, "system_config", "global_settings"), { appContent: content, updatedAt: Timestamp.now() }, { merge: true });
-    setSettings((prev: any) => ({ ...prev, appContent: content })); addLog("Initialize", "Default app card configuration restored"); addToast("success", "App content restored"); createNotification("App Content Restored", "Default dashboard content configured");
-  } catch (e: any) { addToast("error", "App content setup failed: " + e.message); }
-}
-
 
 async function seedMarketplace(db: any, addLog: any, addToast: any, createNotification: any) {
   try {
@@ -756,10 +681,10 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="stagger-1"><StatCard icon={<Users className="w-4 h-4 text-[#FFB800]" />} label="TOTAL USERS" value={activeUsers.length.toString()} sub={customers.length + " customers · " + drivers.length + " drivers"} /></div>
-        <div className="stagger-2"><StatCard icon={<Package className="w-4 h-4 text-[#FFB800]" />} label="SHIPMENTS" value={deliveries.length.toString()} sub={pendingDeliveries.length + " pending · " + delivered.length + " delivered"} /></div>
-        <div className="stagger-3"><StatCard icon={<DollarSign className="w-4 h-4 text-[#FFB800]" />} label="REVENUE" value={fmt(totalRevenue)} sub={fmt(totalTips) + " in tips · " + referrals.length + " referrals"} /></div>
-        <div className="stagger-4"><StatCard icon={<Activity className="w-4 h-4 text-[#FFB800]" />} label="ONLINE" value={(activeUsers.filter((u: any) => u.isOnline).length).toString()} sub={drivers.filter((d: any) => d.isOnline).length + " drivers · " + (activeUsers.filter((u: any) => u.role === "customer" && u.isOnline).length) + " customers"} /></div>
+        <div className="stagger-1"><StatCard icon={<Users className="w-4 h-4 text-[#FFB800]" />} label="TOTAL USERS" value={activeUsers.length.toString()} sub={customers.length + " customers Â· " + drivers.length + " drivers"} /></div>
+        <div className="stagger-2"><StatCard icon={<Package className="w-4 h-4 text-[#FFB800]" />} label="SHIPMENTS" value={deliveries.length.toString()} sub={pendingDeliveries.length + " pending Â· " + delivered.length + " delivered"} /></div>
+        <div className="stagger-3"><StatCard icon={<DollarSign className="w-4 h-4 text-[#FFB800]" />} label="REVENUE" value={fmt(totalRevenue)} sub={fmt(totalTips) + " in tips Â· " + referrals.length + " referrals"} /></div>
+        <div className="stagger-4"><StatCard icon={<Activity className="w-4 h-4 text-[#FFB800]" />} label="ONLINE" value={(activeUsers.filter((u: any) => u.isOnline).length).toString()} sub={drivers.filter((d: any) => d.isOnline).length + " drivers Â· " + (activeUsers.filter((u: any) => u.role === "customer" && u.isOnline).length) + " customers"} /></div>
       </div>
 
       <section>
@@ -848,7 +773,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                       {a.title}
                     </h3>
                     <p className={"text-xs z-10 line-clamp-1 " + subColor}>
-                      {a.total} total scheduled • {a.inTransit || 0} active on road
+                      {a.total} total scheduled â€¢ {a.inTransit || 0} active on road
                     </p>
                   </div>
 
@@ -886,7 +811,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                             ))
                           ) : (
                             <div className={"w-7 h-7 rounded-full ring-2 " + ringColor + " " + (isGold ? "bg-black/15 text-[#111]" : "bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-white/5") + " text-[10px] font-bold flex items-center justify-center"}>
-                              —
+                              â€”
                             </div>
                           )}
                           {extraCount > 0 && (
@@ -960,7 +885,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                     <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-[#FFB800] text-[#111]">{inspectingCategory.tag}</span>
                     <h3 className="text-base font-black text-gray-900 dark:text-white">Active Dispatch Queue ({categoryDeliveries.length})</h3>
                   </div>
-                  <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium mt-0.5">Real-time live queue for today in Benin City • Ordered FIFO (Oldest requests first)</p>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium mt-0.5">Real-time live queue for today in Benin City â€¢ Ordered FIFO (Oldest requests first)</p>
                 </div>
                 <button onClick={() => setInspectingCategory(null)} className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer">
                   <X size={18} />
@@ -1066,7 +991,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                         onClick={() => setModalStatusFilter("ASSIGNED")}
                         className="mt-3 px-4 py-1.5 rounded-xl bg-[#FFB800] text-[#111] text-xs font-black hover:bg-[#FFB800]/90 transition-all cursor-pointer shadow-xs"
                       >
-                        View Assigned Fleet ({assignedList.length}) →
+                        View Assigned Fleet ({assignedList.length}) â†’
                       </button>
                     )}
                   </div>
@@ -1088,11 +1013,11 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                 <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-semibold">#{idShort(d.id)}</span>
                                 <span className={"text-[9px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status}</span>
                                 <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-900 dark:text-amber-300">
-                                  FIFO #{qIdx + 1} • {createdAgo}
+                                  FIFO #{qIdx + 1} â€¢ {createdAgo}
                                 </span>
                               </div>
                               <p className="text-[11px] font-bold text-gray-800 dark:text-gray-200 mt-1">
-                                ₦{(d.price || 0).toLocaleString()} • {d.paymentStatus || "PAID"}
+                                â‚¦{(d.price || 0).toLocaleString()} â€¢ {d.paymentStatus || "PAID"}
                               </p>
                             </div>
                           </div>
@@ -1110,7 +1035,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                               className="px-3.5 py-1.5 bg-[#FFB800] text-[#111] text-xs font-black rounded-xl hover:bg-[#FFB800]/90 transition-all cursor-pointer shadow-xs flex items-center gap-1"
                               title="Open full shipment workspace"
                             >
-                              Open Full View →
+                              Open Full View â†’
                             </button>
                           </div>
                         </div>
@@ -1175,7 +1100,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                   <option value="" disabled className="text-gray-500">Select rider to assign...</option>
                                   {drivers.map((drv: any) => (
                                     <option key={drv.id} value={drv.id} className="text-gray-900 dark:text-white bg-white dark:bg-[#1a1a1a]">
-                                      {drv.name} ({drv.phone || "Active"}) • {drv.isOnline ? "🟢 Online" : "⚪ Offline"}
+                                      {drv.name} ({drv.phone || "Active"}) â€¢ {drv.isOnline ? "ðŸŸ¢ Online" : "âšª Offline"}
                                     </option>
                                   ))}
                                 </select>
@@ -1245,7 +1170,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                                      disabled
                                                      className="text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#222]"
                                                    >
-                                                     ✓ {step.label} (Passed)
+                                                     âœ“ {step.label} (Passed)
                                                    </option>
                                                  );
                                                }
@@ -1257,7 +1182,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                                      value={step.value}
                                                      className="font-black text-amber-900 dark:text-[#FFB800] bg-amber-50 dark:bg-[#1a1a1a]"
                                                    >
-                                                     {isDelivered ? `✓ ${step.label} (Completed)` : `● ${step.label} (Current)`}
+                                                     {isDelivered ? `âœ“ ${step.label} (Completed)` : `â— ${step.label} (Current)`}
                                                    </option>
                                                  );
                                                }
@@ -1278,7 +1203,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                                                disabled={isDelivered}
                                                className={isCancelled ? "font-bold text-red-600 dark:text-red-400" : "text-red-600 dark:text-red-400"}
                                              >
-                                               {isCancelled ? "● CANCELLED (Current)" : "CANCELLED"}
+                                               {isCancelled ? "â— CANCELLED (Current)" : "CANCELLED"}
                                              </option>
                                            </>
                                          );
@@ -1316,7 +1241,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                   }} 
                   className="px-4 py-2 bg-[#FFB800] text-[#111] font-black text-xs rounded-xl hover:bg-[#FFB800]/90 transition-all cursor-pointer shadow-xs"
                 >
-                  Open All in Shipments Tab →
+                  Open All in Shipments Tab â†’
                 </button>
               </div>
             </div>
@@ -1359,7 +1284,7 @@ function DashboardTab({ deliveries, activeUsers, customers, drivers, pendingDeli
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300 truncate mt-0.5">
                         <span className="font-medium text-[#111] dark:text-white truncate max-w-[140px] sm:max-w-[260px]">{d.pickupAddress || "Pickup"}</span>
-                        <span className="text-gray-500 dark:text-gray-400 shrink-0 font-bold">→</span>
+                        <span className="text-gray-500 dark:text-gray-400 shrink-0 font-bold">â†’</span>
                         <span className="truncate max-w-[160px] sm:max-w-[340px]">{d.deliveryAddress || "Destination"}</span>
                       </div>
                     </div>
@@ -1524,6 +1449,7 @@ function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSid
 }
 
 interface HeaderProps {
+  tab: string;
   searchQuery: string;
   setSearchQuery: (v: string) => void;
   unreadCount: number;
@@ -1565,7 +1491,7 @@ function formatNotifTime(n: any): string {
 }
 
 function Header({ 
-  searchQuery, setSearchQuery, unreadCount, setShowNotifs, showNotifs, setShowUserMenu, showUserMenu, 
+  tab, searchQuery, setSearchQuery, unreadCount, setShowNotifs, showNotifs, setShowUserMenu, showUserMenu, 
   currentUser, userRole, toggleDark, dark, setMobileSidebar, notifications, markNotifRead,
   adminProfile, onOpenAdminProfile, onMarkAllNotifsRead, onClearAllNotifs
 }: HeaderProps) {
@@ -1580,9 +1506,11 @@ function Header({
         </div>
       </div>
       <div className="flex items-center gap-2 sm:gap-3">
-        <div className="hidden sm:block w-[220px] lg:w-[300px]">
-          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search shipments, users, orders..." />
-        </div>
+        {(tab === "users" || tab === "shipments" || tab === "referrals") && (
+          <div className="hidden sm:block w-[220px] lg:w-[300px]">
+            <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search shipments, users, orders..." />
+          </div>
+        )}
         <button 
           onClick={toggleDark} 
           className="w-10 h-10 border border-gray-300 dark:border-white/15 rounded-full flex items-center justify-center cursor-pointer shadow-2xs hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
@@ -1625,7 +1553,7 @@ function Header({
                 )}
               </div>
 
-              {/* High-Density Clean List — Compact 2-Line Items Without Leaked Paragraph Margins */}
+              {/* High-Density Clean List â€” Compact 2-Line Items Without Leaked Paragraph Margins */}
               <div className="max-h-[300px] overflow-y-auto divide-y divide-gray-100 dark:divide-white/5">
                 {notifications.length === 0 ? (
                   <div className="py-8 px-4 text-center">
@@ -1705,7 +1633,7 @@ function Header({
                 {adminProfile?.name || currentUser?.email?.split("@")[0] || "Admin"}
               </div>
               <div className="text-gray-600 dark:text-gray-400 font-bold text-[10px] uppercase tracking-wider leading-tight mt-0.5 flex items-center gap-1">
-                {adminProfile?.staffId && <span className="text-[#FFB800]">{adminProfile.staffId} •</span>}
+                {adminProfile?.staffId && <span className="text-[#FFB800]">{adminProfile.staffId} â€¢</span>}
                 <span>{(userRole || "admin").replace("_", " ")}</span>
               </div>
             </div>
@@ -1987,7 +1915,7 @@ function AdminDashboardPage() {
     referralEnabled: true, referralReward: 500, minDeliveryForPayout: 1,
     baseFare: 4500, perKgRate: 250, expressSurcharge: 1500, surgeMultiplier: 1.25,
     dailyRiderTargetRides: 5, dailyRiderTargetPoints: 50, pointNairaValue: 10,
-    dashboardSections: {} as Record<string, boolean>, appContent: {} as Record<string, any>,
+    appContent: {} as Record<string, any>,
     appName: "ESDISPATCH", appSlogan: "PREMIUM LOGISTICS & DISPATCH", fcmServerKey: "",
   });
   const [appContent, setAppContent] = useState<AppContent[]>([]);
@@ -1999,6 +1927,8 @@ function AdminDashboardPage() {
   const [payoutRequests, setPayoutRequests] = useState<VendorPayoutRequest[]>([]);
   const [tipWithdrawals, setTipWithdrawals] = useState<TipWithdrawalRequest[]>([]);
   const [fleetLocations, setFleetLocations] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [addressRegistry, setAddressRegistry] = useState<RegistryEntry[]>([]);
+  const [geoCenter, setGeoCenter] = useState<{ lat: number; lng: number }>({ lat: DEFAULT_GEO_CENTER.lat, lng: DEFAULT_GEO_CENTER.lng });
 
   const [connected, setConnected] = useState(false);
   const [refreshT, setRefreshT] = useState("");
@@ -2205,7 +2135,7 @@ function AdminDashboardPage() {
                 price: data.price || 0,
               };
               setNewOrderAlert(newOrder);
-              addToast("info", `🔔 New order incoming: ${newOrder.itemName} for ${newOrder.receiverName}!`);
+              addToast("info", `ðŸ”” New order incoming: ${newOrder.itemName} for ${newOrder.receiverName}!`);
             }
           } else if (change.type === "modified" || change.type === "removed") {
             const data = change.doc.data();
@@ -2263,14 +2193,17 @@ function AdminDashboardPage() {
       snap.forEach(d => { const x = d.data(); list.push({ id: d.id, title: x.title || "", subtitle: x.subtitle || "", imageUrl: x.imageUrl || "", interval: x.interval || 5, order: x.order || 0, active: x.active !== false }); });
       setBanners(list.sort((a, b) => a.order - b.order));
     }, console.error));
-    unsubs.push(onSnapshot(collection(db, "referrals"), snap => {
+    unsubs.push(onSnapshot(collection(db, "referral_redemptions"), snap => {
       const list: Referral[] = [];
       snap.forEach(d => { const x = d.data(); list.push({
-        id: d.id, referrerId: x.referrerId || "", referrerName: x.referrerName || "",
-        referrerEmail: x.referrerEmail || "", refereeId: x.refereeId || "",
-        refereeName: x.refereeName || "", refereeEmail: x.refereeEmail || "",
-        rewardAmount: x.rewardAmount || 0, status: x.status || "pending",
+        id: d.id,
+        code: x.code || "",
+        userId: x.userId || x.redeemedBy || "",
+        rewardAmount: Number(x.rewardAmount || 0),
+        status: "redeemed",
+        redeemedAt: x.redeemedAt || x.createdAt || null,
       }); });
+      list.sort((a, b) => (getTimestampMs(b.redeemedAt) || 0) - (getTimestampMs(a.redeemedAt) || 0));
       setReferrals(list);
     }, console.error));
     unsubs.push(onSnapshot(collection(db, "promotions"), snap => {
@@ -2425,6 +2358,31 @@ function AdminDashboardPage() {
       });
       setFleetLocations(map);
     }, () => {}));
+    unsubs.push(onSnapshot(collection(db, "address_registry"), snap => {
+      const list: RegistryEntry[] = [];
+      snap.forEach(d => {
+        const x = d.data();
+        const lat = typeof x.lat === "number" ? x.lat : Number(x.lat);
+        const lng = typeof x.lng === "number" ? x.lng : Number(x.lng);
+        list.push({
+          id: d.id,
+          name: x.name || "",
+          tags: Array.isArray(x.tags) ? x.tags : [],
+          lat, lng,
+          zone: x.zone || "Benin City",
+          active: x.active !== false,
+        });
+      });
+      setAddressRegistry(list);
+    }, () => {}));
+    unsubs.push(onSnapshot(doc(db, "system_config", "geo"), s => {
+      if (s.exists()) {
+        const x = s.data();
+        const lat = typeof x.centerLat === "number" ? x.centerLat : DEFAULT_GEO_CENTER.lat;
+        const lng = typeof x.centerLng === "number" ? x.centerLng : DEFAULT_GEO_CENTER.lng;
+        setGeoCenter({ lat, lng });
+      }
+    }, () => {}));
     unsubs.push(onSnapshot(query(collection(db, "audit_logs"), orderBy("timestamp", "desc"), limit(100)), snap => {
       const list: AuditEntry[] = [];
       snap.forEach(d => {
@@ -2523,7 +2481,12 @@ function AdminDashboardPage() {
   const totalRevenue = delivered.reduce((s, d) => s + (d.price || 0), 0);
   const totalBookedGmv = deliveries.reduce((s, d) => s + (d.price || 0), 0);
   const totalTips = delivered.reduce((s, d) => s + (d.tipAmount || 0), 0);
-  const completedReferrals = referrals.filter(r => r.status === "completed");
+  // Referral ledger rows joined with the owning member profile (real redemption records only)
+  const referralRows: Referral[] = referrals.map(r => {
+    const u = users.find(x => x.uid === r.userId || x.id === r.userId);
+    return { ...r, name: u?.name || "", email: u?.email || "" };
+  });
+  const rewardedReferrals = referralRows.filter(r => (r.rewardAmount || 0) > 0);
   const pendingTipPayouts = tipWithdrawals.filter(w => w.status === "PENDING");
 
   if (loading) return (
@@ -2562,7 +2525,7 @@ function AdminDashboardPage() {
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@esdispatch.com" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
             <div><label className="block text-xs font-bold text-gray-800 dark:text-gray-200 mb-1">Password</label>
               <div className="relative"><Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-gray-400 pointer-events-none" />
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" className="w-full bg-gray-50 dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl pl-12 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 focus:border-[#FFB800]" required /></div></div>
             <button type="submit" className="w-full bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black py-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-sm tracking-wider cursor-pointer">
               <Lock className="w-4 h-4" /> SIGN IN</button>
           </form>
@@ -2571,7 +2534,7 @@ function AdminDashboardPage() {
     );
   }
 
-  // Purely real active deliveries for today — no simulated default tiers
+  // Purely real active deliveries for today â€” no simulated default tiers
   const todayStr = new Date().toISOString().slice(0, 10);
   const isDeliveryToday = (d: any) => {
     if (!d.dateString) return true;
@@ -2605,6 +2568,7 @@ function AdminDashboardPage() {
     { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"], badge: pendingDeliveries.length > 0 ? pendingDeliveries.length : undefined },
     { id: "payouts", label: "Tip Payouts", icon: <DollarSign size={24} strokeWidth={2} />, roles: ["super_admin", "admin"], badge: pendingTipPayouts.length > 0 ? pendingTipPayouts.length : undefined },
     { id: "tracking", label: "Live Tracking", icon: <MapPin size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
+    { id: "addresses", label: "Address Book", icon: <Bookmark size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "broadcast", label: "Broadcast News", icon: <Radio size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "emails", label: "Email Studio", icon: <Mail size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "users", label: "Users", icon: <Users size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
@@ -2629,6 +2593,7 @@ function AdminDashboardPage() {
     />
     <main className="flex-1 flex flex-col bg-white dark:bg-[#050505] rounded-3xl m-4 ml-0 overflow-hidden">
       <Header 
+        tab={tab}
         searchQuery={searchQuery} setSearchQuery={setSearchQuery} unreadCount={unreadCount} 
         setShowNotifs={setShowNotifs} showNotifs={showNotifs} setShowUserMenu={setShowUserMenu} 
         showUserMenu={showUserMenu} currentUser={currentUser} userRole={userRole} toggleDark={toggleDark} dark={dark} 
@@ -2663,7 +2628,7 @@ function AdminDashboardPage() {
                   <span className="text-xs text-gray-700 dark:text-gray-300 font-mono font-bold">#{idShort(newOrderAlert.id)}</span>
                 </div>
                 <p className="text-xs sm:text-sm font-bold text-[#111] dark:text-white mt-1 truncate">
-                  {newOrderAlert.itemName} • Deliver to <span className="text-amber-900 dark:text-[#FFB800] font-black">{newOrderAlert.receiverName}</span> ({newOrderAlert.deliveryAddress})
+                  {newOrderAlert.itemName} â€¢ Deliver to <span className="text-amber-900 dark:text-[#FFB800] font-black">{newOrderAlert.receiverName}</span> ({newOrderAlert.deliveryAddress})
                 </p>
               </div>
             </div>
@@ -2712,12 +2677,13 @@ function AdminDashboardPage() {
             addToast={addToast}
           />}
         {tab === "users" && <UsersTab activeUsers={activeUsers} deliveries={deliveries} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} createNotification={createNotification} userRole={userRole} currentUser={currentUser} />}
-        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} users={users} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
-        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} onNewDispatch={() => setTab("shipments")} />}
+        {tab === "shipments" && <ShipmentsTab deliveries={deliveries} drivers={drivers} users={users} addressRegistry={addressRegistry} searchQuery={searchQuery} db={db} addLog={addLog} addToast={addToast} filterPrefill={shipmentsFilterPrefill} setFilterPrefill={setShipmentsFilterPrefill} />}
+        {tab === "tracking" && <TrackingTab deliveries={deliveries} drivers={drivers} addressRegistry={addressRegistry} geoCenter={geoCenter} onNewDispatch={() => setTab("shipments")} />}
+        {tab === "addresses" && <AddressBookTab db={db} addLog={addLog} addToast={addToast} />}
         {tab === "broadcast" && <BroadcastNewsTab db={db} users={users} currentUserEmail={currentUser?.email} addLog={addLog} addToast={addToast} />}
         {tab === "emails" && <EmailStudioTab db={db} activeUsers={activeUsers} addLog={addLog} addToast={addToast} />}
         {tab === "banners" && <BannersTab banners={banners} db={db} addLog={addLog} addToast={addToast} />}
-        {tab === "referrals" && <ReferralsTab referrals={referrals} completedReferrals={completedReferrals} searchQuery={searchQuery} addToast={addToast} />}
+        {tab === "referrals" && <ReferralsTab referrals={referralRows} completedReferrals={rewardedReferrals} searchQuery={searchQuery} addToast={addToast} />}
         {tab === "promotions" && <PromotionsTab promotions={promotions} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "appcards" && <AppCardsTab appContent={appContent} db={db} addLog={addLog} addToast={addToast} />}
         {tab === "settings" && <SettingsTab db={db} addLog={addLog} addToast={addToast} activeUsers={activeUsers} />}
@@ -3389,7 +3355,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
             updates.phone = "";
             updates.duplicatePhoneQuarantined = true;
             stats.usersUpgraded++;
-            setPurgeLog(prev => [...prev, `[QUARANTINE] User ${uData.name || uId} had duplicate phone ${normPhone} — quarantined to prevent account collision.`]);
+            setPurgeLog(prev => [...prev, `[QUARANTINE] User ${uData.name || uId} had duplicate phone ${normPhone} â€” quarantined to prevent account collision.`]);
           } else {
             seenPhones.add(docKey);
             if (rawPhone !== normPhone) {
@@ -3616,7 +3582,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
         <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs col-span-2 sm:col-span-1">
           <span className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">Vendors & Staff</span>
           <p className="text-xl sm:text-2xl font-black text-[#111] dark:text-white mt-1">{vendorsCount + adminsCount}</p>
-          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">{vendorsCount} stores • {adminsCount} staff</span>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">{vendorsCount} stores â€¢ {adminsCount} staff</span>
         </div>
       </div>
 
@@ -3866,7 +3832,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                             <span className="text-emerald-600 dark:text-emerald-400 font-bold">
                               {fmt(riderStatsMap[u.id]?.totalTips ?? 0)} tips
                             </span>
-                            <span>•</span>
+                            <span>â€¢</span>
                             <span className="flex items-center gap-0.5 text-amber-800 dark:text-[#FFB800] font-bold">
                               <Star className="w-2.5 h-2.5 fill-current" /> {u.rating ? u.rating.toFixed(1) : "5.0"}
                             </span>
@@ -3879,7 +3845,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                           </span>
                           <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
                             <span>{u.deliveryCount || 0} sales</span>
-                            <span>•</span>
+                            <span>â€¢</span>
                             <span className="flex items-center gap-0.5 text-amber-800 dark:text-[#FFB800] font-bold">
                               <Star className="w-2.5 h-2.5 fill-current" /> {u.rating ? u.rating.toFixed(1) : "5.0"}
                             </span>
@@ -3901,7 +3867,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                           </span>
                           <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
                             <span>{u.deliveryCount || 0} orders</span>
-                            <span>•</span>
+                            <span>â€¢</span>
                             <span className="text-[#FFB800] font-bold">{u.loyaltyPoints || 0} pts</span>
                           </div>
                         </div>
@@ -4093,7 +4059,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                 What this maintenance utility does:
               </p>
               <ul className="list-disc list-inside space-y-1 text-[11px] text-gray-600 dark:text-gray-400 font-medium">
-                <li>Normalizes legacy accounts with missing or null <code className="text-[#FFB800]">walletBalance</code> (sets to ₦0.0).</li>
+                <li>Normalizes legacy accounts with missing or null <code className="text-[#FFB800]">walletBalance</code> (sets to â‚¦0.0).</li>
                 <li>Initializes missing <code className="text-[#FFB800]">loyaltyPoints</code> (sets default 350 welcome points).</li>
                 <li>Standardizes user roles and statuses across all accounts.</li>
                 <li>Audits rider profiles: fixes missing tip counters, ratings, and attendance defaults.</li>
@@ -4304,7 +4270,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                 </div>
                 <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
                   <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Store Rating</span>
-                  <span className="text-sm font-black text-amber-800 dark:text-[#FFB800] block mt-0.5">⭐ {previewUser.rating ? previewUser.rating.toFixed(1) : "5.0"}</span>
+                  <span className="text-sm font-black text-amber-800 dark:text-[#FFB800] block mt-0.5">â­ {previewUser.rating ? previewUser.rating.toFixed(1) : "5.0"}</span>
                 </div>
                 <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
                   <span className="text-[10px] uppercase font-extrabold text-gray-500 dark:text-gray-400 block">Sales Orders</span>
@@ -4558,11 +4524,11 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
               {/* Amount Entry */}
               <div className="space-y-1.5">
                 <label className="block text-[11px] font-black text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                  Transaction Amount (₦)
+                  Transaction Amount (â‚¦)
                 </label>
                 <div className="relative flex items-center">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-base font-black text-gray-900 dark:text-[#FFB800] pointer-events-none">
-                    ₦
+                    â‚¦
                   </div>
                   <input
                     type="number"
@@ -4605,7 +4571,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                           : "bg-white hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 border-gray-200 dark:border-white/10 text-gray-800 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
                       }`}
                     >
-                      +{fmt(amt).replace("₦", "")}
+                      +{fmt(amt).replace("â‚¦", "")}
                     </button>
                   ))}
                   <button
@@ -5021,7 +4987,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
   );
 }
 
-function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, addToast, filterPrefill, setFilterPrefill }: { deliveries: Delivery[]; drivers: UserProfile[]; users?: UserProfile[]; searchQuery: string; db: any; addLog: any; addToast?: (type: Toast["type"], message: string) => void; filterPrefill?: { status?: string; category?: string; search?: string; selectedId?: string } | null; setFilterPrefill?: (v: any) => void }) {
+function ShipmentsTab({ deliveries, drivers, users, addressRegistry = [], searchQuery, db, addLog, addToast, filterPrefill, setFilterPrefill }: { deliveries: Delivery[]; drivers: UserProfile[]; users?: UserProfile[]; addressRegistry?: RegistryEntry[]; searchQuery: string; db: any; addLog: any; addToast?: (type: Toast["type"], message: string) => void; filterPrefill?: { status?: string; category?: string; search?: string; selectedId?: string } | null; setFilterPrefill?: (v: any) => void }) {
     const [search, setSearch] = useState(() => filterPrefill?.search || "");
     const [statusFilter, setStatusFilter] = useState(() => filterPrefill?.status || (filterPrefill?.selectedId ? "ALL" : "ACTION_NEEDED"));
     const [categoryFilter, setCategoryFilter] = useState(() => filterPrefill?.category || "ALL");
@@ -5043,7 +5009,8 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
     const [showRecalibrateModal, setShowRecalibrateModal] = useState(false);
     const [recalibrating, setRecalibrating] = useState(false);
     const [recalibrateLog, setRecalibrateLog] = useState<string[]>([]);
-    const [newForm, setNewForm] = useState({ userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
+    const [newForm, setNewForm] = useState({ userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "", pickupLat: null as number | null, pickupLng: null as number | null, deliveryLat: null as number | null, deliveryLng: null as number | null });
+    const emptyNewForm = { userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "", pickupLat: null as number | null, pickupLng: null as number | null, deliveryLat: null as number | null, deliveryLng: null as number | null };
     const [creating, setCreating] = useState(false);
     const [decisionDelivery, setDecisionDelivery] = useState<Delivery | null>(null);
     const perPage = 15;
@@ -5201,14 +5168,14 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
 
     const scoreRiderForDelivery = (rider: UserProfile, targetDelivery: Delivery | null, load: number) => {
       if (rider.isOnline === false) {
-        return { score: 15, badge: "OFFLINE" as const, explanation: "Offline • Unavailable for dispatch" };
+        return { score: 15, badge: "OFFLINE" as const, explanation: "Offline â€¢ Unavailable for dispatch" };
       }
       if (rider.status === "SUSPENDED" || rider.status === "DEACTIVATED") {
-        return { score: 0, badge: "OFFLINE" as const, explanation: "Blocked • Account under review" };
+        return { score: 0, badge: "OFFLINE" as const, explanation: "Blocked â€¢ Account under review" };
       }
 
       let proximityScore = 24;
-      let etaText = "5–10 min to pickup";
+      let etaText = "5â€“10 min to pickup";
 
       if (rider.lat && rider.lng && targetDelivery?.pickupLat && targetDelivery?.pickupLng) {
         const lat1 = rider.lat;
@@ -5282,16 +5249,16 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
 
       if (load === 0 && totalScore >= 70) {
         badge = "BEST_FIT";
-        explanation = `Best Fit: Free now • ${etaText} • ${gpsAge}`;
+        explanation = `Best Fit: Free now â€¢ ${etaText} â€¢ ${gpsAge}`;
       } else if (load === 1 && totalScore >= 55) {
         badge = "RESERVE_NEXT";
-        explanation = `Reserve Next: Finishing drop • ${etaText} • ${gpsAge}`;
+        explanation = `Reserve Next: Finishing drop â€¢ ${etaText} â€¢ ${gpsAge}`;
       } else if (load >= 2) {
         badge = "BUSY";
-        explanation = `Busy (${load} active drops) • ${etaText}`;
+        explanation = `Busy (${load} active drops) â€¢ ${etaText}`;
       } else {
         badge = "ELIGIBLE";
-        explanation = `Eligible • ${etaText} • ${gpsAge}`;
+        explanation = `Eligible â€¢ ${etaText} â€¢ ${gpsAge}`;
       }
 
       return { score: totalScore, badge, explanation };
@@ -5479,7 +5446,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                 reference: del.id,
                 createdAt: Timestamp.now()
               });
-              addLog("Refund", `₦${del.price} credited to customer wallet (${del.userId})`);
+              addLog("Refund", `â‚¦${del.price} credited to customer wallet (${del.userId})`);
             } catch (refundErr) {
               console.error("Failed to execute cancellation refund:", refundErr);
             }
@@ -5583,7 +5550,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
           courierAvatar: rider.photoUrl || "",
           status: "ASSIGNED", updatedAt: Timestamp.now()
         });
-        addLog("Assign Rider", `${rider.name} → ${idShort(deliveryId)}`);
+        addLog("Assign Rider", `${rider.name} â†’ ${idShort(deliveryId)}`);
 
         const targetUserId = assignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
         if (targetUserId) {
@@ -5637,7 +5604,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
           status: "RESERVED_NEXT",
           updatedAt: Timestamp.now()
         });
-        addLog("Reserve Rider", `${rider.name} (Next) → ${idShort(deliveryId)}`);
+        addLog("Reserve Rider", `${rider.name} (Next) â†’ ${idShort(deliveryId)}`);
 
         const targetUserId = assignModal.delivery?.userId || deliveries.find(d => d.id === deliveryId)?.userId;
         if (targetUserId) {
@@ -5677,7 +5644,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
           courierAvatar: rider.photoUrl || "",
           updatedAt: Timestamp.now()
         });
-        addLog("Reassign Rider", `${del?.courierName || "Previous"} → ${rider.name} for #${idShort(deliveryId)}`);
+        addLog("Reassign Rider", `${del?.courierName || "Previous"} â†’ ${rider.name} for #${idShort(deliveryId)}`);
 
         // Notify customer
         const targetUserId = del?.userId;
@@ -5722,7 +5689,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
           await setDoc(notifRef, {
             id: notifRef.id,
             title: "New Delivery Assigned!",
-            message: `You have been assigned to delivery #${idShort(deliveryId)}: ${del?.pickupAddress || "Pickup"} → ${del?.deliveryAddress || "Dropoff"}.`,
+            message: `You have been assigned to delivery #${idShort(deliveryId)}: ${del?.pickupAddress || "Pickup"} â†’ ${del?.deliveryAddress || "Dropoff"}.`,
             time: "Just now",
             isRead: false,
             parcelId: deliveryId,
@@ -5751,7 +5718,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
         const del = deliveries.find(d => d.id === id);
         if (del) {
           if (!isValidStatusTransition(del.status, bulkStatus)) {
-            invalidTransitions.push(`${idShort(id)} (${del.status} → ${bulkStatus})`);
+            invalidTransitions.push(`${idShort(id)} (${del.status} â†’ ${bulkStatus})`);
           }
           if (requiresRider(bulkStatus) && !del.riderId && !del.driverId) {
             missingRiders.push(idShort(id));
@@ -5837,12 +5804,26 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
       setBulkAssignModal(false);
     };
 
+    // Coordinates must come from the address book or a manual entry inside Benin City â€” never invented.
+    const resolveEndpointCoords = (label: string, address: string, lat: number | null, lng: number | null): { coords: { lat: number; lng: number } | null; error: string | null } => {
+      if (!address.trim()) return { coords: null, error: null };
+      const stored = typeof lat === "number" && typeof lng === "number" && !isNaN(lat) && !isNaN(lng) ? { lat, lng } : null;
+      const resolved = stored || resolveFromRegistry(address, addressRegistry);
+      if (!resolved) return { coords: null, error: `Set ${label} coordinates â€” choose a listed landmark or enter coordinates within Benin City.` };
+      if (!isBeninCityCoord(resolved.lat, resolved.lng)) return { coords: null, error: `${label} coordinates must be within Benin City.` };
+      return { coords: resolved, error: null };
+    };
+
     const createDelivery = async () => {
       if (!newForm.receiverName.trim() || !newForm.deliveryAddress.trim() || !newForm.senderName.trim() || !newForm.pickupAddress.trim()) {
         if (addToast) addToast("error", "Please provide Sender Name, Pickup Address, Receiver Name, and Delivery Address.");
         else alert("Please provide Sender Name, Pickup Address, Receiver Name, and Delivery Address.");
         return;
       }
+      const pickup = resolveEndpointCoords("pickup", newForm.pickupAddress, newForm.pickupLat, newForm.pickupLng);
+      if (pickup.error) { if (addToast) addToast("error", pickup.error); return; }
+      const dropoff = resolveEndpointCoords("delivery", newForm.deliveryAddress, newForm.deliveryLat, newForm.deliveryLng);
+      if (dropoff.error) { if (addToast) addToast("error", dropoff.error); return; }
       setCreating(true);
       try {
         const otp = Math.floor(1000 + Math.random() * 9000).toString();
@@ -5855,6 +5836,10 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
           price: Number(newForm.price) || 1500,
           tipAmount: 0,
           userId: newForm.userId || "",
+          pickupLat: pickup.coords ? pickup.coords.lat : null,
+          pickupLng: pickup.coords ? pickup.coords.lng : null,
+          deliveryLat: dropoff.coords ? dropoff.coords.lat : null,
+          deliveryLng: dropoff.coords ? dropoff.coords.lng : null,
           courierName: selectedDriver ? selectedDriver.name : (newForm.driverName || "Unassigned"),
           courierPhone: selectedDriver ? (selectedDriver.phone || "") : "",
           riderBikeNumber: selectedDriver ? (selectedDriver.bikeNumber || "") : "",
@@ -5867,7 +5852,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
           updatedAt: Timestamp.now()
         });
         await updateDoc(ref, { id: ref.id });
-        addLog("Create Delivery", ref.id + " — " + newForm.itemName);
+        addLog("Create Delivery", ref.id + " â€” " + newForm.itemName);
 
         if (newForm.userId) {
           try {
@@ -5888,7 +5873,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
 
         if (addToast) addToast("success", `Created new shipment #${idShort(ref.id)} (${newForm.itemName || "Parcel"})`);
         setShowNew(false);
-        setNewForm({ userId: "", receiverName: "", receiverPhone: "", deliveryAddress: "", senderName: "", senderPhone: "", itemName: "", pickupAddress: "", quantity: 1, weight: 1, price: 1500, category: "Standard", status: "PENDING", riderId: "", driverId: "", driverName: "" });
+        setNewForm({ ...emptyNewForm });
       } catch (e: any) { 
         addLog("Error", "Create delivery failed: " + (e?.message || "Unknown error"));
         if (addToast) addToast("error", "Failed to create delivery: " + (e?.message || "Unknown error"));
@@ -6091,15 +6076,17 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                   }
                   let count = 0;
                   for (const p of pendingList) {
-                    const pLat = p.pickupLat || 6.335;
-                    const pLng = p.pickupLng || 5.6037;
+                    // Rank only on real coordinates â€” no fallback position is ever invented.
+                    const pLat = typeof p.pickupLat === "number" ? p.pickupLat : null;
+                    const pLng = typeof p.pickupLng === "number" ? p.pickupLng : null;
                     let best = onlineList[0];
-                    let minD = Infinity;
-                    for (const drv of onlineList) {
-                      const dLat = drv.lat || 6.335;
-                      const dLng = drv.lng || 5.6037;
-                      const dist = Math.hypot(pLat - dLat, pLng - dLng);
-                      if (dist < minD) { minD = dist; best = drv; }
+                    if (pLat !== null && pLng !== null) {
+                      let minD = Infinity;
+                      for (const drv of onlineList) {
+                        if (typeof drv.lat !== "number" || typeof drv.lng !== "number") continue;
+                        const dist = Math.hypot(pLat - drv.lat, pLng - drv.lng);
+                        if (dist < minD) { minD = dist; best = drv; }
+                      }
                     }
                     try {
                       await updateDoc(doc(db, "deliveries", p.id), {
@@ -6392,13 +6379,13 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                                 const isThisCurrent = !isCancelled && (step.value === normCurrent || (step.stage === currentIdx && isDelivered));
                                 return {
                                   value: step.value,
-                                  label: isPassed ? `✓ ${step.label} (Passed)` : isThisCurrent ? (isDelivered ? `✓ ${step.label} (Completed)` : `● ${step.label} (Current)`) : step.label,
+                                  label: isPassed ? `âœ“ ${step.label} (Passed)` : isThisCurrent ? (isDelivered ? `âœ“ ${step.label} (Completed)` : `â— ${step.label} (Current)`) : step.label,
                                   disabled: isPassed || (isDelivered && step.value !== "DELIVERED"),
                                 };
                               }),
                               {
                                 value: "CANCELLED",
-                                label: isCancelled ? "● CANCELLED (Current)" : "CANCELLED",
+                                label: isCancelled ? "â— CANCELLED (Current)" : "CANCELLED",
                                 disabled: isDelivered,
                               }
                             ];
@@ -6437,7 +6424,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                             className="px-3 py-1.5 bg-[#FFB800] hover:bg-[#FFB800]/90 text-[#111] font-black text-xs rounded-xl shadow-xs flex items-center gap-1 cursor-pointer transition-all"
                             title="Open Dedicated Shipment Workspace"
                           >
-                            Manage →
+                            Manage â†’
                           </button>
                           <button
                             onClick={() => setWaybillModal({ delivery: d, show: true })}
@@ -6503,14 +6490,14 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                   <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sender</p>
                     <p className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.senderName || "Sender"}</p>
-                    <p className="text-gray-700 dark:text-gray-300 font-medium">{detailsModal.delivery.senderPhone || "—"}</p>
+                    <p className="text-gray-700 dark:text-gray-300 font-medium">{detailsModal.delivery.senderPhone || "â€”"}</p>
                     <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium mt-1">{detailsModal.delivery.pickupAddress}</p>
                   </div>
 
                   <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Receiver</p>
                     <p className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.receiverName || "Receiver"}</p>
-                    <p className="text-gray-700 dark:text-gray-300 font-medium">{detailsModal.delivery.receiverPhone || "—"}</p>
+                    <p className="text-gray-700 dark:text-gray-300 font-medium">{detailsModal.delivery.receiverPhone || "â€”"}</p>
                     <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium mt-1">{detailsModal.delivery.deliveryAddress}</p>
                   </div>
                 </div>
@@ -6518,7 +6505,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                 <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5">
                   <p className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Parcel Details</p>
                   <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div><span className="text-gray-600 dark:text-gray-400 font-medium">Item:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.itemName || "—"}</span></div>
+                    <div><span className="text-gray-600 dark:text-gray-400 font-medium">Item:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.itemName || "â€”"}</span></div>
                     <div><span className="text-gray-600 dark:text-gray-400 font-medium">Category:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.category || "Standard"}</span></div>
                     <div><span className="text-gray-600 dark:text-gray-400 font-medium">Weight:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.weight || 1} kg</span></div>
                     <div><span className="text-gray-600 dark:text-gray-400 font-medium">Quantity:</span> <span className="font-bold text-[#111] dark:text-white">{detailsModal.delivery.quantity || 1}</span></div>
@@ -6530,7 +6517,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                 <div className="p-3 bg-gray-50 dark:bg-[#222] rounded-2xl border border-gray-100 dark:border-white/5 flex items-center justify-between">
                   <div>
                     <p className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Handover Verification PIN</p>
-                    <p className="font-mono font-black text-lg text-[#111] dark:text-white tracking-widest">{detailsModal.delivery.otpCode || "—"}</p>
+                    <p className="font-mono font-black text-lg text-[#111] dark:text-white tracking-widest">{detailsModal.delivery.otpCode || "â€”"}</p>
                   </div>
                   {detailsModal.delivery.status !== "DELIVERED" && detailsModal.delivery.status !== "CANCELLED" && (
                     <button
@@ -6607,13 +6594,13 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                   <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200">
                     <p className="text-[9px] font-black uppercase text-gray-500">Shipper / Sender</p>
                     <p className="font-bold text-sm text-[#111]">{waybillModal.delivery.senderName || "Sender"}</p>
-                    <p className="text-[11px] font-semibold text-gray-700">{waybillModal.delivery.senderPhone || "—"}</p>
+                    <p className="text-[11px] font-semibold text-gray-700">{waybillModal.delivery.senderPhone || "â€”"}</p>
                     <p className="text-[10px] text-gray-600 mt-1 leading-tight">{waybillModal.delivery.pickupAddress}</p>
                   </div>
                   <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200">
                     <p className="text-[9px] font-black uppercase text-gray-500">Consignee / Receiver</p>
                     <p className="font-bold text-sm text-[#111]">{waybillModal.delivery.receiverName || "Receiver"}</p>
-                    <p className="text-[11px] font-semibold text-gray-700">{waybillModal.delivery.receiverPhone || "—"}</p>
+                    <p className="text-[11px] font-semibold text-gray-700">{waybillModal.delivery.receiverPhone || "â€”"}</p>
                     <p className="text-[10px] text-gray-600 mt-1 leading-tight">{waybillModal.delivery.deliveryAddress}</p>
                   </div>
                 </div>
@@ -6743,7 +6730,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                       { value: "", label: "Walk-in / Unregistered Customer" },
                       ...(users || []).filter(u => u.role !== "driver").map(u => ({
                         value: u.id,
-                        label: `${u.name || u.email}${u.phone ? ` • ${u.phone}` : ""}`
+                        label: `${u.name || u.email}${u.phone ? ` â€¢ ${u.phone}` : ""}`
                       }))
                     ]}
                     className="w-full"
@@ -6783,9 +6770,33 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                       type="text"
                       placeholder="e.g. 15 Airport Road, GRA, Benin City"
                       value={newForm.pickupAddress}
-                      onChange={e => setNewForm({ ...newForm, pickupAddress: e.target.value })}
+                      onChange={e => {
+                        const addr = e.target.value;
+                        const hit = resolveFromRegistry(addr, addressRegistry);
+                        setNewForm({ ...newForm, pickupAddress: addr, pickupLat: hit ? hit.lat : null, pickupLng: hit ? hit.lng : null });
+                      }}
                       className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                     />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-600 dark:text-gray-400 mb-0.5">Pickup Latitude</label>
+                      <input
+                        type="number" step="any" placeholder="Auto-filled from Address Book"
+                        value={newForm.pickupLat ?? ""}
+                        onChange={e => setNewForm({ ...newForm, pickupLat: e.target.value === "" ? null : Number(e.target.value) })}
+                        className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-600 dark:text-gray-400 mb-0.5">Pickup Longitude</label>
+                      <input
+                        type="number" step="any" placeholder="Auto-filled from Address Book"
+                        value={newForm.pickupLng ?? ""}
+                        onChange={e => setNewForm({ ...newForm, pickupLng: e.target.value === "" ? null : Number(e.target.value) })}
+                        className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -6822,9 +6833,33 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                       type="text"
                       placeholder="e.g. 84 Uselu Lagos Road, Benin City"
                       value={newForm.deliveryAddress}
-                      onChange={e => setNewForm({ ...newForm, deliveryAddress: e.target.value })}
+                      onChange={e => {
+                        const addr = e.target.value;
+                        const hit = resolveFromRegistry(addr, addressRegistry);
+                        setNewForm({ ...newForm, deliveryAddress: addr, deliveryLat: hit ? hit.lat : null, deliveryLng: hit ? hit.lng : null });
+                      }}
                       className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
                     />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-600 dark:text-gray-400 mb-0.5">Delivery Latitude</label>
+                      <input
+                        type="number" step="any" placeholder="Auto-filled from Address Book"
+                        value={newForm.deliveryLat ?? ""}
+                        onChange={e => setNewForm({ ...newForm, deliveryLat: e.target.value === "" ? null : Number(e.target.value) })}
+                        className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-600 dark:text-gray-400 mb-0.5">Delivery Longitude</label>
+                      <input
+                        type="number" step="any" placeholder="Auto-filled from Address Book"
+                        value={newForm.deliveryLng ?? ""}
+                        onChange={e => setNewForm({ ...newForm, deliveryLng: e.target.value === "" ? null : Number(e.target.value) })}
+                        className="w-full h-9 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-lg px-3 text-xs text-[#111] dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FFB800]/40"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -6852,7 +6887,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-600 dark:text-gray-400 mb-0.5">Fare Price (₦) *</label>
+                    <label className="block text-[10px] font-bold text-gray-600 dark:text-gray-400 mb-0.5">Fare Price (â‚¦) *</label>
                     <input
                       type="number"
                       min="500"
@@ -6877,7 +6912,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                       { value: "", label: "Leave Unassigned (Pending Broadcast)" },
                       ...drivers.map(d => ({
                         value: d.id,
-                        label: `${d.name} (${d.phone || "Active"} · ${getRiderActiveLoad(d.id)} active drops)`
+                        label: `${d.name} (${d.phone || "Active"} Â· ${getRiderActiveLoad(d.id)} active drops)`
                       }))
                     ]}
                     className="w-full"
@@ -6916,7 +6951,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
 
               <div className="bg-[#FFB800]/10 rounded-2xl p-3.5 border border-[#FFB800]/30 space-y-1">
                 <p className="text-xs font-bold text-[#111] dark:text-white">{assignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-bold">#{idShort(assignModal.delivery.id)}</span></p>
-                <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{assignModal.delivery.pickupAddress} → {assignModal.delivery.deliveryAddress}</p>
+                <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{assignModal.delivery.pickupAddress} â†’ {assignModal.delivery.deliveryAddress}</p>
                 <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Recipient: <b className="text-[#111] dark:text-white font-bold">{assignModal.delivery.receiverName}</b> ({assignModal.delivery.receiverPhone || "No phone"})</p>
               </div>
 
@@ -6966,14 +7001,14 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                                 <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
                                 <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline === true ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline === true ? "Online" : "Offline"} />
                                 {rec.badge === "BEST_FIT" && (
-                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">★ BEST FIT ({rec.score})</span>
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">â˜… BEST FIT ({rec.score})</span>
                                 )}
                                 {rec.badge === "RESERVE_NEXT" && (
-                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-600 text-white">⚡ RESERVE NEXT ({rec.score})</span>
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-600 text-white">âš¡ RESERVE NEXT ({rec.score})</span>
                                 )}
                               </div>
                               <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium truncate">
-                                {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
+                                {r.phone || r.email} {r.bikeNumber ? `â€¢ ${r.bikeNumber}` : ""}
                               </p>
                               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                                 <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border " + loadClass}>
@@ -7023,7 +7058,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
               <div className="bg-[#FFB800]/10 rounded-2xl p-3.5 border border-[#FFB800]/30 space-y-1">
                 <p className="text-xs font-bold text-[#111] dark:text-white">{reassignModal.delivery.itemName || "Parcel"} <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono font-bold">#{idShort(reassignModal.delivery.id)}</span></p>
                 <p className="text-[10px] text-gray-600 dark:text-gray-400">Currently: <b className="text-[#111] dark:text-white font-bold">{reassignModal.delivery.courierName || "Unassigned"}</b></p>
-                <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{reassignModal.delivery.pickupAddress} → {reassignModal.delivery.deliveryAddress}</p>
+                <p className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{reassignModal.delivery.pickupAddress} â†’ {reassignModal.delivery.deliveryAddress}</p>
               </div>
 
               {/* Rider Search & Online Filter */}
@@ -7072,14 +7107,14 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                                 <p className="text-xs font-bold text-[#111] dark:text-white truncate">{r.name}</p>
                                 <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline === true ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline === true ? "Online" : "Offline"} />
                                 {rec.badge === "BEST_FIT" && (
-                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">★ BEST FIT ({rec.score})</span>
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#FFB800] text-[#111]">â˜… BEST FIT ({rec.score})</span>
                                 )}
                                 {rec.badge === "RESERVE_NEXT" && (
-                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-600 text-white">⚡ RESERVE NEXT ({rec.score})</span>
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-600 text-white">âš¡ RESERVE NEXT ({rec.score})</span>
                                 )}
                               </div>
                               <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium truncate">
-                                {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
+                                {r.phone || r.email} {r.bikeNumber ? `â€¢ ${r.bikeNumber}` : ""}
                               </p>
                               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                                 <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border " + loadClass}>
@@ -7173,7 +7208,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                               <span className={"w-2 h-2 rounded-full shrink-0 " + (r.isOnline === true ? "bg-emerald-500" : "bg-gray-400")} title={r.isOnline === true ? "Online" : "Offline"} />
                             </div>
                             <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium truncate">
-                              {r.phone || r.email} {r.bikeNumber ? `• ${r.bikeNumber}` : ""}
+                              {r.phone || r.email} {r.bikeNumber ? `â€¢ ${r.bikeNumber}` : ""}
                             </p>
                             <span className={"inline-block text-[9px] font-black px-2 py-0.5 rounded-full border mt-1 " + loadClass}>
                               {loadText}
@@ -7204,7 +7239,7 @@ function ShipmentsTab({ deliveries, drivers, users, searchQuery, db, addLog, add
                 <p className="text-gray-700 dark:text-gray-300">Are you sure you want to change the status of shipment <span className="font-bold text-[#111] dark:text-white">#{idShort(confirmStatusModal.delivery.id)}</span>?</p>
                 <div className="flex items-center gap-2">
                   <span className={"px-2 py-1 rounded-lg text-[10px] font-bold " + sStyle(confirmStatusModal.delivery.status)}>{confirmStatusModal.delivery.status}</span>
-                  <span className="text-gray-500 dark:text-gray-400 font-bold">→</span>
+                  <span className="text-gray-500 dark:text-gray-400 font-bold">â†’</span>
                   <span className={"px-2 py-1 rounded-lg text-[10px] font-bold " + sStyle(confirmStatusModal.newStatus)}>{confirmStatusModal.newStatus}</span>
                 </div>
 
@@ -7363,26 +7398,24 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
   const rPerPage = 10;
 
   const totalReferrals = referrals.length;
-  const completedCount = completedReferrals.length;
-  const pendingCount = referrals.filter(r => r.status?.toLowerCase() !== "completed").length;
+  const uniqueMembers = new Set(referrals.map(r => r.userId).filter(Boolean)).size;
   const totalRewardsPool = referrals.reduce((s, r) => s + (r.rewardAmount || 0), 0);
   const totalPaidOut = completedReferrals.reduce((s, r) => s + (r.rewardAmount || 0), 0);
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentCount = referrals.filter(r => (getTimestampMs(r.redeemedAt) || 0) >= weekAgo).length;
 
   const filtered = useMemo(() => {
     const q = (searchQuery || search).toLowerCase().trim();
     return referrals.filter(r => {
-      // Status filter
-      if (statusFilter === "COMPLETED" && r.status?.toLowerCase() !== "completed") return false;
-      if (statusFilter === "PENDING" && r.status?.toLowerCase() === "completed") return false;
+      if (statusFilter === "REWARDED" && !(r.rewardAmount > 0)) return false;
+      if (statusFilter === "NO_REWARD" && (r.rewardAmount > 0)) return false;
 
-      // Search query
       if (!q) return true;
       return (
-        (r.referrerName && r.referrerName.toLowerCase().includes(q)) ||
-        (r.referrerEmail && r.referrerEmail.toLowerCase().includes(q)) ||
-        (r.refereeName && r.refereeName.toLowerCase().includes(q)) ||
-        (r.refereeEmail && r.refereeEmail.toLowerCase().includes(q)) ||
-        (r.id && r.id.toLowerCase().includes(q))
+        (r.name && r.name.toLowerCase().includes(q)) ||
+        (r.email && r.email.toLowerCase().includes(q)) ||
+        (r.code && r.code.toLowerCase().includes(q)) ||
+        (r.userId && r.userId.toLowerCase().includes(q))
       );
     });
   }, [referrals, searchQuery, search, statusFilter]);
@@ -7397,7 +7430,7 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
-    if (addToast) addToast("success", "Referral ID copied to clipboard");
+    if (addToast) addToast("success", "Referral code copied to clipboard");
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -7406,6 +7439,12 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
     const parts = name.trim().split(" ");
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
     return name.slice(0, 2).toUpperCase();
+  };
+
+  const formatWhen = (ts: any) => {
+    const ms = getTimestampMs(ts);
+    if (!ms) return "Date unavailable";
+    return new Date(ms).toLocaleString("en-NG", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   };
 
   return (
@@ -7417,58 +7456,58 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
             <div className="w-8 h-8 rounded-xl bg-[#FFB800]/15 flex items-center justify-center border border-[#FFB800]/30 text-[#FFB800]">
               <Gift className="w-4 h-4" />
             </div>
-            Referrals & Growth Rewards
+            Referral Rewards
           </h1>
           <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">
-            Track user invitations, referee conversion funnels, and automated wallet incentives.
+            Referral code redemptions recorded when members apply a code, and the wallet rewards they earned.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search referrer or referee..." />
+          <SearchInput value={search} onChange={setSearch} placeholder="Search member or code..." />
         </div>
       </div>
 
       {/* 4 Spacious Executive Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Referrals */}
+        {/* Card 1: Total Redemptions */}
         <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group hover:border-[#FFB800]/40 transition-all">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Referrals</span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">Code Redemptions</span>
             <div className="w-9 h-9 rounded-xl bg-[#FFB800]/10 border border-[#FFB800]/20 flex items-center justify-center text-[#FFB800]">
               <Gift className="w-4 h-4" />
             </div>
           </div>
           <p className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">{totalReferrals}</p>
           <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-1">
-            Total tracked invite events
+            Referral codes applied by members
           </p>
         </div>
 
-        {/* Card 2: Completed & Rewarded */}
+        {/* Card 2: Members Referred */}
         <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group hover:border-emerald-500/40 transition-all">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">Completed & Paid</span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">Members Referred</span>
             <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">{completedCount}</p>
+          <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">{uniqueMembers}</p>
           <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-1">
-            First order completed & verified
+            Distinct members who redeemed a code
           </p>
         </div>
 
-        {/* Card 3: Pending Conversions */}
+        {/* Card 3: Recent Redemptions */}
         <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group hover:border-amber-500/40 transition-all">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">Pending Conversions</span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">Last 7 Days</span>
             <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
               <Clock className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">{pendingCount}</p>
+          <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">{recentCount}</p>
           <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-1">
-            Invited, awaiting first booking
+            Redemptions in the past week
           </p>
         </div>
 
@@ -7482,7 +7521,7 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
           </div>
           <p className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">{fmt(totalPaidOut)}</p>
           <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-1">
-            Pool: {fmt(totalRewardsPool)} committed
+            Total: {fmt(totalRewardsPool)} rewarded
           </p>
         </div>
       </div>
@@ -7491,9 +7530,9 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
       <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
         <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
           {[
-            { id: "ALL", label: "All Referrals", count: totalReferrals },
-            { id: "COMPLETED", label: "Completed & Paid", count: completedCount },
-            { id: "PENDING", label: "Pending", count: pendingCount }
+            { id: "ALL", label: "All Redemptions", count: totalReferrals },
+            { id: "REWARDED", label: "Rewarded", count: referrals.filter(r => r.rewardAmount > 0).length },
+            { id: "NO_REWARD", label: "No Reward", count: referrals.filter(r => !(r.rewardAmount > 0)).length }
           ].map(tab => (
             <button
               key={tab.id}
@@ -7530,9 +7569,13 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
             <div className="w-14 h-14 rounded-2xl bg-[#FFB800]/10 border border-[#FFB800]/20 flex items-center justify-center text-[#FFB800] mx-auto mb-3">
               <Gift className="w-7 h-7" />
             </div>
-            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-1">No referrals match your filter</h3>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-1">
+              {totalReferrals === 0 ? "No referral codes redeemed yet" : "No redemptions match your filter"}
+            </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mx-auto mb-4">
-              Try adjusting your search terms or status filter to view other tracked invitations.
+              {totalReferrals === 0
+                ? "A redemption appears here as soon as a member enters a referral code and it is accepted. Share your invite code with customers to start collecting rewards."
+                : "Try adjusting your search terms or status filter to view other recorded redemptions."}
             </p>
             <button
               onClick={() => { setSearch(""); setStatusFilter("ALL"); }}
@@ -7547,19 +7590,16 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
               <thead className="bg-gray-50 dark:bg-[#222]">
                 <tr>
                   <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10">
-                    Referrer (Inviter)
+                    Member
                   </th>
-                  <th className="text-center font-extrabold text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10 hidden sm:table-cell w-12">
-                    Flow
-                  </th>
-                  <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10">
-                    Referee (Invited User)
+                  <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10 hidden sm:table-cell">
+                    Code
                   </th>
                   <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10 hidden md:table-cell">
-                    Reward Incentive
+                    Reward
                   </th>
-                  <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10">
-                    Status
+                  <th className="text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10 hidden md:table-cell">
+                    Redeemed
                   </th>
                   <th className="text-right font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] p-4 border-b border-gray-200 dark:border-white/10 w-24">
                     Action
@@ -7568,84 +7608,58 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-white/10">
                 {pagedReferrals.map((r) => {
-                  const isDone = r.status?.toLowerCase() === "completed";
+                  const rewarded = (r.rewardAmount || 0) > 0;
+                  const displayName = r.name || r.email || r.userId || "Member";
                   return (
                     <tr key={r.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                      {/* Referrer Column */}
+                      {/* Member Column */}
                       <td className="p-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/30 flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
-                            {getInitials(r.referrerName)}
+                            {getInitials(r.name || r.email)}
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <p className="font-black text-xs text-[#111] dark:text-white truncate">{r.referrerName || "Unnamed User"}</p>
+                              <p className="font-black text-xs text-[#111] dark:text-white truncate">{displayName}</p>
                               <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400">
-                                Referrer
+                                Referred
                               </span>
                             </div>
-                            <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium truncate mt-0.5">{r.referrerEmail || "No email"}</p>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium truncate mt-0.5">{r.email || "No email on file"}</p>
                           </div>
                         </div>
                       </td>
 
-                      {/* Direction Flow */}
-                      <td className="p-4 text-center hidden sm:table-cell">
-                        <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center mx-auto text-gray-400">
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </div>
-                      </td>
-
-                      {/* Referee Column */}
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-[#252525] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 flex items-center justify-center font-bold text-xs shrink-0">
-                            {getInitials(r.refereeName)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-black text-xs text-[#111] dark:text-white truncate">{r.refereeName || "New Customer"}</p>
-                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#FFB800]/10 text-[#FFB800]">
-                                New Joiner
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium truncate mt-0.5">{r.refereeEmail || "No email"}</p>
-                          </div>
-                        </div>
+                      {/* Code */}
+                      <td className="p-4 hidden sm:table-cell">
+                        <span className="inline-flex items-center font-black text-[11px] px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-[#111] dark:text-white tracking-wider">
+                          {r.code || "â€”"}
+                        </span>
                       </td>
 
                       {/* Reward Amount */}
                       <td className="p-4 hidden md:table-cell">
                         <div className="flex flex-col">
                           <span className="font-black text-xs text-gray-900 dark:text-white flex items-center gap-1.5">
-                            <span className="text-[#FFB800]">₦</span>
+                            <span className="text-[#FFB800]">â‚¦</span>
                             {Number(r.rewardAmount || 0).toLocaleString("en-US")}
                           </span>
                           <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
-                            {isDone ? "Settled to wallet" : "Pending qualification"}
+                            {rewarded ? "Settled to wallet" : "No reward attached"}
                           </span>
                         </div>
                       </td>
 
-                      {/* Status Pill */}
-                      <td className="p-4">
-                        <span
-                          className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${
-                            isDone
-                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
-                              : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
-                          }`}
-                        >
-                          {isDone ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                          {isDone ? "COMPLETED" : "PENDING ORDER"}
-                        </span>
+                      {/* Redeemed */}
+                      <td className="p-4 hidden md:table-cell">
+                        <span className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">{formatWhen(r.redeemedAt)}</span>
                       </td>
 
                       {/* Copy Action */}
                       <td className="p-4 text-right">
                         <button
-                          onClick={() => copyToClipboard(r.id, r.id)}
-                          title="Copy Referral ID"
+                          onClick={() => copyToClipboard(r.code || r.id, r.id)}
+                          title="Copy Referral Code"
                           className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-700 dark:text-gray-300 flex items-center justify-center transition-colors cursor-pointer ml-auto"
                         >
                           {copiedId === r.id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
@@ -7664,7 +7678,7 @@ function ReferralsTab({ referrals, completedReferrals, searchQuery, addToast }: 
           <div className="p-4 border-t border-gray-100 dark:border-white/10 flex items-center justify-between flex-wrap gap-3">
             <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
               Page <span className="font-bold text-gray-900 dark:text-white">{rPage + 1}</span> of{" "}
-              <span className="font-bold text-gray-900 dark:text-white">{totalPages}</span> ({filtered.length} referrals)
+              <span className="font-bold text-gray-900 dark:text-white">{totalPages}</span> ({filtered.length} redemptions)
             </span>
             <div className="flex items-center gap-1.5">
               <button
@@ -8114,7 +8128,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
     <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><Settings2 className="w-5 h-5 text-[#FFB800]" /> Settings</h1>
       <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">System preferences and configuration</p></div>
 
-    {/* Section 1 — System Controls */}
+    {/* Section 1 â€” System Controls */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><Shield className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">System Controls</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
@@ -8138,7 +8152,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("System Controls")} loading={saving} /></div>
     </div>
 
-    {/* Section 2 — Feature Toggles */}
+    {/* Section 2 â€” Feature Toggles */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><Zap className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Feature Toggles</span></div>
       <div className="grid sm:grid-cols-2 gap-3">
@@ -8151,12 +8165,12 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         <Toggle label="Require Email Verification (OTP Passcode)" desc="Require new and existing accounts to verify their email address via a 6-digit passcode before completing bookings" checked={!!sForm.emailVerificationRequired} onChange={v => upd("emailVerificationRequired", v)} />
         <Toggle label="Require Unique Phone Number at Sign-Up" desc="Enforce real-time validation and strict phone uniqueness so no two accounts can share the same mobile number" checked={!!sForm.phoneVerificationRequired} onChange={v => upd("phoneVerificationRequired", v)} />
         <Toggle label="QR Code Delivery Handover" desc="Display QR code alongside 4-digit PIN for parcel handover verification (disabled by default for direct PIN entry)" checked={!!sForm.enableQrCodeHandover} onChange={v => upd("enableQrCodeHandover", v)} />
-        <Toggle label="Delivery Signature Verification" desc="Require customer digital signature after capturing mandatory photo proof (OFF by default — photo proof is always required)" checked={!!sForm.signatureVerificationEnabled} onChange={v => upd("signatureVerificationEnabled", v)} />
+        <Toggle label="Delivery Signature Verification" desc="Require customer digital signature after capturing mandatory photo proof (OFF by default â€” photo proof is always required)" checked={!!sForm.signatureVerificationEnabled} onChange={v => upd("signatureVerificationEnabled", v)} />
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Feature Toggles")} loading={saving} /></div>
     </div>
 
-    {/* Section 2b — Courier Fleet & Working Days Controls */}
+    {/* Section 2b â€” Courier Fleet & Working Days Controls */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10">
         <Bike className="w-4 h-4 text-[#FFB800]" />
@@ -8215,7 +8229,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       </div>
     </div>
 
-    {/* Section 2c — System Recalibration & Fleet Maintenance */}
+    {/* Section 2c â€” System Recalibration & Fleet Maintenance */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10">
         <RefreshCw className="w-4 h-4 text-[#FFB800]" />
@@ -8261,10 +8275,10 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       </div>
     </div>
 
-    {/* Section 3 — Delivery Types */}
+    {/* Section 3 â€” Delivery Types */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><Truck className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Delivery Types</span></div>
-      <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Manage delivery categories — rename, enable/disable, set per-type pricing</p>
+      <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Manage delivery categories â€” rename, enable/disable, set per-type pricing</p>
       <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">
         <table className="w-full text-xs">
           <thead className="bg-gray-50 dark:bg-[#222]">
@@ -8272,7 +8286,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
               <th className="p-2 text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] w-10">On</th>
               <th className="p-2 text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px]">Name</th>
               <th className="p-2 text-left font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] hidden md:table-cell">Desc</th>
-              <th className="p-2 text-right font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] w-20">Base (₦)</th>
+              <th className="p-2 text-right font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] w-20">Base (â‚¦)</th>
               <th className="p-2 text-right font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] w-16">/km</th>
               <th className="p-2 text-right font-extrabold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-[10px] w-16">/kg</th>
               <th className="p-2 w-8"></th>
@@ -8337,23 +8351,23 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Delivery Types")} loading={saving} /></div>
     </div>
 
-    {/* Section 4 — Pricing */}
+    {/* Section 4 â€” Pricing */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><DollarSign className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Pricing</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">BASE FARE (₦)</label>
+        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">BASE FARE (â‚¦)</label>
           <input type="number" value={sForm.baseFare ?? ""} onChange={e => upd("baseFare", parseFloat(e.target.value) || 0)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
-        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">PER KG RATE (₦)</label>
+        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">PER KG RATE (â‚¦)</label>
           <input type="number" step="0.1" value={sForm.perKgRate ?? ""} onChange={e => upd("perKgRate", parseFloat(e.target.value) || 0)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
-        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">EXPRESS SURCHARGE (₦)</label>
+        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">EXPRESS SURCHARGE (â‚¦)</label>
           <input type="number" value={sForm.expressSurcharge ?? ""} onChange={e => upd("expressSurcharge", parseFloat(e.target.value) || 0)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
-        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">SURGE MULTIPLIER (×)</label>
+        <div><label className="block text-[10px] font-extrabold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">SURGE MULTIPLIER (Ã—)</label>
           <input type="number" step="0.1" min="1" value={sForm.surgeMultiplier ?? ""} onChange={e => upd("surgeMultiplier", parseFloat(e.target.value) || 1)} className="w-full h-10 bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-3.5 text-xs text-[#111] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40" /></div>
       </div>
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Pricing")} loading={saving} /></div>
     </div>
 
-    {/* Section 4 — Points & Rewards Configuration */}
+    {/* Section 4 â€” Points & Rewards Configuration */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><Award className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Points & Rewards</span></div>
       <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Configure loyalty tiers, welcome gift, and referral rewards</p>
@@ -8399,10 +8413,10 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
         <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Daily Bonus Points</label>
           <input type="number" value={sForm.appContent?.loyalty?.dailyBonus ?? 10} onChange={e => upd("appContent", { ...(sForm.appContent || {}), loyalty: { ...(sForm.appContent?.loyalty || {}), dailyBonus: parseInt(e.target.value) || 10 } })}
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Welcome Gift (₦)</label>
+        <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Welcome Gift (â‚¦)</label>
           <input type="number" value={sForm.appContent?.welcomeGift?.credit ?? 2500} onChange={e => upd("appContent", { ...(sForm.appContent || {}), welcomeGift: { ...(sForm.appContent?.welcomeGift || {}), credit: parseFloat(e.target.value) || 0 } })}
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
-        <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Referral Reward (₦)</label>
+        <div><label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Referral Reward (â‚¦)</label>
           <input type="number" value={sForm.referralReward ?? 500} onChange={e => upd("referralReward", parseFloat(e.target.value) || 0)}
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" /></div>
       </div>
@@ -8420,7 +8434,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" />
         </div>
         <div>
-          <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Point Naira Value (₦ per pt)</label>
+          <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 block">Point Naira Value (â‚¦ per pt)</label>
           <input type="number" min="1" value={sForm.pointNairaValue ?? 10} onChange={e => upd("pointNairaValue", parseInt(e.target.value) || 10)}
             className="w-full bg-gray-50 dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-[#111] dark:text-white" />
         </div>
@@ -8428,7 +8442,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Points & Rewards")} loading={saving} /></div>
     </div>
 
-    {/* Section 5 — Branding & Communication */}
+    {/* Section 5 â€” Branding & Communication */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><Globe className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Branding & Communication</span></div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -8455,17 +8469,9 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
       <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Branding")} loading={saving} /></div>
     </div>
 
-    {/* Section 6 — Master System Overrides */}
-    <div className="bg-white dark:bg-[#1a1a1a] border-2 border-[#FFB800]/40 rounded-3xl p-5 shadow-xs space-y-4">
-      <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-white/10"><AlertTriangle className="w-4 h-4 text-[#FFB800]" /><span className="text-xs font-black text-[#111] dark:text-white uppercase tracking-wide">Master System Overrides</span></div>
-      <div className="grid sm:grid-cols-2 gap-3">
-        <Toggle label="Broadcast Surge Pricing" desc="Push surge multiplier to all active pricing" checked={!!sForm.broadcastSurge} onChange={v => upd("broadcastSurge", v)} />
-        <Toggle label="Fleet Sync" desc="Force synchronization across all drivers" checked={!!sForm.fleetSync} onChange={v => upd("fleetSync", v)} />
-      </div>
-      <div className="flex justify-end pt-1"><SaveBtn onClick={() => saveSettings("Master Overrides")} loading={saving} /></div>
-    </div>
 
-    {/* Section 7 — Administrative Staff & Sub-Admins */}
+
+    {/* Section 7 â€” Administrative Staff & Sub-Admins */}
     <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-xs space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3 pb-2 border-b border-gray-100 dark:border-white/10">
         <div className="flex items-center gap-2">
@@ -8532,7 +8538,7 @@ function SettingsTab({ db, addLog, addToast, activeUsers }: SettingsTabProps) {
                     </span>
                   </td>
                   <td className="p-3 font-mono text-gray-600 dark:text-gray-300 text-[11px]">
-                    {staff.phone || "—"}
+                    {staff.phone || "â€”"}
                   </td>
                   <td className="p-3">
                     <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -8752,7 +8758,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
         vendorStore: pVendor, description: pDesc, imageUrl: pImg || "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=500",
         status: statusStr, rating: 5.0, createdAt: Timestamp.now()
       });
-      addLog("Create Product", `Added product '${pName}' (₦${priceNum.toLocaleString()})`);
+      addLog("Create Product", `Added product '${pName}' (â‚¦${priceNum.toLocaleString()})`);
       addToast("success", `Product '${pName}' created successfully`);
       setShowAddModal(false);
       setPName(""); setPPrice(""); setPStock(""); setPDesc(""); setPImg("");
@@ -8766,7 +8772,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
     if (!sName || !sOwner || !sEmail) { addToast("error", "Store name, owner, and email are required"); return; }
     setSavingStore(true);
     try {
-      // Resolve owner user — link to an existing account (by email) or create a vendor user doc
+      // Resolve owner user â€” link to an existing account (by email) or create a vendor user doc
       let ownerId = "";
       let ownerEmail = sEmail.trim().toLowerCase();
       const matched = await getDocs(query(collection(db, "users"), where("email", "==", ownerEmail)));
@@ -8959,7 +8965,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
   const handleUpdateProductPrice = async (productId: string, name: string, price: number) => {
     try {
       await updateDoc(doc(db, "marketplace_products", productId), { price, updatedAt: Timestamp.now() });
-      addLog("Update Price", `Updated '${name}' price to ₦${price.toLocaleString()}`);
+      addLog("Update Price", `Updated '${name}' price to â‚¦${price.toLocaleString()}`);
       addToast("success", `Price updated for '${name}'`);
     } catch (err: any) {
       addToast("error", "Price update failed: " + err.message);
@@ -9031,9 +9037,9 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
 
     {/* Metric Stat Cards */}
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatCard icon={<Package className="w-4 h-4 text-[#FFB800]" />} label="CATALOG PRODUCTS" value={totalProducts.toString()} sub={`${products.filter(p => p.status === "In Stock").length} in stock · ${products.filter(p => p.status === "Low Stock").length} low stock`} />
+      <StatCard icon={<Package className="w-4 h-4 text-[#FFB800]" />} label="CATALOG PRODUCTS" value={totalProducts.toString()} sub={`${products.filter(p => p.status === "In Stock").length} in stock Â· ${products.filter(p => p.status === "Low Stock").length} low stock`} />
       <StatCard icon={<Store className="w-4 h-4 text-[#FFB800]" />} label="ACTIVE VENDOR STORES" value={approvedStores.length.toString()} sub={`${pendingStores.length} pending enlistment requests`} />
-      <StatCard icon={<DollarSign className="w-4 h-4 text-[#FFB800]" />} label="MARKETPLACE SALES" value={`₦${totalMarketplaceSales.toLocaleString()}`} sub={`${orders.length} completed transactions`} />
+      <StatCard icon={<DollarSign className="w-4 h-4 text-[#FFB800]" />} label="MARKETPLACE SALES" value={`â‚¦${totalMarketplaceSales.toLocaleString()}`} sub={`${orders.length} completed transactions`} />
       <StatCard icon={<Percent className="w-4 h-4 text-[#FFB800]" />} label="AVG COMMISSION" value="8.5%" sub="Revenue split per store transaction" />
     </div>
 
@@ -9041,17 +9047,17 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/10 dark:border-white/10 pb-3">
       <div className="flex gap-2 flex-wrap">
         <button onClick={() => setActiveSubTab("products")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all flex items-center cursor-pointer " + (activeSubTab === "products" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          📦 Products ({totalProducts})
+          ðŸ“¦ Products ({totalProducts})
         </button>
         <button onClick={() => setActiveSubTab("stores")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all relative flex items-center cursor-pointer " + (activeSubTab === "stores" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          🏪 Vendor Stores ({stores.length})
+          ðŸª Vendor Stores ({stores.length})
           {pendingStores.length > 0 && <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">{pendingStores.length}</span>}
         </button>
         <button onClick={() => setActiveSubTab("orders")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all flex items-center cursor-pointer " + (activeSubTab === "orders" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          🛒 Orders ({orders.length})
+          ðŸ›’ Orders ({orders.length})
         </button>
         <button onClick={() => setActiveSubTab("payouts")} className={"h-10 px-4 rounded-xl text-xs font-black transition-all relative flex items-center cursor-pointer " + (activeSubTab === "payouts" ? "bg-[#FFB800] text-[#111] shadow-xs" : "bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-white/10")}>
-          💳 Payouts ({payoutRequests.length})
+          ðŸ’³ Payouts ({payoutRequests.length})
           {payoutRequests.filter(p => p.status === "PENDING").length > 0 && (
             <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px]">
               {payoutRequests.filter(p => p.status === "PENDING").length}
@@ -9081,7 +9087,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Product</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Category</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Vendor Store</th>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Price (₦)</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Price (â‚¦)</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Stock Qty</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Status</th>
                   <th className="text-right font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Actions</th>
@@ -9162,11 +9168,11 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                           <span className="px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-lg font-black text-[9px]">VERIFIED</span>
                         )}
                       </div>
-                      {s.isDemo && <div className="text-[10px] text-amber-800 dark:text-amber-400 font-black mt-0.5">Staging · Hidden from catalog</div>}
+                      {s.isDemo && <div className="text-[10px] text-amber-800 dark:text-amber-400 font-black mt-0.5">Staging Â· Hidden from catalog</div>}
                     </td>
                     <td className="p-4">
                       <div className="font-bold text-[#111] dark:text-white">{s.ownerName}</div>
-                      <div className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">{s.email} · {s.phone}</div>
+                      <div className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">{s.email} Â· {s.phone}</div>
                     </td>
                     <td className="p-4"><span className="px-3 py-1 bg-gray-100 dark:bg-[#222] text-[#111] dark:text-white rounded-full font-bold text-[10px]">{s.category}</span></td>
                     <td className="p-4 font-bold text-sm text-[#111] dark:text-white">{s.commissionRate}%</td>
@@ -9231,7 +9237,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Order #</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Customer</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Store</th>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Total (₦)</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Total (â‚¦)</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Status</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Date</th>
                 </tr>
@@ -9242,7 +9248,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                     <td className="p-4 font-black text-sm text-amber-800 dark:text-[#FFB800]">{o.orderNumber}</td>
                     <td className="p-4 font-bold text-[#111] dark:text-white">{o.customerName}</td>
                     <td className="p-4 font-semibold text-gray-800 dark:text-gray-200">{o.storeName}</td>
-                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">₦{o.totalPrice.toLocaleString()}</td>
+                    <td className="p-4 font-black text-sm text-[#111] dark:text-white">â‚¦{o.totalPrice.toLocaleString()}</td>
                     <td className="p-4">
                       <span className="px-3 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-full font-bold text-[10px]">{o.status}</span>
                     </td>
@@ -9271,7 +9277,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
               <thead className="bg-gray-50 dark:bg-[#222]">
                 <tr>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Vendor Store</th>
-                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Amount (₦)</th>
+                  <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Amount (â‚¦)</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Bank Details</th>
                   <th className="text-left font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Status</th>
                   <th className="text-right font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[11px] p-4 border-b border-black/10 dark:border-white/10">Actions</th>
@@ -9281,7 +9287,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                 {payoutRequests.map(p => (
                   <tr key={p.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                     <td className="p-4 font-extrabold text-[#111] dark:text-white">{p.storeName}</td>
-                    <td className="p-4 font-black text-sm text-gray-900 dark:text-white">₦{p.amount.toLocaleString()}</td>
+                    <td className="p-4 font-black text-sm text-gray-900 dark:text-white">â‚¦{p.amount.toLocaleString()}</td>
                     <td className="p-4">
                       <div className="font-bold text-[#111] dark:text-white">{p.bankName}</div>
                       <div className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">{p.accountNumber}</div>
@@ -9316,7 +9322,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                                 await updateDoc(doc(db, "vendor_payout_requests", p.id), { status: "REJECTED", processedAt: Timestamp.now() });
                                 const storeRef = doc(db, "marketplace_stores", p.vendorId);
                                 await updateDoc(storeRef, { vendorBalance: increment(p.amount) });
-                                addLog("Reject Payout", `Rejected ₦${p.amount.toLocaleString()} for ${p.storeName}`);
+                                addLog("Reject Payout", `Rejected â‚¦${p.amount.toLocaleString()} for ${p.storeName}`);
                                 addToast("info", "Payout rejected and funds returned to vendor");
                               } catch (err: any) { addToast("error", err.message); }
                             }}
@@ -9349,8 +9355,8 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
           
           <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl space-y-1">
             <p className="text-xs font-extrabold text-emerald-900 dark:text-emerald-200">{settlePayoutTarget.storeName || "Vendor Store"}</p>
-            <p className="text-xl font-black text-[#111] dark:text-white">₦{settlePayoutTarget.amount.toLocaleString()}</p>
-            <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium">{settlePayoutTarget.bankName} • {settlePayoutTarget.accountNumber}</p>
+            <p className="text-xl font-black text-[#111] dark:text-white">â‚¦{settlePayoutTarget.amount.toLocaleString()}</p>
+            <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium">{settlePayoutTarget.bankName} â€¢ {settlePayoutTarget.accountNumber}</p>
           </div>
 
           <div className="space-y-3">
@@ -9410,8 +9416,8 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                     createdAt: Timestamp.now(),
                     timestamp: Date.now()
                   });
-                  addLog("Approve Payout", `Approved ₦${settlePayoutTarget.amount.toLocaleString()} for ${settlePayoutTarget.storeName} (Ref: ${settleBankRef.trim()})`);
-                  addToast("success", `Approved ₦${settlePayoutTarget.amount.toLocaleString()} payout with reference ${settleBankRef.trim()}`);
+                  addLog("Approve Payout", `Approved â‚¦${settlePayoutTarget.amount.toLocaleString()} for ${settlePayoutTarget.storeName} (Ref: ${settleBankRef.trim()})`);
+                  addToast("success", `Approved â‚¦${settlePayoutTarget.amount.toLocaleString()} payout with reference ${settleBankRef.trim()}`);
                   setSettlePayoutTarget(null);
                 } catch (err: any) {
                   addToast("error", "Settlement failed: " + err.message);
@@ -9457,7 +9463,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                 ]} className="w-full" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Price (₦)</label>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Price (â‚¦)</label>
                 <input type="number" value={pPrice} onChange={e => setPPrice(e.target.value)} placeholder="35000" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" required />
               </div>
             </div>
@@ -9529,7 +9535,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Store Description (shown on storefront)</label>
-              <textarea value={sDesc} onChange={e => setSDesc(e.target.value)} rows={2} placeholder="Premium spare parts and delivery accessories in Benin City…" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
+              <textarea value={sDesc} onChange={e => setSDesc(e.target.value)} rows={2} placeholder="Premium spare parts and delivery accessories in Benin Cityâ€¦" className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white focus:ring-2 focus:ring-[#FFB800]/40" />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Store Address (full detail, shown on storefront)</label>
@@ -9564,7 +9570,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
         <div className="bg-white dark:bg-[#1a1a1a] rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-black/10 dark:border-white/10 space-y-4 animate-scale-in">
           <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
             <h3 className="text-lg font-black text-[#111] dark:text-white flex items-center gap-2">
-              <Pencil className="w-5 h-5 text-[#FFB800]" /> Edit Store · {editStoreTarget.storeName}
+              <Pencil className="w-5 h-5 text-[#FFB800]" /> Edit Store Â· {editStoreTarget.storeName}
             </h3>
             <button onClick={() => setEditStoreTarget(null)} className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition-colors">
               <X className="w-5 h-5" />
@@ -9604,7 +9610,7 @@ function MarketplaceTab({ products, stores, orders, payoutRequests, db, addLog, 
                 <input type="number" value={editStoreTarget.commissionRate} onChange={e => setEditStoreTarget({ ...editStoreTarget, commissionRate: parseFloat(e.target.value) || 0 })} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Featured Rank (1–10, 0 = off)</label>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Featured Rank (1â€“10, 0 = off)</label>
                 <input type="number" min={0} max={10} value={editStoreTarget.isFeatured ? (editStoreTarget.featuredRank || 1) : 0} onChange={e => { const r = parseInt(e.target.value) || 0; setEditStoreTarget({ ...editStoreTarget, featuredRank: r, isFeatured: r > 0 }); }} className="w-full bg-gray-50 dark:bg-[#222] border border-black/10 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-[#111] dark:text-white" />
               </div>
             </div>
@@ -9941,7 +9947,7 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">Ticket: {selectedTicket.ticketId} • Consignment: #{selectedTicket.parcelId?.slice(0, 8).toUpperCase() || selectedTicket.id.slice(0, 8).toUpperCase()}</p>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">Ticket: {selectedTicket.ticketId} â€¢ Consignment: #{selectedTicket.parcelId?.slice(0, 8).toUpperCase() || selectedTicket.id.slice(0, 8).toUpperCase()}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -10378,7 +10384,7 @@ function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: 
   </div>;
 }
 
-function TrackingTab({ deliveries, drivers, onNewDispatch }: { deliveries: Delivery[]; drivers: UserProfile[]; onNewDispatch?: () => void }) {
+function TrackingTab({ deliveries, drivers, addressRegistry, geoCenter, onNewDispatch }: { deliveries: Delivery[]; drivers: UserProfile[]; addressRegistry: RegistryEntry[]; geoCenter: { lat: number; lng: number }; onNewDispatch?: () => void }) {
   const [trackSearch, setTrackSearch] = useState("");
   const [tSelectedId, setTSelectedId] = useState<string | null>(null);
   const activeD = deliveries.filter(d => d.status !== "DELIVERED" && d.status !== "CANCELLED");
@@ -10405,7 +10411,7 @@ function TrackingTab({ deliveries, drivers, onNewDispatch }: { deliveries: Deliv
       </div>
     </div>
     <div className="h-[400px] rounded-3xl overflow-hidden border border-gray-200 dark:border-white/10 shadow-sm">
-      <LiveTrackingMap deliveries={filtered} drivers={drivers} selectedId={tSelectedId} onSelect={setTSelectedId} />
+      <LiveTrackingMap deliveries={filtered} drivers={drivers} selectedId={tSelectedId} onSelect={setTSelectedId} addressRegistry={addressRegistry} geoCenter={geoCenter} />
     </div>
     <div className="grid gap-4">
       {pagedT.length === 0 && <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-8 text-center"><p className="text-sm text-gray-600 dark:text-gray-400 font-medium">No active deliveries.</p></div>}
@@ -10414,7 +10420,7 @@ function TrackingTab({ deliveries, drivers, onNewDispatch }: { deliveries: Deliv
         return <div key={d.id} onClick={() => setTSelectedId(tSelectedId === d.id ? null : d.id)} className={"bg-white dark:bg-[#1a1a1a] border rounded-3xl p-5 shadow-sm animate-fade-in cursor-pointer transition-all " + (tSelectedId === d.id ? "border-[#FFB800] ring-2 ring-[#FFB800]/30" : "border-gray-200 dark:border-white/10 hover:border-[#FFB800]/50")}>
           <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
             <div><p className="font-bold text-[#111] dark:text-white">{d.itemName || "Parcel"}</p>
-              <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">#{idShort(d.id)} • {d.receiverName} → {d.deliveryAddress}</p>
+              <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">#{idShort(d.id)} â€¢ {d.receiverName} â†’ {d.deliveryAddress}</p>
               {d.courierName && <p className="text-[10px] text-amber-800 dark:text-[#FFB800] mt-0.5 font-bold">{d.courierName}</p>}</div>
             <span className={"text-[10px] font-bold px-2 py-0.5 rounded-full " + sStyle(d.status)}>{d.status.replace(/_/g, " ")}</span>
           </div>
@@ -10475,20 +10481,20 @@ function TipPayoutsTab({
     const targetUserId = p.riderId || p.userId;
     const targetName = p.riderName || p.userName || "User";
     const userRole = p.userRole || "rider";
-    if (!confirm(`Approve ${userRole === "rider" ? "tip" : "cash"} payout of ₦${p.amount.toLocaleString()} to ${targetName}?`)) return;
+    if (!confirm(`Approve ${userRole === "rider" ? "tip" : "cash"} payout of â‚¦${p.amount.toLocaleString()} to ${targetName}?`)) return;
     setActionLoading(p.id);
     try {
       await updateDoc(doc(db, "tip_withdrawals", p.id), {
         status: "APPROVED",
         approvedAt: Timestamp.now(),
       });
-      await addLog("Approve Payout", `Approved ₦${p.amount.toLocaleString()} for ${targetName} (${p.bankName} - ${p.accountNumber})`);
-      addToast("success", `Payout of ₦${p.amount.toLocaleString()} approved!`);
+      await addLog("Approve Payout", `Approved â‚¦${p.amount.toLocaleString()} for ${targetName} (${p.bankName} - ${p.accountNumber})`);
+      addToast("success", `Payout of â‚¦${p.amount.toLocaleString()} approved!`);
       if (targetUserId) {
         try {
           await addDoc(collection(db, "users", targetUserId, "notifications"), {
             title: "Withdrawal Approved",
-            description: `Your withdrawal request of ₦${p.amount.toLocaleString()} has been approved and processed to ${p.bankName} (${p.accountNumber}).`,
+            description: `Your withdrawal request of â‚¦${p.amount.toLocaleString()} has been approved and processed to ${p.bankName} (${p.accountNumber}).`,
             read: false,
             time: "Just now",
             createdAt: Timestamp.now(),
@@ -10540,7 +10546,7 @@ function TipPayoutsTab({
         try {
           await addDoc(collection(db, "users", targetUserId, "notifications"), {
             title: "Withdrawal Declined",
-            description: `Your withdrawal request of ₦${p.amount.toLocaleString()} was declined (${rejectReason || "Administrative decision"}). The funds have been refunded to your wallet.`,
+            description: `Your withdrawal request of â‚¦${p.amount.toLocaleString()} was declined (${rejectReason || "Administrative decision"}). The funds have been refunded to your wallet.`,
             read: false,
             time: "Just now",
             createdAt: Timestamp.now(),
@@ -10550,7 +10556,7 @@ function TipPayoutsTab({
           console.error("Error sending user notif:", e);
         }
       }
-      await addLog("Reject Payout", `Rejected ₦${p.amount.toLocaleString()} for ${targetName}. Funds refunded.`);
+      await addLog("Reject Payout", `Rejected â‚¦${p.amount.toLocaleString()} for ${targetName}. Funds refunded.`);
       addToast("info", "Payout rejected and funds refunded to user wallet.");
       setRejectModalTarget(null);
       setRejectReason("");
@@ -10595,14 +10601,14 @@ function TipPayoutsTab({
         <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-5 shadow-xs">
           <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Pending Approvals</div>
           <div className="text-2xl font-black text-amber-600 dark:text-[#FFB800] mt-1.5 flex items-baseline gap-2">
-            ₦{pendingAmount.toLocaleString()}
+            â‚¦{pendingAmount.toLocaleString()}
             <span className="text-xs font-bold text-gray-500">({pendingCount} requests)</span>
           </div>
         </div>
         <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-5 shadow-xs">
           <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Total Disbursed</div>
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1.5">
-            ₦{totalDisbursed.toLocaleString()}
+            â‚¦{totalDisbursed.toLocaleString()}
           </div>
         </div>
         <div className="bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 rounded-2xl p-5 shadow-xs">
@@ -10682,7 +10688,7 @@ function TipPayoutsTab({
                       </td>
                       <td className="p-4">
                         <div className="font-black text-base text-gray-900 dark:text-white">
-                          ₦{p.amount.toLocaleString()}
+                          â‚¦{p.amount.toLocaleString()}
                         </div>
                       </td>
                       <td className="p-4">
@@ -10758,7 +10764,7 @@ function TipPayoutsTab({
               </button>
             </div>
             <p className="text-xs text-gray-600 dark:text-gray-400">
-              Rejecting will automatically refund ₦{rejectModalTarget.amount.toLocaleString()} back to {rejectModalTarget.riderName || "the rider"}&apos;s wallet balance.
+              Rejecting will automatically refund â‚¦{rejectModalTarget.amount.toLocaleString()} back to {rejectModalTarget.riderName || "the rider"}&apos;s wallet balance.
             </p>
             <div>
               <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">Reason for Rejection</label>

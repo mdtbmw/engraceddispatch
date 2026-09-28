@@ -110,12 +110,12 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
   const [senderName, setSenderName] = useState("");
   const [senderPhone, setSenderPhone] = useState("");
   const [pickupAddress, setPickupAddress] = useState("");
-  const [pickupCoord, setPickupCoord] = useState<Coord>({ lat: 6.335, lng: 5.6037 });
+  const [pickupCoord, setPickupCoord] = useState<Coord | null>(null);
 
   const [receiverName, setReceiverName] = useState("");
   const [receiverPhone, setReceiverPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [deliveryCoord, setDeliveryCoord] = useState<Coord>({ lat: 6.3982, lng: 5.6111 });
+  const [deliveryCoord, setDeliveryCoord] = useState<Coord | null>(null);
 
   // Autocomplete dropdown state
   const [pickupQuery, setPickupQuery] = useState("");
@@ -140,14 +140,18 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
   const deliveryMarkerRef = useRef<L.Marker | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
 
-  // Calculate distance
-  const calculatedDistanceKm = useMemo(() => {
+  // Where the map opens — a viewport preference only, never stored as booking data.
+  const viewCenter: Coord = pickupCoord || deliveryCoord || BENIN_CITY_CENTER;
+
+  // Calculate distance (null until both endpoints carry real coordinates)
+  const calculatedDistanceKm = useMemo<number | null>(() => {
+    if (!pickupCoord || !deliveryCoord) return null;
     return haversineDistanceKm(pickupCoord.lat, pickupCoord.lng, deliveryCoord.lat, deliveryCoord.lng);
   }, [pickupCoord, deliveryCoord]);
 
   // Standard rates by category
   const suggestedFare = useMemo(() => {
-    const km = Math.max(1, calculatedDistanceKm);
+    const km = calculatedDistanceKm === null ? 0 : Math.max(1, calculatedDistanceKm);
     let base = 1500;
     let ratePerKm = 200;
 
@@ -192,15 +196,16 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
     });
   }, [drivers]);
 
-  // Find nearest rider
-  const nearestDriver = useMemo(() => {
-    if (onlineDrivers.length === 0) return null;
-    let closest = onlineDrivers[0];
+  // Find nearest rider — drivers without a real GPS fix are skipped, never assumed
+  const nearestDriver = useMemo<any>(() => {
+    if (!pickupCoord || onlineDrivers.length === 0) return null;
+    let closest: any = null;
     let minD = Infinity;
 
     for (const d of onlineDrivers) {
-      const dLat = d.lat || d.latitude || 6.335;
-      const dLng = d.lng || d.longitude || 5.6037;
+      const dLat = typeof d.lat === "number" ? d.lat : typeof d.latitude === "number" ? d.latitude : null;
+      const dLng = typeof d.lng === "number" ? d.lng : typeof d.longitude === "number" ? d.longitude : null;
+      if (dLat === null || dLng === null || !isFinite(dLat) || !isFinite(dLng)) continue;
       const dist = haversineDistanceKm(pickupCoord.lat, pickupCoord.lng, dLat, dLng);
       if (dist < minD) {
         minD = dist;
@@ -325,7 +330,7 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
 
     if (!leafletMapRef.current) {
       const map = L.map(mapContainerRef.current, {
-        center: [BENIN_CITY_CENTER.lat, BENIN_CITY_CENTER.lng],
+        center: [viewCenter.lat, viewCenter.lng],
         zoom: 12,
         zoomControl: true,
         attributionControl: false
@@ -335,78 +340,109 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
         maxZoom: 19
       }).addTo(map);
 
-      // Custom Marker Icons
-      const goldIcon = L.divIcon({
-        className: "custom-div-icon",
-        html: `<div style="background-color: #FFB800; width: 26px; height: 26px; border-radius: 50%; border: 3px solid #111; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);"><span style="color: #111; font-weight: 900; font-size: 11px;">P</span></div>`,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13]
-      });
-
-      const emeraldIcon = L.divIcon({
-        className: "custom-div-icon",
-        html: `<div style="background-color: #10B981; width: 26px; height: 26px; border-radius: 50%; border: 3px solid #111; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);"><span style="color: #fff; font-weight: 900; font-size: 11px;">D</span></div>`,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13]
-      });
-
-      pickupMarkerRef.current = L.marker([pickupCoord.lat, pickupCoord.lng], { icon: goldIcon, draggable: true })
-        .addTo(map)
-        .bindPopup("<b>Pickup Location</b>");
-
-      pickupMarkerRef.current.on("dragend", (e: any) => {
-        const pos = e.target.getLatLng();
-        setPickupCoord({ lat: pos.lat, lng: pos.lng });
-      });
-
-      deliveryMarkerRef.current = L.marker([deliveryCoord.lat, deliveryCoord.lng], { icon: emeraldIcon, draggable: true })
-        .addTo(map)
-        .bindPopup("<b>Delivery Destination</b>");
-
-      deliveryMarkerRef.current.on("dragend", (e: any) => {
-        const pos = e.target.getLatLng();
-        setDeliveryCoord({ lat: pos.lat, lng: pos.lng });
-      });
-
-      routePolylineRef.current = L.polyline(
-        [
-          [pickupCoord.lat, pickupCoord.lng],
-          [deliveryCoord.lat, deliveryCoord.lng]
-        ],
-        { color: "#FFB800", weight: 4, opacity: 0.8, dashArray: "6, 8" }
-      ).addTo(map);
-
       leafletMapRef.current = map;
     }
 
     return () => {
-      // Map preserved or cleaned
+      // The map container unmounts with step 2, so tear the instance down with it.
+      if (leafletMapRef.current) {
+        leafletMapRef.current.remove();
+        leafletMapRef.current = null;
+        pickupMarkerRef.current = null;
+        deliveryMarkerRef.current = null;
+        routePolylineRef.current = null;
+      }
     };
   }, [step]);
 
-  // Update map markers when coordinates change
+  // Update map markers when coordinates change (markers are created lazily, only for real pins)
   useEffect(() => {
-    if (!leafletMapRef.current) return;
+    if (step !== 2) return;
+    const map = leafletMapRef.current;
+    if (!map) return;
 
-    if (pickupMarkerRef.current) {
-      pickupMarkerRef.current.setLatLng([pickupCoord.lat, pickupCoord.lng]);
-    }
-    if (deliveryMarkerRef.current) {
-      deliveryMarkerRef.current.setLatLng([deliveryCoord.lat, deliveryCoord.lng]);
-    }
-    if (routePolylineRef.current) {
-      routePolylineRef.current.setLatLngs([
-        [pickupCoord.lat, pickupCoord.lng],
-        [deliveryCoord.lat, deliveryCoord.lng]
-      ]);
+    const goldIcon = L.divIcon({
+      className: "custom-div-icon",
+      html: `<div style="background-color: #FFB800; width: 26px; height: 26px; border-radius: 50%; border: 3px solid #111; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);"><span style="color: #111; font-weight: 900; font-size: 11px;">P</span></div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
+    });
+
+    const emeraldIcon = L.divIcon({
+      className: "custom-div-icon",
+      html: `<div style="background-color: #10B981; width: 26px; height: 26px; border-radius: 50%; border: 3px solid #111; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);"><span style="color: #fff; font-weight: 900; font-size: 11px;">D</span></div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
+    });
+
+    if (pickupCoord) {
+      if (!pickupMarkerRef.current) {
+        pickupMarkerRef.current = L.marker([pickupCoord.lat, pickupCoord.lng], { icon: goldIcon, draggable: true })
+          .addTo(map)
+          .bindPopup("<b>Pickup Location</b>");
+
+        pickupMarkerRef.current.on("dragend", (e: any) => {
+          const pos = e.target.getLatLng();
+          setPickupCoord({ lat: pos.lat, lng: pos.lng });
+        });
+      } else {
+        pickupMarkerRef.current.setLatLng([pickupCoord.lat, pickupCoord.lng]);
+      }
+    } else if (pickupMarkerRef.current) {
+      pickupMarkerRef.current.remove();
+      pickupMarkerRef.current = null;
     }
 
-    const bounds = L.latLngBounds([
-      [pickupCoord.lat, pickupCoord.lng],
-      [deliveryCoord.lat, deliveryCoord.lng]
-    ]);
-    leafletMapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
-  }, [pickupCoord, deliveryCoord]);
+    if (deliveryCoord) {
+      if (!deliveryMarkerRef.current) {
+        deliveryMarkerRef.current = L.marker([deliveryCoord.lat, deliveryCoord.lng], { icon: emeraldIcon, draggable: true })
+          .addTo(map)
+          .bindPopup("<b>Delivery Destination</b>");
+
+        deliveryMarkerRef.current.on("dragend", (e: any) => {
+          const pos = e.target.getLatLng();
+          setDeliveryCoord({ lat: pos.lat, lng: pos.lng });
+        });
+      } else {
+        deliveryMarkerRef.current.setLatLng([deliveryCoord.lat, deliveryCoord.lng]);
+      }
+    } else if (deliveryMarkerRef.current) {
+      deliveryMarkerRef.current.remove();
+      deliveryMarkerRef.current = null;
+    }
+
+    if (pickupCoord && deliveryCoord) {
+      if (!routePolylineRef.current) {
+        routePolylineRef.current = L.polyline(
+          [
+            [pickupCoord.lat, pickupCoord.lng],
+            [deliveryCoord.lat, deliveryCoord.lng]
+          ],
+          { color: "#FFB800", weight: 4, opacity: 0.8, dashArray: "6, 8" }
+        ).addTo(map);
+      } else {
+        routePolylineRef.current.setLatLngs([
+          [pickupCoord.lat, pickupCoord.lng],
+          [deliveryCoord.lat, deliveryCoord.lng]
+        ]);
+      }
+
+      map.fitBounds(
+        L.latLngBounds([
+          [pickupCoord.lat, pickupCoord.lng],
+          [deliveryCoord.lat, deliveryCoord.lng]
+        ]),
+        { padding: [50, 50], maxZoom: 15 }
+      );
+    } else {
+      if (routePolylineRef.current) {
+        routePolylineRef.current.setLatLngs([]);
+      }
+      const single = pickupCoord || deliveryCoord;
+      if (single) map.setView([single.lat, single.lng], 14);
+      else map.setView([viewCenter.lat, viewCenter.lng], 12);
+    }
+  }, [step, pickupCoord, deliveryCoord, viewCenter]);
 
   // Final Dispatch Submission
   const handleSubmitBooking = async () => {
@@ -453,13 +489,13 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
         senderName: senderName.trim(),
         senderPhone: senderPhone.trim(),
         pickupAddress: pickupAddress.trim(),
-        pickupLat: pickupCoord.lat,
-        pickupLng: pickupCoord.lng,
+        pickupLat: pickupCoord ? pickupCoord.lat : null,
+        pickupLng: pickupCoord ? pickupCoord.lng : null,
         receiverName: receiverName.trim(),
         receiverPhone: receiverPhone.trim(),
         deliveryAddress: deliveryAddress.trim(),
-        deliveryLat: deliveryCoord.lat,
-        deliveryLng: deliveryCoord.lng,
+        deliveryLat: deliveryCoord ? deliveryCoord.lat : null,
+        deliveryLng: deliveryCoord ? deliveryCoord.lng : null,
         distanceKm: calculatedDistanceKm,
         price: finalFare,
         deliveryFee: finalFare,
@@ -979,10 +1015,12 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
                   </div>
                   <div className="flex items-center gap-3 text-xs">
                     <span className="px-2.5 py-1 bg-[#FFB800]/20 text-[#111] dark:text-[#FFB800] rounded-lg font-black">
-                      Distance: {calculatedDistanceKm} km
+                      Distance: {calculatedDistanceKm === null ? "—" : `${calculatedDistanceKm} km`}
                     </span>
                     <span className="text-gray-500 text-[11px]">
-                      Est. Transit: ~{Math.round(calculatedDistanceKm * 3.5 + 8)} mins
+                      {calculatedDistanceKm === null
+                        ? "Est. Transit: —"
+                        : `Est. Transit: ~${Math.round(calculatedDistanceKm * 3.5 + 8)} mins`}
                     </span>
                   </div>
                 </div>
@@ -992,7 +1030,9 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
                   className="w-full h-64 rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-inner z-0"
                 />
                 <p className="text-[10px] text-gray-500 dark:text-gray-400 italic">
-                  💡 Tip: You can drag the Gold (Pickup) or Emerald (Delivery) pins directly on the map to fine-tune exact geo-coordinates.
+                  {pickupCoord || deliveryCoord
+                    ? "💡 Tip: Drag the Gold (Pickup) or Emerald (Delivery) pins directly on the map to fine-tune exact geo-coordinates."
+                    : "Select a pickup and delivery landmark (or search an address) to plot the route on the map."}
                 </p>
               </div>
             </div>
@@ -1013,7 +1053,9 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
                 </div>
                 <div>
                   <span className="block text-[10px] uppercase font-bold text-gray-500">Estimated Route</span>
-                  <span className="font-black text-gray-900 dark:text-white">{calculatedDistanceKm} km</span>
+                  <span className="font-black text-gray-900 dark:text-white">
+                    {calculatedDistanceKm === null ? "—" : `${calculatedDistanceKm} km`}
+                  </span>
                 </div>
                 <div>
                   <span className="block text-[10px] uppercase font-bold text-gray-500">Declared Value</span>
@@ -1081,14 +1123,19 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
                         </div>
                         <div className="text-right">
                           <span className="text-xs font-black text-[#FFB800]">
-                            ~{(nearestDriver as any).distanceToPickup || 1.2} km away
+                            ~{nearestDriver.distanceToPickup} km away
                           </span>
                           <p className="text-[10px] text-gray-400">Closest courier to pickup</p>
                         </div>
                       </>
                     ) : (
                       <div className="text-center py-2 w-full text-xs text-amber-600 font-bold flex items-center justify-center gap-2">
-                        <AlertTriangle size={16} /> No couriers currently marked online. Will broadcast to fleet pool upon creation.
+                        <AlertTriangle size={16} />{" "}
+                        {onlineDrivers.length === 0
+                          ? "No couriers currently marked online. Will broadcast to fleet pool upon creation."
+                          : pickupCoord
+                          ? "No online courier is broadcasting a live location. Will broadcast to fleet pool upon creation."
+                          : "Select a pickup point to match the closest courier. Will broadcast to fleet pool upon creation."}
                       </div>
                     )}
                   </div>
@@ -1122,7 +1169,10 @@ export const AdminDispatchBookingModal: React.FC<AdminDispatchBookingModalProps>
                   <div>
                     <h4 className="text-xs font-black uppercase text-gray-900 dark:text-white">Computed Fare Price</h4>
                     <p className="text-[11px] text-gray-500">
-                      Calculated automatically using {category} rate card ({calculatedDistanceKm} km road distance)
+                      Calculated automatically using {category} rate card{" "}
+                      {calculatedDistanceKm === null
+                        ? "(select both endpoints to include road distance)"
+                        : `(${calculatedDistanceKm} km road distance)`}
                     </p>
                   </div>
                   <div className="text-right">

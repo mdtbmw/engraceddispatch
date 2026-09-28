@@ -88,11 +88,13 @@ fun BatchBookingScreen(
         mutableStateOf(
             listOf(
                 BatchDestinationItem(
-                    destinationAddress = if (draft.deliveryAddress.isNotBlank()) draft.deliveryAddress else "14 Ihama Road, GRA, Benin City",
+                    destinationAddress = if (draft.deliveryAddress.isNotBlank()) draft.deliveryAddress else "",
                     recipientName = draft.receiverName,
                     recipientPhone = draft.receiverPhone,
                     itemName = if (draft.itemName.isNotBlank()) draft.itemName else "Package 1",
-                    weight = if (draft.weight > 0) draft.weight.toString() else "1.5"
+                    weight = if (draft.weight > 0) draft.weight.toString() else "1.5",
+                    lat = draft.deliveryLat,
+                    lng = draft.deliveryLng
                 )
             )
         )
@@ -222,7 +224,7 @@ fun BatchBookingScreen(
     LaunchedEffect(pickup, batchStops, sName, sPhone) {
         val firstStop = batchStops.firstOrNull()
         viewModel.updateDraftPickup(pickup)
-        viewModel.updateDraftDelivery(firstStop?.destinationAddress ?: "")
+        viewModel.updateDraftDelivery(firstStop?.destinationAddress ?: "", firstStop?.lat, firstStop?.lng)
         viewModel.updateDraftSenderInfo(sName, sPhone)
         viewModel.updateDraftReceiverInfo(firstStop?.recipientName ?: "", firstStop?.recipientPhone ?: "")
     }
@@ -461,6 +463,7 @@ fun BatchBookingScreen(
                                                 .fillMaxWidth()
                                                 .clickable {
                                                     pickup = item.displayInput
+                                                    viewModel.updateDraftPickup(item.displayInput, item.lat, item.lng)
                                                     pickupFocused = false
                                                     suggestionItems = emptyList()
                                                 }
@@ -644,8 +647,8 @@ fun BatchBookingScreen(
                                 onCheckedChange = { same ->
                                     useSameDeliveryLocation = same
                                     if (same && batchStops.isNotEmpty()) {
-                                        val firstAddr = batchStops[0].destinationAddress
-                                        batchStops = batchStops.map { it.copy(destinationAddress = firstAddr) }
+                                        val firstStop = batchStops[0]
+                                        batchStops = batchStops.map { it.copy(destinationAddress = firstStop.destinationAddress, lat = firstStop.lat, lng = firstStop.lng) }
                                     }
                                 },
                                 colors = SwitchDefaults.colors(
@@ -773,10 +776,10 @@ fun BatchBookingScreen(
                                 enabled = !(useSameDeliveryLocation && index > 0),
                                 onValueChange = { newAddr ->
                                     if (useSameDeliveryLocation && index == 0) {
-                                        batchStops = batchStops.map { it.copy(destinationAddress = newAddr) }
+                                        batchStops = batchStops.map { it.copy(destinationAddress = newAddr, lat = null, lng = null) }
                                     } else {
                                         val mutable = batchStops.toMutableList()
-                                        mutable[index] = mutable[index].copy(destinationAddress = newAddr)
+                                        mutable[index] = mutable[index].copy(destinationAddress = newAddr, lat = null, lng = null)
                                         batchStops = mutable
                                     }
                                     pickupFocused = false
@@ -827,7 +830,7 @@ fun BatchBookingScreen(
                                                     .fillMaxWidth()
                                                     .clickable {
                                                         val mutable = batchStops.toMutableList()
-                                                        mutable[index] = mutable[index].copy(destinationAddress = item.displayInput)
+                                                        mutable[index] = mutable[index].copy(destinationAddress = item.displayInput, lat = item.lat, lng = item.lng)
                                                         batchStops = mutable
                                                         focusedDestinationIndex = -1
                                                         suggestionItems = emptyList()

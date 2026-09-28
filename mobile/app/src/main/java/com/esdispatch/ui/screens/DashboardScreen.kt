@@ -2290,7 +2290,7 @@ fun ParcelCard(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "#${parcel.id}",
+                                text = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id),
                                 fontWeight = FontWeight.Black,
                                 fontSize = 14.sp,
                                 color = AppTextColor
@@ -3335,7 +3335,7 @@ fun ParcelDetailBottomSheet(
                         color = Gold
                     )
                     Text(
-                        text = "ID: ${parcel.id}",
+                        text = "ID: ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)}",
                         fontSize = 13.sp,
                         color = GoldLight.copy(alpha = 0.6f),
                         fontWeight = FontWeight.Medium

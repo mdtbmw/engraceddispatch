@@ -16,6 +16,7 @@ exports.extractPlainTextFromHtml = extractPlainTextFromHtml;
 exports.generatePlainTextEmail = generatePlainTextEmail;
 exports.renderSignUpOtpEmail = renderSignUpOtpEmail;
 exports.renderPasswordResetOtpEmail = renderPasswordResetOtpEmail;
+exports.renderPasswordResetLinkEmail = renderPasswordResetLinkEmail;
 exports.renderTwoFactorOtpEmail = renderTwoFactorOtpEmail;
 exports.renderPinResetOtpEmail = renderPinResetOtpEmail;
 exports.renderCustomerWelcomeEmail = renderCustomerWelcomeEmail;
@@ -456,7 +457,7 @@ function wrapInMasterLuxuryTemplate(opts) {
                       ESDISPATCH
                     </div>
                     <div style="padding-top: 2px; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 10px; line-height: 14px; color: #9CA3AF;">
-                      PREMIUM LOGISTICS &bull; SPEED &amp; PRECISION
+                      PREMIUM LOGISTICS &amp; DISPATCH
                     </div>
                   </td>
                   <td style="vertical-align: middle;" align="right" valign="middle">
@@ -699,6 +700,45 @@ function renderPasswordResetOtpEmail(params) {
         ctaUrl: 'https://engraceddispatch.vercel.app',
     });
 }
+function renderPasswordResetLinkEmail(params) {
+    const expiry = params.expiryMinutes || 60;
+    return wrapInMasterLuxuryTemplate({
+        title: 'Reset Your ESDISPATCH Password',
+        preheader: `We received a request to reset the password for your ESDISPATCH account. The secure link expires in ${expiry} minutes.`,
+        categoryTag: 'SECURITY ALERT',
+        recipientName: params.name || 'Valued Client',
+        headline: 'Reset your password',
+        heroImageUrl: params.heroImageUrl || '/images/emails/security_light.jpg',
+        heroImageCaption: 'Account Security &bull; Encrypted Password Recovery',
+        contentHtml: `
+      <p style="margin: 0 0 12px 0;">
+        We received a request to reset the password for your <strong>ESDISPATCH</strong> account. Click the button below to choose a new password &mdash; the link expires in ${expiry} minutes.
+      </p>
+      <p style="margin: 0 0 4px 0;">
+        If you didn&rsquo;t request this, you can safely ignore this email &mdash; your password will not change.
+      </p>
+    `,
+        infoCard: {
+            category: 'PASSWORD RECOVERY',
+            heading: 'Secure Reset Link',
+            bodyText: `This link is valid for ${expiry} minutes and can be used once. If you need assistance, our support desk is available at support@engracedsmile.com or +234 905 626 3010.`,
+            badgeText: `⏱ ${expiry} MINUTES VALIDITY`,
+            badgeType: 'warning',
+            rows: [
+                { label: 'Account', value: params.name || 'Valued Client', isBold: true },
+                { label: 'Link Validity', value: `${expiry} minutes &bull; Single use` },
+                { label: 'Support Desk', value: '+234 905 626 3010' },
+            ],
+        },
+        threeCards: [
+            { tag: 'SECURITY', title: '256-Bit SSL', description: 'End-to-end encrypted recovery link.' },
+            { tag: 'NOTICE', title: 'No Change Yet', description: 'Your current password stays active until you confirm a new one.' },
+            { tag: 'SUPPORT', title: 'Need Help?', description: 'Call +234 905 626 3010 for immediate assistance.' },
+        ],
+        ctaText: 'RESET PASSWORD',
+        ctaUrl: params.resetUrl,
+    });
+}
 function renderTwoFactorOtpEmail(params) {
     const expiry = params.expiryMinutes || 5;
     return wrapInMasterLuxuryTemplate({
@@ -886,7 +926,7 @@ function renderDeliveryHandoverOtpEmail(params) {
             { tag: 'BENIN CITY', title: 'Live GPS Telemetry', description: 'Active turn-by-turn map tracking.' },
         ],
         ctaText: 'TRACK LIVE ON MAP',
-        ctaUrl: `https://engraceddispatch.vercel.app/track?id=${params.trackingNumber}`,
+        ctaUrl: `https://engraceddispatch.vercel.app/track/${params.trackingNumber}`,
     });
 }
 function renderDeliveryInvoiceEmail(params) {
@@ -930,7 +970,7 @@ function renderDeliveryInvoiceEmail(params) {
             { tag: 'STATUS', title: 'Dispatched', description: 'Fleet assigned & en route.' },
         ],
         ctaText: 'VIEW LIVE TRACKING',
-        ctaUrl: `https://engraceddispatch.vercel.app/track?id=${params.trackingNumber}`,
+        ctaUrl: `https://engraceddispatch.vercel.app/track/${params.trackingNumber}`,
     });
 }
 function renderWalletTransactionEmail(params) {

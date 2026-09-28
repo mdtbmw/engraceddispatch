@@ -1,6 +1,5 @@
 "use client";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { auth, db } from "~/lib/firebase";
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
@@ -9,7 +8,7 @@ import { useEffect } from "react";
 import { normalizePhoneNumber, phoneIndexKey, isValidNigerianPhone } from "~/lib/phoneUtils";
 
 const SignUpForm = () => {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -98,7 +97,7 @@ const SignUpForm = () => {
         photoUrl: "",
         createdAt: new Date().toISOString(),
       });
-      router.push("/sign-in");
+      navigate("/sign-in");
     } catch (err) {
       if (err.code === "auth/email-already-in-use") {
         setError("An account with this email already exists.");
@@ -148,9 +147,9 @@ const SignUpForm = () => {
       if (userRole === "admin" || userRole === "super_admin" || userRole === "dispatcher") {
         const token = await result.user.getIdToken();
         document.cookie = `admin_token=${token};path=/;max-age=86400;SameSite=Strict;Secure`;
-        router.push("/engdadmin");
+        navigate("/engdadmin");
       } else {
-        router.push("/");
+        navigate("/");
       }
     } catch (err) {
       if (err.code === "auth/popup-closed-by-user") {
@@ -206,7 +205,10 @@ const SignUpForm = () => {
             </div>
             <div className="zubuz-account-checkbox">
               <input type="checkbox" id="check" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-              <label htmlFor="check">I agree to the Terms of Service and Privacy Policy</label>
+              <label htmlFor="check">
+                I agree to the <Link to="/terms">Terms of Service</Link> and{" "}
+                <Link to="/privacy">Privacy Policy</Link>
+              </label>
             </div>
             <button id="zubuz-account-btn" type="submit" disabled={loading || googleLoading}>
               <span>{loading ? "Creating account..." : "Create account"}</span>
@@ -224,13 +226,9 @@ const SignUpForm = () => {
               <img src="/images/icon/google.svg" alt="" />
               <span>{googleLoading ? "Connecting to Google..." : "Sign up with Google"}</span>
             </button>
-            <Link href="#" className="zubuz-connect-login">
-              <img src="/images/icon/facebook.svg" alt="" />
-              Sign up with Facebook
-            </Link>
             <div className="zubuz-account-bottom">
               <p>
-                Already have an account? <Link href="/sign-in">Log in here</Link>
+                Already have an account? <Link to="/sign-in">Log in here</Link>
               </p>
             </div>
           </form>

@@ -3,6 +3,29 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================
+    // ASSUMED DATA MODELS & SECURITY ARCHITECTURE
+    // =========================================================
+    //
+    // /users/{userId}
+    //   - User profile with strict role lockdown (admin, dispatcher, rider, customer, vendor)
+    //   - Protected fields: role, userRole, admin, isSuperAdmin, permissions, walletBalance, pin, securityPin, email
+    //
+    // /deliveries/{deliveryId} & /parcels/{parcelId}
+    //   - Delivery tracking records accessible to involved customer (userId/senderId), assigned rider/driver, dispatchers, and admins
+    //
+    // /ratings/{ratingId} & /reviews/{reviewId}
+    //   - Customer feedback and star ratings tied directly to the author's UID (userId/customerId)
+    //
+    // /rider_tips/{tipId}
+    //   - Courier tip transactions created strictly by the paying customer (customerId/userId)
+    //   - Immutable and administrative lifecycle management (update/delete restricted to isAdmin())
+    //
+    // /tip_withdrawals/{withdrawalId}
+    //   - Rider payout requests created by rider/user, managed by admin
+    //
+    // =========================================================
+
+    // =========================================================
     // AUTHENTICATION & ADMINISTRATIVE PREDICATES
     // =========================================================
 
@@ -51,7 +74,7 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // USER PROFILES & SUBCOLLECTIONS (Tipping, Ratings, Wallets)
+    // USER PROFILES & SUBCOLLECTIONS
     // =========================================================
 
     match /users/{userId} {
@@ -72,7 +95,7 @@ service cloud.firestore {
 
       allow delete: if isSuperAdmin();
 
-      // Scoped subcollections under /users/{userId} (transactions, ratings, reviews, cart, deliveries, addresses)
+      // Scoped subcollections under /users/{userId} (transactions, ratings, reviews, cart, deliveries, addresses, notifications)
       match /{allSubcollections=**} {
         allow read, write: if isOwner(userId) || isAdmin();
         allow delete: if isOwner(userId) || isSuperAdmin();
@@ -88,13 +111,13 @@ service cloud.firestore {
       allow read: if true;
 
       // An authenticated user can create a reservation ONLY if it does not already exist,
-      // and they are reserving it for their own authenticated UID!
+      // or if they are claiming their own existing reservation
       allow create: if isAuth() && 
-                    !exists(/databases/$(database)/documents/phone_indices/$(phoneKey)) &&
+                    (!exists(/databases/$(database)/documents/phone_indices/$(phoneKey)) || resource.data.uid == request.auth.uid) &&
                     request.resource.data.uid == request.auth.uid;
 
       // Only the account owner or an admin can update or release the reservation
-      allow update, delete: if isAuth() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow update, delete: if isAuth() && (isAdmin() || resource.data.uid == request.auth.uid);
     }
 
     // =========================================================
@@ -191,25 +214,75 @@ service cloud.firestore {
 
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuth() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.customerId == request.auth.uid
+      );
+      allow update, delete: if isAuth() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.customerId == request.auth.uid ||
+        isAdmin()
+      );
 
       match /{allSubcollections=**} {
         allow read: if true;
-        allow write: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
+        allow write: if isAuth() && (
+          resource.data.userId == request.auth.uid ||
+          resource.data.customerId == request.auth.uid ||
+          isAdmin()
+        );
         allow delete: if isAdmin();
       }
     }
 
     match /ratings/{ratingId} {
       allow read: if true;
-      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuth() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.customerId == request.auth.uid
+      );
+      allow update, delete: if isAuth() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.customerId == request.auth.uid ||
+        isAdmin()
+      );
 
       match /{allSubcollections=**} {
         allow read: if true;
-        allow write: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
+        allow write: if isAuth() && (
+          resource.data.userId == request.auth.uid ||
+          resource.data.customerId == request.auth.uid ||
+          isAdmin()
+        );
         allow delete: if isAdmin();
+      }
+    }
+
+    // =========================================================
+    // RIDER TIPS & GRATUITY RECORDS
+    // =========================================================
+
+    match /rider_tips/{tipId} {
+      allow read: if isAuth() && (
+        isAdmin() ||
+        resource.data.riderId == request.auth.uid ||
+        resource.data.customerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      );
+      allow create: if isAuth() && (
+        request.resource.data.customerId == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isAdmin();
+
+      match /{allSubcollections=**} {
+        allow read: if isAuth() && (
+          isAdmin() ||
+          resource.data.riderId == request.auth.uid ||
+          resource.data.customerId == request.auth.uid ||
+          resource.data.userId == request.auth.uid
+        );
+        allow write, delete: if isAdmin();
       }
     }
 
@@ -556,18 +629,14 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // PHONE NUMBER UNIQUENESS REGISTRY
+    // ADMIN-MANAGED ADDRESS & COORDINATE REGISTRY
     // =========================================================
-    match /phone_indices/{phoneKey} {
-      // Public read allows real-time availability checking during signup/profile edit
-      allow read: if true;
-      // Authenticated users can claim an unused phone number for themselves
-      allow create: if isAuth() && 
-        (!exists(/databases/$(database)/documents/phone_indices/$(phoneKey)) || resource.data.uid == request.auth.uid) &&
-        request.resource.data.uid == request.auth.uid;
-      // Owners or admins can update or release their reserved phone number
-      allow update: if isAuth() && (isAdmin() || resource.data.uid == request.auth.uid);
-      allow delete: if isAuth() && (isAdmin() || resource.data.uid == request.auth.uid);
+
+    match /address_registry/{entryId} {
+      // Signed-in customers/riders read landmarks to resolve booking coordinates
+      allow read: if isAuth();
+      // Coordinates are set exclusively by admin/dispatcher
+      allow write: if isAdmin() || isDispatcher();
     }
   }
 }

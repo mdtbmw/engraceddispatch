@@ -54,7 +54,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
-import com.esdispatch.utils.detectUserLocation
+import com.esdispatch.utils.detectUserLocationDetailed
 
 @Composable
 fun ExpressBookingScreen(
@@ -110,15 +110,20 @@ fun ExpressBookingScreen(
     ) { permissions ->
         val granted = permissions.values.any { it }
         coroutineScope.launch {
+            if (!granted) {
+                Toast.makeText(context, "Location permission is needed to detect your pickup point.", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
             Toast.makeText(context, "Detecting precise GPS location...", Toast.LENGTH_SHORT).show()
             val detected = withContext(Dispatchers.IO) {
-                detectUserLocation(context)
+                detectUserLocationDetailed(context)
             }
-            pickup = detected
-            if (granted) {
-                Toast.makeText(context, "Location updated: $detected", Toast.LENGTH_SHORT).show()
+            if (detected != null) {
+                pickup = detected.address
+                viewModel.updateDraftPickup(detected.address, detected.lat, detected.lng)
+                Toast.makeText(context, "Pickup location set: ${detected.address}", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(context, "GPS permission denied. Estimated location: $detected", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Could not detect your location. Please enter or select the address.", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -501,6 +506,7 @@ fun ExpressBookingScreen(
                                                 .fillMaxWidth()
                                                 .clickable {
                                                     pickup = item.displayInput
+                                                    viewModel.updateDraftPickup(item.displayInput, item.lat, item.lng)
                                                     focusedField = null
                                                 }
                                                 .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -696,6 +702,7 @@ fun ExpressBookingScreen(
                                                 .fillMaxWidth()
                                                 .clickable {
                                                     delivery = item.displayInput
+                                                    viewModel.updateDraftDelivery(item.displayInput, item.lat, item.lng)
                                                     focusedField = null
                                                 }
                                                 .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -1286,7 +1293,8 @@ fun ExpressBookingScreen(
                 val isSPhoneValid = sPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(sPhone)
                 val isRPhoneValid = rPhone.isNotBlank() && viewModel.isValidNigerianPhoneNumber(rPhone)
                 val isPhoneValid = isSPhoneValid && isRPhoneValid
-                val isAddressesValid = pickup.trim().length >= 6 && delivery.trim().length >= 6
+                val isAddressesValid = pickup.trim().length >= 6 && delivery.trim().length >= 6 &&
+                    !pickup.trim().equals(delivery.trim(), ignoreCase = true)
                 val isBookingEnabled = isAddressesValid && isPhoneValid && pendingQuote is PendingQuote.Success && cargoFeasibility.isFeasible
 
                 Button(

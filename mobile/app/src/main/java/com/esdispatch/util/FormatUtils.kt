@@ -29,6 +29,24 @@ object FormatUtils {
     }
 
     /**
+     * Formats a raw delivery ID or tracking number for clean, consistent UI presentation.
+     * Always returns a clean, uppercase, standardized display ID like "ESD-XXXXXXXX".
+     * Eliminates long 20-character Firestore hashes and inconsistent representations across screens.
+     */
+    fun formatDisplayTrackingId(rawId: String): String {
+        val trimmed = rawId.trim()
+        if (trimmed.isEmpty()) return "ESD-PENDING"
+        val upper = trimmed.uppercase()
+        if (upper.startsWith("ESD-")) return upper
+        if (upper.startsWith("TRK-")) return "ESD-" + upper.removePrefix("TRK-")
+        if (upper.startsWith("ORD-")) return "ESD-" + upper.removePrefix("ORD-")
+        if (upper.startsWith("RDR-")) return upper
+        val clean = upper.replace("-", "").replace("#", "").filter { it.isLetterOrDigit() }
+        val slice = if (clean.length > 8) clean.take(8) else clean
+        return "ESD-$slice"
+    }
+
+    /**
      * Checks if the phone number prefix begins correctly.
      * Valid prefixes are:
      * - Local: starts with '0', next digit must be '1', '7', '8', '9'

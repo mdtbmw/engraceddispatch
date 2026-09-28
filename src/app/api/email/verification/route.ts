@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
 
     const htmlContent = renderAccountVerificationEmail({
       name: recipientName,
+      email: recipientEmail,
       otp,
       verificationLink,
       expiryMinutes: 15,

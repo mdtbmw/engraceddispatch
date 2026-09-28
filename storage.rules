@@ -49,6 +49,12 @@ service firebase.storage {
       allow write: if isAuthenticated() && isValidImage() && isUnderSize(10 * 1024 * 1024);
     }
 
+    // 3b. Pickup Photos (Package receipt proof captured on collection <= 10MB)
+    match /pickup_photos/{parcelId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidImage() && isUnderSize(10 * 1024 * 1024);
+    }
+
     // 4. Delivery Proofs (Legacy alias /pod/{deliveryId}/{fileName})
     match /pod/{deliveryId}/{fileName} {
       allow read: if isAuthenticated();

@@ -290,6 +290,35 @@ class DeliveryViewModel : WalletViewModel() {
                     else if (dPercent is String) _adminDiscountPercent.value = dPercent.toIntOrNull() ?: 0
                 }
             }?.let { listenerRegistrations.add(it) }
+            db?.collection("address_registry")?.addSnapshotListener { snap, error ->
+                if (error != null || snap == null) return@addSnapshotListener
+                val entries = snap.documents.mapNotNull { doc ->
+                    if (doc.getBoolean("active") == false) return@mapNotNull null
+                    val name = doc.getString("name")?.trim().orEmpty()
+                    if (name.isEmpty()) return@mapNotNull null
+                    val lat = (doc.get("lat") as? Number)?.toDouble()
+                    val lng = (doc.get("lng") as? Number)?.toDouble()
+                    if (lat == null || lng == null || !isWithinBeninCityBounds(lat, lng)) return@mapNotNull null
+                    com.esdispatch.data.AddressRegistryEntry(
+                        id = doc.id,
+                        name = name,
+                        tags = (doc.get("tags") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                        lat = lat,
+                        lng = lng,
+                        zone = doc.getString("zone") ?: "Benin City"
+                    )
+                }
+                _addressRegistry.value = entries
+            }?.let { listenerRegistrations.add(it) }
+            db?.collection("system_config")?.document("geo")?.addSnapshotListener { snap, _ ->
+                if (snap != null && snap.exists()) {
+                    val lat = (snap.get("centerLat") as? Number)?.toDouble()
+                    val lng = (snap.get("centerLng") as? Number)?.toDouble()
+                    if (lat != null && lng != null && isWithinBeninCityBounds(lat, lng)) {
+                        _geoCenter.value = Pair(lat, lng)
+                    }
+                }
+            }?.let { listenerRegistrations.add(it) }
             db?.collection("system_config")?.document("global_settings")?.addSnapshotListener { snap, _ ->
                 if (snap != null && snap.exists()) {
                     (snap.get("marketplaceEnabled") as? Boolean)?.let {
@@ -512,6 +541,12 @@ class DeliveryViewModel : WalletViewModel() {
 
     private val _pointsSystemEnabled = MutableStateFlow(true)
     val pointsSystemEnabled: StateFlow<Boolean> = _pointsSystemEnabled.asStateFlow()
+
+    private val _addressRegistry = MutableStateFlow<List<com.esdispatch.data.AddressRegistryEntry>>(emptyList())
+    val addressRegistry: StateFlow<List<com.esdispatch.data.AddressRegistryEntry>> = _addressRegistry.asStateFlow()
+
+    private val _geoCenter = MutableStateFlow<Pair<Double, Double>?>(null)
+    val geoCenter: StateFlow<Pair<Double, Double>?> = _geoCenter.asStateFlow()
 
     private val _isDynamicPricingEnabled = MutableStateFlow(true)
     val isDynamicPricingEnabled: StateFlow<Boolean> = _isDynamicPricingEnabled.asStateFlow()
@@ -1461,7 +1496,10 @@ class DeliveryViewModel : WalletViewModel() {
         try {
             val canonicalPath = "pickup_photos/$parcelId/pickup.jpg"
             val ref = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child(canonicalPath)
-            ref.putBytes(photoBytes)
+            val metadata = com.google.firebase.storage.StorageMetadata.Builder()
+                .setContentType("image/jpeg")
+                .build()
+            ref.putBytes(photoBytes, metadata)
                 .addOnSuccessListener {
                     ref.downloadUrl.addOnSuccessListener { url ->
                         val downloadUrl = url.toString()
@@ -1497,7 +1535,10 @@ class DeliveryViewModel : WalletViewModel() {
         try {
             val canonicalPath = "delivery_proofs/$parcelId/$itemId.jpg"
             val ref = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child(canonicalPath)
-            ref.putBytes(photoBytes)
+            val metadata = com.google.firebase.storage.StorageMetadata.Builder()
+                .setContentType("image/jpeg")
+                .build()
+            ref.putBytes(photoBytes, metadata)
                 .addOnSuccessListener {
                     ref.downloadUrl.addOnSuccessListener { url ->
                         val downloadUrl = url.toString()
@@ -1559,7 +1600,10 @@ class DeliveryViewModel : WalletViewModel() {
         try {
             val canonicalPath = "delivery_proofs/$parcelId/$itemId.jpg"
             val ref = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child(canonicalPath)
-            ref.putBytes(signatureBytes)
+            val metadata = com.google.firebase.storage.StorageMetadata.Builder()
+                .setContentType("image/jpeg")
+                .build()
+            ref.putBytes(signatureBytes, metadata)
                 .addOnSuccessListener {
                     ref.downloadUrl.addOnSuccessListener { url ->
                         val downloadUrl = url.toString()
@@ -1595,7 +1639,10 @@ class DeliveryViewModel : WalletViewModel() {
         try {
             val ref = com.google.firebase.storage.FirebaseStorage.getInstance()
                 .reference.child("arrival_photos/$parcelId-${System.currentTimeMillis()}.jpg")
-            ref.putBytes(photoBytes)
+            val metadata = com.google.firebase.storage.StorageMetadata.Builder()
+                .setContentType("image/jpeg")
+                .build()
+            ref.putBytes(photoBytes, metadata)
                 .addOnSuccessListener {
                     ref.downloadUrl.addOnSuccessListener { url ->
                         com.esdispatch.data.FirebaseManager.firestore?.collection("deliveries")?.document(parcelId)
@@ -4950,29 +4997,61 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     // Draft Creation Setup
-    fun updateDraftPickup(address: String, lat: Double? = null, lng: Double? = null) {
-        val resolvedCoords = if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
-            Pair(lat, lng)
-        } else {
-            com.esdispatch.data.AddressDatabase.getCoordinates(address)
+
+    /**
+     * Resolves an address to coordinates using the admin-curated address
+     * registry first, then the built-in Benin City landmark database.
+     * Returns null when the address cannot be confidently located so the
+     * caller can fail honestly instead of inventing coordinates.
+     */
+    private fun resolveAddressCoords(address: String): Pair<Double, Double>? {
+        val query = address.trim()
+        if (query.isBlank()) return null
+        val threshold = com.esdispatch.data.AddressDatabase.minScoreFor(query)
+        var best: Pair<Double, Double>? = null
+        var bestScore = 0
+        for (entry in _addressRegistry.value) {
+            val score = com.esdispatch.data.AddressDatabase.matchScore(query, entry.name, entry.tags)
+            if (score > bestScore) {
+                bestScore = score
+                best = Pair(entry.lat, entry.lng)
+            }
         }
-        _parcelDraft.update {
-            val finalLat = resolvedCoords?.first ?: (if (it.pickupAddress.equals(address, ignoreCase = true)) it.pickupLat else null)
-            val finalLng = resolvedCoords?.second ?: (if (it.pickupAddress.equals(address, ignoreCase = true)) it.pickupLng else null)
-            it.copy(pickupAddress = address, pickupLat = finalLat, pickupLng = finalLng)
+        if (bestScore >= threshold && best != null) return best
+        return com.esdispatch.data.AddressDatabase.getCoordinates(query)
+    }
+
+    fun updateDraftPickup(address: String, lat: Double? = null, lng: Double? = null) {
+        _parcelDraft.update { draft ->
+            val provided = if (lat != null && lng != null && lat != 0.0 && lng != 0.0 && isWithinBeninCityBounds(lat, lng)) {
+                Pair(lat, lng)
+            } else {
+                null
+            }
+            val addressChanged = !draft.pickupAddress.equals(address, ignoreCase = true)
+            val resolved = provided ?: if (addressChanged) resolveAddressCoords(address) else null
+            draft.copy(
+                pickupAddress = address,
+                pickupLat = resolved?.first ?: draft.pickupLat.takeIf { !addressChanged },
+                pickupLng = resolved?.second ?: draft.pickupLng.takeIf { !addressChanged }
+            )
         }
     }
 
     fun updateDraftDelivery(address: String, lat: Double? = null, lng: Double? = null) {
-        val resolvedCoords = if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
-            Pair(lat, lng)
-        } else {
-            com.esdispatch.data.AddressDatabase.getCoordinates(address)
-        }
-        _parcelDraft.update {
-            val finalLat = resolvedCoords?.first ?: (if (it.deliveryAddress.equals(address, ignoreCase = true)) it.deliveryLat else null)
-            val finalLng = resolvedCoords?.second ?: (if (it.deliveryAddress.equals(address, ignoreCase = true)) it.deliveryLng else null)
-            it.copy(deliveryAddress = address, deliveryLat = finalLat, deliveryLng = finalLng)
+        _parcelDraft.update { draft ->
+            val provided = if (lat != null && lng != null && lat != 0.0 && lng != 0.0 && isWithinBeninCityBounds(lat, lng)) {
+                Pair(lat, lng)
+            } else {
+                null
+            }
+            val addressChanged = !draft.deliveryAddress.equals(address, ignoreCase = true)
+            val resolved = provided ?: if (addressChanged) resolveAddressCoords(address) else null
+            draft.copy(
+                deliveryAddress = address,
+                deliveryLat = resolved?.first ?: draft.deliveryLat.takeIf { !addressChanged },
+                deliveryLng = resolved?.second ?: draft.deliveryLng.takeIf { !addressChanged }
+            )
         }
     }
 
@@ -5098,14 +5177,15 @@ class DeliveryViewModel : WalletViewModel() {
             addrLower.contains("benin") && addrLower.contains("secretariat") -> Pair(6.3268, 5.6216)
             addrLower.contains("textile mill") -> Pair(6.3412, 5.6388)
             addrLower.contains("dawson road") -> Pair(6.3349, 5.6289)
-            addrLower.contains("benin") -> Pair(6.3350, 5.6037) // Benin City center
-            else -> Pair(6.3350, 5.6037)
+            // Unknown addresses stay unresolved so the online geocoder (or the
+            // user) decides - never fabricate a city-center coordinate.
+            else -> null
         }
     }
 
     /** Checks if coordinates fall within the authorized Benin City operating service zone */
     fun isWithinBeninCityBounds(lat: Double, lng: Double): Boolean {
-        return lat in 6.15..6.55 && lng in 5.45..5.80
+        return lat in 6.10..6.55 && lng in 5.45..5.85
     }
 
     /** Strict Benin City operations - routes outside Benin City are intercity */
@@ -5156,7 +5236,10 @@ class DeliveryViewModel : WalletViewModel() {
                 val addresses = com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, "$address, Benin City, Edo State", 1)
                 if (!addresses.isNullOrEmpty()) {
                     val addr = addresses[0]
-                    return@withContext Pair(addr.latitude, addr.longitude)
+                    // Reject results outside the Benin City operating zone
+                    if (isWithinBeninCityBounds(addr.latitude, addr.longitude)) {
+                        return@withContext Pair(addr.latitude, addr.longitude)
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("Geocoding", "Google Geocoder failed: ${e.message}")
@@ -5308,7 +5391,11 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun validateAddresses(pickup: String, delivery: String): Boolean {
-        return pickup.isNotBlank() && delivery.isNotBlank() && pickup.trim().length >= 6 && delivery.trim().length >= 6
+        val p = pickup.trim()
+        val d = delivery.trim()
+        if (p.isBlank() || d.isBlank() || p.length < 6 || d.length < 6) return false
+        if (p.equals(d, ignoreCase = true)) return false
+        return true
     }
 
     fun calculateDynamicPriceAsync(
@@ -5323,6 +5410,12 @@ class DeliveryViewModel : WalletViewModel() {
         stopsCount: Int,
         insuranceType: String = "none"
     ) {
+        if (pickup.isNotBlank() && delivery.isNotBlank() &&
+            pickup.trim().equals(delivery.trim(), ignoreCase = true)
+        ) {
+            _pendingQuote.value = PendingQuote.Error("Pickup and delivery must be different locations.")
+            return
+        }
         if (!validateAddresses(pickup, delivery)) {
             _pendingQuote.value = PendingQuote.Idle
             return
@@ -5333,7 +5426,7 @@ class DeliveryViewModel : WalletViewModel() {
                 // Validate inputs using our geocoding helper first
                 val coords = validateAddressesGeocoding(pickup, delivery)
                 if (coords == null) {
-                    _pendingQuote.value = PendingQuote.Error("Failed to resolve address coordinates.")
+                    _pendingQuote.value = PendingQuote.Error("We could not locate that address. Pick a suggested place or check the address.")
                     return@launch
                 }
                 
@@ -5426,8 +5519,11 @@ class DeliveryViewModel : WalletViewModel() {
         val uid = _firebaseUserId.value
 
         fun createBooking() {
-            val effectivePickupLat = draft.pickupLat ?: _currentUserDeviceLocation.value?.first
-            val effectivePickupLng = draft.pickupLng ?: _currentUserDeviceLocation.value?.second
+            // Device GPS is only a fallback when no pickup address was entered;
+            // a typed address must never be stamped with the user's GPS point.
+            val deviceFallback = draft.pickupAddress.isBlank()
+            val effectivePickupLat = draft.pickupLat ?: if (deviceFallback) _currentUserDeviceLocation.value?.first else null
+            val effectivePickupLng = draft.pickupLng ?: if (deviceFallback) _currentUserDeviceLocation.value?.second else null
 
             // Create new Parcel record
             val newParcel = Parcel(
@@ -5457,7 +5553,9 @@ class DeliveryViewModel : WalletViewModel() {
                 pickupLat = effectivePickupLat,
                 pickupLng = effectivePickupLng,
                 deliveryLat = draft.deliveryLat,
-                deliveryLng = draft.deliveryLng
+                deliveryLng = draft.deliveryLng,
+                declaredValue = draft.declaredValue,
+                senderEmail = _userEmail.value
             )
 
             _parcels.value = listOf(newParcel) + _parcels.value
@@ -5606,11 +5704,21 @@ class DeliveryViewModel : WalletViewModel() {
             val newNotifications = mutableListOf<NotificationItem>()
             val currentTime = System.currentTimeMillis()
 
+            val draftNow = _parcelDraft.value
+            val sharedPickupCoords: Pair<Double, Double>? = when {
+                pickupAddress.isBlank() -> _currentUserDeviceLocation.value
+                draftNow.pickupAddress.equals(pickupAddress, ignoreCase = true) && draftNow.pickupLat != null && draftNow.pickupLng != null ->
+                    Pair(draftNow.pickupLat!!, draftNow.pickupLng!!)
+                else -> resolveAddressCoords(pickupAddress)
+            }
+
             stops.forEachIndexed { index, stop ->
                 val parcelId = "PC-" + java.util.UUID.randomUUID().toString().replace("-", "").take(8).uppercase() + "-${index + 1}"
                 val otp = (1000..9999).random().toString()
                 val itemName = if (stop.itemName.isNotBlank()) stop.itemName else "Batch Delivery #${index + 1}"
                 val effectivePickup = if (stop.pickupAddress.isNotBlank()) stop.pickupAddress else pickupAddress
+                val stopPickupCoords = if (stop.pickupAddress.isNotBlank()) resolveAddressCoords(stop.pickupAddress) else sharedPickupCoords
+                val stopDeliveryCoords = resolveAddressCoords(stop.destinationAddress)
                 val parcel = Parcel(
                     id = parcelId,
                     itemName = itemName,
@@ -5635,8 +5743,11 @@ class DeliveryViewModel : WalletViewModel() {
                     batchItemIndex = index,
                     batchTotalItems = stops.size,
                     verificationStatus = "UNVERIFIED",
-                    pickupLat = _currentUserDeviceLocation.value?.first,
-                    pickupLng = _currentUserDeviceLocation.value?.second
+                    senderEmail = _userEmail.value,
+                    pickupLat = stopPickupCoords?.first,
+                    pickupLng = stopPickupCoords?.second,
+                    deliveryLat = stopDeliveryCoords?.first,
+                    deliveryLng = stopDeliveryCoords?.second
                 )
                 newParcels.add(parcel)
 
@@ -7926,7 +8037,8 @@ class DeliveryViewModel : WalletViewModel() {
                     // 4) Atomic commit: stock, wallet debit, vendor credits, order, dispatch record, ledger
                     com.google.android.gms.tasks.Tasks.await(
                         firestore.runTransaction { txn ->
-                            currentCart.forEach { c ->
+                            // --- ALL READS FIRST ---
+                            val productUpdates = currentCart.map { c ->
                                 val productRef = firestore.collection("marketplace_products").document(c.item.id)
                                 val snap = try {
                                     txn.get(productRef)
@@ -7943,18 +8055,25 @@ class DeliveryViewModel : WalletViewModel() {
                                         com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
                                     )
                                 }
-                                txn.update(productRef, "stock", com.google.firebase.firestore.FieldValue.increment(-c.quantity.toLong()))
+                                Pair(productRef, c.quantity)
                             }
-                            if (isWalletPayment) {
-                                val userRef = firestore.collection("users").document(userId)
-                                val userSnap = try {
-                                    txn.get(userRef)
+
+                            val userRef = if ((isWalletPayment || (redeemPoints && pointsDiscount > 0)) && userId != "guest_user") {
+                                firestore.collection("users").document(userId)
+                            } else null
+
+                            val userSnap = userRef?.let {
+                                try {
+                                    txn.get(it)
                                 } catch (e: Exception) {
                                     throw com.google.firebase.firestore.FirebaseFirestoreException(
                                         "Wallet verification failed. Please try again.",
                                         com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
                                     )
                                 }
+                            }
+
+                            if (isWalletPayment && userSnap != null) {
                                 val balance = userSnap.getDouble("walletBalance") ?: 0.0
                                 if (balance < effectiveGrandTotal) {
                                     throw com.google.firebase.firestore.FirebaseFirestoreException(
@@ -7962,10 +8081,17 @@ class DeliveryViewModel : WalletViewModel() {
                                         com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
                                     )
                                 }
+                            }
+
+                            // --- ALL WRITES AFTER READS ---
+                            productUpdates.forEach { (productRef, qty) ->
+                                txn.update(productRef, "stock", com.google.firebase.firestore.FieldValue.increment(-qty.toLong()))
+                            }
+
+                            if (isWalletPayment && userRef != null) {
                                 txn.update(userRef, "walletBalance", com.google.firebase.firestore.FieldValue.increment(-effectiveGrandTotal))
                             }
-                            if (redeemPoints && pointsDiscount > 0 && userId != "guest_user") {
-                                val userRef = firestore.collection("users").document(userId)
+                            if (redeemPoints && pointsDiscount > 0 && userRef != null) {
                                 txn.update(userRef, "loyaltyPoints", com.google.firebase.firestore.FieldValue.increment(-_loyaltyPoints.value.toLong().coerceAtLeast(0L)))
                             }
 

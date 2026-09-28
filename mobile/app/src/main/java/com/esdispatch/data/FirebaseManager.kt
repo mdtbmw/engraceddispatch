@@ -909,6 +909,7 @@ object FirebaseManager {
             "disputeReason" to parcel.disputeReason,
             "disputeNotes" to parcel.disputeNotes,
             "declaredValue" to parcel.declaredValue,
+            "senderEmail" to parcel.senderEmail,
             "pickupPhotoUrl" to parcel.pickupPhotoUrl,
             "feedbackDismissed" to parcel.feedbackDismissed,
             "lastUpdated" to System.currentTimeMillis()
@@ -1792,8 +1793,10 @@ object FirebaseManager {
             "pickupAddress" to parcel.pickupAddress,
             "deliveryAddress" to parcel.deliveryAddress,
             "price" to parcel.price,
-            "pickupLat" to (parcel.pickupLat ?: 6.3350),
-            "pickupLng" to (parcel.pickupLng ?: 5.6037),
+            "pickupLat" to parcel.pickupLat,
+            "pickupLng" to parcel.pickupLng,
+            "deliveryLat" to parcel.deliveryLat,
+            "deliveryLng" to parcel.deliveryLng,
             "createdAt" to System.currentTimeMillis(),
             "status" to parcel.status.name
         )
@@ -2318,6 +2321,11 @@ object FirebaseManager {
                     val payoutAmount = price * 0.80
 
                     db.runTransaction { transaction ->
+                        val riderRef = if (!alreadyPaid && riderId.isNotEmpty() && payoutAmount > 0.0) {
+                            db.collection("users").document(riderId)
+                        } else null
+                        val riderSnap = riderRef?.let { transaction.get(it) }
+
                         transaction.update(docRef, "status", "HANDOVER_VERIFIED")
                         transaction.update(docRef, "progress", 0.95f)
                         transaction.update(docRef, "otpVerified", true)
@@ -2325,10 +2333,8 @@ object FirebaseManager {
                         transaction.update(docRef, "otpVerifiedAt", System.currentTimeMillis())
                         transaction.update(docRef, "lastUpdated", System.currentTimeMillis())
 
-                        if (!alreadyPaid && riderId.isNotEmpty() && payoutAmount > 0.0) {
+                        if (riderRef != null && riderSnap != null && !alreadyPaid && payoutAmount > 0.0) {
                             transaction.update(docRef, "payoutCredited", true)
-                            val riderRef = db.collection("users").document(riderId)
-                            val riderSnap = transaction.get(riderRef)
                             val currentBal = riderSnap.getDouble("walletBalance") ?: 0.0
                             transaction.update(riderRef, "walletBalance", currentBal + payoutAmount)
 
@@ -2407,6 +2413,7 @@ object FirebaseManager {
         val loyaltyRecordRef = db.collection("customer_loyalty_points").document(parcelId)
 
         db.runTransaction { transaction ->
+            // --- ALL READS FIRST ---
             val parcelSnap = transaction.get(parcelRef)
             if (!parcelSnap.exists()) {
                 throw Exception("Parcel not found or already deleted.")
@@ -2416,13 +2423,18 @@ object FirebaseManager {
                 return@runTransaction
             }
 
+            val loyaltySnap = transaction.get(loyaltyRecordRef)
+            val userSnap = if (!loyaltySnap.exists() && userId.isNotEmpty()) {
+                transaction.get(userRef)
+            } else null
+
+            // --- ALL WRITES AFTER READS ---
             transaction.update(parcelRef, mapOf(
                 "status" to "DELIVERED",
                 "progress" to 1.0f,
                 "completedTimestamp" to System.currentTimeMillis()
             ))
 
-            val loyaltySnap = transaction.get(loyaltyRecordRef)
             if (!loyaltySnap.exists()) {
                 val loyaltyData = hashMapOf(
                     "parcelId" to parcelId,
@@ -2433,14 +2445,15 @@ object FirebaseManager {
                 )
                 transaction.set(loyaltyRecordRef, loyaltyData)
 
-                val userSnap = transaction.get(userRef)
-                val currentPoints = if (userSnap.exists()) (userSnap.getLong("loyaltyPoints") ?: 350L).toInt() else 350
-                val currentDeliveries = if (userSnap.exists()) (userSnap.getLong("deliveryCount") ?: 1L).toInt() else 1
-                
-                transaction.set(userRef, mapOf(
-                    "loyaltyPoints" to (currentPoints + 15),
-                    "deliveryCount" to (currentDeliveries + 1)
-                ), com.google.firebase.firestore.SetOptions.merge())
+                if (userSnap != null) {
+                    val currentPoints = if (userSnap.exists()) (userSnap.getLong("loyaltyPoints") ?: 350L).toInt() else 350
+                    val currentDeliveries = if (userSnap.exists()) (userSnap.getLong("deliveryCount") ?: 1L).toInt() else 1
+                    
+                    transaction.set(userRef, mapOf(
+                        "loyaltyPoints" to (currentPoints + 15),
+                        "deliveryCount" to (currentDeliveries + 1)
+                    ), com.google.firebase.firestore.SetOptions.merge())
+                }
             }
         }.addOnSuccessListener {
             if (userId.isNotEmpty()) {
@@ -2498,139 +2511,84 @@ object FirebaseManager {
 
         val effectiveCustomerId = customerId.ifBlank { auth?.currentUser?.uid ?: "" }
         val parcelDoc = db.collection("deliveries").document(parcelId)
-        db.runTransaction { transaction ->
-            // --- ALL READS FIRST ---
-            val parcelSnap = transaction.get(parcelDoc)
+        
+        parcelDoc.get().addOnSuccessListener { parcelSnap ->
             val effectiveRiderId = riderId.ifBlank {
                 if (parcelSnap.exists()) {
                     parcelSnap.getString("riderId") ?: parcelSnap.getString("driverId") ?: ""
                 } else ""
             }
+            val actualTip = tipAmount.coerceAtLeast(0.0)
+            val now = System.currentTimeMillis()
+            val ratingId = "RATE-$parcelId-$now"
+            val tipId = "TIP-$parcelId-$now"
 
-            // Customer snapshot read
-            var customerRef: com.google.firebase.firestore.DocumentReference? = null
-            var custBal = 0.0
-            var actualTip = 0.0
-            if (effectiveCustomerId.isNotEmpty() && tipAmount > 0.0) {
-                val ref = db.collection("users").document(effectiveCustomerId)
-                val customerSnap = transaction.get(ref)
-                if (customerSnap.exists()) {
-                    custBal = (customerSnap.get("walletBalance") as? Number)?.toDouble() ?: 0.0
-                    if (custBal >= tipAmount) {
-                        actualTip = tipAmount
-                        customerRef = ref
-                    } else if (custBal > 0.0) {
-                        actualTip = custBal
-                        customerRef = ref
-                    }
-                }
-            }
-
-            // Rider snapshot read
-            var riderRef: com.google.firebase.firestore.DocumentReference? = null
-            var currentRiderBal = 0.0
-            var currentTips = 0.0
-            var oldRating = 4.8
-            var ratingCount = 1
-            if (effectiveRiderId.isNotEmpty()) {
-                val ref = db.collection("users").document(effectiveRiderId)
-                val riderSnap = transaction.get(ref)
-                if (riderSnap.exists()) {
-                    currentRiderBal = (riderSnap.get("walletBalance") as? Number)?.toDouble() ?: 0.0
-                    currentTips = (riderSnap.get("tipsEarned") as? Number)?.toDouble()
-                        ?: (riderSnap.get("totalTips") as? Number)?.toDouble() ?: 0.0
-                    oldRating = riderSnap.getDouble("rating") ?: 4.8
-                    val deliveryCount = riderSnap.getLong("deliveryCount")?.toInt() ?: 1
-                    ratingCount = deliveryCount.coerceAtLeast(1)
-                    riderRef = ref
-                }
-            }
-
-            // --- ALL WRITES AFTER READS ---
-            if (parcelSnap.exists()) {
-                transaction.update(parcelDoc, mapOf(
-                    "isRated" to true,
-                    "customerRating" to rating,
-                    "tipAmount" to actualTip,
-                    "tipCredited" to (actualTip > 0.0),
-                    "updatedAt" to com.google.firebase.Timestamp.now()
-                ))
-            } else {
-                transaction.set(parcelDoc, mapOf(
-                    "id" to parcelId,
-                    "isRated" to true,
-                    "customerRating" to rating,
-                    "tipAmount" to actualTip,
-                    "tipCredited" to (actualTip > 0.0),
-                    "updatedAt" to com.google.firebase.Timestamp.now()
-                ), com.google.firebase.firestore.SetOptions.merge())
-            }
-
-            if (customerRef != null && actualTip > 0.0) {
-                transaction.update(customerRef, "walletBalance", (custBal - actualTip).coerceAtLeast(0.0))
-            }
-
-            if (riderRef != null) {
-                val riderUpdates = mutableMapOf<String, Any>()
-                if (actualTip > 0.0) {
-                    riderUpdates["walletBalance"] = currentRiderBal + actualTip
-                    riderUpdates["tipsEarned"] = currentTips + actualTip
-                    riderUpdates["totalTips"] = currentTips + actualTip
-                }
-                val newRating = ((oldRating * (ratingCount - 1)) + rating) / ratingCount
-                riderUpdates["rating"] = newRating
-                riderUpdates["ratingCount"] = ratingCount
-                riderUpdates["updatedAt"] = com.google.firebase.Timestamp.now()
-                transaction.update(riderRef, riderUpdates)
-            }
-            Pair(effectiveRiderId, actualTip)
-        }.addOnSuccessListener { (resolvedRiderId, appliedTip) ->
-            // Dual write to parcels collection
-            db.collection("parcels").document(parcelId).set(mapOf(
+            val deliveryUpdates = hashMapOf<String, Any>(
                 "isRated" to true,
                 "customerRating" to rating,
-                "tipAmount" to appliedTip,
-                "tipCredited" to (appliedTip > 0.0),
-                "updatedAt" to com.google.firebase.Timestamp.now()
-            ), com.google.firebase.firestore.SetOptions.merge())
+                "tipAmount" to actualTip,
+                "tipCredited" to (actualTip > 0.0),
+                "updatedAt" to com.google.firebase.Timestamp.now(),
+                "lastUpdated" to now
+            )
 
-            val parcelUserId = effectiveCustomerId
-            if (parcelUserId.isNotEmpty()) {
-                val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
-                userDocRef.set(mapOf(
-                    "isRated" to true,
-                    "customerRating" to rating,
-                    "tipAmount" to appliedTip,
-                    "tipCredited" to (appliedTip > 0.0),
-                    "updatedAt" to com.google.firebase.Timestamp.now()
-                ), com.google.firebase.firestore.SetOptions.merge())
+            // 1. Update primary deliveries document
+            parcelDoc.set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
 
-                if (appliedTip > 0.0) {
-                    val txRef = "ESD-TIP-OUT-${System.currentTimeMillis()}"
-                    val txMap = hashMapOf(
-                        "id" to txRef,
-                        "title" to "Tip to Courier",
-                        "date" to "Today",
-                        "amount" to appliedTip,
-                        "isTopUp" to false,
-                        "timestamp" to System.currentTimeMillis()
-                    )
-                    db.collection("users").document(parcelUserId).collection("transactions").document(txRef).set(txMap)
-                }
+            // 2. Dual write to parcels collection
+            db.collection("parcels").document(parcelId)
+                .set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
+
+            // 3. Dual write to customer user delivery subcollection
+            if (effectiveCustomerId.isNotEmpty()) {
+                db.collection("users").document(effectiveCustomerId).collection("deliveries").document(parcelId)
+                    .set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
             }
 
-            val finalRiderId = if (!resolvedRiderId.isNullOrBlank()) resolvedRiderId else riderId.ifBlank { "" }
-            if (finalRiderId.isNotEmpty() && appliedTip > 0.0) {
-                val txRef = "ESD-TIP-IN-${System.currentTimeMillis()}"
-                val txMap = hashMapOf(
-                    "id" to txRef,
-                    "title" to "Tip from Customer",
-                    "date" to "Today",
-                    "amount" to appliedTip,
-                    "isTopUp" to true,
-                    "timestamp" to System.currentTimeMillis()
+            // 4. Record customer review/rating in root ratings collection
+            val ratingData = hashMapOf(
+                "id" to ratingId,
+                "parcelId" to parcelId,
+                "riderId" to effectiveRiderId,
+                "userId" to effectiveCustomerId,
+                "customerId" to effectiveCustomerId,
+                "rating" to rating,
+                "createdAt" to com.google.firebase.Timestamp.now()
+            )
+            db.collection("ratings").document(ratingId)
+                .set(ratingData, com.google.firebase.firestore.SetOptions.merge())
+
+            // 5. If tip is provided, create tip record in /rider_tips
+            if (actualTip > 0.0) {
+                val tipData = hashMapOf(
+                    "id" to tipId,
+                    "parcelId" to parcelId,
+                    "riderId" to effectiveRiderId,
+                    "userId" to effectiveCustomerId,
+                    "customerId" to effectiveCustomerId,
+                    "amount" to actualTip,
+                    "status" to "COMPLETED",
+                    "createdAt" to com.google.firebase.Timestamp.now()
                 )
-                db.collection("users").document(finalRiderId).collection("transactions").document(txRef).set(txMap)
+                db.collection("rider_tips").document(tipId)
+                    .set(tipData, com.google.firebase.firestore.SetOptions.merge())
+
+                // Record ledger debit for customer
+                if (effectiveCustomerId.isNotEmpty()) {
+                    val txRef = "ESD-TIP-OUT-$now"
+                    val txMap = hashMapOf(
+                        "id" to txRef,
+                        "userId" to effectiveCustomerId,
+                        "title" to "Tip to Courier",
+                        "date" to "Today",
+                        "amount" to actualTip,
+                        "type" to "DEBIT",
+                        "status" to "SUCCESS",
+                        "isTopUp" to false,
+                        "timestamp" to now
+                    )
+                    db.collection("users").document(effectiveCustomerId).collection("transactions").document(txRef).set(txMap)
+                }
             }
 
             onComplete(true, null)

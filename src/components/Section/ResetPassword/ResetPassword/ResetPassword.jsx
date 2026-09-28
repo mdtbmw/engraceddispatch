@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
 import { auth } from "~/lib/firebase";
+import { getApps } from "firebase/app";
 import { sendPasswordResetEmail } from "firebase/auth";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 const ResetPasswordForm = () => {
   const [email, setEmail] = useState("");
@@ -9,18 +11,40 @@ const ResetPasswordForm = () => {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
 
+  const sendViaBrandedEmail = async () => {
+    const app = getApps()[0];
+    if (!app) return false;
+    try {
+      const requestReset = httpsCallable(getFunctions(app), "requestPasswordReset");
+      await requestReset({ email });
+      return true;
+    } catch (err) {
+      return false;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
+
+    const brandedSent = await sendViaBrandedEmail();
+    if (brandedSent) {
+      setSent(true);
+      setLoading(false);
+      return;
+    }
+
     try {
       await sendPasswordResetEmail(auth, email);
       setSent(true);
     } catch (err) {
       if (err.code === "auth/user-not-found") {
         setError("No account found with this email.");
+      } else if (err.code === "auth/too-many-requests") {
+        setError("Too many attempts. Please try again later.");
       } else {
-        setError(err.message);
+        setError("We could not send the reset email right now. Please try again shortly.");
       }
     } finally {
       setLoading(false);

@@ -104,7 +104,7 @@ fun DisputeReportBottomSheet(
                             color = if (isDark) GoldLight else Obsidian
                         )
                         Text(
-                            text = "Order #${parcel.id.takeLast(6)} • ${parcel.itemName.ifBlank { "Shipment" }}",
+                            text = "Order ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)} • ${parcel.itemName.ifBlank { "Shipment" }}",
                             fontSize = 12.sp,
                             color = TextGray
                         )

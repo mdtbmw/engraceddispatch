@@ -1443,7 +1443,7 @@ fun RiderParcelCard(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "ID: #${parcel.id.take(8).uppercase()}",
+                                text = "ID: ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)}",
                                 fontWeight = FontWeight.Black,
                                 fontSize = 14.sp,
                                 color = AppTextColor
@@ -1723,7 +1723,7 @@ fun RiderUpdateBottomSheetContent(
             fontWeight = FontWeight.Black
         )
         Text(
-            text = "Tracking ID: #${parcel.id.take(8).uppercase()}",
+            text = "Tracking ID: ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)}",
             color = TextGray,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
@@ -2305,49 +2305,10 @@ fun RiderUpdateBottomSheetContent(
                 }
             }
 
-            // 7-Minute Arrival Wait Countdown Timer Pill
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = if (remainingSeconds > 0) Gold.copy(alpha = 0.15f) else WarningOrange.copy(alpha = 0.2f),
-                border = BorderStroke(1.dp, if (remainingSeconds > 0) Gold else WarningOrange),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Schedule,
-                            contentDescription = null,
-                            tint = if (remainingSeconds > 0) (if (isDark) GoldLight else Obsidian) else WarningOrange,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (remainingSeconds > 0) "Arrival Wait Window" else "Wait Window Expired",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (remainingSeconds > 0) (if (isDark) GoldLight else Obsidian) else WarningOrange
-                        )
-                    }
-                    val mins = remainingSeconds / 60
-                    val secs = remainingSeconds % 60
-                    Text(
-                        text = String.format(java.util.Locale.US, "%02d:%02d", mins, secs),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = SpaceGrotesk,
-                        color = if (remainingSeconds > 0) Gold else WarningOrange
-                    )
-                }
-            }
-
             // Direct Call & SMS Receiver Action Buttons
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
                     onClick = {
@@ -2359,26 +2320,27 @@ fun RiderUpdateBottomSheetContent(
                             Toast.makeText(context, "No receiver phone available", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    modifier = Modifier.weight(1f).height(44.dp),
+                    modifier = Modifier.weight(1f).height(46.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Filled.Call, contentDescription = null, modifier = Modifier.size(16.dp), tint = Obsidian)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("CALL RECEIVER", fontSize = 11.sp, fontWeight = FontWeight.Black)
+                    Text("CALL RECEIVER", fontSize = 12.sp, fontWeight = FontWeight.Black)
                 }
 
                 Button(
                     onClick = {
                         val phone = parcel.receiverPhone.ifBlank { parcel.senderPhone }
                         if (phone.isNotBlank()) {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:$phone?body=Hello, your ESDispatch courier has arrived with your package #${parcel.id.take(8).uppercase()}. Please meet me for handover."))
+                            val displayId = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:$phone?body=Hello, your ESDispatch courier has arrived with your package $displayId. Please meet me for handover."))
                             context.startActivity(intent)
                         } else {
                             Toast.makeText(context, "No receiver phone available", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    modifier = Modifier.weight(1f).height(44.dp),
+                    modifier = Modifier.weight(1f).height(46.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isDark) Charcoal else GoldenWhiteLight,
                         contentColor = if (isDark) GoldLight else Obsidian
@@ -2388,66 +2350,26 @@ fun RiderUpdateBottomSheetContent(
                 ) {
                     Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (isDark) GoldLight else Obsidian)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("SMS RECEIVER", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            // Return-to-Hub Policy Disclaimer
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = if (remainingSeconds == 0) WarningOrange.copy(alpha = 0.15f) else (if (isDark) Charcoal.copy(alpha = 0.5f) else Color(0xFFF3F4F6)),
-                border = BorderStroke(0.5.dp, if (remainingSeconds == 0) WarningOrange else TextGray.copy(alpha = 0.3f)),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = if (remainingSeconds == 0) Icons.Filled.Warning else Icons.Filled.Info,
-                        contentDescription = null,
-                        tint = if (remainingSeconds == 0) WarningOrange else TextGray,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = if (remainingSeconds == 0) {
-                            "⚠️ 7-minute wait window expired. ESDispatch policy: If receiver is unreachable, parcel must be returned to central hub for customer rebooking."
-                        } else {
-                            "Policy: 7-minute maximum arrival wait window. If receiver cannot be reached within 7 minutes, package will be returned to central hub."
-                        },
-                        fontSize = 11.sp,
-                        color = if (remainingSeconds == 0) WarningOrange else TextGray,
-                        lineHeight = 15.sp
-                    )
+                    Text("SMS RECEIVER", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
             Text(
-                text = "Enter Customer Handover PIN",
+                text = "Enter Recipient 4-Digit PIN",
                 color = AppTextColor,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "Ask the recipient for their 4-digit PIN. Enter it below to verify handover and proceed to mandatory photo proof.",
-                color = TextGray,
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 16.sp
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             PinInputField(
                 pin = otpInput,
                 onPinChange = { if (it.length <= 4 && it.all { char -> char.isDigit() }) otpInput = it },
                 obscureText = false,
-                modifier = Modifier.padding(vertical = 8.dp)
+                modifier = Modifier.padding(vertical = 4.dp)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Button(
                 onClick = {
@@ -2467,15 +2389,15 @@ fun RiderUpdateBottomSheetContent(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen, contentColor = Color.White),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                 shape = RoundedCornerShape(14.dp),
                 enabled = !isSubmitting && otpInput.length == 4
             ) {
                 if (isSubmitting) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(20.dp))
                 } else {
-                    Text("VERIFY PIN & PROCEED TO PHOTO PROOF", fontWeight = FontWeight.Black)
+                    Text("VERIFY & COMPLETE HANDOVER", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Obsidian)
                 }
             }
         }
@@ -3569,7 +3491,7 @@ fun RiderWaybillBottomSheet(
                 border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
             ) {
                 Text(
-                    text = "WAYBILL #${parcel.id.take(12).uppercase()}",
+                    text = "WAYBILL ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)}",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,

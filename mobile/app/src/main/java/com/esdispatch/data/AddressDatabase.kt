@@ -236,13 +236,51 @@ object AddressDatabase {
         }
     }
 
+    private val fullStreetQueryRegex by lazy {
+        Regex("(?i)\\d|\\b(road|street|avenue|close|crescent|lane|boulevard|drive|way|grd)\\b")
+    }
+
+    /**
+     * Confidence score for matching a typed address against a landmark record.
+     * Higher scores win; 0 means no match. Exact and full-name matches outrank
+     * partial or tag-based matches so the strongest landmark always resolves.
+     */
+    fun matchScore(rawQuery: String, displayName: String, tags: List<String>): Int {
+        val q = rawQuery.trim().lowercase()
+        if (q.isBlank()) return 0
+        val name = displayName.lowercase()
+        val core = name.substringBefore(",").trim()
+        if (q == name || q == core) return 1200 + core.length
+        var score = 0
+        if (q.length >= 6 && (core.startsWith(q) || name.startsWith(q))) score = maxOf(score, 1000 + q.length)
+        if (core.length >= 6 && q.contains(core)) score = maxOf(score, 900 + core.length)
+        if (q.length >= 6 && core.contains(q)) score = maxOf(score, 700 + q.length)
+        for (tag in tags) {
+            val t = tag.trim().lowercase()
+            if (t.isEmpty()) continue
+            if (t == q) score = maxOf(score, 1100 + t.length)
+            else if (t.length >= 6 && q.contains(t)) score = maxOf(score, 450 + t.length * 15)
+        }
+        return score
+    }
+
+    /** Minimum confidence needed for this query style (street addresses demand a name-level match). */
+    fun minScoreFor(query: String): Int =
+        if (fullStreetQueryRegex.containsMatchIn(query.trim())) 700 else 500
+
     fun getCoordinates(address: String): Pair<Double, Double>? {
-        val a = address.lowercase()
-        return entries.firstOrNull { entry ->
-            val name = entry.displayName.lowercase()
-            name.contains(a.take(20)) || a.contains(entry.displayName.lowercase().take(20)) ||
-            entry.tags.any { tag -> a.contains(tag) }
-        }?.let { Pair(it.lat, it.lng) }
+        if (address.isBlank()) return null
+        val threshold = minScoreFor(address)
+        var bestEntry: AddressEntry? = null
+        var bestScore = 0
+        for (entry in entries) {
+            val score = matchScore(address, entry.displayName, entry.tags)
+            if (score > bestScore) {
+                bestScore = score
+                bestEntry = entry
+            }
+        }
+        return if (bestScore >= threshold) bestEntry?.let { Pair(it.lat, it.lng) } else null
     }
 
     /**

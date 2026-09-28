@@ -86,7 +86,8 @@ data class Parcel(
     val disputeNotes: String = "",
     val declaredValue: Double = 0.0,
     val pickupPhotoUrl: String = "",
-    val feedbackDismissed: Boolean = false
+    val feedbackDismissed: Boolean = false,
+    val senderEmail: String = ""
 )
 
 @Entity(tableName = "transactions")
@@ -110,6 +111,15 @@ data class AddressItem(
     val isDefault: Boolean = false
 )
 
+data class AddressRegistryEntry(
+    val id: String = "",
+    val name: String = "",
+    val tags: List<String> = emptyList(),
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
+    val zone: String = "Benin City"
+)
+
 @Entity(tableName = "notifications")
 data class NotificationItem(
     @PrimaryKey val id: String,
@@ -128,7 +138,9 @@ data class BatchDestinationItem(
     val recipientName: String = "",
     val recipientPhone: String = "",
     val itemName: String = "",
-    val weight: String = "1.5"
+    val weight: String = "1.5",
+    val lat: Double? = null,
+    val lng: Double? = null
 )
 
 data class BatchItem(

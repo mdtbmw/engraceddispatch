@@ -768,7 +768,7 @@ fun ControlCenterTab(
                                 ) {
                                     Column(modifier = Modifier.padding(12.dp)) {
                                         Text(
-                                            text = "#${parcel.id}",
+                                            text = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = if (isSelected) Obsidian else textHighlight

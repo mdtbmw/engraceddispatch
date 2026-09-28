@@ -1686,7 +1686,7 @@ fun CancelDeliverySecurityDialog(
                         color = if (isDark) Color.White else Obsidian
                     )
                     Text(
-                        text = "Shipment #${parcel.id.take(8).uppercase()}",
+                        text = "Shipment ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)}",
                         fontSize = 11.sp,
                         color = TextGray
                     )

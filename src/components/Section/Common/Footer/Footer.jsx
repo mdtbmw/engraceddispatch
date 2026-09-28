@@ -139,7 +139,12 @@ const Footer = () => {
                       { icon: FaFacebookF, url: content.socialFacebook },
                       { icon: FaInstagram, url: content.socialInstagram },
                       { icon: FaLinkedin, url: content.socialLinkedin },
-                    ].map(({ icon: Icon, url }, i) => (
+                    ]
+                      .filter(({ url }) => {
+                        const target = (url || "").trim();
+                        return target && target !== "#" && target !== "/";
+                      })
+                      .map(({ icon: Icon, url }, i) => (
                       <a
                         key={i}
                         href={url}
@@ -191,13 +196,13 @@ const Footer = () => {
             &copy;{year} {content.footerCopyright}
           </p>
           <div style={{ display: "flex", gap: 20 }}>
-            <Link href="/faq" style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, textDecoration: "none" }}
+            <Link href="/privacy" style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, textDecoration: "none" }}
               onMouseEnter={(e) => (e.target.style.color = "#F5A623")}
               onMouseLeave={(e) => (e.target.style.color = "rgba(255,255,255,0.5)")}
             >
               Privacy Policy
             </Link>
-            <Link href="/faq" style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, textDecoration: "none" }}
+            <Link href="/terms" style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, textDecoration: "none" }}
               onMouseEnter={(e) => (e.target.style.color = "#F5A623")}
               onMouseLeave={(e) => (e.target.style.color = "rgba(255,255,255,0.5)")}
             >

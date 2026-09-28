@@ -48,9 +48,14 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
     const userDoc = await userDocRef.get();
     
     let fcmToken = '';
+    let docEmail = '';
     if (userDoc.exists) {
-      fcmToken = userDoc.data()?.fcmToken || '';
+      const docData = userDoc.data() || {};
+      fcmToken = docData.fcmToken || '';
+      docEmail = String(docData.email || '').trim().toLowerCase();
     }
+
+    const welcomeEmail = email || docEmail;
 
     const payloadBase = {
       notification: {
@@ -72,6 +77,25 @@ export const onUserCreatedSendWelcome = functions.auth.user().onCreate(async (us
     } else {
       await messaging.send({ topic: 'all_users', ...payloadBase });
       console.log('[Welcome Trigger] Welcome broadcast sent to "all_users" topic.');
+    }
+
+    // Branded welcome email (never blocks user creation)
+    if (welcomeEmail && welcomeEmail.includes('@')) {
+      try {
+        const html = renderCustomerWelcomeEmail({ name: displayName });
+        const emailResult = await sendEmail({
+          to: welcomeEmail,
+          subject: `Welcome to ESDISPATCH, ${displayName}!`,
+          html,
+        });
+        if (emailResult.success) {
+          console.log(`[Welcome Trigger] Welcome email sent to ${welcomeEmail}`);
+        } else {
+          console.error('[Welcome Trigger] Welcome email failed:', emailResult.error);
+        }
+      } catch (emailErr) {
+        console.error('[Welcome Trigger Error] Welcome email skipped:', emailErr);
+      }
     }
   } catch (error) {
     console.error('[Welcome Trigger Error] Failed to send welcome notification:', error);
@@ -898,6 +922,8 @@ import { sendEmail, getTransporter } from './emails/emailTransporter';
 import {
   renderSignUpOtpEmail,
   renderPasswordResetOtpEmail,
+  renderPasswordResetLinkEmail,
+  renderCustomerWelcomeEmail,
   renderTwoFactorOtpEmail,
   renderPinResetOtpEmail,
   renderDeliveryHandoverOtpEmail,
@@ -1106,6 +1132,109 @@ export const checkPhoneUnique = functions.https.onCall(async (data, context) => 
   }
 });
 
+// ============================================================================
+// BRANDED PASSWORD RESET LINK DELIVERY
+// ============================================================================
+
+const passwordResetRateLimit = new Map<string, number[]>();
+const PASSWORD_RESET_WINDOW_MS = 10 * 60 * 1000;
+const PASSWORD_RESET_MAX_ATTEMPTS = 3;
+
+/**
+ * Callable Function: Emails a branded ESDISPATCH password-reset link instead of
+ * the default Firebase template. Responds with { success: true } for invalid,
+ * unknown, or throttled addresses so the endpoint cannot enumerate accounts.
+ */
+export const requestPasswordReset = functions.https.onCall(async (data, context) => {
+  const email = String((data && data.email) || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) {
+    return { success: true };
+  }
+
+  const rawRequest: any = context.rawRequest;
+  const ip =
+    (rawRequest && rawRequest.ip) ||
+    (rawRequest && rawRequest.headers && rawRequest.headers['x-forwarded-for']) ||
+    'unknown';
+  const rateKey = `${email}:${ip}`;
+  const now = Date.now();
+  const recent = (passwordResetRateLimit.get(rateKey) || []).filter(
+    (ts) => now - ts < PASSWORD_RESET_WINDOW_MS
+  );
+  if (recent.length >= PASSWORD_RESET_MAX_ATTEMPTS) {
+    console.warn(`[requestPasswordReset] Rate limit reached for ${email} from ${ip}; request suppressed.`);
+    return { success: true };
+  }
+  recent.push(now);
+  passwordResetRateLimit.set(rateKey, recent);
+  if (passwordResetRateLimit.size > 5000) {
+    passwordResetRateLimit.clear();
+  }
+
+  let resetLink = '';
+  try {
+    resetLink = await auth.generatePasswordResetLink(email, { url: 'https://engraceddispatch.vercel.app' });
+  } catch (error: any) {
+    if (error && error.code === 'auth/user-not-found') {
+      console.info(`[requestPasswordReset] No account matches ${email}; no email sent.`);
+      return { success: true };
+    }
+    console.error('[requestPasswordReset Error] Failed to generate reset link:', error);
+    return {
+      success: false,
+      message: 'We could not process your request right now. Please try again shortly.',
+    };
+  }
+
+  let name = 'Valued Client';
+  try {
+    const snapshot = await db.collection('users').where('email', '==', email).limit(1).get();
+    if (!snapshot.empty) {
+      const docData = snapshot.docs[0].data() || {};
+      const resolvedName = String(docData.displayName || docData.name || docData.fullName || '').trim();
+      if (resolvedName) {
+        name = resolvedName;
+      }
+    }
+  } catch (lookupErr) {
+    console.warn('[requestPasswordReset] Display name lookup skipped:', lookupErr);
+  }
+
+  try {
+    const html = renderPasswordResetLinkEmail({ name, resetUrl: resetLink, expiryMinutes: 60 });
+    const emailResult = await sendEmail({
+      to: email,
+      subject: 'Reset Your ESDISPATCH Password',
+      html,
+    });
+
+    if (!emailResult.success) {
+      console.error('[requestPasswordReset] Email delivery failed:', emailResult.error);
+      return {
+        success: false,
+        message: 'We could not send the reset email right now. Please try again shortly.',
+      };
+    }
+
+    console.info(`[requestPasswordReset] Password reset link dispatched to ${email}`);
+    return { success: true, message: 'Password reset instructions sent.' };
+  } catch (error: any) {
+    console.error('[requestPasswordReset Error]', error);
+    return {
+      success: false,
+      message: 'We could not send the reset email right now. Please try again shortly.',
+    };
+  }
+});
+
+/**
+ * Lightweight recipient check: delivery documents may carry missing or
+ * malformed contact fields, so only send when a real address is present.
+ */
+function isValidEmail(value: any): value is string {
+  return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 /**
  * Trigger: When a delivery status updates to 'ARRIVED' or 'PICKED_UP',
  * send the handover code email to the recipient if recipientEmail exists.
@@ -1128,7 +1257,8 @@ export const onDeliveryStatusEmailTrigger = functions.firestore
 
     // 1. Handover Code Alert on Arrival / Out for Delivery
     const handoverCode = after.deliveryCode || after.otpCode || after.handoverOtp || after.securityCode;
-    if ((becameArrived || becameOutForDelivery) && after.recipientEmail && handoverCode) {
+    const to = after.recipientEmail || after.senderEmail || after.customerEmail || after.email;
+    if ((becameArrived || becameOutForDelivery) && isValidEmail(to) && handoverCode) {
       try {
         const html = renderDeliveryHandoverOtpEmail({
           trackingNumber: after.trackingNumber || context.params.deliveryId.slice(0, 8).toUpperCase(),
@@ -1139,11 +1269,11 @@ export const onDeliveryStatusEmailTrigger = functions.firestore
         });
 
         await sendEmail({
-          to: after.recipientEmail,
+          to,
           subject: `ESDispatch Handover Code for Shipment #${after.trackingNumber || context.params.deliveryId.slice(0, 8).toUpperCase()}`,
           html,
         });
-        console.log(`[Handover Code Email] Sent to ${after.recipientEmail}`);
+        console.log(`[Handover Code Email] Sent to ${to}`);
       } catch (err) {
         console.error('[Handover Code Email Error]', err);
       }
@@ -1151,8 +1281,8 @@ export const onDeliveryStatusEmailTrigger = functions.firestore
 
     // 2. Official Invoice Receipt on Delivered
     if (becameDelivered) {
-      const targetEmail = after.senderEmail || after.customerEmail;
-      if (targetEmail) {
+      const targetEmail = after.recipientEmail || after.senderEmail || after.customerEmail || after.email;
+      if (isValidEmail(targetEmail)) {
         try {
           const breakdown = [
             { label: 'Base Delivery Fare', amount: `NGN ${Number(after.basePrice || after.price || 0).toLocaleString()}` },

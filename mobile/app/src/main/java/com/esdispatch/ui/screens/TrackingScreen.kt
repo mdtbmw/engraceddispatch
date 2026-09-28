@@ -1008,56 +1008,6 @@ fun ActiveTrackingScreen(
                 }
             }
 
-            // FLOATING RIDER APPROACHING BANNER (< 500m or ARRIVED)
-            val approachingDist = realDistanceKm
-            if (!hasNoBooking && parcel.status != ParcelStatus.DELIVERED && ((approachingDist != null && approachingDist < 0.5f) || parcel.status == ParcelStatus.ARRIVED)) {
-                Card(
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Gold),
-                    border = BorderStroke(1.5.dp, Obsidian),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.DirectionsBike,
-                            contentDescription = "Approaching",
-                            tint = Obsidian,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = if (parcel.status == ParcelStatus.ARRIVED) "Courier Arrived at Destination!" else "Rider Approaching! (< 500m)",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Obsidian
-                            )
-                            val timeText = if (tickingSeconds > 0) {
-                                val mins = tickingSeconds / 60
-                                val secs = tickingSeconds % 60
-                                "Arriving in ${mins}m ${secs}s • Watch map for live approach"
-                            } else {
-                                "Courier is approaching destination • Watch map for live approach"
-                            }
-                            Text(
-                                text = timeText,
-                                fontSize = 11.sp,
-                                color = Obsidian.copy(alpha = 0.85f),
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-            }
-
             // FLOATING LUXURY DELIVERY SUCCESS POP-UP BANNER DOCKED AT TOP
             if (!hasNoBooking && parcel.status == ParcelStatus.DELIVERED) {
                 Card(
@@ -1549,7 +1499,7 @@ fun ActiveTrackingScreen(
                                                 Column {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                                         Text(
-                                                            text = "#${parcel.id}",
+                                                            text = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id),
                                                             fontWeight = FontWeight.Black,
                                                             fontSize = 17.sp,
                                                             color = AppOnSurface
@@ -1720,7 +1670,7 @@ fun ActiveTrackingScreen(
                                                 Column {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                                         Text(
-                                                            text = "#${parcel.id}",
+                                                            text = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id),
                                                             fontWeight = FontWeight.Black,
                                                             fontSize = 17.sp,
                                                             color = AppOnSurface
@@ -1744,43 +1694,84 @@ fun ActiveTrackingScreen(
                                             }
 
                                             // ETA Indicator (Truthful Ranges & Telemetry Backed) - UPDATED IN REAL-TIME
-                                            val etaText = when (parcel.status) {
-                                                ParcelStatus.DELIVERED -> "Delivered"
-                                                ParcelStatus.CANCELLED -> "Cancelled"
-                                                ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Waiting for rider"
-                                                ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Rider assigned"
-                                                ParcelStatus.ARRIVED_PICKUP -> "Preparing for pickup"
-                                                ParcelStatus.PICKED_UP -> "In transit"
-                                                ParcelStatus.ARRIVED -> "Arrived at destination"
-                                                ParcelStatus.HANDOVER_VERIFIED -> "Verifying delivery"
-                                                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
-                                                    val dist = realDistanceKm
-                                                    val hasCourierTelemetry = parcel.courierLatitude != null && parcel.courierLongitude != null && parcel.courierLatitude != 0.0
-                                                    val isFreshTransit = parcel.transitTimestamp > 0L && (System.currentTimeMillis() - parcel.transitTimestamp) < 3 * 60 * 60 * 1000L
-                                                    if (hasCourierTelemetry && isFreshTransit && dist != null && dist > 0.05f) {
-                                                        val mins = ((dist * 2.5f).toInt()).coerceAtLeast(2)
-                                                        val minR = (mins - 2).coerceAtLeast(1)
-                                                        val maxR = mins + 3
-                                                        "$minR–$maxR mins"
-                                                    } else {
-                                                        "In transit"
+                                            val etaText = if (isRider) {
+                                                when (parcel.status) {
+                                                    ParcelStatus.DELIVERED -> "Completed"
+                                                    ParcelStatus.CANCELLED -> "Cancelled"
+                                                    ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Pending Dispatch"
+                                                    ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Go to Pickup"
+                                                    ParcelStatus.ARRIVED_PICKUP -> "At Sender Point"
+                                                    ParcelStatus.PICKED_UP -> "Heading to Drop-off"
+                                                    ParcelStatus.ARRIVED -> "At Drop-off Point"
+                                                    ParcelStatus.HANDOVER_VERIFIED -> "Verifying Handover"
+                                                    ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+                                                        val dist = realDistanceKm
+                                                        if (dist != null && dist > 0.05f) {
+                                                            val mins = ((dist * 2.5f).toInt()).coerceAtLeast(2)
+                                                            "ETA: $mins mins"
+                                                        } else {
+                                                            "In Transit"
+                                                        }
                                                     }
+                                                    else -> "In Transit"
                                                 }
-                                                else -> "In transit"
+                                            } else {
+                                                when (parcel.status) {
+                                                    ParcelStatus.DELIVERED -> "Delivered"
+                                                    ParcelStatus.CANCELLED -> "Cancelled"
+                                                    ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Dispatching Order"
+                                                    ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Courier Assigned"
+                                                    ParcelStatus.ARRIVED_PICKUP -> "Collecting Package"
+                                                    ParcelStatus.PICKED_UP -> "En Route"
+                                                    ParcelStatus.ARRIVED -> "Courier is Here"
+                                                    ParcelStatus.HANDOVER_VERIFIED -> "Verifying Handover"
+                                                    ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+                                                        val dist = realDistanceKm
+                                                        val hasCourierTelemetry = parcel.courierLatitude != null && parcel.courierLongitude != null && parcel.courierLatitude != 0.0
+                                                        val isFreshTransit = parcel.transitTimestamp > 0L && (System.currentTimeMillis() - parcel.transitTimestamp) < 3 * 60 * 60 * 1000L
+                                                        if (hasCourierTelemetry && isFreshTransit && dist != null && dist > 0.05f) {
+                                                            val mins = ((dist * 2.5f).toInt()).coerceAtLeast(2)
+                                                            val minR = (mins - 2).coerceAtLeast(1)
+                                                            val maxR = mins + 3
+                                                            "$minR–$maxR mins"
+                                                        } else {
+                                                            "In Transit"
+                                                        }
+                                                    }
+                                                    else -> "In Transit"
+                                                }
                                             }
-                                            val etaSubText = when (parcel.status) {
-                                                ParcelStatus.DELIVERED -> "Delivery completed"
-                                                ParcelStatus.CANCELLED -> "Order cancelled"
-                                                ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Dispatching order..."
-                                                ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Heading to pickup"
-                                                ParcelStatus.ARRIVED_PICKUP -> "Courier at pickup location"
-                                                ParcelStatus.PICKED_UP -> "Package collected • On route"
-                                                ParcelStatus.ARRIVED -> "Courier arrived at destination"
-                                                ParcelStatus.HANDOVER_VERIFIED -> "Photo proof in progress"
-                                                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
-                                                    realDistanceKm?.let { String.format(java.util.Locale.US, "%.1f km • GPS Live", it) } ?: "On schedule"
+
+                                            val etaSubText = if (isRider) {
+                                                when (parcel.status) {
+                                                    ParcelStatus.DELIVERED -> "Payout credited"
+                                                    ParcelStatus.CANCELLED -> "Order closed"
+                                                    ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Awaiting assignment"
+                                                    ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Navigate to pickup address"
+                                                    ParcelStatus.ARRIVED_PICKUP -> "Verify parcel & confirm pickup"
+                                                    ParcelStatus.PICKED_UP -> "Follow route to delivery address"
+                                                    ParcelStatus.ARRIVED -> "Request 4-digit PIN from receiver"
+                                                    ParcelStatus.HANDOVER_VERIFIED -> "Capture delivery photo proof"
+                                                    ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+                                                        realDistanceKm?.let { String.format(java.util.Locale.US, "%.1f km to drop-off", it) } ?: "GPS Live"
+                                                    }
+                                                    else -> "Active mission"
                                                 }
-                                                else -> "On schedule"
+                                            } else {
+                                                when (parcel.status) {
+                                                    ParcelStatus.DELIVERED -> "Handover complete • Thank you!"
+                                                    ParcelStatus.CANCELLED -> "Trip cancelled"
+                                                    ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Matching with nearest courier..."
+                                                    ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Heading to pickup location"
+                                                    ParcelStatus.ARRIVED_PICKUP -> "Courier at pickup point"
+                                                    ParcelStatus.PICKED_UP -> "Package secured • On the way"
+                                                    ParcelStatus.ARRIVED -> "Present 4-digit PIN to receive parcel"
+                                                    ParcelStatus.HANDOVER_VERIFIED -> "Photo verification in progress"
+                                                    ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+                                                        realDistanceKm?.let { String.format(java.util.Locale.US, "%.1f km away • GPS Live", it) } ?: "On schedule"
+                                                    }
+                                                    else -> "On schedule"
+                                                }
                                             }
                                             Column(horizontalAlignment = Alignment.End) {
                                                 Text(
@@ -1925,41 +1916,6 @@ fun ActiveTrackingScreen(
                                                             .fillMaxWidth()
                                                             .padding(vertical = 6.dp)
                                                     ) {
-                                                        if (parcel.status == ParcelStatus.ARRIVED) {
-                                                            Surface(
-                                                                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                                                                shape = RoundedCornerShape(14.dp),
-                                                                color = if (isDark) Charcoal else GoldenWhiteLight,
-                                                                border = BorderStroke(1.5.dp, Gold)
-                                                            ) {
-                                                                Row(
-                                                                    modifier = Modifier.padding(12.dp),
-                                                                    verticalAlignment = Alignment.CenterVertically,
-                                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                                                ) {
-                                                                    Box(
-                                                                        modifier = Modifier.size(36.dp).clip(CircleShape).background(Gold),
-                                                                        contentAlignment = Alignment.Center
-                                                                    ) {
-                                                                        Icon(Icons.Filled.DirectionsBike, contentDescription = null, tint = Obsidian, modifier = Modifier.size(20.dp))
-                                                                    }
-                                                                    Column(modifier = Modifier.weight(1f)) {
-                                                                        Text(
-                                                                            text = "Courier Has Arrived!",
-                                                                            fontSize = 12.sp,
-                                                                            fontWeight = FontWeight.Black,
-                                                                            color = if (isDark) GoldLight else Obsidian
-                                                                        )
-                                                                        Text(
-                                                                            text = "Please meet your courier and share your 4-digit Handover PIN below to receive your package.",
-                                                                            fontSize = 11.sp,
-                                                                            color = TextGray
-                                                                        )
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-
                                                         Surface(
                                                             shape = RoundedCornerShape(6.dp),
                                                             color = Gold.copy(alpha = 0.15f),

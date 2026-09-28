@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
+import PublicDeliveryMap from "@/components/PublicDeliveryMap";
 import {
   Package,
   Truck,
@@ -47,8 +48,41 @@ interface DeliveryDetails {
   otpCode?: string;
   otpVerified?: boolean;
   createdAt?: any;
+  courierLastUpdated?: any;
+  updatedAt?: any;
   lastUpdated?: number;
 }
+
+const toEpochMs = (value: any): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") {
+    if (!isFinite(value) || value <= 0) return null;
+    return value < 1e12 ? value * 1000 : value;
+  }
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return isNaN(parsed) ? null : parsed;
+  }
+  if (typeof value.toMillis === "function") {
+    const ms = value.toMillis();
+    return typeof ms === "number" && isFinite(ms) ? ms : null;
+  }
+  if (typeof value.seconds === "number" && isFinite(value.seconds)) return value.seconds * 1000;
+  return null;
+};
+
+const formatRelativeTime = (value: any): string => {
+  const ms = toEpochMs(value);
+  if (!ms) return "";
+  const diff = Date.now() - ms;
+  if (diff < 0) return "just now";
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+};
 
 const STEPS = [
   { key: "BOOKED", label: "Order Booked", desc: "Shipment registered in dispatch pool" },
@@ -115,6 +149,7 @@ export const PublicTrackingPage: React.FC = () => {
 
   const getActiveStepIndex = (statusStr: string) => {
     const s = (statusStr || "").toUpperCase();
+    if (s.includes("CANCEL") || s.includes("REJECT")) return -1;
     if (s.includes("DELIVERED") || s.includes("COMPLETED")) return 4;
     if (s.includes("ARRIVED")) return 3;
     if (
@@ -168,7 +203,20 @@ export const PublicTrackingPage: React.FC = () => {
     return `https://wa.me/${intl}?text=${encodeURIComponent(msg)}`;
   };
 
-  const activeIdx = delivery ? getActiveStepIndex(delivery.status) : 0;
+  const activeIdx = delivery ? getActiveStepIndex(delivery.status) : -1;
+
+  const courierGps =
+    delivery &&
+    typeof delivery.courierLatitude === "number" &&
+    typeof delivery.courierLongitude === "number" &&
+    isFinite(delivery.courierLatitude) &&
+    isFinite(delivery.courierLongitude)
+      ? { lat: delivery.courierLatitude, lng: delivery.courierLongitude }
+      : null;
+
+  const courierGpsUpdated = courierGps
+    ? formatRelativeTime(delivery?.courierLastUpdated ?? delivery?.updatedAt ?? delivery?.lastUpdated)
+    : "";
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans flex flex-col selection:bg-[#FFB800] selection:text-black">
@@ -209,10 +257,6 @@ export const PublicTrackingPage: React.FC = () => {
         </form>
 
         <div className="flex items-center gap-3 shrink-0">
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold font-mono">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>SATELLITE ACTIVE</span>
-          </div>
           <Link
             to="/"
             className="h-10 px-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-neutral-300 hover:text-white flex items-center gap-1.5 transition-all"
@@ -232,7 +276,7 @@ export const PublicTrackingPage: React.FC = () => {
               <div className="w-12 h-12 border-3 border-[#FFB800] border-t-transparent rounded-full animate-spin" />
             </div>
             <p className="text-xs text-[#FFB800] font-mono font-bold uppercase tracking-widest">
-              Connecting Satellite Telemetry...
+              Loading shipment details...
             </p>
           </div>
         ) : notFound || !delivery ? (
@@ -285,41 +329,27 @@ export const PublicTrackingPage: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Live Satellite Radar Telemetry Card */}
-            <div className="bg-gradient-to-r from-[#141414] via-[#181818] to-[#141414] border border-[#FFB800]/25 rounded-2xl p-4 sm:p-5 relative overflow-hidden shadow-xl">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            {/* Courier GPS Telemetry (real coordinates only) */}
+            {courierGps && (
+              <div className="bg-gradient-to-r from-[#141414] via-[#181818] to-[#141414] border border-[#FFB800]/25 rounded-2xl p-4 sm:p-5 relative overflow-hidden shadow-xl">
                 <div className="flex items-center gap-3.5">
-                  {/* Radar Concentric Beacon */}
                   <div className="relative flex items-center justify-center w-10 h-10 shrink-0">
                     <span className="absolute w-10 h-10 rounded-full bg-[#FFB800]/20 animate-ping" />
                     <span className="absolute w-7 h-7 rounded-full bg-[#FFB800]/30" />
                     <span className="w-3.5 h-3.5 rounded-full bg-[#FFB800] shadow-md shadow-[#FFB800]/80 z-10" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black font-mono tracking-widest text-[#FFB800] uppercase">
-                        SATELLITE RADAR TELEMETRY
-                      </span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    </div>
-                    <div className="text-xs font-bold text-white mt-0.5">
-                      {delivery.courierLatitude && delivery.courierLongitude
-                        ? `Real-Time GPS Fix: ${delivery.courierLatitude.toFixed(4)}°N, ${delivery.courierLongitude.toFixed(4)}°E`
-                        : "Active Dispatch Telemetry • Benin City Corridor"}
+                    <span className="text-[10px] font-black font-mono tracking-widest text-[#FFB800] uppercase">
+                      Courier GPS
+                    </span>
+                    <div className="text-xs font-bold text-white mt-0.5 font-mono">
+                      Courier GPS: {courierGps.lat.toFixed(5)}, {courierGps.lng.toFixed(5)}
+                      {courierGpsUpdated ? ` · updated ${courierGpsUpdated}` : ""}
                     </div>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 font-mono text-[10px] text-neutral-400 shrink-0">
-                  <span className="px-2.5 py-1 rounded-lg bg-black/40 border border-white/5 text-emerald-400">
-                    GPS L1 1575.42 MHz
-                  </span>
-                  <span className="px-2.5 py-1 rounded-lg bg-black/40 border border-white/5 text-[#FFB800]">
-                    SIGNAL 99.8%
-                  </span>
-                </div>
               </div>
-            </div>
+            )}
 
             {/* Consignment Status Overview Card */}
             <div className="bg-[#141414] border border-[#2E2E2E] rounded-3xl p-6 sm:p-8 relative overflow-hidden shadow-2xl">
@@ -360,6 +390,9 @@ export const PublicTrackingPage: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {/* Real route map (only real coordinates from the delivery doc) */}
+              <PublicDeliveryMap delivery={delivery} />
 
               {/* 5-Stage Stepper */}
               <div className="mt-8 grid grid-cols-1 sm:grid-cols-5 gap-3">
@@ -477,9 +510,11 @@ export const PublicTrackingPage: React.FC = () => {
                       </div>
                       <div>
                         <div className="text-base font-bold text-white">{delivery.courierName}</div>
-                        <div className="text-xs text-neutral-400 font-mono">
-                          Fleet Unit: {delivery.riderBikeNumber || "Dispatch Unit 01"}
-                        </div>
+                        {delivery.riderBikeNumber && (
+                          <div className="text-xs text-neutral-400 font-mono">
+                            Fleet Unit: {delivery.riderBikeNumber}
+                          </div>
+                        )}
                       </div>
                     </div>
 

@@ -56,7 +56,9 @@ data class MultiPickupStop(
     val address: String = "",
     val recipientName: String = "",
     val recipientPhone: String = "",
-    val itemDescription: String = ""
+    val itemDescription: String = "",
+    val lat: Double? = null,
+    val lng: Double? = null
 )
 
 @Composable
@@ -75,10 +77,12 @@ fun MultiBookingScreen(
         mutableStateOf(
             listOf(
                 MultiPickupStop(
-                    address = if (draft.pickupAddress.isNotBlank()) draft.pickupAddress else "Ring Road (King's Square), City Center, Benin City",
+                    address = if (draft.pickupAddress.isNotBlank()) draft.pickupAddress else "",
                     recipientName = draft.receiverName,
                     recipientPhone = draft.receiverPhone,
-                    itemDescription = draft.itemName
+                    itemDescription = draft.itemName,
+                    lat = draft.pickupLat,
+                    lng = draft.pickupLng
                 )
             )
         )
@@ -204,7 +208,7 @@ fun MultiBookingScreen(
 
     LaunchedEffect(stops, delivery, sName, sPhone, rName, rPhone) {
         val firstStop = stops.firstOrNull()
-        viewModel.updateDraftPickup(firstStop?.address ?: "")
+        viewModel.updateDraftPickup(firstStop?.address ?: "", firstStop?.lat, firstStop?.lng)
         viewModel.updateDraftDelivery(delivery)
         viewModel.updateDraftSenderInfo(sName, sPhone)
         viewModel.updateDraftReceiverInfo(rName, rPhone)
@@ -424,7 +428,7 @@ fun MultiBookingScreen(
                                     OutlinedTextField(
                                         value = stop.address,
                                         onValueChange = { newValue ->
-                                            stops = stops.toMutableList().apply { this[index] = stop.copy(address = newValue) }
+                                                                stops = stops.toMutableList().apply { this[index] = stop.copy(address = newValue, lat = null, lng = null) }
                                             deliveryFocused = false
                                             focusedPickupIndex = index
                                             performSearch(newValue)
@@ -472,7 +476,7 @@ fun MultiBookingScreen(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
                                                             .clickable {
-                                                                stops = stops.toMutableList().apply { this[index] = stop.copy(address = item.displayInput) }
+                                                                stops = stops.toMutableList().apply { this[index] = stop.copy(address = item.displayInput, lat = item.lat, lng = item.lng) }
                                                                 focusedPickupIndex = -1
                                                                 suggestionItems = emptyList()
                                                             }
@@ -697,6 +701,7 @@ fun MultiBookingScreen(
                                                 .fillMaxWidth()
                                                 .clickable {
                                                     delivery = item.displayInput
+                                                    viewModel.updateDraftDelivery(item.displayInput, item.lat, item.lng)
                                                     deliveryFocused = false
                                                     suggestionItems = emptyList()
                                                 }
@@ -1017,7 +1022,8 @@ fun MultiBookingScreen(
                 }
 
                 val firstPickup = stops.firstOrNull()?.address ?: ""
-                val isAddressesValid = firstPickup.trim().length >= 6 && delivery.trim().length >= 6
+                val isAddressesValid = firstPickup.trim().length >= 6 && delivery.trim().length >= 6 &&
+                    !firstPickup.trim().equals(delivery.trim(), ignoreCase = true)
                 val isStopsValid = stops.all { it.address.trim().isNotBlank() }
                 val isSPhoneValid = sPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(sPhone)
                 val isRPhoneValid = rPhone.isNotBlank() && viewModel.isValidNigerianPhoneNumber(rPhone)
@@ -1061,7 +1067,7 @@ fun MultiBookingScreen(
             onConfirmWalletPayment = {
                 showCheckoutSheet = false
                 val firstStop = stops.firstOrNull()
-                viewModel.updateDraftPickup(firstStop?.address ?: "")
+                viewModel.updateDraftPickup(firstStop?.address ?: "", firstStop?.lat, firstStop?.lng)
                 viewModel.updateDraftDelivery(delivery)
                 viewModel.updateDraftSenderInfo(sName, sPhone)
                 viewModel.updateDraftReceiverInfo(rName, rPhone)
@@ -1097,7 +1103,7 @@ fun MultiBookingScreen(
                 showPaystackSheet = false
                 viewModel.topUpWallet(pendingAmount)
                 val firstStop = stops.firstOrNull()
-                viewModel.updateDraftPickup(firstStop?.address ?: "")
+                viewModel.updateDraftPickup(firstStop?.address ?: "", firstStop?.lat, firstStop?.lng)
                 viewModel.updateDraftDelivery(delivery)
                 viewModel.updateDraftSenderInfo(sName, sPhone)
                 viewModel.updateDraftReceiverInfo(rName, rPhone)

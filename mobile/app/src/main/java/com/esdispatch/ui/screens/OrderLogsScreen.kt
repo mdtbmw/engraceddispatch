@@ -319,7 +319,7 @@ fun OrderHistoryItem(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "ID: ${parcel.id}",
+                                text = "ID: ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)}",
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 13.sp,
                                 color = AppTextColor,
