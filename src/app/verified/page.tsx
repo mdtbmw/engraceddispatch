@@ -7,7 +7,7 @@ import { CheckCircle2, ShieldCheck, ArrowRight, Smartphone } from "lucide-react"
 
 function VerifiedContent() {
   const searchParams = useSearchParams();
-  const email = searchParams.get("email") || "";
+  const email = searchParams?.get("email") || "";
 
   return (
     <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-6 selection:bg-[#FFB800] selection:text-black">
