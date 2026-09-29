@@ -34,6 +34,12 @@ class DispatchApplication : Application() {
 
     private fun initializeGoogleMapsSafely() {
         try {
+            try {
+                val settingsClass = Class.forName("com.google.android.gms.maps.MapsApiSettings")
+                val method = settingsClass.getMethod("addInternalUsageAttributionId", android.content.Context::class.java, String::class.java)
+                method.invoke(null, this, "gmp_git_agentskills_v1")
+            } catch (_: Throwable) {}
+
             com.google.android.gms.maps.MapsInitializer.initialize(this, com.google.android.gms.maps.MapsInitializer.Renderer.LATEST) { renderer ->
                 android.util.Log.i("DispatchApplication", "Google Maps initialized with renderer: $renderer")
             }

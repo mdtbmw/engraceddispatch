@@ -14,7 +14,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,7 +22,6 @@ import androidx.compose.ui.zIndex
 import com.esdispatch.data.ParcelStatus
 import com.esdispatch.ui.theme.Gold
 import com.esdispatch.ui.theme.Obsidian
-import com.esdispatch.utils.GeocoderUtils
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.MapsInitializer
 import com.google.android.gms.maps.model.CameraPosition
@@ -31,16 +29,23 @@ import com.google.android.gms.maps.model.JointType
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.RoundCap
-import com.google.maps.android.PolyUtil
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+
+/**
+ * Validates latitude and longitude to prevent NaN or Null Island (0.0, 0.0) positioning.
+ */
+private fun isValidCoord(lat: Double?, lng: Double?): Boolean {
+    return lat != null && lng != null && abs(lat) > 0.05 && abs(lng) > 0.05 && !lat.isNaN() && !lng.isNaN()
+}
 
 /**
  * Bolt-Grade Native Hardware-Accelerated Google Map View.
  * 
  * Replaces the legacy embedded WebView + Leaflet.js raster tiles with a 60-120 FPS
  * native vector map pipeline featuring:
- * - Minimalist clean styling (zero commercial/tourist POI clutter).
+ * - Minimalist clean styling with high-contrast road outlines and bold street names.
  * - Smooth bearing rotation & dead reckoning interpolation for couriers.
  * - Double-cased polyline with Gold core and dark casing.
  * - Pulsing radar beacon around active couriers.
@@ -91,8 +96,8 @@ fun NativeGoogleMapView(
     val pickupLatLng by remember(pickupAddress, parcelPickupLat, parcelPickupLng, hasNoBooking) {
         derivedStateOf {
             if (hasNoBooking) null
-            else if (parcelPickupLat != null && parcelPickupLng != null && parcelPickupLat != 0.0 && parcelPickupLng != 0.0) {
-                LatLng(parcelPickupLat, parcelPickupLng)
+            else if (isValidCoord(parcelPickupLat, parcelPickupLng)) {
+                LatLng(parcelPickupLat!!, parcelPickupLng!!)
             } else if (pickupAddress.isNotBlank()) {
                 val coords = com.esdispatch.data.AddressDatabase.getCoordinates(pickupAddress)
                 coords?.let { LatLng(it.first, it.second) }
@@ -104,8 +109,8 @@ fun NativeGoogleMapView(
     val deliveryLatLng by remember(deliveryAddress, parcelDeliveryLat, parcelDeliveryLng, hasNoBooking) {
         derivedStateOf {
             if (hasNoBooking) null
-            else if (parcelDeliveryLat != null && parcelDeliveryLng != null && parcelDeliveryLat != 0.0 && parcelDeliveryLng != 0.0) {
-                LatLng(parcelDeliveryLat, parcelDeliveryLng)
+            else if (isValidCoord(parcelDeliveryLat, parcelDeliveryLng)) {
+                LatLng(parcelDeliveryLat!!, parcelDeliveryLng!!)
             } else if (deliveryAddress.isNotBlank()) {
                 val coords = com.esdispatch.data.AddressDatabase.getCoordinates(deliveryAddress)
                 coords?.let { LatLng(it.first, it.second) }
@@ -116,8 +121,17 @@ fun NativeGoogleMapView(
     // Default Benin City Center: King's Square / Ring Road
     val defaultCenter = remember { LatLng(6.3350, 5.6037) }
 
+    // Start on target position immediately rather than snapping later
+    val initialTarget = remember(pickupLatLng, userCoords) {
+        when {
+            pickupLatLng != null -> pickupLatLng!!
+            userCoords != null && isValidCoord(userCoords.first, userCoords.second) -> LatLng(userCoords.first, userCoords.second)
+            else -> defaultCenter
+        }
+    }
+
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(defaultCenter, 14f)
+        position = CameraPosition.fromLatLngZoom(initialTarget, 14.5f)
     }
 
     var userHasPanned by remember { mutableStateOf(false) }
@@ -197,7 +211,7 @@ fun NativeGoogleMapView(
         }
     }
 
-    // Auto-frame initial camera bounds
+    // Auto-frame camera bounds
     LaunchedEffect(pickupLatLng, deliveryLatLng, smoothCourierState.currentPosition, hasNoBooking) {
         if (userHasPanned) return@LaunchedEffect
 
@@ -209,23 +223,36 @@ fun NativeGoogleMapView(
                 1000
             )
         } else if (pickupLatLng != null && deliveryLatLng != null) {
-            // Fit both pickup and delivery bounds
-            val builder = LatLngBounds.builder()
-            builder.include(pickupLatLng!!)
-            builder.include(deliveryLatLng!!)
-            try {
-                val bounds = builder.build()
+            val latDelta = abs(pickupLatLng!!.latitude - deliveryLatLng!!.latitude)
+            val lngDelta = abs(pickupLatLng!!.longitude - deliveryLatLng!!.longitude)
+            if (latDelta < 0.001 && lngDelta < 0.001) {
                 cameraPositionState.animate(
-                    CameraUpdateFactory.newLatLngBounds(bounds, 120),
+                    CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15.5f),
                     1000
                 )
-            } catch (_: Exception) {}
+            } else {
+                try {
+                    val bounds = LatLngBounds.builder()
+                        .include(pickupLatLng!!)
+                        .include(deliveryLatLng!!)
+                        .build()
+                    cameraPositionState.animate(
+                        CameraUpdateFactory.newLatLngBounds(bounds, 130),
+                        1000
+                    )
+                } catch (_: Exception) {
+                    cameraPositionState.animate(
+                        CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15f),
+                        1000
+                    )
+                }
+            }
         } else if (pickupLatLng != null) {
             cameraPositionState.animate(
-                CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15f),
+                CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15.5f),
                 1000
             )
-        } else if (userCoords != null) {
+        } else if (userCoords != null && isValidCoord(userCoords.first, userCoords.second)) {
             cameraPositionState.animate(
                 CameraUpdateFactory.newLatLngZoom(LatLng(userCoords.first, userCoords.second), 15f),
                 1000
@@ -244,6 +271,22 @@ fun NativeGoogleMapView(
                     if (courierIcon == null) courierIcon = MapMarkerFactory.getCourierMarkerIcon(context)
                     if (pickupIcon == null) pickupIcon = MapMarkerFactory.getPickupMarkerIcon(context)
                     if (deliveryIcon == null) deliveryIcon = MapMarkerFactory.getDeliveryMarkerIcon(context)
+
+                    if (!userHasPanned && pickupLatLng != null && deliveryLatLng != null) {
+                        val latDelta = abs(pickupLatLng!!.latitude - deliveryLatLng!!.latitude)
+                        val lngDelta = abs(pickupLatLng!!.longitude - deliveryLatLng!!.longitude)
+                        if (latDelta >= 0.001 || lngDelta >= 0.001) {
+                            coroutineScope.launch {
+                                try {
+                                    val bounds = LatLngBounds.builder()
+                                        .include(pickupLatLng!!)
+                                        .include(deliveryLatLng!!)
+                                        .build()
+                                    cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(bounds, 130), 800)
+                                } catch (_: Throwable) {}
+                            }
+                        }
+                    }
                 } catch (_: Throwable) {}
             },
             onMapClick = { latLng ->
