@@ -1,56 +1,31 @@
 package com.esdispatch.ui.maps
 
-import android.content.Context
+import android.animation.ValueAnimator
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CenterFocusStrong
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import com.esdispatch.data.ParcelStatus
 import com.esdispatch.ui.theme.Gold
 import com.esdispatch.ui.theme.Obsidian
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.MapsInitializer
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.JointType
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.LatLngBounds
-import com.google.android.gms.maps.model.RoundCap
+import com.google.android.gms.maps.model.*
 import com.google.maps.android.compose.*
-import kotlinx.coroutines.launch
-import kotlin.math.abs
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
-/**
- * Validates latitude and longitude to prevent NaN or Null Island (0.0, 0.0) positioning.
- */
-private fun isValidCoord(lat: Double?, lng: Double?): Boolean {
-    return lat != null && lng != null && abs(lat) > 0.05 && abs(lng) > 0.05 && !lat.isNaN() && !lng.isNaN()
-}
-
-/**
- * Bolt-Grade Native Hardware-Accelerated Google Map View.
- * 
- * Replaces the legacy embedded WebView + Leaflet.js raster tiles with a 60-120 FPS
- * native vector map pipeline featuring:
- * - Minimalist clean styling with high-contrast road outlines and bold street names.
- * - Smooth bearing rotation & dead reckoning interpolation for couriers.
- * - Double-cased polyline with Gold core and dark casing.
- * - Pulsing radar beacon around active couriers.
- * - Intelligent camera framing and decouple-on-pan with floating Recenter action.
- */
+/** Road geometry, location and camera remain separate: camera gestures never interrupt GPS. */
 @Composable
 fun NativeGoogleMapView(
     modifier: Modifier = Modifier,
@@ -72,352 +47,216 @@ fun NativeGoogleMapView(
     parcelDeliveryLat: Double? = null,
     parcelDeliveryLng: Double? = null,
     routePoints: List<LatLng> = emptyList(),
+    zoom: Float = 14.5f,
+    followUser: Boolean = false,
+    is3D: Boolean = false,
+    courierLastUpdated: Long = 0L,
+    routeRetry: Int = 0,
+    bottomInset: Dp = 120.dp,
+    onGuidance: (RouteGuidance) -> Unit = {},
     onMapClick: ((LatLng) -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
-    // Initialize Google Maps context & usage attribution
-    LaunchedEffect(Unit) {
-        try {
-            MapsInitializer.initialize(context)
-            // Add internal usage attribution per Google Maps Platform guidelines
-            try {
-                val settingsClass = Class.forName("com.google.android.gms.maps.MapsApiSettings")
-                val method = settingsClass.getMethod("addInternalUsageAttributionId", Context::class.java, String::class.java)
-                method.invoke(null, context, "gmp_git_agentskills_v1")
-            } catch (_: Throwable) {}
-        } catch (e: Exception) {
-            android.util.Log.w("NativeGoogleMapView", "MapsInitializer error: ${e.message}")
+    val reducedMotion = remember {
+        if (android.os.Build.VERSION.SDK_INT >= 26) !ValueAnimator.areAnimatorsEnabled()
+        else android.provider.Settings.Global.getFloat(context.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
+    val pickup = remember(parcelPickupLat, parcelPickupLng, pickupAddress) {
+        RoadWaypoint(validMapPosition(parcelPickupLat, parcelPickupLng), pickupAddress)
+    }
+    val delivery = remember(parcelDeliveryLat, parcelDeliveryLng, deliveryAddress) {
+        RoadWaypoint(validMapPosition(parcelDeliveryLat, parcelDeliveryLng), deliveryAddress)
+    }
+    val phase = when {
+        hasNoBooking -> "none"
+        parcelStatus in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED, ParcelStatus.RETURNED) -> "none"
+        parcelStatus in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP) -> "pickup"
+        parcelStatus == ParcelStatus.RETURN_TO_SENDER -> "return"
+        parcelStatus in listOf(ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY,
+            ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED, ParcelStatus.RECIPIENT_UNAVAILABLE,
+            ParcelStatus.FAILED_DELIVERY) -> "delivery"
+        else -> "planned"
+    }
+    val courier = validMapPosition(courierLatitude, courierLongitude)
+        .takeIf { phase in listOf("pickup", "delivery", "return") }
+    val user = userCoords?.let { validMapPosition(it.first, it.second) }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(courierLastUpdated) {
+        while (isActive) {
+            now = System.currentTimeMillis()
+            delay(5000)
         }
     }
-
-    // Resolve Pickup Coordinates
-    val pickupLatLng by remember(pickupAddress, parcelPickupLat, parcelPickupLng, hasNoBooking) {
-        derivedStateOf {
-            if (hasNoBooking) null
-            else if (isValidCoord(parcelPickupLat, parcelPickupLng)) {
-                LatLng(parcelPickupLat!!, parcelPickupLng!!)
-            } else if (pickupAddress.isNotBlank()) {
-                val coords = com.esdispatch.data.AddressDatabase.getCoordinates(pickupAddress)
-                coords?.let { LatLng(it.first, it.second) }
-            } else null
-        }
+    val fresh = courier != null && courierLastUpdated > 0 && now - courierLastUpdated in -5000L..60000L
+    val road = rememberRoadRoute(context, pickup, delivery, phase, courier, fresh, routeRetry)
+    val activeLeg = road.route?.legs?.firstOrNull()
+    val nextLeg = road.route?.legs?.getOrNull(1)
+    val pickupPosition = pickup.position ?: when (phase) {
+        "pickup" -> activeLeg?.points?.lastOrNull()
+        "planned" -> activeLeg?.points?.firstOrNull()
+        "return" -> activeLeg?.points?.lastOrNull()
+        else -> null
     }
-
-    // Resolve Delivery Coordinates
-    val deliveryLatLng by remember(deliveryAddress, parcelDeliveryLat, parcelDeliveryLng, hasNoBooking) {
-        derivedStateOf {
-            if (hasNoBooking) null
-            else if (isValidCoord(parcelDeliveryLat, parcelDeliveryLng)) {
-                LatLng(parcelDeliveryLat!!, parcelDeliveryLng!!)
-            } else if (deliveryAddress.isNotBlank()) {
-                val coords = com.esdispatch.data.AddressDatabase.getCoordinates(deliveryAddress)
-                coords?.let { LatLng(it.first, it.second) }
-            } else null
-        }
+    val deliveryPosition = delivery.position ?: when (phase) {
+        "pickup" -> nextLeg?.points?.lastOrNull()
+        "return" -> null
+        else -> activeLeg?.points?.lastOrNull()
     }
-
-    // Default Benin City Center: King's Square / Ring Road
-    val defaultCenter = remember { LatLng(6.3350, 5.6037) }
-
-    // Start on target position immediately rather than snapping later
-    val initialTarget = remember(pickupLatLng, userCoords) {
-        when {
-            pickupLatLng != null -> pickupLatLng!!
-            userCoords != null && isValidCoord(userCoords.first, userCoords.second) -> LatLng(userCoords.first, userCoords.second)
-            else -> defaultCenter
-        }
+    val targetName = if (phase == "pickup" || phase == "return") "pickup" else "delivery"
+    val missingAddress = when (phase) {
+        "delivery" -> !delivery.available
+        "return" -> !pickup.available
+        else -> !pickup.available || !delivery.available
     }
-
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(initialTarget, 14.5f)
-    }
-
-    var userHasPanned by remember { mutableStateOf(false) }
-
-    // Detect user pan/drag interaction to decouple auto-follow
-    LaunchedEffect(cameraPositionState.isMoving) {
-        if (cameraPositionState.isMoving && cameraPositionState.cameraMoveStartedReason == CameraMoveStartedReason.GESTURE) {
-            userHasPanned = true
-        }
-    }
-
-    // Dynamic map properties: Bolt clean styling & traffic
-    val mapProperties by remember(isSatellite, showTraffic, isDarkTheme) {
-        derivedStateOf {
-            MapProperties(
-                mapType = if (isSatellite) MapType.HYBRID else MapType.NORMAL,
-                isTrafficEnabled = showTraffic,
-                mapStyleOptions = if (isSatellite) null else (if (isDarkTheme) BoltMapStyle.Dark else BoltMapStyle.Light),
-                isMyLocationEnabled = false
-            )
-        }
-    }
-
-    val mapUiSettings = remember {
-        MapUiSettings(
-            zoomControlsEnabled = false,
-            compassEnabled = true,
-            myLocationButtonEnabled = false,
-            rotationGesturesEnabled = true,
-            scrollGesturesEnabled = true,
-            tiltGesturesEnabled = true,
-            zoomGesturesEnabled = true
-        )
-    }
-
-    // Smooth courier animation state
-    val smoothCourierState = rememberSmoothCourierState(
-        targetLat = courierLatitude,
-        targetLng = courierLongitude,
-        targetBearing = courierBearing
-    )
-
-    // Animated Breathing Radar Pulse
-    val infiniteTransition = rememberInfiniteTransition(label = "RadarBeacon")
-    val pulseRadius by infiniteTransition.animateFloat(
-        initialValue = 20f,
-        targetValue = 65f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "PulseRadius"
-    )
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.40f,
-        targetValue = 0.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "PulseAlpha"
-    )
-
-    // Marker icons - safely resolved once Google Maps engine is initialized
-    var courierIcon by remember { mutableStateOf<com.google.android.gms.maps.model.BitmapDescriptor?>(null) }
-    var pickupIcon by remember { mutableStateOf<com.google.android.gms.maps.model.BitmapDescriptor?>(null) }
-    var deliveryIcon by remember { mutableStateOf<com.google.android.gms.maps.model.BitmapDescriptor?>(null) }
-
-    LaunchedEffect(Unit) {
-        try {
-            MapsInitializer.initialize(context)
-            courierIcon = MapMarkerFactory.getCourierMarkerIcon(context)
-            pickupIcon = MapMarkerFactory.getPickupMarkerIcon(context)
-            deliveryIcon = MapMarkerFactory.getDeliveryMarkerIcon(context)
-        } catch (t: Throwable) {
-            android.util.Log.w("NativeGoogleMapView", "Marker icon init deferred: ${t.message}")
-        }
-    }
-
-    // Auto-frame camera bounds
-    LaunchedEffect(pickupLatLng, deliveryLatLng, smoothCourierState.currentPosition, hasNoBooking) {
-        if (userHasPanned) return@LaunchedEffect
-
-        val courierPos = smoothCourierState.currentPosition
-        if (courierPos != null) {
-            // When courier is active, center on courier with smooth zoom
-            cameraPositionState.animate(
-                CameraUpdateFactory.newLatLngZoom(courierPos, 15.5f),
-                1000
-            )
-        } else if (pickupLatLng != null && deliveryLatLng != null) {
-            val latDelta = abs(pickupLatLng!!.latitude - deliveryLatLng!!.latitude)
-            val lngDelta = abs(pickupLatLng!!.longitude - deliveryLatLng!!.longitude)
-            if (latDelta < 0.001 && lngDelta < 0.001) {
-                cameraPositionState.animate(
-                    CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15.5f),
-                    1000
-                )
-            } else {
-                try {
-                    val bounds = LatLngBounds.builder()
-                        .include(pickupLatLng!!)
-                        .include(deliveryLatLng!!)
-                        .build()
-                    cameraPositionState.animate(
-                        CameraUpdateFactory.newLatLngBounds(bounds, 130),
-                        1000
-                    )
-                } catch (_: Exception) {
-                    cameraPositionState.animate(
-                        CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15f),
-                        1000
-                    )
-                }
-            }
-        } else if (pickupLatLng != null) {
-            cameraPositionState.animate(
-                CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15.5f),
-                1000
-            )
-        } else if (userCoords != null && isValidCoord(userCoords.first, userCoords.second)) {
-            cameraPositionState.animate(
-                CameraUpdateFactory.newLatLngZoom(LatLng(userCoords.first, userCoords.second), 15f),
-                1000
-            )
-        }
-    }
-
-    Box(modifier = modifier) {
-        GoogleMap(
-            modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            properties = mapProperties,
-            uiSettings = mapUiSettings,
-            onMapLoaded = {
-                try {
-                    if (courierIcon == null) courierIcon = MapMarkerFactory.getCourierMarkerIcon(context)
-                    if (pickupIcon == null) pickupIcon = MapMarkerFactory.getPickupMarkerIcon(context)
-                    if (deliveryIcon == null) deliveryIcon = MapMarkerFactory.getDeliveryMarkerIcon(context)
-
-                    if (!userHasPanned && pickupLatLng != null && deliveryLatLng != null) {
-                        val latDelta = abs(pickupLatLng!!.latitude - deliveryLatLng!!.latitude)
-                        val lngDelta = abs(pickupLatLng!!.longitude - deliveryLatLng!!.longitude)
-                        if (latDelta >= 0.001 || lngDelta >= 0.001) {
-                            coroutineScope.launch {
-                                try {
-                                    val bounds = LatLngBounds.builder()
-                                        .include(pickupLatLng!!)
-                                        .include(deliveryLatLng!!)
-                                        .build()
-                                    cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(bounds, 130), 800)
-                                } catch (_: Throwable) {}
-                            }
-                        }
-                    }
-                } catch (_: Throwable) {}
+    val atStop = parcelStatus in listOf(ParcelStatus.ARRIVED_PICKUP, ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED)
+    val stale = courier != null && !fresh
+    val guidance = when {
+        phase == "none" -> RouteGuidance(title = "Delivery complete", detail = "")
+        missingAddress -> RouteGuidance("Address needed", "Contact support to confirm the pickup and delivery locations.")
+        phase != "planned" && courier == null -> RouteGuidance("Waiting for location",
+            if (isRider) "Enable location services to get directions." else "The rider’s location will appear when an update arrives.")
+        stale -> RouteGuidance("Location update delayed", if (courierLastUpdated > 0)
+            "Last update ${((now - courierLastUpdated) / 60000).coerceAtLeast(1)} min ago. Showing the last known position."
+            else "Waiting for a fresh location update. Showing the last known position.")
+        road.failed -> RouteGuidance("Directions unavailable", "Check your connection and retry, or open navigation.", canRetry = true)
+        activeLeg == null -> RouteGuidance(loading = true)
+        else -> RouteGuidance(
+            title = when {
+                phase == "planned" -> "Planned delivery route"
+                parcelStatus == ParcelStatus.ARRIVED_PICKUP -> "At pickup"
+                parcelStatus in listOf(ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED) -> "At delivery"
+                isRider -> "Directions to $targetName"
+                phase == "return" -> "Rider returning to sender"
+                else -> "Rider heading to $targetName"
             },
-            onMapClick = { latLng ->
-                if (hasNoBooking && onMapClick != null) {
-                    onMapClick(latLng)
-                }
-            }
+            detail = when {
+                parcelStatus == ParcelStatus.ARRIVED_PICKUP -> if (isRider) "Collect the parcel and confirm pickup before leaving." else "Your rider is collecting the parcel."
+                parcelStatus in listOf(ParcelStatus.ARRIVED, ParcelStatus.HANDOVER_VERIFIED) -> if (isRider) "Complete the handover with the recipient." else "Your rider is at the delivery address."
+                isRider && phase != "planned" -> activeLeg.nextInstruction(courier)
+                phase == "planned" -> "Live tracking starts when your rider begins this delivery."
+                road.loading -> "Updating the road route…"
+                else -> "Following the rider’s latest location"
+            },
+            etaSeconds = activeLeg.seconds.takeIf { fresh && phase != "planned" && !atStop },
+            distanceMeters = activeLeg.meters,
+            loading = road.loading,
+            congested = activeLeg.congested
+        )
+    }.copy(destination = if (targetName == "pickup") pickupPosition else deliveryPosition)
+    val latestGuidance by rememberUpdatedState(onGuidance)
+    LaunchedEffect(guidance) { latestGuidance(guidance) }
+
+    val defaultCenter = remember { LatLng(6.3350, 5.6037) }
+    val camera = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(courier ?: pickupPosition ?: user ?: defaultCenter, zoom)
+    }
+    var loaded by remember { mutableStateOf(false) }
+    var previousZoom by remember { mutableFloatStateOf(zoom) }
+    var framed by remember { mutableStateOf(false) }
+    var panned by remember { mutableStateOf(false) }
+    var recenter by remember { mutableIntStateOf(0) }
+    LaunchedEffect(camera.isMoving) {
+        if (camera.isMoving && camera.cameraMoveStartedReason == CameraMoveStartedReason.GESTURE) panned = true
+    }
+    LaunchedEffect(followUser, is3D, recenter) { panned = false }
+    // Depend on received fixes, never on each animation frame. Customer overview keeps the destination visible.
+    LaunchedEffect(loaded, courier, user.takeIf { followUser || hasNoBooking }, road.route, followUser, is3D, recenter) {
+        if (!loaded || panned) return@LaunchedEffect
+        val target = if (followUser) user ?: courier else courier ?: pickupPosition ?: user
+        val boundsPoints = (activeLeg?.points.orEmpty() + nextLeg?.points.orEmpty() + listOfNotNull(courier, pickupPosition, deliveryPosition))
+        val update = if (!isRider && !followUser && boundsPoints.distinct().size > 1) {
+            CameraUpdateFactory.newLatLngBounds(LatLngBounds.builder().also { b -> boundsPoints.forEach { b.include(it) } }.build(), 70)
+        } else {
+            CameraUpdateFactory.newCameraPosition(CameraPosition.Builder()
+                .target(target ?: defaultCenter).zoom(if (!framed && isRider && courier != null) 16.5f else camera.position.zoom)
+                .tilt(if (is3D) 50f else 0f).bearing(if (isRider && is3D) courierBearing else 0f).build())
+        }
+        framed = true
+        if (reducedMotion) camera.move(update) else camera.animate(update, 800)
+    }
+    LaunchedEffect(zoom) {
+        val delta = zoom - previousZoom
+        previousZoom = zoom
+        if (loaded && delta != 0f) {
+            panned = true
+            val update = CameraUpdateFactory.zoomBy(delta)
+            if (reducedMotion) camera.move(update) else camera.animate(update, 250)
+        }
+    }
+    val smooth = rememberSmoothCourierState(courier?.latitude, courier?.longitude, courierBearing,
+        animate = fresh && !reducedMotion, roadPoints = activeLeg?.points.orEmpty())
+    val courierState = remember { MarkerState() }
+    val pickupState = remember { MarkerState() }
+    val deliveryState = remember { MarkerState() }
+    SideEffect {
+        smooth.currentPosition?.let { courierState.position = it }
+        pickupPosition?.let { pickupState.position = it }
+        deliveryPosition?.let { deliveryState.position = it }
+    }
+    var courierIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
+    var pickupIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
+    var deliveryIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
+    LaunchedEffect(Unit) {
+        MapsInitializer.initialize(context)
+        courierIcon = MapMarkerFactory.getCourierMarkerIcon(context)
+        pickupIcon = MapMarkerFactory.getPickupMarkerIcon(context)
+        deliveryIcon = MapMarkerFactory.getDeliveryMarkerIcon(context)
+    }
+    val pulse = rememberInfiniteTransition(label = "Live location")
+    val pulseAlpha by pulse.animateFloat(0.20f, 0.05f,
+        infiniteRepeatable(tween(1800), RepeatMode.Reverse), label = "Live beacon")
+    BoxWithConstraints(modifier) {
+        val visibleBottomInset = bottomInset.coerceAtMost(maxHeight * 0.55f)
+        GoogleMap(
+            modifier = Modifier.fillMaxSize(), cameraPositionState = camera,
+            properties = MapProperties(mapType = if (isSatellite) MapType.HYBRID else MapType.NORMAL,
+                isTrafficEnabled = showTraffic, isBuildingEnabled = is3D,
+                mapStyleOptions = if (isSatellite) null else if (isDarkTheme) BoltMapStyle.Dark else BoltMapStyle.Light),
+            uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false,
+                compassEnabled = true, mapToolbarEnabled = false),
+            contentPadding = PaddingValues(top = if (hasNoBooking) 16.dp else 150.dp.coerceAtMost(maxHeight * 0.25f), bottom = visibleBottomInset),
+            onMapLoaded = { loaded = true },
+            onMapClick = { if (hasNoBooking) onMapClick?.invoke(it) }
         ) {
-            // 1. Pickup Pin (Origin)
-            pickupLatLng?.let { pPos ->
-                Marker(
-                    state = rememberMarkerState(position = pPos),
-                    title = "Pickup",
-                    snippet = pickupAddress.ifBlank { "Pickup Location" },
-                    icon = pickupIcon,
-                    anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f)
-                )
+            if (!hasNoBooking) {
+                pickupPosition?.let { Marker(state = pickupState, title = "Pickup", snippet = pickupAddress,
+                    icon = pickupIcon, anchor = Offset(0.5f, 0.5f), zIndex = 3f) }
+                deliveryPosition?.let { Marker(state = deliveryState, title = "Delivery", snippet = deliveryAddress,
+                    icon = deliveryIcon, anchor = Offset(0.5f, 0.5f), zIndex = 3f) }
             }
-
-            // 2. Delivery Pin (Destination)
-            deliveryLatLng?.let { dPos ->
-                Marker(
-                    state = rememberMarkerState(position = dPos),
-                    title = "Destination",
-                    snippet = deliveryAddress.ifBlank { "Delivery Location" },
-                    icon = deliveryIcon,
-                    anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f)
-                )
+            if (courier != null && smooth.currentPosition != null) {
+                if (fresh) Circle(center = courierState.position, radius = 12.0,
+                    fillColor = Gold.copy(alpha = if (reducedMotion) 0.12f else pulseAlpha), strokeWidth = 0f)
+                Marker(state = courierState, title = if (isRider) "Your location" else "Rider",
+                    snippet = if (fresh) "Latest location" else "Last known location",
+                    icon = courierIcon, rotation = smooth.currentBearing, flat = true,
+                    anchor = Offset(0.5f, 0.5f), zIndex = 5f, alpha = if (fresh) 1f else 0.6f)
             }
-
-            // 3. Active Vehicle / Courier Marker
-            val activeCourierPos = smoothCourierState.currentPosition
-            if (activeCourierPos != null) {
-                // Pulsing Radar Beacon
-                Circle(
-                    center = activeCourierPos,
-                    radius = pulseRadius.toDouble(),
-                    fillColor = Gold.copy(alpha = pulseAlpha),
-                    strokeColor = Gold.copy(alpha = pulseAlpha * 1.5f),
-                    strokeWidth = 2f
-                )
-
-                // High-precision vehicle marker with bearing rotation
-                Marker(
-                    state = rememberMarkerState(position = activeCourierPos),
-                    title = if (isRider) "My Location" else "Courier",
-                    snippet = if (isRider) "Active Delivery Navigation" else "Courier in transit",
-                    icon = courierIcon,
-                    rotation = smoothCourierState.currentBearing,
-                    anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f),
-                    flat = true
-                )
+            if (!isRider && user != null) {
+                Circle(center = user, radius = 7.0, fillColor = androidx.compose.ui.graphics.Color(0xFF4285F4),
+                    strokeColor = androidx.compose.ui.graphics.Color.White, strokeWidth = 3f)
             }
-
-            // 4. Double-Cased Route Polyline
-            val activeRoute = when {
-                routePoints.isNotEmpty() -> routePoints
-                pickupLatLng != null && deliveryLatLng != null -> listOf(pickupLatLng!!, deliveryLatLng!!)
-                else -> emptyList()
-            }
-
-            if (activeRoute.size >= 2) {
-                // Outer Casing (Deep contrast border)
-                Polyline(
-                    points = activeRoute,
-                    color = Obsidian.copy(alpha = 0.75f),
-                    width = 16f,
-                    jointType = JointType.ROUND,
-                    startCap = RoundCap(),
-                    endCap = RoundCap(),
-                    zIndex = 1f
-                )
-
-                // Inner Vibrant Core (Gold)
-                Polyline(
-                    points = activeRoute,
-                    color = Gold,
-                    width = 9f,
-                    jointType = JointType.ROUND,
-                    startCap = RoundCap(),
-                    endCap = RoundCap(),
-                    zIndex = 2f
-                )
+            val geometry = activeLeg?.points ?: routePoints
+            if (geometry.size >= 2 && !hasNoBooking) {
+                nextLeg?.let { Polyline(points = it.points, color = if (isDarkTheme)
+                    androidx.compose.ui.graphics.Color.LightGray else androidx.compose.ui.graphics.Color.DarkGray,
+                    width = 6f, pattern = listOf(Dash(18f), Gap(10f)), zIndex = 0f) }
+                Polyline(points = geometry, color = Obsidian.copy(alpha = 0.85f), width = 15f,
+                    jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 1f)
+                Polyline(points = geometry, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 9f,
+                    jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
             }
         }
-
-        // Floating Recenter Pill Button (appears when user pans)
-        AnimatedVisibility(
-            visible = userHasPanned,
-            enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 120.dp)
-                .zIndex(15f)
-        ) {
-            Surface(
-                onClick = {
-                    userHasPanned = false
-                    coroutineScope.launch {
-                        val courierPos = smoothCourierState.currentPosition
-                        val target = courierPos ?: pickupLatLng ?: deliveryLatLng ?: defaultCenter
-                        cameraPositionState.animate(
-                            CameraUpdateFactory.newLatLngZoom(target, 15.5f),
-                            800
-                        )
-                    }
-                },
-                shape = RoundedCornerShape(20.dp),
-                color = Obsidian,
-                border = BorderStroke(1.5.dp, Gold),
-                shadowElevation = 8.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.CenterFocusStrong,
-                        contentDescription = "Recenter Map",
-                        tint = Gold,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = "Recenter",
-                        color = Gold,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
+        if (panned) {
+            FilledTonalButton(onClick = { panned = false; recenter++ },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = visibleBottomInset + 12.dp)
+                    .heightIn(min = 44.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Gold, contentColor = Obsidian)) {
+                Icon(Icons.Default.CenterFocusStrong, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(if (isRider) "Follow" else "Overview")
             }
         }
     }

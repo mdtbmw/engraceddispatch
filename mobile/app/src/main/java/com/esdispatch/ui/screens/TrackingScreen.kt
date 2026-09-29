@@ -246,16 +246,21 @@ fun ActiveTrackingScreen(
 
     val userAvatar by viewModel.photoUrl.collectAsState()
     var userCoords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var userLocationTime by remember { mutableLongStateOf(0L) }
+    var userLocationBearing by remember { mutableFloatStateOf(0f) }
+    var userLocationAccuracy by remember { mutableFloatStateOf(Float.MAX_VALUE) }
     val scope = rememberCoroutineScope()
+    var locationPermissionRevision by remember { mutableIntStateOf(0) }
 
     val locationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions: Map<String, Boolean> ->
+        locationPermissionRevision++
         scope.launch {
             val detected = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 detectUserLocationCoords(context)
             }
-            userCoords = detected
+            if (userLocationTime == 0L) userCoords = detected
         }
     }
 
@@ -273,7 +278,7 @@ fun ActiveTrackingScreen(
             val detected = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 detectUserLocationCoords(context)
             }
-            userCoords = detected
+            if (userLocationTime == 0L) userCoords = detected
         } else {
             locationPermissionLauncher.launch(
                 arrayOf(
@@ -284,12 +289,18 @@ fun ActiveTrackingScreen(
         }
     }
 
-    DisposableEffect(context) {
+    DisposableEffect(context, locationPermissionRevision) {
         val fusedClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
         val callback = object : com.google.android.gms.location.LocationCallback() {
             override fun onLocationResult(res: com.google.android.gms.location.LocationResult) {
                 res.lastLocation?.let { loc ->
+                    if (!loc.hasAccuracy() || loc.accuracy > 75f || loc.time < userLocationTime ||
+                        System.currentTimeMillis() - loc.time !in -5000L..60000L ||
+                        com.esdispatch.ui.maps.validMapPosition(loc.latitude, loc.longitude) == null) return
                     userCoords = Pair(loc.latitude, loc.longitude)
+                    userLocationTime = loc.time
+                    if (loc.hasBearing()) userLocationBearing = loc.bearing
+                    userLocationAccuracy = loc.accuracy
                 }
             }
         }
@@ -334,8 +345,8 @@ fun ActiveTrackingScreen(
         }
     }
     val activeParcel = remember(selectedParcel, activeParcels) {
-        val activeSelected = selectedParcel?.takeIf { it.status != ParcelStatus.CANCELLED && it.status != ParcelStatus.DELIVERED }
-        activeSelected ?: activeParcels.firstOrNull()
+        // Keep the selected shipment visible through completion; do not jump to another order.
+        selectedParcel ?: activeParcels.firstOrNull()
     }
 
     val trackingTargetId = activeParcel?.id ?: selectedParcel?.id
@@ -348,12 +359,17 @@ fun ActiveTrackingScreen(
     val serviceLiveLocation by com.esdispatch.util.LocationService.liveLocationFlow.collectAsState()
     LaunchedEffect(serviceLiveLocation) {
         serviceLiveLocation?.let { loc ->
-            userCoords = Pair(loc.latitude, loc.longitude)
+            if (loc.time >= userLocationTime) {
+                userCoords = Pair(loc.latitude, loc.longitude)
+                userLocationTime = loc.time
+                if (loc.hasBearing()) userLocationBearing = loc.bearing
+                userLocationAccuracy = loc.accuracy
+            }
         }
     }
 
-    LaunchedEffect(isRider, activeParcel?.id) {
-        if (isRider) {
+    LaunchedEffect(isRider, activeParcel?.id, activeParcel?.status, locationPermissionRevision) {
+        if (isRider && activeParcel?.status !in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED, ParcelStatus.RETURNED)) {
             val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
                 context,
                 android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -415,7 +431,6 @@ fun ActiveTrackingScreen(
     }
 
     var isLocalLoading by remember(parcel.id) { mutableStateOf(false) }
-    var showChatSheet by remember { mutableStateOf(false) }
     var showCancelDialog by remember { mutableStateOf(false) }
     var showDisputeSheet by remember { mutableStateOf(false) }
 
@@ -473,21 +488,6 @@ fun ActiveTrackingScreen(
         )
     }
 
-    if (showChatSheet) {
-        val activeContactPhone = if (isRider) {
-            if (parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT, ParcelStatus.ARRIVED_PICKUP)) parcel.senderPhone else parcel.receiverPhone
-        } else {
-            if (parcel.courierPhone.isNotBlank()) parcel.courierPhone else ""
-        }
-        ParcelChatDialog(
-            parcelId = parcel.id,
-            senderRole = if (isRider) "rider" else "customer",
-            recipientPhone = activeContactPhone,
-            viewModel = viewModel,
-            onDismiss = { showChatSheet = false }
-        )
-    }
-
     if (showCancelDialog) {
         CancelDeliverySecurityDialog(
             parcel = parcel,
@@ -506,22 +506,7 @@ fun ActiveTrackingScreen(
             }
         )
     }
-    LaunchedEffect(parcel.id) {
-        val validationResult = Zod.string(parcel.id)
-            .min(4, "Tracking ID must be at least 4 characters.")
-            .max(36, "Tracking ID must not exceed 36 characters.")
-            .regex("^[a-zA-Z0-9\\s-]+$", "Only letters, numbers, and hyphens allowed.")
-            .safeParse()
 
-        if (validationResult is ZodResult.Success) {
-            viewModel.checkRouteTrafficViaMapbox(parcel.pickupAddress, parcel.deliveryAddress)
-        } else {
-            android.util.Log.e("TrackingScreen", "Mapbox request aborted: Invalid parcel ID format: ${parcel.id}")
-        }
-        isLocalLoading = true
-        kotlinx.coroutines.delay(1200)
-        isLocalLoading = false
-    }
 
     var drawerState by remember(hasNoBooking) {
         mutableStateOf(DrawerState.COLLAPSED)
@@ -597,144 +582,103 @@ fun ActiveTrackingScreen(
         )
     }
 
-    // Dynamic Weather state and AI Mode (Points 11 & 12)
-    var currentWeather by remember { mutableStateOf("Clear (29°C)") }
-    var isAiEtaActive by remember { mutableStateOf(true) }
-
-    LaunchedEffect(parcel.courierLatitude, parcel.courierLongitude) {
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    var weatherLabel by remember { mutableStateOf("Weather unavailable") }
+    LaunchedEffect(Unit) {
+        weatherLabel = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val lat = parcel.pickupLat ?: parcel.courierLatitude ?: 6.3350
+            val lng = parcel.pickupLng ?: parcel.courierLongitude ?: 5.6037
+            val connection = java.net.URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&current=temperature_2m,weather_code")
+                .openConnection() as java.net.HttpURLConnection
             try {
-                val lat = parcel.courierLatitude ?: 6.3350
-                val lng = parcel.courierLongitude ?: 5.6037
-                val url = java.net.URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&current=temperature_2m,weather_code")
-                val conn = url.openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 4000
-                conn.readTimeout = 4000
-                if (conn.responseCode == 200) {
-                    val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    val json = org.json.JSONObject(responseStr)
-                    val currentObj = json.optJSONObject("current")
-                    if (currentObj != null) {
-                        val temp = currentObj.optDouble("temperature_2m", 28.0)
-                        val code = currentObj.optInt("weather_code", 0)
-                        val condition = when (code) {
-                            0 -> "Clear (${temp.toInt()}°C)"
-                            1, 2, 3 -> "Partly Cloudy (${temp.toInt()}°C)"
-                            45, 48 -> "Foggy (${temp.toInt()}°C)"
-                            51, 53, 55, 61, 63, 65 -> "Rainy (${temp.toInt()}°C)"
-                            80, 81, 82 -> "Heavy Rain (${temp.toInt()}°C)"
-                            95, 96, 99 -> "Thunderstorm (${temp.toInt()}°C)"
-                            else -> "Clear (${temp.toInt()}°C)"
-                        }
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            currentWeather = condition
-                        }
-                    }
+                connection.connectTimeout = 4000
+                connection.readTimeout = 4000
+                val weather = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() }).getJSONObject("current")
+                val condition = when (weather.getInt("weather_code")) {
+                    0 -> "Clear"
+                    1, 2, 3 -> "Cloudy"
+                    45, 48 -> "Fog"
+                    in 51..82 -> "Rain"
+                    in 95..99 -> "Storm"
+                    else -> "Weather"
                 }
-            } catch (e: Exception) {
-                // Keep default or fallback
+                "$condition ${weather.getDouble("temperature_2m").toInt()}°C"
+            } catch (_: Exception) { "Weather unavailable" } finally { connection.disconnect() }
+        }
+    }
+
+    var roadGuidance by remember(parcel.id, parcel.status) {
+        mutableStateOf(com.esdispatch.ui.maps.RouteGuidance())
+    }
+    var routeRetry by remember(parcel.id) { mutableIntStateOf(0) }
+    var is3D by remember { mutableStateOf(false) }
+    val realDistanceKm = roadGuidance.distanceMeters?.div(1000)?.toFloat()
+    val pickupPhase = parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP)
+    val navigationAddress = if (pickupPhase || parcel.status == ParcelStatus.RETURN_TO_SENDER) parcel.pickupAddress else parcel.deliveryAddress
+    fun openRoadNavigation() {
+        val destination = roadGuidance.destination?.let { "${it.latitude},${it.longitude}" }
+            ?: navigationAddress.takeIf { it.isNotBlank() }
+        if (destination == null) {
+            Toast.makeText(context, "Confirm the destination with support before starting navigation.", Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${Uri.encode(destination)}&mode=d"))
+                .setPackage("com.google.android.apps.maps"))
+        } catch (_: android.content.ActivityNotFoundException) {
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${Uri.encode(destination)}&travelmode=driving")))
+            } catch (_: android.content.ActivityNotFoundException) {
+                Toast.makeText(context, "No navigation app is available on this device.", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    var realDistanceKm by remember { mutableStateOf<Float?>(null) }
-
-    fun calculateEta(prog: Float, weather: String, aiActive: Boolean, distKm: Float? = realDistanceKm): Int {
-        if (distKm == null || distKm <= 0.05f) {
-            return 0
-        }
-        val baseSeconds = ((distKm * 144f) + 90f).toInt()
-        val weatherMultiplier = when {
-            weather.contains("Rainy") || weather.contains("Heavy Rain") -> 1.35
-            weather.contains("Thunderstorm") || weather.contains("Stormy") -> 1.75
-            weather.contains("Foggy") -> 1.25
-            else -> 1.0
-        }
-        val aiOffset = if (aiActive) -45 else 0
-        return ((baseSeconds * weatherMultiplier) + aiOffset).toInt().coerceAtLeast(60)
-    }
-
-    // Dynamic 'Estimated Time of Arrival' countdown ticking in real-time when GPS telemetry is active
-    var tickingSeconds by remember(parcel.progress, currentWeather, isAiEtaActive, realDistanceKm) {
-        mutableStateOf(calculateEta(parcel.progress, currentWeather, isAiEtaActive, realDistanceKm))
-    }
-
-    LaunchedEffect(parcel.progress, currentWeather, isAiEtaActive, realDistanceKm) {
-        while (tickingSeconds > 0) {
-            delay(1000L)
-            tickingSeconds--
-        }
-    }
-
-    // 1-Mile Proximity Notification (Distance-Based Real-Time Alert) & 50m Rider Proximity Arrival Trigger
-    var hasNotifiedWithinOneMile by remember { mutableStateOf(false) }
-    var showInAppNotificationBanner by remember { mutableStateOf(false) }
-    var consecutiveArrivalPings by remember(parcel.id) { mutableStateOf(0) }
-    val geocoder = remember { android.location.Geocoder(context, java.util.Locale.getDefault()) }
-
-    LaunchedEffect(parcel.courierLatitude, parcel.courierLongitude, parcel.progress, parcel.deliveryAddress, isRider, parcel.status) {
-        // Calculate real distance if GPS coordinates are available
-        if (parcel.courierLatitude != null && parcel.courierLongitude != null && parcel.deliveryAddress.isNotEmpty()) {
-            try {
-                // Geocode the delivery address in the background thread
-                val addresses = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.esdispatch.utils.GeocoderUtils.getFromLocationNameCompat(geocoder, parcel.deliveryAddress, 1)
-                }
-                if (!addresses.isNullOrEmpty()) {
-                    val destLat = addresses[0].latitude
-                    val destLng = addresses[0].longitude
-                    val results = FloatArray(1)
-                    android.location.Location.distanceBetween(
-                        parcel.courierLatitude, parcel.courierLongitude,
-                        destLat, destLng,
-                        results
-                    )
-                    val distanceMeters = results[0]
-                    val distKm = distanceMeters / 1000f
-                    realDistanceKm = distKm
-                    tickingSeconds = calculateEta(parcel.progress, currentWeather, isAiEtaActive, distKm)
-
-                    // 50-Meter Proximity Arrival Trigger for Riders (2-ping safeguard)
-                    if (isRider && (parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.OUT_FOR_DELIVERY)) {
-                        if (distanceMeters <= 50f) {
-                            consecutiveArrivalPings++
-                            if (consecutiveArrivalPings >= 2) {
-                                viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED, 0.95f) { _, _ -> }
-                                com.esdispatch.util.CustomToastBridge.show("Destination reached (within 50m). Status set to Arrived.", com.esdispatch.viewmodel.ToastType.SUCCESS)
-                            }
-                        } else if (distanceMeters > 70f) {
-                            consecutiveArrivalPings = 0
-                        }
-                    }
-
-                    if (!isRider && distanceMeters <= 1609.34f && !hasNotifiedWithinOneMile) { // 1 mile = 1609.34 meters
-                        hasNotifiedWithinOneMile = true
-                        showInAppNotificationBanner = true
-                        com.esdispatch.util.CustomToastBridge.show("Delivery Notice: Courier is within 1 mile of your location!", com.esdispatch.viewmodel.ToastType.INFO)
-                    }
-                    if (distanceMeters > 1609.34f || isRider) {
-                        hasNotifiedWithinOneMile = false
-                        showInAppNotificationBanner = false
-                    }
-                    return@LaunchedEffect // Exit early if real coordinates are used
-                }
-            } catch (e: Exception) {
-                // Ignore geocoding errors and fallback to progress
-            }
-        }
-        realDistanceKm = null
-        
-        // Fallback to simulated progress if no real coordinates
-        if (!isRider && parcel.progress >= 0.85f && parcel.progress < 0.98f && !hasNotifiedWithinOneMile) {
-            hasNotifiedWithinOneMile = true
-            showInAppNotificationBanner = true
-            com.esdispatch.util.CustomToastBridge.show("Delivery Notice: Courier is within 1 mile of your location!", com.esdispatch.viewmodel.ToastType.INFO)
-        }
-        if (parcel.progress < 0.85f || isRider) {
-            hasNotifiedWithinOneMile = false
+    var hasNotifiedWithinOneMile by remember(parcel.id) { mutableStateOf(false) }
+    var showInAppNotificationBanner by remember(parcel.id) { mutableStateOf(false) }
+    var consecutiveArrivalPings by remember(parcel.id, parcel.status) { mutableIntStateOf(0) }
+    var showArrivalPrompt by remember(parcel.id, parcel.status) { mutableStateOf(false) }
+    var arrivalPromptDismissed by remember(parcel.id, parcel.status) { mutableStateOf(false) }
+    val locationTime = if (isRider) userLocationTime else parcel.courierLastUpdated
+    LaunchedEffect(locationTime, parcel.status) {
+        val deliveryPhase = parcel.status in listOf(ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY)
+        val recent = locationTime > 0 && System.currentTimeMillis() - locationTime in -5000L..60000L
+        if (!deliveryPhase || !recent) {
             showInAppNotificationBanner = false
+            consecutiveArrivalPings = 0
+            return@LaunchedEffect
+        }
+        val position = if (isRider) userCoords else parcel.courierLatitude?.let { lat -> parcel.courierLongitude?.let { lat to it } }
+        val target = com.esdispatch.ui.maps.validMapPosition(parcel.deliveryLat, parcel.deliveryLng) ?: roadGuidance.destination
+        if (position != null && target != null) {
+            val meters = FloatArray(1)
+            android.location.Location.distanceBetween(position.first, position.second, target.latitude, target.longitude, meters)
+            if (isRider && meters[0] <= 50f && userLocationAccuracy <= 50f) {
+                consecutiveArrivalPings++
+                if (consecutiveArrivalPings >= 2 && !arrivalPromptDismissed) showArrivalPrompt = true
+            } else consecutiveArrivalPings = 0
+            if (!isRider && meters[0] <= 1609.34f && !hasNotifiedWithinOneMile) {
+                hasNotifiedWithinOneMile = true
+                showInAppNotificationBanner = true
+            }
         }
     }
+    if (showArrivalPrompt) {
+        AlertDialog(onDismissRequest = { showArrivalPrompt = false; arrivalPromptDismissed = true },
+            title = { Text("At the delivery address?") },
+            text = { Text("You’re near the destination. Confirm when you have arrived safely.") },
+            confirmButton = { TextButton(onClick = {
+                showArrivalPrompt = false
+                arrivalPromptDismissed = true
+                viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED, 0.95f) { ok, _ ->
+                    if (!ok) {
+                        arrivalPromptDismissed = false
+                        Toast.makeText(context, "Could not update arrival. Please try again.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }) { Text("I’ve arrived") } },
+            dismissButton = { TextButton(onClick = { showArrivalPrompt = false; arrivalPromptDismissed = true }) { Text("Not yet") } })
+    }
+
 
     // Auto-dismiss the in-app notification banner after 6 seconds
     LaunchedEffect(showInAppNotificationBanner) {
@@ -749,13 +693,11 @@ fun ActiveTrackingScreen(
     var isSatelliteMode by remember { mutableStateOf(false) }
     var showTraffic by remember { mutableStateOf(true) }
     var mapZoom by remember { mutableFloatStateOf(14.5f) }
-    var dismissedTrafficAlert by remember { mutableStateOf(false) }
     var followUser by remember(hasNoBooking) { mutableStateOf(hasNoBooking) }
 
     val accentIconColor = if (isLight) Obsidian else Gold
     val accentTextColor = if (isLight) Obsidian else Gold
 
-    val aiTrafficCongested by viewModel.aiTrafficCongested.collectAsState()
 
     val headerBgColor = if (isDark) Gold else Obsidian
     Scaffold(
@@ -836,9 +778,9 @@ fun ActiveTrackingScreen(
                     .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
                     .background(if (isDark) BackgroundDark else BackgroundLight)
             ) {
-            val routeColor = if (aiTrafficCongested) "#FF3B30" else if (showTraffic) "#FF9500" else "#FFB800"
+            val routeColor = "#FFB800"
 
-            val matchedRider = riders.find { it.id == parcel.riderId || it.name.equals(parcel.courierName, ignoreCase = true) } ?: riders.firstOrNull()
+            val matchedRider = riders.find { it.id.isNotBlank() && it.id == parcel.riderId.ifEmpty { parcel.driverId } }
             val resolvedCourierAvatar = if (isRider) {
                 userAvatar
             } else if (parcel.courierAvatar.isNotBlank()) {
@@ -857,7 +799,7 @@ fun ActiveTrackingScreen(
                     shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
                 )
             } else {
-                LiveMapView(
+                key(parcel.id) { LiveMapView(
                     modifier = Modifier.fillMaxSize(),
                     pickupAddress = parcel.pickupAddress,
                     deliveryAddress = parcel.deliveryAddress,
@@ -872,7 +814,7 @@ fun ActiveTrackingScreen(
                     },
                     courierLatitude = if (isRider) (userCoords?.first ?: parcel.courierLatitude) else parcel.courierLatitude,
                     courierLongitude = if (isRider) (userCoords?.second ?: parcel.courierLongitude) else parcel.courierLongitude,
-                    courierBearing = if (isRider) (serviceLiveLocation?.bearing ?: parcel.courierBearing) else parcel.courierBearing,
+                    courierBearing = if (isRider) userLocationBearing else parcel.courierBearing,
                     userAvatar = userAvatar,
                     hasNoBooking = hasNoBooking,
                     followUser = followUser,
@@ -884,8 +826,14 @@ fun ActiveTrackingScreen(
                     parcelDeliveryLat = parcel.deliveryLat,
                     parcelDeliveryLng = parcel.deliveryLng,
                     courierName = resolvedCourierName,
-                    courierPhone = resolvedCourierPhone
-                )
+                    courierPhone = resolvedCourierPhone,
+                    isDarkTheme = isDark,
+                    is3D = is3D,
+                    courierLastUpdated = locationTime,
+                    routeRetry = routeRetry,
+                    bottomInset = bottomCardHeight + 16.dp,
+                    onGuidance = { roadGuidance = it }
+                ) }
             }
 
             // 2. FLOATING TOP NOTIFICATIONS (Stacked neatly inside the map area)
@@ -896,69 +844,17 @@ fun ActiveTrackingScreen(
                     .zIndex(10f)
             ) {
 
-            // FLOATING AI TRAFFIC BANNER
-            androidx.compose.animation.AnimatedVisibility(
-                visible = aiTrafficCongested && !dismissedTrafficAlert,
-                enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
-                exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top),
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Surface(
-                    color = if (isLight) Obsidian else Gold,
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, if (isLight) Obsidian else BorderDark),
-                    onClick = { dismissedTrafficAlert = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(if (isLight) Color.White.copy(alpha = 0.15f) else Obsidian.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.NotificationsActive,
-                                contentDescription = "AI Alert",
-                                tint = if (isLight) Color.White else Obsidian,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "AI TRAFFIC REROUTING ACTIVE",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                color = if (isLight) Color.White else Obsidian
-                            )
-                            Text(
-                                text = "Gridlock detected on Express Route. Your rider was automatically rerouted to bypass congestion.",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isLight) Color.White.copy(alpha = 0.8f) else Obsidian.copy(alpha = 0.8f)
-                            )
-                        }
-                        IconButton(onClick = { dismissedTrafficAlert = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Dismiss Traffic Banner",
-                                tint = if (isLight) Color.White else Obsidian,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
+            if (!hasNoBooking && drawerState != DrawerState.EXPANDED && parcel.status !in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED, ParcelStatus.RETURNED)) {
+                com.esdispatch.ui.maps.RouteGuidanceCard(
+                    guidance = roadGuidance,
+                    onRetry = { routeRetry++ },
+                    onNavigate = if (isRider && roadGuidance.canRetry && parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP,
+                        ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.RETURN_TO_SENDER)) ({ openRoadNavigation() }) else null,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
 
-            // FLOATING BANNER (1-Mile Proximity Simulation Overlay - Customer Only)
+            // Customer proximity notification from fresh delivery telemetry only.
             androidx.compose.animation.AnimatedVisibility(
                 visible = showInAppNotificationBanner && !isRider,
                 enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
@@ -1075,54 +971,18 @@ fun ActiveTrackingScreen(
             }
         }
 
-        // 3. WEATHER & AI ETA CONTROLS (Floating Center-Left for thumb comfort and zero overlays)
-        androidx.compose.animation.AnimatedVisibility(
-            visible = drawerState != DrawerState.EXPANDED,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 16.dp)
-                .zIndex(5f)
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(Obsidian.copy(alpha = 0.85f))
-                        .border(1.dp, BorderDark, CircleShape)
-                        .clickable {
-                            currentWeather = when {
-                                currentWeather.contains("Clear") || currentWeather.contains("Sunny") -> "Rainy (24°C)"
-                                currentWeather.contains("Rain") -> "Stormy (22°C)"
-                                else -> "Clear (29°C)"
-                            }
-                            tickingSeconds = calculateEta(parcel.progress, currentWeather, isAiEtaActive)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = when {
-                            currentWeather.contains("Rain") -> "RAIN"
-                            currentWeather.contains("Storm") || currentWeather.contains("Thunder") -> "STORM"
-                            else -> "SUN"
-                        },
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Gold
-                    )
+        // Keep the existing left-hand control position for navigation perspective.
+        if (drawerState != DrawerState.EXPANDED) {
+            Column(modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp).zIndex(5f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(shape = RoundedCornerShape(12.dp), color = Charcoal, modifier = Modifier.widthIn(max = 112.dp)) {
+                    Text(weatherLabel, color = AppTextColor, fontSize = 11.sp, modifier = Modifier.padding(10.dp))
                 }
-
-                MapControlButton(
-                    icon = Icons.Filled.Schedule,
-                    description = "Toggle AI ETA Estimator",
-                    isActive = isAiEtaActive
-                ) {
-                    isAiEtaActive = !isAiEtaActive
-                    tickingSeconds = calculateEta(parcel.progress, currentWeather, isAiEtaActive)
+                if (isRider && !hasNoBooking) {
+                    MapControlButton(icon = Icons.Filled.Explore, description = "Toggle 3D navigation view", isActive = is3D) { is3D = !is3D }
+                    if (parcel.status !in listOf(ParcelStatus.PENDING, ParcelStatus.QUEUED, ParcelStatus.OFFERED, ParcelStatus.RESERVED_NEXT, ParcelStatus.DELIVERED, ParcelStatus.CANCELLED, ParcelStatus.RETURNED)) {
+                        MapControlButton(icon = Icons.Filled.Navigation, description = "Open turn-by-turn navigation") { openRoadNavigation() }
+                    }
                 }
             }
         }
@@ -1331,7 +1191,7 @@ fun ActiveTrackingScreen(
                                                         border = BorderStroke(1.dp, Gold)
                                                     ) {
                                                         Text(
-                                                            text = "${(tickingSeconds / 60).coerceAtLeast(1)}m ETA",
+                                                            text = roadGuidance.etaSeconds?.let { "${kotlin.math.ceil(it / 60).toInt().coerceAtLeast(1)} min to ${if (pickupPhase) "pickup" else "delivery"}" } ?: "ETA unavailable",
                                                             color = Gold,
                                                             fontSize = 11.sp,
                                                             fontWeight = FontWeight.Bold,
@@ -1699,19 +1559,14 @@ fun ActiveTrackingScreen(
                                                     ParcelStatus.DELIVERED -> "Completed"
                                                     ParcelStatus.CANCELLED -> "Cancelled"
                                                     ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Pending Dispatch"
-                                                    ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Go to Pickup"
+                                                    ParcelStatus.RESERVED_NEXT -> "Next delivery reserved"
+                                                    ParcelStatus.ASSIGNED -> "Go to Pickup"
                                                     ParcelStatus.ARRIVED_PICKUP -> "At Sender Point"
                                                     ParcelStatus.PICKED_UP -> "Heading to Drop-off"
                                                     ParcelStatus.ARRIVED -> "At Drop-off Point"
                                                     ParcelStatus.HANDOVER_VERIFIED -> "Verifying Handover"
                                                     ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
-                                                        val dist = realDistanceKm
-                                                        if (dist != null && dist > 0.05f) {
-                                                            val mins = ((dist * 2.5f).toInt()).coerceAtLeast(2)
-                                                            "ETA: $mins mins"
-                                                        } else {
-                                                            "In Transit"
-                                                        }
+                                                        roadGuidance.etaSeconds?.let { "About ${kotlin.math.ceil(it / 60).toInt().coerceAtLeast(1)} min" } ?: "ETA unavailable"
                                                     }
                                                     else -> "In Transit"
                                                 }
@@ -1720,23 +1575,14 @@ fun ActiveTrackingScreen(
                                                     ParcelStatus.DELIVERED -> "Delivered"
                                                     ParcelStatus.CANCELLED -> "Cancelled"
                                                     ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Dispatching Order"
-                                                    ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Courier Assigned"
+                                                    ParcelStatus.RESERVED_NEXT -> "Rider reserved"
+                                                    ParcelStatus.ASSIGNED -> "Courier Assigned"
                                                     ParcelStatus.ARRIVED_PICKUP -> "Collecting Package"
                                                     ParcelStatus.PICKED_UP -> "En Route"
                                                     ParcelStatus.ARRIVED -> "Courier is Here"
                                                     ParcelStatus.HANDOVER_VERIFIED -> "Verifying Handover"
                                                     ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
-                                                        val dist = realDistanceKm
-                                                        val hasCourierTelemetry = parcel.courierLatitude != null && parcel.courierLongitude != null && parcel.courierLatitude != 0.0
-                                                        val isFreshTransit = parcel.transitTimestamp > 0L && (System.currentTimeMillis() - parcel.transitTimestamp) < 3 * 60 * 60 * 1000L
-                                                        if (hasCourierTelemetry && isFreshTransit && dist != null && dist > 0.05f) {
-                                                            val mins = ((dist * 2.5f).toInt()).coerceAtLeast(2)
-                                                            val minR = (mins - 2).coerceAtLeast(1)
-                                                            val maxR = mins + 3
-                                                            "$minR–$maxR mins"
-                                                        } else {
-                                                            "In Transit"
-                                                        }
+                                                        roadGuidance.etaSeconds?.let { "About ${kotlin.math.ceil(it / 60).toInt().coerceAtLeast(1)} min" } ?: "ETA unavailable"
                                                     }
                                                     else -> "In Transit"
                                                 }
@@ -1747,13 +1593,14 @@ fun ActiveTrackingScreen(
                                                     ParcelStatus.DELIVERED -> "Payout credited"
                                                     ParcelStatus.CANCELLED -> "Order closed"
                                                     ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Awaiting assignment"
-                                                    ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Navigate to pickup address"
+                                                    ParcelStatus.RESERVED_NEXT -> "Finish your current delivery first"
+                                                    ParcelStatus.ASSIGNED -> "Navigate to pickup address"
                                                     ParcelStatus.ARRIVED_PICKUP -> "Verify parcel & confirm pickup"
                                                     ParcelStatus.PICKED_UP -> "Follow route to delivery address"
                                                     ParcelStatus.ARRIVED -> "Request 4-digit PIN from receiver"
                                                     ParcelStatus.HANDOVER_VERIFIED -> "Capture delivery photo proof"
                                                     ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
-                                                        realDistanceKm?.let { String.format(java.util.Locale.US, "%.1f km to drop-off", it) } ?: "GPS Live"
+                                                        realDistanceKm?.let { String.format(java.util.Locale.US, "%.1f km to drop-off", it) } ?: "Waiting for location update"
                                                     }
                                                     else -> "Active mission"
                                                 }
@@ -1762,13 +1609,14 @@ fun ActiveTrackingScreen(
                                                     ParcelStatus.DELIVERED -> "Handover complete • Thank you!"
                                                     ParcelStatus.CANCELLED -> "Trip cancelled"
                                                     ParcelStatus.PENDING, ParcelStatus.QUEUED -> "Matching with nearest courier..."
-                                                    ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> "Heading to pickup location"
+                                                    ParcelStatus.RESERVED_NEXT -> "Waiting for the rider’s current delivery"
+                                                    ParcelStatus.ASSIGNED -> "Heading to pickup location"
                                                     ParcelStatus.ARRIVED_PICKUP -> "Courier at pickup point"
                                                     ParcelStatus.PICKED_UP -> "Package secured • On the way"
                                                     ParcelStatus.ARRIVED -> "Present 4-digit PIN to receive parcel"
                                                     ParcelStatus.HANDOVER_VERIFIED -> "Photo verification in progress"
                                                     ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
-                                                        realDistanceKm?.let { String.format(java.util.Locale.US, "%.1f km away • GPS Live", it) } ?: "On schedule"
+                                                        realDistanceKm?.let { String.format(java.util.Locale.US, "%.1f km remaining", it) } ?: "Waiting for location update"
                                                     }
                                                     else -> "On schedule"
                                                 }
@@ -1827,7 +1675,8 @@ fun ActiveTrackingScreen(
                                                 status = parcel.status,
                                                 progress = parcel.progress,
                                                 isDark = isDark,
-                                                isRider = isRider
+                                                isRider = isRider,
+                                                routeEtaSeconds = roadGuidance.etaSeconds
                                             )
                                         }
 
@@ -2846,7 +2695,7 @@ fun ActiveTrackingScreen(
                                                             },
                                                         contentAlignment = Alignment.Center
                                                     ) {
-                                                        Icon(Icons.Filled.Call, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                        Icon(Icons.Filled.Call, "Call rider", tint = Obsidian, modifier = Modifier.size(18.dp))
                                                     }
                                                 }
                                             }
@@ -3020,7 +2869,7 @@ private fun MapControlButton(
 ) {
     Box(
         modifier = Modifier
-            .size(42.dp)
+            .size(44.dp)
             .clip(CircleShape)
             .background(if (isActive) Gold else Obsidian.copy(alpha = 0.85f))
             .border(1.dp, if (isActive) Gold else BorderDark, CircleShape)
@@ -3132,7 +2981,12 @@ fun LiveMapView(
     courierName: String = "Courier",
     courierPhone: String = "",
     isDarkTheme: Boolean = false,
-    onRouteTelemetry: (Double, Double) -> Unit = { _, _ -> }
+    onRouteTelemetry: (Double, Double) -> Unit = { _, _ -> },
+    is3D: Boolean = false,
+    courierLastUpdated: Long = 0L,
+    routeRetry: Int = 0,
+    bottomInset: androidx.compose.ui.unit.Dp = 120.dp,
+    onGuidance: (com.esdispatch.ui.maps.RouteGuidance) -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -3155,6 +3009,16 @@ fun LiveMapView(
         parcelPickupLng = parcelPickupLng,
         parcelDeliveryLat = parcelDeliveryLat,
         parcelDeliveryLng = parcelDeliveryLng,
+        zoom = zoom,
+        followUser = followUser,
+        is3D = is3D,
+        courierLastUpdated = courierLastUpdated,
+        routeRetry = routeRetry,
+        bottomInset = bottomInset,
+        onGuidance = { guidance ->
+            onGuidance(guidance)
+            if (guidance.distanceMeters != null && guidance.etaSeconds != null) onRouteTelemetry(guidance.distanceMeters, guidance.etaSeconds)
+        },
         onMapClick = { latLng ->
             if (hasNoBooking) {
                 reverseGeocodeAddress(context, latLng.latitude, latLng.longitude) { address ->
@@ -3170,7 +3034,8 @@ fun DeliveryEstimationCard(
     status: ParcelStatus,
     progress: Float,
     isDark: Boolean,
-    isRider: Boolean = false
+    isRider: Boolean = false,
+    routeEtaSeconds: Double? = null
 ) {
     val isLight = !isDark
     val now = remember { java.util.Date() }
@@ -3181,18 +3046,13 @@ fun DeliveryEstimationCard(
 
     val estimationText = when (status) {
         ParcelStatus.PENDING, ParcelStatus.QUEUED -> if (isRider) "Available for pickup" else "Waiting for rider"
-        ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> if (isRider) "Navigate to pickup" else "Rider assigned"
+        ParcelStatus.RESERVED_NEXT -> "Rider reserved"
+        ParcelStatus.ASSIGNED -> routeEtaSeconds?.let { "${kotlin.math.ceil(it / 60).toInt().coerceAtLeast(1)} min to pickup" } ?: if (isRider) "Navigate to pickup" else "Rider assigned"
         ParcelStatus.ARRIVED_PICKUP -> if (isRider) "At pickup location" else "Preparing for pickup"
         ParcelStatus.PICKED_UP -> if (isRider) "Heading to drop-off" else "In transit"
         ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
-            val remainingMins = (35 * (1f - progress.coerceIn(0f, 0.95f))).toInt()
-            if (remainingMins <= 3) {
-                if (isRider) "Approaching destination" else "Arriving soon"
-            } else {
-                val minRange = (remainingMins - 3).coerceAtLeast(2)
-                val maxRange = remainingMins + 4
-                "$minRange–$maxRange mins"
-            }
+            routeEtaSeconds?.let { "${kotlin.math.ceil(it / 60).toInt().coerceAtLeast(1)} min to delivery" }
+                ?: "Waiting for an updated arrival estimate"
         }
         ParcelStatus.ARRIVED -> if (isRider) "At delivery location" else "Courier has arrived!"
         ParcelStatus.HANDOVER_VERIFIED -> if (isRider) "Take delivery photo" else "Verifying delivery"
@@ -3203,10 +3063,11 @@ fun DeliveryEstimationCard(
 
     val windowText = when (status) {
         ParcelStatus.PENDING, ParcelStatus.QUEUED -> if (isRider) "Order ready in pool" else "Dispatching order..."
-        ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT -> if (isRider) "Head to sender address" else "Heading to pickup"
+        ParcelStatus.RESERVED_NEXT -> "Waiting for the rider to finish their current delivery"
+        ParcelStatus.ASSIGNED -> if (isRider) "Head to sender address" else "Heading to pickup"
         ParcelStatus.ARRIVED_PICKUP -> if (isRider) "Collect package & confirm pickup" else "Courier at pickup location"
         ParcelStatus.PICKED_UP -> if (isRider) "Package collected • Proceed to drop-off" else "Package collected • On route"
-        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> if (isRider) "Navigate along highlighted route" else "In transit • On schedule"
+        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> if (isRider) "Navigate along highlighted route" else "Heading to delivery"
         ParcelStatus.ARRIVED -> if (isRider) "Recipient PIN required for handover" else "Courier arrived at destination"
         ParcelStatus.HANDOVER_VERIFIED -> if (isRider) "Snap photo to finalize delivery" else "Photo proof in progress"
         ParcelStatus.DELIVERED -> "Delivery completed"
@@ -4074,290 +3935,7 @@ fun DeliveryFeedbackDialog(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ParcelChatDialog(
-    parcelId: String,
-    senderRole: String, // "customer" or "rider"
-    recipientPhone: String = "",
-    viewModel: DeliveryViewModel,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-    val isDark = viewModel.darkModeEnabled.collectAsState().value
-    val chatMessages by viewModel.activeParcelChats.collectAsState()
-    val scope = rememberCoroutineScope()
-    var messageInput by remember { mutableStateOf("") }
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
-    LaunchedEffect(parcelId) {
-        viewModel.startListeningToParcelChats(parcelId)
-    }
-
-    DisposableEffect(parcelId) {
-        onDispose {
-            viewModel.stopListeningToParcelChats()
-        }
-    }
-
-    // Scroll to bottom when new messages arrive
-    LaunchedEffect(chatMessages.size) {
-        if (chatMessages.isNotEmpty()) {
-            listState.animateScrollToItem(chatMessages.size - 1)
-        }
-    }
-
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 28.dp), // status bar spacer
-            color = LuxuryBlack
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // Header (matching Dark Mode / Light Mode header rules)
-                val headerBg = if (isDark) Gold else Obsidian
-                val headerContentColor = if (isDark) Obsidian else Color.White
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(headerBg)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = headerContentColor
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (senderRole == "customer") "Customer Support" else "Dispatch & Customer Care",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Black,
-                            color = headerContentColor,
-                            letterSpacing = 0.5.sp
-                        )
-                        Text(
-                            text = "Shipment #${parcelId.take(8).uppercase()}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) Obsidian.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.7f)
-                        )
-                    }
-
-                    if (recipientPhone.isNotBlank()) {
-                        val cleanPhone = recipientPhone.filter { it.isDigit() || it == '+' }
-                        IconButton(
-                            onClick = {
-                                viewModel.logCourierCallEvent(parcelId, cleanPhone)
-                                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanPhone"))
-                                try {
-                                    context.startActivity(dialIntent)
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Call not supported on this device", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Call,
-                                contentDescription = "Call Contact",
-                                tint = headerContentColor
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .background(if (isDark) Obsidian.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "ID: #${parcelId.take(6).uppercase()}",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            color = headerContentColor
-                        )
-                    }
-                }
-
-                // Chat Messages List
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(LuxuryBlack)
-                        .padding(horizontal = 16.dp)
-                ) {
-                    if (chatMessages.isEmpty()) {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Chat,
-                                contentDescription = "No Chats",
-                                tint = TextGray,
-                                modifier = Modifier.size(48.dp)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Start the Conversation",
-                                color = AppTextColor,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Send a secure real-time message to coordinate delivery routing or special instructions.",
-                                color = TextGray,
-                                fontSize = 12.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(horizontal = 24.dp)
-                            )
-                        }
-                    } else {
-                        androidx.compose.foundation.lazy.LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(vertical = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            items(chatMessages) { chat ->
-                                val isMe = chat.senderRole == senderRole
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
-                                ) {
-                                    Column(
-                                        horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
-                                    ) {
-                                        // Sender tag
-                                        Text(
-                                            text = if (isMe) "You" else chat.senderName,
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextGray,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-
-                                        // Message bubble
-                                        val bubbleColor = if (isMe) Gold else Charcoal
-                                        val textColor = if (isMe) Obsidian else Color.White // STRICT CONTRAST: Obsidian on Gold
-                                        val bubbleShape = if (isMe) {
-                                            RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 2.dp)
-                                        } else {
-                                            RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 2.dp, bottomEnd = 16.dp)
-                                        }
-
-                                        Surface(
-                                            shape = bubbleShape,
-                                            color = bubbleColor,
-                                            modifier = Modifier.widthIn(max = 280.dp),
-                                            border = if (!isMe) BorderStroke(1.dp, BorderDark) else null
-                                        ) {
-                                            Text(
-                                                text = chat.messageText,
-                                                color = textColor,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Input Row
-                Surface(
-                    color = Charcoal,
-                    modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(1.dp, BorderDark)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .imePadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = messageInput,
-                            onValueChange = { messageInput = it },
-                            placeholder = { Text("Enter premium dispatch instruction...", fontSize = 13.sp, color = TextGray) },
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(max = 100.dp),
-                            shape = RoundedCornerShape(20.dp),
-                            maxLines = 4,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = LuxuryBlack,
-                                unfocusedContainerColor = LuxuryBlack,
-                                focusedBorderColor = Gold,
-                                unfocusedBorderColor = BorderColor,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            ),
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Color.White)
-                        )
-
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        IconButton(
-                            onClick = {
-                                if (messageInput.trim().isNotEmpty()) {
-                                    val txt = messageInput.trim()
-                                    messageInput = ""
-                                    viewModel.sendParcelChatMessage(parcelId, senderRole, txt) { success, _ ->
-                                        if (!success) {
-                                            // Handle error
-                                        }
-                                    }
-                                }
-                            },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(if (messageInput.trim().isNotEmpty()) Gold else BorderColor),
-                            enabled = messageInput.trim().isNotEmpty()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Send,
-                                contentDescription = "Send",
-                                tint = if (messageInput.trim().isNotEmpty()) Obsidian else TextGray,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 private suspend fun detectUserLocationCoords(context: android.content.Context): Pair<Double, Double>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     try {

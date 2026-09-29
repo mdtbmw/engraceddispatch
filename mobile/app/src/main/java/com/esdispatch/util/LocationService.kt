@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 
 class LocationService : Service() {
 
@@ -79,7 +80,7 @@ class LocationService : Service() {
         }
 
         try {
-            val notification = createNotification("Live GPS Active", "Broadcasting real-time courier telemetry...")
+            val notification = createNotification("Delivery tracking", "Sharing your location during your delivery.")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ServiceCompat.startForeground(
                     this,
@@ -103,9 +104,8 @@ class LocationService : Service() {
     private var lastUserLocationSync = 0L
 
     private fun startLocationUpdates() {
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000L)
-            .setMinUpdateIntervalMillis(10000L)
-            .setMinUpdateDistanceMeters(15.0f)
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000L)
+            .setMinUpdateIntervalMillis(5000L)
             .build()
 
         try {
@@ -114,13 +114,22 @@ class LocationService : Service() {
                 locationCallback,
                 Looper.getMainLooper()
             )
-            Log.d(TAG, "FusedLocationProviderClient updates requested (15s / 15m interval).")
+            Log.d(TAG, "Location updates requested.")
         } catch (e: SecurityException) {
             Log.e(TAG, "Location permission missing: ${e.message}")
         }
     }
 
     private fun handleNewLocation(location: Location) {
+        val lastFix = _liveLocationFlow.value
+        if (!location.latitude.isFinite() || !location.longitude.isFinite() ||
+            !location.hasAccuracy() || location.accuracy > 75f ||
+            System.currentTimeMillis() - location.time !in -5000L..60000L ||
+            (lastFix != null && location.time <= lastFix.time)) return
+        // Keep the last heading while stationary instead of rotating the bike north.
+        if (!location.hasBearing() || location.speed < 1f) {
+            if (lastFix != null && lastFix.hasBearing()) location.bearing = lastFix.bearing
+        }
         // Validate coordinates
         if (location.latitude < -90.0 || location.latitude > 90.0 ||
             location.longitude < -180.0 || location.longitude > 180.0 ||
@@ -197,31 +206,12 @@ class LocationService : Service() {
         Location.distanceBetween(location.latitude, location.longitude, stopLat, stopLng, results)
         val distanceMeters = results[0]
 
-        if (distanceMeters <= 50.0f && !hasTriggeredArrivalForCurrentStop) {
+        if (location.accuracy <= 50f && distanceMeters <= 50.0f && !hasTriggeredArrivalForCurrentStop) {
             hasTriggeredArrivalForCurrentStop = true
             Log.d(TAG, "Proximity arrival detected for stop: $distanceMeters m")
-            val db = FirebaseManager.firestore ?: return
-            val nextStatus = if (activeStopType == "PICKUP") ParcelStatus.ARRIVED_PICKUP else ParcelStatus.ARRIVED
-            val progressVal = if (activeStopType == "PICKUP") 0.50f else 0.90f
-            val updateMap = mapOf<String, Any>(
-                "status" to nextStatus.name,
-                "progress" to progressVal,
-                "lastUpdated" to System.currentTimeMillis()
-            )
-            val docRef = db.collection("deliveries").document(pId)
-            docRef.update(updateMap).addOnSuccessListener {
-                Log.d(TAG, "Proximity arrival status updated to ${nextStatus.name}")
-                docRef.get().addOnSuccessListener { snap ->
-                    val userId = snap.getString("userId") ?: ""
-                    if (userId.isNotEmpty()) {
-                        db.collection("users").document(userId).collection("deliveries").document(pId)
-                            .update(updateMap)
-                            .addOnFailureListener { e ->
-                                Log.w(TAG, "Failed to update user delivery subcollection arrival: ${e.message}")
-                            }
-                    }
-                }
-            }
+            val notification = createNotification("Near your ${if (activeStopType == "PICKUP") "pickup" else "delivery"}",
+                "Open your delivery and confirm when you have arrived safely.")
+            getSystemService(android.app.NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
         }
     }
 
@@ -251,10 +241,10 @@ class LocationService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
-                "Rider Live GPS Service",
+                "Delivery tracking",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Continuous background GPS telemetry for live dispatch orders"
+                description = "Location sharing and arrival reminders during deliveries"
                 setShowBadge(false)
             }
             val manager = getSystemService(NotificationManager::class.java)
@@ -266,6 +256,8 @@ class LocationService : Service() {
         super.onDestroy()
         fusedLocationClient.removeLocationUpdates(locationCallback)
         _isServiceRunning.value = false
+        _liveLocationFlow.value = null
+        serviceScope.cancel()
         Log.d(TAG, "LocationService destroyed.")
     }
 

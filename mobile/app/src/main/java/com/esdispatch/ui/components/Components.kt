@@ -85,6 +85,7 @@ import androidx.compose.ui.graphics.Path
 import com.esdispatch.ui.theme.*
 import androidx.compose.ui.res.painterResource
 import kotlin.math.sin
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.drawscope.rotate
 
@@ -1240,105 +1241,73 @@ fun SwipeToConfirmButton(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var swipeOffset by remember { mutableStateOf(0f) }
-    var isConfirmed by remember { mutableStateOf(false) }
-    
-    // Slider track is fillMaxWidth, thumb is 130.dp, we let the user drag up to trackWidth - thumbWidth
-    var trackWidthPx by remember { mutableStateOf(0f) }
-    val thumbWidthDp = 130.dp
-    val thumbWidthPx = with(LocalDensity.current) { thumbWidthDp.toPx() }
-    val maxSwipeDistance = remember(trackWidthPx, thumbWidthPx) {
-        (trackWidthPx - thumbWidthPx - 16f).coerceAtLeast(0f)
+    var swipeOffset by remember { mutableFloatStateOf(0f) }
+    var submitting by remember { mutableStateOf(false) }
+    var dragging by remember { mutableStateOf(false) }
+    var trackWidth by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val thumbWidth = 76.dp
+    val inset = 4.dp
+    val travel = with(density) { (trackWidth - thumbWidth.toPx() - inset.toPx() * 2).coerceAtLeast(0f) }
+    val currentConfirm by rememberUpdatedState(onConfirm)
+    val context = LocalContext.current
+    val reducedMotion = remember {
+        if (android.os.Build.VERSION.SDK_INT >= 26) !android.animation.ValueAnimator.areAnimatorsEnabled()
+        else android.provider.Settings.Global.getFloat(context.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
     }
-
-    val animatedOffset by animateFloatAsState(
-        targetValue = if (isConfirmed) maxSwipeDistance else swipeOffset,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
-        label = "offset"
+    val settledOffset by animateFloatAsState(
+        targetValue = if (submitting) travel else swipeOffset,
+        animationSpec = if (reducedMotion) snap() else spring(stiffness = 400f, dampingRatio = 0.70f),
+        label = "Bike swipe settle"
     )
-
-    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
-    val trackBg = if (isDark) Obsidian else GoldenWhite
-    val handleColor = Gold
-    val handleTextColor = Obsidian
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(58.dp)
-            .clip(RoundedCornerShape(29.dp))
-            .background(trackBg)
-            .border(BorderStroke(1.2.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate), RoundedCornerShape(29.dp))
-            .onGloballyPositioned {
-                trackWidthPx = it.size.width.toFloat()
-            },
-        contentAlignment = Alignment.CenterStart
-    ) {
-        // Track text (Centered)
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = if (isConfirmed) "SECURELY VERIFIED" else text.uppercase(),
-                fontFamily = SpaceGrotesk,
-                fontWeight = FontWeight.Black,
-                fontSize = 12.sp,
-                letterSpacing = 1.2.sp,
-                color = if (isDark) GoldLight.copy(alpha = 0.5f) else Obsidian.copy(alpha = 0.5f)
-            )
+    val offset = if (dragging) swipeOffset else settledOffset
+    LaunchedEffect(submitting) {
+        if (submitting) {
+            if (!reducedMotion) kotlinx.coroutines.delay(400)
+            currentConfirm()
         }
-
-        // Swipable handle/thumb
-        val density = LocalDensity.current
-        Box(
-            modifier = Modifier
-                .offset(x = with(density) { animatedOffset.toDp() })
-                .padding(4.dp)
-                .width(thumbWidthDp)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(25.dp))
-                .background(handleColor)
-                .pointerInput(maxSwipeDistance) {
-                    detectHorizontalDragGestures(
+    }
+    val isDark = MaterialTheme.colorScheme.background == BackgroundDark
+    Box(modifier = modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(32.dp))
+        .background(if (isDark) Obsidian else GoldenWhite)
+        .onGloballyPositioned { trackWidth = it.size.width.toFloat() }
+        .semantics {
+            contentDescription = text
+            stateDescription = if (submitting) "Processing payment" else "Swipe right to confirm"
+            if (submitting) disabled()
+            onClick(label = "Confirm payment") {
+                if (!submitting && travel > 0f) { submitting = true; true } else false
+            }
+        }, contentAlignment = Alignment.CenterStart) {
+        Text(text = if (submitting) "Processing payment…" else text,
+            modifier = Modifier.align(Alignment.Center).padding(start = if (submitting) 16.dp else 76.dp, end = if (submitting) 84.dp else 16.dp)
+                .graphicsLayer { alpha = if (submitting) 1f else (1f - swipeOffset / travel.coerceAtLeast(1f)).coerceIn(0f, 1f) },
+            fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = AppTextColor)
+        androidx.compose.foundation.Image(
+            painter = painterResource(com.esdispatch.R.drawable.delivery_bike_side),
+            contentDescription = null,
+            modifier = Modifier.offset(x = with(density) { offset.toDp() } + inset)
+                .width(thumbWidth).height(56.dp)
+                .pointerInput(travel, submitting) {
+                    if (!submitting) detectHorizontalDragGestures(
+                        onDragStart = { dragging = true },
                         onDragEnd = {
-                            if (swipeOffset >= maxSwipeDistance * 0.75f) {
-                                isConfirmed = true
-                                swipeOffset = maxSwipeDistance
-                                onConfirm()
-                            } else {
-                                swipeOffset = 0f
-                            }
+                            dragging = false
+                            if (travel > 0 && swipeOffset >= travel * 0.92f) {
+                                swipeOffset = travel
+                                submitting = true
+                            } else swipeOffset = 0f
                         },
-                        onDragCancel = {
-                            swipeOffset = 0f
-                        },
-                        onHorizontalDrag = { _, dragAmount ->
-                            swipeOffset = (swipeOffset + dragAmount).coerceIn(0f, maxSwipeDistance)
+                        onDragCancel = { dragging = false; swipeOffset = 0f },
+                        onHorizontalDrag = { change, amount ->
+                            change.consume()
+                            swipeOffset = (swipeOffset + amount).coerceIn(0f, travel)
                         }
                     )
                 },
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Send,
-                    contentDescription = null,
-                    tint = handleTextColor,
-                    modifier = Modifier.size(14.dp)
-                )
-                Text(
-                    text = "SWIPE",
-                    fontFamily = SpaceGrotesk,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 11.sp,
-                    color = handleTextColor
-                )
-            }
-        }
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+        )
     }
 }
 

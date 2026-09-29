@@ -176,7 +176,8 @@ data class RiderTelemetry(
     val speed: Float = 0f,
     val accuracy: Float = 0f,
     val timestamp: Long = 0L,
-    val activeBookingId: String = ""
+    val activeBookingId: String = "",
+    val activeBatchId: String = ""
 )
 
 data class BatchBooking(

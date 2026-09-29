@@ -2945,7 +2945,8 @@ object FirebaseManager {
                             speed = speed,
                             accuracy = accuracy,
                             timestamp = timestamp,
-                            activeBookingId = activeBookingId
+                            activeBookingId = activeBookingId,
+                            activeBatchId = snapshot.getString("activeBatchId") ?: ""
                         )
                     )
                 } else {

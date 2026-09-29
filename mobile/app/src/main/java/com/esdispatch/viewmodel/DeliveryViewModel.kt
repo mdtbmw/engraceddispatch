@@ -4826,32 +4826,39 @@ class DeliveryViewModel : WalletViewModel() {
         if (!_firebaseConnected.value) return
 
         trackingJob = viewModelScope.launch {
+            var listeningRiderId: String? = null
             com.esdispatch.data.FirebaseManager.listenToParcelTracking(parcelId).collect { updatedParcel ->
                 if (updatedParcel != null) {
-                    _selectedParcel.value = updatedParcel
-                    // Save locally in Room to sync states
+                    val riderId = updatedParcel.riderId.ifEmpty { updatedParcel.driverId }
+                    val previous = _selectedParcel.value
+                    val sameRider = previous != null && previous.riderId.ifEmpty { previous.driverId } == riderId
+                    _selectedParcel.value = if (previous != null && previous.id == updatedParcel.id && sameRider &&
+                        previous.courierLastUpdated > updatedParcel.courierLastUpdated) {
+                        updatedParcel.copy(courierLatitude = previous.courierLatitude, courierLongitude = previous.courierLongitude,
+                            courierBearing = previous.courierBearing, courierSpeed = previous.courierSpeed,
+                            courierAccuracy = previous.courierAccuracy, courierLastUpdated = previous.courierLastUpdated)
+                    } else updatedParcel
                     repository?.saveParcels(listOf(updatedParcel))
-                    // Call Mapbox real-time traffic monitoring
-                    checkRouteTrafficViaMapbox(updatedParcel.pickupAddress, updatedParcel.deliveryAddress)
-
-                    val rId = updatedParcel.riderId.ifEmpty { updatedParcel.driverId }
-                    if (rId.isNotEmpty()) {
+                    if (riderId != listeningRiderId) {
                         riderLocationJob?.cancel()
-                        riderLocationJob = launch {
-                            com.esdispatch.data.FirebaseManager.listenToRiderTelemetry(rId).collect { telem ->
-                                if (telem != null) {
-                                    val current = _selectedParcel.value
-                                    if (current != null && current.id == updatedParcel.id) {
-                                        val updatedWithCoords = current.copy(
-                                            courierLatitude = telem.latitude,
-                                            courierLongitude = telem.longitude,
-                                            courierBearing = telem.bearing,
-                                            courierSpeed = telem.speed,
-                                            courierAccuracy = telem.accuracy,
-                                            courierLastUpdated = telem.timestamp
-                                        )
-                                        _selectedParcel.value = updatedWithCoords
-                                    }
+                        listeningRiderId = riderId
+                        if (riderId.isNotBlank()) riderLocationJob = launch {
+                            com.esdispatch.data.FirebaseManager.listenToRiderTelemetry(riderId).collect { telemetry ->
+                                val current = _selectedParcel.value
+                                if (telemetry != null && current != null && current.id == parcelId &&
+                                    current.riderId.ifEmpty { current.driverId } == riderId &&
+                                    telemetry.timestamp >= current.courierLastUpdated &&
+                                    telemetry.latitude.isFinite() && telemetry.longitude.isFinite() &&
+                                    telemetry.latitude in -90.0..90.0 && telemetry.longitude in -180.0..180.0 &&
+                                    (telemetry.latitude != 0.0 || telemetry.longitude != 0.0) && telemetry.accuracy <= 75f) {
+                                    // Never show a rider's other delivery as movement on this shipment.
+                                    _selectedParcel.value = if (telemetry.activeBookingId.isNotBlank() && telemetry.activeBookingId != parcelId &&
+                                        !(current.batchId.isNotBlank() && current.batchId == telemetry.activeBatchId)) {
+                                        current.copy(courierLatitude = null, courierLongitude = null, courierLastUpdated = 0L)
+                                    } else current.copy(
+                                        courierLatitude = telemetry.latitude, courierLongitude = telemetry.longitude,
+                                        courierBearing = telemetry.bearing, courierSpeed = telemetry.speed,
+                                        courierAccuracy = telemetry.accuracy, courierLastUpdated = telemetry.timestamp)
                                 }
                             }
                         }
@@ -4866,7 +4873,6 @@ class DeliveryViewModel : WalletViewModel() {
         if (found != null) {
             _selectedParcel.value = found
             startRealTimeTrackingListener(parcelId)
-            checkRouteTrafficViaMapbox(found.pickupAddress, found.deliveryAddress)
         }
     }
 
@@ -4874,7 +4880,6 @@ class DeliveryViewModel : WalletViewModel() {
         _selectedParcel.value = parcel
         if (parcel != null) {
             startRealTimeTrackingListener(parcel.id)
-            checkRouteTrafficViaMapbox(parcel.pickupAddress, parcel.deliveryAddress)
         }
     }
 

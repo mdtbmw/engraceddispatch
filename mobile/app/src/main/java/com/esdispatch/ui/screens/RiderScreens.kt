@@ -1735,38 +1735,28 @@ fun RiderUpdateBottomSheetContent(
         )
 
         if (parcel.status != ParcelStatus.PENDING && parcel.status != ParcelStatus.DELIVERED && parcel.status != ParcelStatus.CANCELLED) {
-            var showRiderChat by remember { mutableStateOf(false) }
-
+            val atPickup = parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.RESERVED_NEXT, ParcelStatus.ARRIVED_PICKUP)
+            val phone = (if (atPickup) parcel.senderPhone else parcel.receiverPhone).filter { it.isDigit() || it == '+' }
             Button(
-                onClick = { showRiderChat = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp)
-                    .height(48.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Charcoal,
-                    contentColor = Gold
-                ),
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, Gold.copy(alpha = 0.5f))
+                onClick = {
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        Toast.makeText(context, "Calls are unavailable on this device.", Toast.LENGTH_LONG).show()
+                    }
+                },
+                enabled = phone.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = 48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                shape = RoundedCornerShape(14.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Default.Chat, contentDescription = "Chat", tint = Gold)
-                    Text("CHAT WITH RECIPIENT", fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 0.5.sp)
-                }
+                Icon(Icons.Default.Call, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (phone.isBlank()) "Phone number unavailable" else if (atPickup) "Call sender" else "Call recipient",
+                    fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
+            if (phone.isBlank()) Text("Contact support to reach this customer.", color = TextGray, fontSize = 12.sp)
 
-            if (showRiderChat) {
-                ParcelChatDialog(
-                    parcelId = parcel.id,
-                    senderRole = "rider",
-                    viewModel = viewModel,
-                    onDismiss = { showRiderChat = false }
-                )
-            }
         }
 
         Spacer(modifier = Modifier.height(20.dp))
