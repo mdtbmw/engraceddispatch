@@ -105,9 +105,7 @@ internal fun rememberRoadRoute(
                     lastOrigin = position
                     usedCourier = position != null
                     state.loading = true
-                    state.failed = false
-                    // Do not keep directing someone down a road they have already left.
-                    if (offRoute) state.route = null
+                    // Keep existing route visible while updating directions to prevent visual flashing and route loss
                     try {
                         val origin = position?.let { RoadWaypoint(it, "") } ?: pickup
                         val target = if (phase == "return") pickup else delivery
@@ -207,4 +205,18 @@ internal fun RoadLeg.nextInstruction(position: LatLng?): String {
     return if (next != null && next.instruction.isNotBlank()) {
         "${if (distance >= 1000) "%.1f km".format(distance / 1000.0) else "$distance m"} • ${next.instruction}"
     } else current.instruction.ifBlank { "Continue to the destination" }
+}
+
+internal fun RoadLeg.distanceToNextTurn(position: LatLng?): Int {
+    if (position == null || steps.isEmpty()) return 500
+    val index = steps.indices.minByOrNull { i ->
+        val points = steps[i].points
+        if (points.size < 2) Double.MAX_VALUE else points.zipWithNext().minOf { (a, b) ->
+            PolyUtil.distanceToLine(position, a, b)
+        }
+    } ?: 0
+    val current = steps[index]
+    if (current.points.isEmpty()) return 500
+    val closest = current.points.indices.minByOrNull { SphericalUtil.computeDistanceBetween(position, current.points[it]) } ?: 0
+    return SphericalUtil.computeLength(current.points.drop(closest)).toInt()
 }

@@ -5632,58 +5632,58 @@ class DeliveryViewModel : WalletViewModel() {
         val cost = applyPromoDiscount(rawCost)
         val uid = _firebaseUserId.value
 
-        fun createBooking() {
-            // Device GPS is only a fallback when no pickup address was entered;
-            // a typed address must never be stamped with the user's GPS point.
-            val deviceFallback = draft.pickupAddress.isBlank()
-            val effectivePickupLat = draft.pickupLat ?: if (deviceFallback) _currentUserDeviceLocation.value?.first else null
-            val effectivePickupLng = draft.pickupLng ?: if (deviceFallback) _currentUserDeviceLocation.value?.second else null
+        // Device GPS is only a fallback when no pickup address was entered;
+        // a typed address must never be stamped with the user's GPS point.
+        val deviceFallback = draft.pickupAddress.isBlank()
+        val effectivePickupLat = draft.pickupLat ?: if (deviceFallback) _currentUserDeviceLocation.value?.first else null
+        val effectivePickupLng = draft.pickupLng ?: if (deviceFallback) _currentUserDeviceLocation.value?.second else null
 
-            // Create new Parcel record
-            val newParcel = Parcel(
-                id = com.esdispatch.data.FirebaseManager.firestore?.collection("deliveries")?.document()?.id
-                    ?: ("PC-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase()),
-                itemName = draft.itemName.ifBlank { if (draft.selectedService == "Express") "Express Parcel" else "New Parcel (${draft.selectedService})" },
-                imageUrl = "https://images.unsplash.com/photo-1589409514187-c21d14bf0d13?w=100&h=100&fit=crop",
-                status = ParcelStatus.PENDING,
-                pickupAddress = draft.pickupAddress.ifBlank { "Unspecified Pickup" },
-                deliveryAddress = draft.deliveryAddress.ifBlank { "Unspecified Delivery" },
-                senderName = draft.senderName.ifBlank { _userName.value.ifBlank { "Engraced Member" } },
-                senderPhone = draft.senderPhone.ifBlank { _userPhone.value },
-                receiverName = draft.receiverName.ifBlank { "Recipient" },
-                receiverPhone = draft.receiverPhone.ifBlank { "" },
-                quantity = draft.quantity,
-                weight = draft.weight,
-                length = draft.length,
-                width = draft.width,
-                height = draft.height,
-                price = cost,
-                progress = 0.0f,
-                userId = _firebaseUserId.value ?: "",
-                additionalStops = draft.stops.filter { it.isNotBlank() }.joinToString("|"),
-                otpCode = (1000..9999).random().toString(),
-                category = draft.selectedCategory.ifBlank { draft.selectedService.ifBlank { "Standard" } },
-                createdAt = System.currentTimeMillis(),
-                pickupLat = effectivePickupLat,
-                pickupLng = effectivePickupLng,
-                deliveryLat = draft.deliveryLat,
-                deliveryLng = draft.deliveryLng,
-                declaredValue = draft.declaredValue,
-                senderEmail = _userEmail.value
-            )
+        // Create new Parcel record
+        val newParcel = Parcel(
+            id = com.esdispatch.data.FirebaseManager.firestore?.collection("deliveries")?.document()?.id
+                ?: ("PC-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase()),
+            itemName = draft.itemName.ifBlank { if (draft.selectedService == "Express") "Express Parcel" else "New Parcel (${draft.selectedService})" },
+            imageUrl = "https://images.unsplash.com/photo-1589409514187-c21d14bf0d13?w=100&h=100&fit=crop",
+            status = ParcelStatus.PENDING,
+            pickupAddress = draft.pickupAddress.ifBlank { "Unspecified Pickup" },
+            deliveryAddress = draft.deliveryAddress.ifBlank { "Unspecified Delivery" },
+            senderName = draft.senderName.ifBlank { _userName.value.ifBlank { "Engraced Member" } },
+            senderPhone = draft.senderPhone.ifBlank { _userPhone.value },
+            receiverName = draft.receiverName.ifBlank { "Recipient" },
+            receiverPhone = draft.receiverPhone.ifBlank { "" },
+            quantity = draft.quantity,
+            weight = draft.weight,
+            length = draft.length,
+            width = draft.width,
+            height = draft.height,
+            price = cost,
+            progress = 0.0f,
+            userId = uid ?: "",
+            additionalStops = draft.stops.filter { it.isNotBlank() }.joinToString("|"),
+            otpCode = (1000..9999).random().toString(),
+            category = draft.selectedCategory.ifBlank { draft.selectedService.ifBlank { "Standard" } },
+            createdAt = System.currentTimeMillis(),
+            pickupLat = effectivePickupLat,
+            pickupLng = effectivePickupLng,
+            deliveryLat = draft.deliveryLat,
+            deliveryLng = draft.deliveryLng,
+            declaredValue = draft.declaredValue,
+            senderEmail = _userEmail.value,
+            paymentStatus = "PAID"
+        )
 
-            _parcels.value = listOf(newParcel) + _parcels.value
-            _selectedParcel.value = newParcel
+        fun finalizeBookingLocally(parcel: Parcel) {
+            _parcels.value = listOf(parcel) + _parcels.value
+            _selectedParcel.value = parcel
 
-            // Add to Notifications
             val bookTitle = "Booking Confirmed"
-            val bookMsg = "Your parcel shipment '${newParcel.itemName}' (${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(newParcel.id)}) has been booked via ${draft.selectedService} service! Paid ₦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier."
+            val bookMsg = "Your parcel shipment '${parcel.itemName}' (${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)}) has been booked via ${draft.selectedService} service! Paid ₦${String.format("%,.2f", cost)} from wallet. Logistics dispatch is actively assigning a courier."
             val notif = NotificationItem(
                 id = "NT-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase(),
                 title = bookTitle,
                 message = bookMsg,
                 time = "Just now",
-                parcelId = newParcel.id
+                parcelId = parcel.id
             )
             _notifications.value = listOf(notif) + _notifications.value
 
@@ -5694,7 +5694,7 @@ class DeliveryViewModel : WalletViewModel() {
                 amount = -cost,
                 isTopUp = false,
                 type = "DEBIT",
-                reference = newParcel.id,
+                reference = parcel.id,
                 userId = _firebaseUserId.value ?: ""
             )
             _transactions.value = listOf(newTx) + _transactions.value
@@ -5706,7 +5706,7 @@ class DeliveryViewModel : WalletViewModel() {
                         context = ctx,
                         title = bookTitle,
                         message = bookMsg,
-                        parcelId = newParcel.id
+                        parcelId = parcel.id
                     )
                 } catch (e: Exception) {
                     android.util.Log.e("BookingNotif", "Error showing booking notification: ${e.message}")
@@ -5717,26 +5717,17 @@ class DeliveryViewModel : WalletViewModel() {
             _parcelDraft.value = ParcelDraft()
             _activePromo = ActivePromo()
 
-            // Write directly to Room SQLite Database for offline-first resilience!
             savePref("wallet_balance", _walletBalance.value)
             com.esdispatch.util.SoundManager.playDispatchSweep()
             isBookingSubmissionInProgress = false
 
             viewModelScope.launch {
-                repository?.saveParcel(newParcel)
+                repository?.saveParcel(parcel)
                 repository?.saveTransaction(newTx)
                 repository?.saveNotification(notif)
-                syncParcel(newParcel)
-                com.esdispatch.data.FirebaseManager.broadcastNewDispatchAlert(newParcel)
+                com.esdispatch.data.FirebaseManager.broadcastNewDispatchAlert(parcel)
                 val fUid = _firebaseUserId.value
                 if (fUid != null) {
-                    com.esdispatch.data.FirebaseManager.recordLedgerTransaction(
-                        userId = fUid,
-                        amount = -cost,
-                        title = "Parcel Delivery (${draft.selectedService})",
-                        isTopUp = false,
-                        reference = newParcel.id
-                    ) {}
                     com.esdispatch.data.FirebaseManager.syncLoyaltyToFirestore(fUid, _loyaltyPoints.value, _deliveryCount.value)
                 }
             }
@@ -5750,23 +5741,28 @@ class DeliveryViewModel : WalletViewModel() {
                 onComplete?.invoke(false, "Insufficient wallet balance (₦${String.format("%,.0f", cost)} needed).")
                 return
             }
-            // Atomic debit; only when the server confirms do we create the booking, with offline-first fallback
-            com.esdispatch.data.FirebaseManager.updateUserWalletBalance(uid, -cost) { success, newBalance ->
+            // Atomic server-controlled operation: debits wallet, creates delivery doc, and writes double-entry ledger in ONE transaction
+            com.esdispatch.data.FirebaseManager.executeAtomicBookingTransaction(
+                userId = uid,
+                cost = cost,
+                parcel = newParcel,
+                serviceTitle = "Parcel Delivery (${draft.selectedService})"
+            ) { success, message, newBalance ->
                 if (!success) {
                     isBookingSubmissionInProgress = false
                     hidePreloader()
                     com.esdispatch.util.SoundManager.playErrorBuzz()
-                    onComplete?.invoke(false, "Payment debit could not be verified. Please check your wallet balance and try again.")
-                    return@updateUserWalletBalance
+                    onComplete?.invoke(false, message)
+                    return@executeAtomicBookingTransaction
                 }
                 _walletBalance.value = newBalance
                 savePref("wallet_balance", newBalance)
-                createBooking()
+                finalizeBookingLocally(newParcel)
                 hidePreloader()
                 onComplete?.invoke(true, "Booking confirmed")
             }
         } else {
-            // Unauthenticated / guest fallback: local-only booking (no wallet debit)
+            // Unauthenticated / guest fallback: offline booking
             if (_walletBalance.value < cost) {
                 isBookingSubmissionInProgress = false
                 hidePreloader()
@@ -5776,7 +5772,7 @@ class DeliveryViewModel : WalletViewModel() {
             }
             _walletBalance.value -= cost
             savePref("wallet_balance", _walletBalance.value)
-            createBooking()
+            finalizeBookingLocally(newParcel)
             hidePreloader()
             onComplete?.invoke(true, "Booking confirmed (offline)")
         }

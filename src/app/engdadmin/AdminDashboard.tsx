@@ -46,7 +46,7 @@ import { ShipmentMicroPage } from "@/components/design-system/ShipmentMicroPage"
 import AdminDispatchBookingModal from "@/components/AdminDispatchBookingModal";
 import EmailStudioTab from "./EmailStudioTab";
 type TabId = "dashboard" | "marketplace" | "users" | "shipments" | "tracking" | "addresses" | "broadcast" | "emails" | "banners" | "referrals" | "promotions" | "appcards" | "settings" | "logs" | "cms" | "support" | "payouts";
-interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; lastPing?: any; lastHeartbeat?: any; lastActive?: any; createdAt?: any; vendorBalance?: number; pin?: string; userPin?: string; securityPin?: string; }
+interface UserProfile { id: string; uid: string; name: string; email: string; phone: string; role: string; status: string; isOnline: boolean; rating: number; deliveryCount: number; walletBalance: number; loyaltyPoints: number; photoUrl: string; bikeNumber?: string; staffId?: string; lat?: number; lng?: number; isDeleted?: boolean; updatedAt?: any; lastSeen?: any; lastPing?: any; lastHeartbeat?: any; lastActive?: any; createdAt?: any; vendorBalance?: number; pin?: string; userPin?: string; securityPin?: string; activeBookingId?: string; lastLocationUpdate?: number; speed?: number; heading?: number; }
 
 /** Safely parse any Firestore Timestamp, millisecond/second number, or date string into ms */
 function getTimestampMs(val: any): number | null {
@@ -1938,7 +1938,7 @@ function AdminDashboardPage() {
   const [marketplaceOrders, setMarketplaceOrders] = useState<MarketplaceOrder[]>([]);
   const [payoutRequests, setPayoutRequests] = useState<VendorPayoutRequest[]>([]);
   const [tipWithdrawals, setTipWithdrawals] = useState<TipWithdrawalRequest[]>([]);
-  const [fleetLocations, setFleetLocations] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [fleetLocations, setFleetLocations] = useState<Record<string, { lat: number; lng: number; updatedAt?: number; activeBookingId?: string; speed?: number; heading?: number }>>({});
   const [addressRegistry, setAddressRegistry] = useState<RegistryEntry[]>([]);
   const [geoCenter, setGeoCenter] = useState<{ lat: number; lng: number }>({ lat: DEFAULT_GEO_CENTER.lat, lng: DEFAULT_GEO_CENTER.lng });
 
@@ -2359,13 +2359,19 @@ function AdminDashboardPage() {
       if (s.exists()) setSettings((prev: any) => ({ ...prev, ...s.data() }));
     }, () => {}));
     unsubs.push(onSnapshot(collection(db, "fleet_locations"), snap => {
-      const map: Record<string, { lat: number; lng: number }> = {};
+      const map: Record<string, { lat: number; lng: number; updatedAt?: number; activeBookingId?: string; speed?: number; heading?: number }> = {};
       snap.forEach(d => {
         const x = d.data();
         const lat = typeof x.latitude === "number" ? x.latitude : (typeof x.lat === "number" ? x.lat : null);
         const lng = typeof x.longitude === "number" ? x.longitude : (typeof x.lng === "number" ? x.lng : null);
         if (lat && lng) {
-          map[d.id] = { lat, lng };
+          const rawTs = x.timestamp || x.updatedAt;
+          const ts = rawTs && typeof rawTs.toMillis === "function"
+            ? rawTs.toMillis()
+            : (typeof rawTs === "number" ? rawTs : Date.now());
+          const speed = typeof x.speed === "number" ? x.speed : undefined;
+          const heading = typeof x.heading === "number" ? x.heading : (typeof x.bearing === "number" ? x.bearing : undefined);
+          map[d.id] = { lat, lng, updatedAt: ts, activeBookingId: x.activeBookingId || "", speed, heading };
         }
       });
       setFleetLocations(map);
@@ -2482,7 +2488,15 @@ function AdminDashboardPage() {
     .map(u => {
       const liveLoc = fleetLocations[u.id] || fleetLocations[u.uid];
       if (liveLoc) {
-        return { ...u, lat: liveLoc.lat, lng: liveLoc.lng };
+        return {
+          ...u,
+          lat: liveLoc.lat,
+          lng: liveLoc.lng,
+          lastLocationUpdate: liveLoc.updatedAt,
+          activeBookingId: liveLoc.activeBookingId || u.activeBookingId,
+          speed: liveLoc.speed,
+          heading: liveLoc.heading,
+        };
       }
       return u;
     });
@@ -3079,9 +3093,6 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
       };
 
       if (newUserForm.pin) {
-        userDoc.pin = newUserForm.pin;
-        userDoc.userPin = newUserForm.pin;
-        userDoc.securityPin = newUserForm.pin;
         try {
           const encoder = new TextEncoder();
           const data = encoder.encode(newUserForm.pin + "ENGRACED_DISPATCH_PRODUCTION_SALT_2026_SECURE");
@@ -3111,7 +3122,6 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
           rating: 5.0,
           totalDeliveries: 0,
           tipsEarned: 0,
-          pin: newUserForm.pin,
           createdAt: now,
           updatedAt: now,
         };

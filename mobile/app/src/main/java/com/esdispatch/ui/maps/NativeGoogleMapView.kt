@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +22,8 @@ import com.esdispatch.ui.theme.Obsidian
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.MapsInitializer
 import com.google.android.gms.maps.model.*
+import com.google.maps.android.PolyUtil
+import com.google.maps.android.SphericalUtil
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -167,6 +170,26 @@ fun NativeGoogleMapView(
         val boundsPoints = (activeLeg?.points.orEmpty() + nextLeg?.points.orEmpty() + listOfNotNull(courier, pickupPosition, deliveryPosition))
         val update = if (!isRider && !followUser && boundsPoints.distinct().size > 1) {
             CameraUpdateFactory.newLatLngBounds(LatLngBounds.builder().also { b -> boundsPoints.forEach { b.include(it) } }.build(), 70)
+        } else if (isRider && courier != null) {
+            // Smarter rider camera: position slightly below center so more road ahead is visible
+            // Dynamic zoom: Zoom in near upcoming turns (< 80m), zoom out on straightaways
+            val nextTurnMeters = activeLeg?.distanceToNextTurn(courier) ?: 500
+            val targetZoom = when {
+                nextTurnMeters < 80 -> 17.2f
+                nextTurnMeters < 180 -> 16.5f
+                else -> 15.8f
+            }
+            // Project camera target slightly ahead along bearing so rider is in the lower 35% of viewport
+            val lookAheadMeters = 35.0
+            val targetCoord = if (courierBearing != 0f) {
+                SphericalUtil.computeOffset(courier, lookAheadMeters, courierBearing.toDouble())
+            } else courier
+            CameraUpdateFactory.newCameraPosition(CameraPosition.Builder()
+                .target(targetCoord)
+                .zoom(if (!framed) targetZoom else camera.position.zoom.coerceIn(14f, 18.5f))
+                .tilt(if (is3D) 55f else 0f)
+                .bearing(if (is3D) courierBearing else 0f)
+                .build())
         } else {
             CameraUpdateFactory.newCameraPosition(CameraPosition.Builder()
                 .target(target ?: defaultCenter).zoom(if (!framed && isRider && courier != null) 16.5f else camera.position.zoom)
@@ -242,10 +265,33 @@ fun NativeGoogleMapView(
                 nextLeg?.let { Polyline(points = it.points, color = if (isDarkTheme)
                     androidx.compose.ui.graphics.Color.LightGray else androidx.compose.ui.graphics.Color.DarkGray,
                     width = 6f, pattern = listOf(Dash(18f), Gap(10f)), zIndex = 0f) }
-                Polyline(points = geometry, color = Obsidian.copy(alpha = 0.85f), width = 15f,
-                    jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 1f)
-                Polyline(points = geometry, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 9f,
-                    jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
+
+                // Split active route into traveled (faded) and remaining (emphasized)
+                val courierPos = smooth.currentPosition ?: courier
+                val splitIdx = if (courierPos != null && geometry.size > 2) {
+                    val idx = geometry.indices.minByOrNull { SphericalUtil.computeDistanceBetween(courierPos, geometry[it]) } ?: 0
+                    if (SphericalUtil.computeDistanceBetween(courierPos, geometry[idx]) < 75.0) idx else 0
+                } else 0
+
+                if (splitIdx > 0 && splitIdx < geometry.size - 1) {
+                    val traveled = geometry.subList(0, splitIdx + 1)
+                    val remaining = listOf(courierPos ?: geometry[splitIdx]) + geometry.subList(splitIdx + 1, geometry.size)
+
+                    // Traveled section (faded)
+                    Polyline(points = traveled, color = androidx.compose.ui.graphics.Color.Gray.copy(alpha = 0.45f), width = 8f,
+                        jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 1f)
+
+                    // Remaining section (prominent Gold + Obsidian casing)
+                    Polyline(points = remaining, color = Obsidian.copy(alpha = 0.90f), width = 16f,
+                        jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
+                    Polyline(points = remaining, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 10f,
+                        jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 3f)
+                } else {
+                    Polyline(points = geometry, color = Obsidian.copy(alpha = 0.85f), width = 15f,
+                        jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 1f)
+                    Polyline(points = geometry, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 9f,
+                        jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
+                }
             }
         }
         if (panned) {
@@ -254,9 +300,9 @@ fun NativeGoogleMapView(
                     .heightIn(min = 44.dp),
                 shape = RoundedCornerShape(22.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(containerColor = Gold, contentColor = Obsidian)) {
-                Icon(Icons.Default.CenterFocusStrong, contentDescription = null)
+                Icon(if (isRider) Icons.Default.Navigation else Icons.Default.CenterFocusStrong, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                Text(if (isRider) "Follow" else "Overview")
+                Text(if (isRider) "Resume navigation" else "Overview")
             }
         }
     }

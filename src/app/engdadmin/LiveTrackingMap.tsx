@@ -92,14 +92,30 @@ function MapCameraBounds({ points, geoCenter }: { points: google.maps.LatLngLite
   return null;
 }
 
+export interface DriverMarkerData {
+  id: string;
+  pos: Coord;
+  name: string;
+  phone?: string;
+  vehicleType?: string;
+  vehiclePlate?: string;
+  status: string;
+  isOnline: boolean;
+  isOccupied: boolean;
+  isDelayed: boolean;
+  lastUpdateAgo?: string;
+  activeDelivery?: any;
+}
+
 export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSelect, addressRegistry, geoCenter }: Props) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+  const [selectedDriver, setSelectedDriver] = useState<DriverMarkerData | null>(null);
 
   // Compute active map markers
   const { pickupMarkers, deliveryMarkers, driverMarkers, courierMarker, allPoints } = useMemo(() => {
     const pickups: { id: string; pos: Coord; title: string; desc: string; isSelected: boolean }[] = [];
     const dropoffs: { id: string; pos: Coord; title: string; desc: string; isSelected: boolean }[] = [];
-    const couriers: { id: string; pos: Coord; name: string; status: string }[] = [];
+    const couriers: DriverMarkerData[] = [];
     let activeCourier: { id: string; pos: Coord; name: string } | null = null;
     const pts: google.maps.LatLngLiteral[] = [];
 
@@ -133,11 +149,35 @@ export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSel
     drivers.forEach((r) => {
       if (typeof r.lat === "number" && typeof r.lng === "number" && isFinite(r.lat) && isFinite(r.lng)) {
         if (isBeninCityCoord(r.lat, r.lng)) {
+          // Check active assignment
+          const activeDelivery = deliveries.find(d =>
+            (d.riderId === r.id || d.riderId === r.uid || d.assignedRiderId === r.id || d.assignedRiderId === r.uid || (r.activeBookingId && d.id === r.activeBookingId)) &&
+            !["DELIVERED", "CANCELLED", "FAILED", "RETURNED"].includes(d.status)
+          );
+          const isOccupied = Boolean(activeDelivery);
+
+          // Check if telemetry is delayed (> 5 mins)
+          const lastUpdateMs = typeof r.lastLocationUpdate === "number"
+            ? r.lastLocationUpdate
+            : (r.lastLocationUpdate?.toMillis ? r.lastLocationUpdate.toMillis() : null);
+          const now = Date.now();
+          const diffMinutes = lastUpdateMs ? Math.floor((now - lastUpdateMs) / 60000) : null;
+          const isDelayed = diffMinutes !== null ? diffMinutes >= 5 : false;
+          const lastUpdateAgo = diffMinutes !== null ? (diffMinutes === 0 ? "Just now" : `${diffMinutes}m ago`) : undefined;
+
           couriers.push({
             id: r.id || r.uid || Math.random().toString(),
             pos: { lat: r.lat, lng: r.lng },
             name: r.name || "Driver",
-            status: r.status || "idle"
+            phone: r.phone || r.phoneNumber || "",
+            vehicleType: r.vehicleType || "Motorcycle",
+            vehiclePlate: r.vehiclePlate || "",
+            status: isOccupied ? "Occupied" : (r.isOnline !== false ? "Available" : "Offline"),
+            isOnline: r.isOnline !== false,
+            isOccupied,
+            isDelayed,
+            lastUpdateAgo,
+            activeDelivery
           });
           pts.push({ lat: r.lat, lng: r.lng });
         }
@@ -218,18 +258,45 @@ export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSel
           ))}
 
           {/* 3. Driver Fleet Markers */}
-          {driverMarkers.map((r) => (
-            <AdvancedMarker
-              key={`driver-${r.id}`}
-              position={r.pos}
-              title={`${r.name} (${r.status})`}
-            >
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#0E0E10] text-white border border-[#FFB800] rounded-full shadow-lg text-[11px] font-semibold">
-                <span className="text-sm">🏍️</span>
-                <span>{r.name}</span>
-              </div>
-            </AdvancedMarker>
-          ))}
+          {driverMarkers.map((r) => {
+            const isSel = selectedDriver?.id === r.id;
+            return (
+              <AdvancedMarker
+                key={`driver-${r.id}`}
+                position={r.pos}
+                onClick={() => setSelectedDriver(isSel ? null : r)}
+                title={`${r.name} - ${r.isOccupied ? "On Delivery" : "Available"}${r.isDelayed ? " (Delayed GPS)" : ""}`}
+              >
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-xl text-[11px] font-bold cursor-pointer transition-all duration-200 select-none ${
+                    isSel ? "scale-110 ring-2 ring-white z-30" : "scale-100 hover:scale-105 z-20"
+                  } ${
+                    r.isDelayed
+                      ? "bg-[#181206] text-amber-300 border-2 border-amber-500"
+                      : r.isOccupied
+                      ? "bg-[#0E0E10] text-[#FFB800] border-2 border-[#FFB800]"
+                      : "bg-[#061810] text-emerald-300 border-2 border-emerald-500"
+                  }`}
+                >
+                  <span className="text-xs">
+                    {r.isDelayed ? "⚠️" : r.isOccupied ? "🏍️" : "🟢"}
+                  </span>
+                  <span className="text-white font-extrabold">{r.name}</span>
+                  <span
+                    className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase ${
+                      r.isDelayed
+                        ? "bg-amber-500/20 text-amber-300"
+                        : r.isOccupied
+                        ? "bg-[#FFB800]/20 text-[#FFB800]"
+                        : "bg-emerald-500/20 text-emerald-300"
+                    }`}
+                  >
+                    {r.isDelayed ? "Delayed" : r.isOccupied ? "Busy" : "Ready"}
+                  </span>
+                </div>
+              </AdvancedMarker>
+            );
+          })}
 
           {/* 4. Active Selected Courier Live Position */}
           {courierMarker && (
@@ -245,6 +312,97 @@ export default function LiveTrackingMap({ deliveries, drivers, selectedId, onSel
           )}
         </Map>
       </APIProvider>
+
+      {/* Fleet Status Map Legend */}
+      <div className="absolute top-3 right-3 bg-[#0E0E10]/90 backdrop-blur-md border border-white/10 rounded-2xl px-3 py-1.5 flex items-center gap-3 text-[10px] font-semibold text-gray-300 z-10 pointer-events-none shadow-lg">
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-400" /> Available
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#FFB800]" /> On Delivery
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-amber-500" /> Delayed GPS
+        </span>
+      </div>
+
+      {/* Selected Driver Interactive Popover */}
+      {selectedDriver && (
+        <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:w-80 bg-[#0E0E10]/95 backdrop-blur-md border border-[#FFB800]/40 rounded-2xl p-3.5 shadow-2xl z-30 text-white animate-fade-in">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                  selectedDriver.isDelayed
+                    ? "bg-amber-500 text-black"
+                    : selectedDriver.isOccupied
+                    ? "bg-[#FFB800] text-black"
+                    : "bg-emerald-500 text-black"
+                }`}
+              >
+                🏍️
+              </div>
+              <div>
+                <h4 className="font-extrabold text-xs text-white flex items-center gap-1.5">
+                  {selectedDriver.name}
+                  <span
+                    className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                      selectedDriver.isDelayed
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                        : selectedDriver.isOccupied
+                        ? "bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/40"
+                        : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                    }`}
+                  >
+                    {selectedDriver.isDelayed ? "GPS Delayed" : selectedDriver.isOccupied ? "On Delivery" : "Available"}
+                  </span>
+                </h4>
+                <p className="text-[10px] text-gray-400">
+                  {selectedDriver.phone ? `📞 ${selectedDriver.phone}` : "Fleet Courier"}
+                  {selectedDriver.lastUpdateAgo ? ` • Signal ${selectedDriver.lastUpdateAgo}` : ""}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedDriver(null)}
+              className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 flex items-center justify-center text-[10px] cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+
+          {selectedDriver.activeDelivery ? (
+            <div className="mt-2.5 pt-2.5 border-t border-white/10">
+              <div className="flex items-center justify-between text-[10px] font-bold text-gray-300 mb-0.5">
+                <span>Active Assignment</span>
+                <span className="text-[#FFB800] font-mono">#{selectedDriver.activeDelivery.id.slice(0, 8)}</span>
+              </div>
+              <p className="text-xs font-bold text-white truncate">
+                {selectedDriver.activeDelivery.itemName || "Shipment"}
+              </p>
+              <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                📍 {selectedDriver.activeDelivery.deliveryAddress || "Customer Destination"}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelect(selectedDriver.activeDelivery.id);
+                  setSelectedDriver(null);
+                }}
+                className="mt-2.5 w-full py-1.5 px-3 rounded-xl bg-[#FFB800] hover:bg-[#e6a600] active:scale-95 text-black font-extrabold text-[11px] transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+              >
+                <span>Open Active Assignment</span>
+                <span>→</span>
+              </button>
+            </div>
+          ) : (
+            <div className="mt-2 pt-2 border-t border-white/10 text-[10px] text-gray-400">
+              Courier is available and awaiting dispatch in Benin City.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -849,11 +849,10 @@ object FirebaseManager {
     /**
      * Push or update delivery real-time status in Firestore, associated with a user's personal account
      */
-    fun syncParcelToFirestore(parcel: Parcel, userId: String) {
-        val db = firestore ?: return
+    fun parcelToMap(parcel: Parcel, userId: String = ""): HashMap<String, Any?> {
         val currentAuthUid = auth?.currentUser?.uid
         val effectiveUserId = currentAuthUid ?: userId.ifBlank { parcel.userId }
-        val parcelMap = hashMapOf(
+        return hashMapOf(
             "id" to parcel.id,
             "itemName" to parcel.itemName,
             "imageUrl" to parcel.imageUrl,
@@ -912,8 +911,93 @@ object FirebaseManager {
             "senderEmail" to parcel.senderEmail,
             "pickupPhotoUrl" to parcel.pickupPhotoUrl,
             "feedbackDismissed" to parcel.feedbackDismissed,
+            "paymentStatus" to parcel.paymentStatus.ifBlank { "PAID" },
+            "paymentMethod" to "WALLET",
             "lastUpdated" to System.currentTimeMillis()
         )
+    }
+
+    /**
+     * Executes an atomic, server-controlled booking creation and wallet debit transaction.
+     * Prevents orphan debits: If the delivery document, ledger, or balance check fails,
+     * the entire transaction rolls back cleanly with zero balance impact.
+     */
+    fun executeAtomicBookingTransaction(
+        userId: String,
+        cost: Double,
+        parcel: Parcel,
+        serviceTitle: String,
+        onComplete: (Boolean, String, Double) -> Unit
+    ) {
+        val db = firestore ?: run {
+            onComplete(false, "Network or database unavailable. Please check your internet connection.", 0.0)
+            return
+        }
+        val userRef = db.collection("users").document(userId)
+        val deliveryRef = db.collection("deliveries").document(parcel.id)
+        val userDeliveryRef = userRef.collection("deliveries").document(parcel.id)
+        val txnId = "TXN-${System.currentTimeMillis()}-${(1000..9999).random()}"
+        val txnRef = db.collection("transactions").document(txnId)
+        val userTxnRef = userRef.collection("transactions").document(txnId)
+
+        val parcelMap = parcelToMap(parcel, userId)
+        val dateStr = java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val txnMap = hashMapOf(
+            "id" to txnId,
+            "title" to serviceTitle,
+            "date" to dateStr,
+            "amount" to -cost,
+            "isTopUp" to false,
+            "type" to "DEBIT",
+            "status" to "SUCCESS",
+            "reference" to parcel.id,
+            "userId" to userId,
+            "createdAt" to System.currentTimeMillis()
+        )
+
+        db.runTransaction { transaction ->
+            val userSnapshot = transaction.get(userRef)
+            val currentBalance = userSnapshot.getDouble("walletBalance") ?: 0.0
+            if (currentBalance < cost) {
+                throw com.google.firebase.firestore.FirebaseFirestoreException(
+                    "Insufficient wallet balance (₦${String.format("%,.0f", currentBalance)} available, ₦${String.format("%,.0f", cost)} required).",
+                    com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
+                )
+            }
+            val newBalance = currentBalance - cost
+            transaction.set(userRef, mapOf(
+                "walletBalance" to newBalance,
+                "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+            ), com.google.firebase.firestore.SetOptions.merge())
+
+            transaction.set(deliveryRef, parcelMap, com.google.firebase.firestore.SetOptions.merge())
+            transaction.set(userDeliveryRef, parcelMap, com.google.firebase.firestore.SetOptions.merge())
+            transaction.set(txnRef, txnMap)
+            transaction.set(userTxnRef, txnMap)
+
+            newBalance
+        }.addOnSuccessListener { newBalance ->
+            Log.d(TAG, "Atomic booking transaction succeeded for parcel ${parcel.id}. New balance: $newBalance")
+            onComplete(true, "Booking confirmed", newBalance)
+        }.addOnFailureListener { e ->
+            Log.e(TAG, "Atomic booking transaction aborted/failed: ${e.message}")
+            val msg = if (e is com.google.firebase.firestore.FirebaseFirestoreException && e.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED) {
+                e.message ?: "Booking transaction aborted."
+            } else {
+                "Booking and payment could not be completed: ${e.localizedMessage ?: "Network error"}"
+            }
+            onComplete(false, msg, 0.0)
+        }
+    }
+
+    /**
+     * Push or update delivery real-time status in Firestore, associated with a user's personal account
+     */
+    fun syncParcelToFirestore(parcel: Parcel, userId: String) {
+        val db = firestore ?: return
+        val currentAuthUid = auth?.currentUser?.uid
+        val effectiveUserId = currentAuthUid ?: userId.ifBlank { parcel.userId }
+        val parcelMap = parcelToMap(parcel, effectiveUserId)
 
         db.collection("deliveries").document(parcel.id)
             .set(parcelMap, com.google.firebase.firestore.SetOptions.merge())

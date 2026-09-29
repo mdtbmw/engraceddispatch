@@ -8,8 +8,8 @@ service cloud.firestore {
     //
     // /users/{userId}
     //   - User profile with role-based access control (customer, rider, driver, vendor, dispatcher, admin, super_admin)
-    //   - Public/authenticated read for storefront/courier roles: ['rider', 'driver', 'vendor']
-    //   - Protected fields: role, userRole, admin, isSuperAdmin, permissions, walletBalance, pin, securityPin, email
+    //   - Public/authenticated read for storefront/courier roles: ['rider', 'driver', 'vendor'] ONLY if no sensitive credentials (pin, walletBalance) are present
+    //   - Protected fields: role, userRole, admin, isSuperAdmin, permissions, walletBalance, vendorBalance, pin, userPin, securityPin, pinHash, email
     //   - Subcollections:
     //       /notifications: Inbox notifications created by authenticated users or dispatchers, readable by owner & admin
     //       /notification_events: Push/deduplication events
@@ -29,10 +29,10 @@ service cloud.firestore {
     //
     // /deliveries/{deliveryId} & /parcels/{parcelId}
     //   - Central delivery tracking records
-    //   - Read/list for participants (userId/senderId, riderId, assignedRiderId, driverId, reservedRiderId), dispatchers, admins, or unassigned/offered deliveries
+    //   - Read/list for participants (userId/senderId, riderId, assignedRiderId, driverId, reservedRiderId), dispatchers, admins, unassigned/offered deliveries, or verified recipient phone match
     //   - Create by authenticated users
     //   - Update by participants, dispatchers, admins, or riders claiming available/pool deliveries
-    //   - Subcollections: /messages, /timeline, /pod_events, /chats, /ratings
+    //   - Subcollections: /messages, /timeline, /pod_events, /chats, /ratings - participant, dispatcher, and admin restricted
     //
     // /public_tracking/{deliveryId}
     //   - Public real-time shipment status & courier coordinates for recipient tracking links
@@ -105,11 +105,11 @@ service cloud.firestore {
       return isAuth() && (
         isSuperAdmin() ||
         (request.auth.token.get('admin', false) == true) ||
-        (request.auth.token.get('role', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner']) ||
+        (request.auth.token.get('role', '') in ['admin', 'super_admin', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Manager', 'Owner']) ||
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
-            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner'] ||
-            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('userRole', '') in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'dispatcher', 'Dispatcher', 'manager', 'Manager', 'owner', 'Owner']
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'manager', 'Manager', 'owner', 'Owner'] ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('userRole', '') in ['admin', 'super_admin', 'Admin', 'SuperAdmin', 'Super_Admin', 'Super Admin', 'manager', 'Manager', 'owner', 'Owner']
           )
         )
       );
@@ -156,31 +156,44 @@ service cloud.firestore {
 
     match /users/{userId} {
       // Allow public/authenticated read for user profiles with role in ['rider', 'driver', 'vendor']
-      // so storefronts, vendor details, and rider cards display smoothly.
+      // for storefronts and rider cards, BUT ensure non-owners cannot read documents exposing
+      // sensitive security credentials or financial balances (pin, userPin, securityPin, pinHash, walletBalance).
       // Owner, admin, and dispatcher can always read full profile.
       allow read: if isOwner(userId) || isAdmin() || isDispatcher() ||
-        (resource.data.get('role', '') in ['rider', 'driver', 'vendor', 'RIDER', 'DRIVER', 'VENDOR'] ||
-         resource.data.get('userRole', '') in ['rider', 'driver', 'vendor', 'RIDER', 'DRIVER', 'VENDOR']);
+        (
+          (
+            resource.data.get('role', '') in ['rider', 'driver', 'vendor', 'RIDER', 'DRIVER', 'VENDOR'] ||
+            resource.data.get('userRole', '') in ['rider', 'driver', 'vendor', 'RIDER', 'DRIVER', 'VENDOR']
+          ) &&
+          !resource.data.keys().hasAny(['pin', 'userPin', 'securityPin', 'pinHash', 'walletBalance'])
+        );
 
       // Prevent non-admin privilege escalation on creation
       allow create: if isAuth() && (
         isAdmin() ||
         (
           request.auth.uid == userId &&
-          !request.resource.data.keys().hasAny(['admin', 'isSuperAdmin', 'permissions']) &&
-          !request.resource.data.get('role', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner'] &&
-          !request.resource.data.get('userRole', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner'] &&
-          request.resource.data.get('walletBalance', 0) == 0
+          !request.resource.data.keys().hasAny([
+            'admin', 'isSuperAdmin', 'permissions', 'pin', 'userPin', 'securityPin', 'pinHash'
+          ]) &&
+          !(request.resource.data.get('role', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner']) &&
+          !(request.resource.data.get('userRole', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner']) &&
+          request.resource.data.get('walletBalance', 0) == 0 &&
+          request.resource.data.get('vendorBalance', 0) == 0
         )
       );
 
-      // Protect sensitive fields against non-admin escalation on update
+      // Protect sensitive fields against non-admin escalation on update:
+      // Only owner can update general profile info (name, phone, address, photoUrl),
+      // while preventing non-admin modification of role, userRole, admin, isSuperAdmin,
+      // permissions, walletBalance, vendorBalance, pin, userPin, securityPin, pinHash, or email.
       allow update: if isAuth() && (
         isAdmin() ||
         (
           isOwner(userId) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            'role', 'userRole', 'admin', 'isSuperAdmin', 'permissions', 'walletBalance', 'email'
+            'role', 'userRole', 'admin', 'isSuperAdmin', 'permissions',
+            'walletBalance', 'vendorBalance', 'pin', 'userPin', 'securityPin', 'pinHash', 'email'
           ])
         )
       );
@@ -294,13 +307,13 @@ service cloud.firestore {
     // ===============================================================
 
     match /deliveries/{deliveryId} {
-      // Scoped access for participants, fleet dispatchers, admins, and pool deliveries
+      // Scoped access for participants, fleet dispatchers, admins, pool deliveries, or verified recipient phone match
       allow get, list: if isAuth() && (
         isAdmin() ||
         isDispatcher() ||
         isDeliveryParticipant(resource.data) ||
-        resource.data.get('receiverPhone', '') != '' ||
-        isAvailableDelivery(resource.data)
+        isAvailableDelivery(resource.data) ||
+        (request.auth.token.get('phone_number', '') != '' && request.auth.token.phone_number == resource.data.get('receiverPhone', ''))
       );
 
       allow create: if isAuth();
@@ -316,19 +329,28 @@ service cloud.firestore {
       allow delete: if isAdmin();
 
       // Delivery subcollections: messages, timeline events, chats, proof of delivery
+      // Strictly restricted to admins, dispatchers, and verified delivery participants
       match /{allSubcollections=**} {
-        allow read, write: if isAuth();
+        allow read, write: if isAuth() && (
+          isAdmin() ||
+          isDispatcher() ||
+          (
+            exists(/databases/$(database)/documents/deliveries/$(deliveryId)) &&
+            isDeliveryParticipant(get(/databases/$(database)/documents/deliveries/$(deliveryId)).data)
+          )
+        );
         allow delete: if isAdmin();
       }
     }
 
     match /parcels/{parcelId} {
+      // Scoped access for participants, fleet dispatchers, admins, pool deliveries, or verified recipient phone match
       allow get, list: if isAuth() && (
         isAdmin() ||
         isDispatcher() ||
         isDeliveryParticipant(resource.data) ||
-        resource.data.get('receiverPhone', '') != '' ||
-        isAvailableDelivery(resource.data)
+        isAvailableDelivery(resource.data) ||
+        (request.auth.token.get('phone_number', '') != '' && request.auth.token.phone_number == resource.data.get('receiverPhone', ''))
       );
 
       allow create: if isAuth();
@@ -342,8 +364,17 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
 
+      // Parcel subcollections: messages, timeline events, chats, proof of delivery
+      // Strictly restricted to admins, dispatchers, and verified delivery participants
       match /{allSubcollections=**} {
-        allow read, write: if isAuth();
+        allow read, write: if isAuth() && (
+          isAdmin() ||
+          isDispatcher() ||
+          (
+            exists(/databases/$(database)/documents/parcels/$(parcelId)) &&
+            isDeliveryParticipant(get(/databases/$(database)/documents/parcels/$(parcelId)).data)
+          )
+        );
         allow delete: if isAdmin();
       }
     }
