@@ -322,6 +322,16 @@ fun AddressAutocompleteField(
                                     onValueChange(item.displayInput)
                                     onAddressSelected(item)
                                     showDropdown = false
+                                    if (item.lat == null || item.lng == null) {
+                                        scope.launch {
+                                            val coords = if (!item.placeId.isNullOrBlank()) {
+                                                GeocoderUtils.fetchPlaceCoordinates(item.placeId)
+                                            } else null ?: GeocoderUtils.geocodeAddress(context, item.displayInput)
+                                            if (coords != null) {
+                                                onAddressSelected(item.copy(lat = coords.first, lng = coords.second))
+                                            }
+                                        }
+                                    }
                                 }
                                 .padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically

@@ -54,7 +54,7 @@ fun NativeGoogleMapView(
     progress: Float = 0f,
     isSatellite: Boolean = false,
     showTraffic: Boolean = true,
-    isDarkTheme: Boolean = true,
+    isDarkTheme: Boolean = false,
     courierLatitude: Double? = null,
     courierLongitude: Double? = null,
     courierBearing: Float = 0f,
@@ -181,10 +181,21 @@ fun NativeGoogleMapView(
         label = "PulseAlpha"
     )
 
-    // Marker icons
-    val courierIcon = remember(context) { MapMarkerFactory.getCourierMarkerIcon(context) }
-    val pickupIcon = remember { MapMarkerFactory.getPickupMarkerIcon() }
-    val deliveryIcon = remember { MapMarkerFactory.getDeliveryMarkerIcon() }
+    // Marker icons - safely resolved once Google Maps engine is initialized
+    var courierIcon by remember { mutableStateOf<com.google.android.gms.maps.model.BitmapDescriptor?>(null) }
+    var pickupIcon by remember { mutableStateOf<com.google.android.gms.maps.model.BitmapDescriptor?>(null) }
+    var deliveryIcon by remember { mutableStateOf<com.google.android.gms.maps.model.BitmapDescriptor?>(null) }
+
+    LaunchedEffect(Unit) {
+        try {
+            MapsInitializer.initialize(context)
+            courierIcon = MapMarkerFactory.getCourierMarkerIcon(context)
+            pickupIcon = MapMarkerFactory.getPickupMarkerIcon(context)
+            deliveryIcon = MapMarkerFactory.getDeliveryMarkerIcon(context)
+        } catch (t: Throwable) {
+            android.util.Log.w("NativeGoogleMapView", "Marker icon init deferred: ${t.message}")
+        }
+    }
 
     // Auto-frame initial camera bounds
     LaunchedEffect(pickupLatLng, deliveryLatLng, smoothCourierState.currentPosition, hasNoBooking) {
@@ -228,6 +239,13 @@ fun NativeGoogleMapView(
             cameraPositionState = cameraPositionState,
             properties = mapProperties,
             uiSettings = mapUiSettings,
+            onMapLoaded = {
+                try {
+                    if (courierIcon == null) courierIcon = MapMarkerFactory.getCourierMarkerIcon(context)
+                    if (pickupIcon == null) pickupIcon = MapMarkerFactory.getPickupMarkerIcon(context)
+                    if (deliveryIcon == null) deliveryIcon = MapMarkerFactory.getDeliveryMarkerIcon(context)
+                } catch (_: Throwable) {}
+            },
             onMapClick = { latLng ->
                 if (hasNoBooking && onMapClick != null) {
                     onMapClick(latLng)

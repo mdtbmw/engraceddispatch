@@ -480,7 +480,7 @@ fun EconomyBookingScreen(
                                                 .fillMaxWidth()
                                                 .clickable {
                                                     pickup = item.displayInput
-                                                    viewModel.updateDraftPickup(item.displayInput, item.lat, item.lng)
+                                                    viewModel.updateDraftPickup(item.displayInput, item.lat, item.lng, item.placeId)
                                                     focusedField = null
                                                 }
                                                 .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -629,7 +629,7 @@ fun EconomyBookingScreen(
                                                 .fillMaxWidth()
                                                 .clickable {
                                                     delivery = item.displayInput
-                                                    viewModel.updateDraftDelivery(item.displayInput, item.lat, item.lng)
+                                                    viewModel.updateDraftDelivery(item.displayInput, item.lat, item.lng, item.placeId)
                                                     focusedField = null
                                                 }
                                                 .padding(horizontal = 12.dp, vertical = 8.dp),

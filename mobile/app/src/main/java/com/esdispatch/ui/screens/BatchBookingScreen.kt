@@ -463,7 +463,7 @@ fun BatchBookingScreen(
                                                 .fillMaxWidth()
                                                 .clickable {
                                                     pickup = item.displayInput
-                                                    viewModel.updateDraftPickup(item.displayInput, item.lat, item.lng)
+                                                    viewModel.updateDraftPickup(item.displayInput, item.lat, item.lng, item.placeId)
                                                     pickupFocused = false
                                                     suggestionItems = emptyList()
                                                 }
@@ -832,6 +832,20 @@ fun BatchBookingScreen(
                                                         val mutable = batchStops.toMutableList()
                                                         mutable[index] = mutable[index].copy(destinationAddress = item.displayInput, lat = item.lat, lng = item.lng)
                                                         batchStops = mutable
+                                                        if (item.lat == null || item.lng == null) {
+                                                            coroutineScope.launch {
+                                                                val coords = if (!item.placeId.isNullOrBlank()) {
+                                                                    com.esdispatch.utils.GeocoderUtils.fetchPlaceCoordinates(item.placeId)
+                                                                } else null ?: com.esdispatch.utils.GeocoderUtils.geocodeAddress(context, item.displayInput)
+                                                                if (coords != null) {
+                                                                    val updated = batchStops.toMutableList()
+                                                                    if (index in updated.indices) {
+                                                                        updated[index] = updated[index].copy(lat = coords.first, lng = coords.second)
+                                                                        batchStops = updated
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
                                                         focusedDestinationIndex = -1
                                                         suggestionItems = emptyList()
                                                     }

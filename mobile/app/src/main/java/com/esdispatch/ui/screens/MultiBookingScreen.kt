@@ -477,6 +477,20 @@ fun MultiBookingScreen(
                                                             .fillMaxWidth()
                                                             .clickable {
                                                                 stops = stops.toMutableList().apply { this[index] = stop.copy(address = item.displayInput, lat = item.lat, lng = item.lng) }
+                                                                if (item.lat == null || item.lng == null) {
+                                                                    coroutineScope.launch {
+                                                                        val coords = if (!item.placeId.isNullOrBlank()) {
+                                                                            com.esdispatch.utils.GeocoderUtils.fetchPlaceCoordinates(item.placeId)
+                                                                        } else null ?: com.esdispatch.utils.GeocoderUtils.geocodeAddress(context, item.displayInput)
+                                                                        if (coords != null) {
+                                                                            stops = stops.toMutableList().apply {
+                                                                                if (index in indices) {
+                                                                                    this[index] = this[index].copy(lat = coords.first, lng = coords.second)
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
                                                                 focusedPickupIndex = -1
                                                                 suggestionItems = emptyList()
                                                             }
@@ -701,7 +715,7 @@ fun MultiBookingScreen(
                                                 .fillMaxWidth()
                                                 .clickable {
                                                     delivery = item.displayInput
-                                                    viewModel.updateDraftDelivery(item.displayInput, item.lat, item.lng)
+                                                    viewModel.updateDraftDelivery(item.displayInput, item.lat, item.lng, item.placeId)
                                                     deliveryFocused = false
                                                     suggestionItems = emptyList()
                                                 }

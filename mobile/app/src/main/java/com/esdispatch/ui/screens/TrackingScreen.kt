@@ -3131,10 +3131,10 @@ fun LiveMapView(
     parcelDeliveryLng: Double? = null,
     courierName: String = "Courier",
     courierPhone: String = "",
+    isDarkTheme: Boolean = false,
     onRouteTelemetry: (Double, Double) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
-    val isDarkTheme = MaterialTheme.colorScheme.background == BackgroundDark
 
     com.esdispatch.ui.maps.NativeGoogleMapView(
         modifier = modifier,

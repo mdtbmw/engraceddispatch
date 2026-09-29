@@ -10,7 +10,8 @@ data class SearchResultItem(
     val title: String,
     val fullAddress: String,
     val lat: Double? = null,
-    val lng: Double? = null
+    val lng: Double? = null,
+    val placeId: String? = null
 ) {
     val displayInput: String
         get() {
@@ -157,6 +158,8 @@ object GeocoderUtils {
         }
     }
 
+    private val placeDetailsCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Double, Double>>()
+
     /**
      * Google Places API Autocomplete query with strict local bias to Benin City (Edo State, Nigeria).
      * Responses are cached locally in-memory to prevent repeated network calls and preserve user API quota.
@@ -165,7 +168,7 @@ object GeocoderUtils {
         query: String
     ): List<SearchResultItem> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val cleanQ = query.trim()
-        if (cleanQ.length < 3) return@withContext emptyList()
+        if (cleanQ.length < 2) return@withContext emptyList()
         val cacheKey = cleanQ.lowercase()
         placesCache[cacheKey]?.let { return@withContext it }
 
@@ -176,8 +179,8 @@ object GeocoderUtils {
         try {
             val expanded = expandQuery(cleanQ)
             val encoded = java.net.URLEncoder.encode(expanded, "UTF-8")
-            // Biased to Benin City coordinates (6.3350, 5.6037) within 25km radius
-            val urlString = "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$encoded&key=$apiKey&components=country:ng&location=6.3350,5.6037&radius=25000&language=en"
+            // Biased to Benin City coordinates (6.3350, 5.6037) within 30km radius with Nigeria country filter
+            val urlString = "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$encoded&key=$apiKey&components=country:ng&location=6.3350,5.6037&radius=30000&strictbounds=false&language=en"
             val conn = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
             conn.requestMethod = "GET"
             conn.connectTimeout = 3500
@@ -189,6 +192,7 @@ object GeocoderUtils {
                 if (predictions != null) {
                     for (i in 0 until predictions.length()) {
                         val p = predictions.getJSONObject(i)
+                        val placeId = p.optString("place_id")
                         val description = p.optString("description")
                         val sf = p.optJSONObject("structured_formatting")
                         val mainText = sf?.optString("main_text") ?: description.split(",").firstOrNull()?.trim() ?: description
@@ -202,7 +206,8 @@ object GeocoderUtils {
                                 title = cleanMain,
                                 fullAddress = if (cleanSec.isNotBlank()) cleanSec else "Benin City, Edo State",
                                 lat = null,
-                                lng = null
+                                lng = null,
+                                placeId = placeId.ifBlank { null }
                             ))
                         }
                     }
@@ -222,11 +227,48 @@ object GeocoderUtils {
     }
 
     /**
+     * Resolves precise sub-meter coordinates for a Google Place ID via Place Details API.
+     */
+    suspend fun fetchPlaceCoordinates(placeId: String): Pair<Double, Double>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (placeId.isBlank()) return@withContext null
+        placeDetailsCache[placeId]?.let { return@withContext it }
+
+        val apiKey = try { com.esdispatch.BuildConfig.GOOGLE_MAPS_API_KEY } catch (e: Throwable) { "" }
+        if (apiKey.isBlank()) return@withContext null
+
+        try {
+            val urlString = "https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&fields=geometry&key=$apiKey"
+            val conn = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 3500
+            conn.readTimeout = 3500
+            if (conn.responseCode == 200) {
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val obj = org.json.JSONObject(jsonStr)
+                val result = obj.optJSONObject("result")
+                val geometry = result?.optJSONObject("geometry")
+                val loc = geometry?.optJSONObject("location")
+                if (loc != null) {
+                    val lat = loc.optDouble("lat")
+                    val lng = loc.optDouble("lng")
+                    if (lat != 0.0 && lng != 0.0) {
+                        val coords = Pair(lat, lng)
+                        placeDetailsCache[placeId] = coords
+                        return@withContext coords
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("GooglePlaces", "Place details fetch error: ${e.message}")
+        }
+        return@withContext null
+    }
+
+    /**
      * Unified, robust places autocomplete items matching.
      * Tier 1: Instant local Benin City AddressDatabase (0ms, zero network)
      * Tier 2: Typo-tolerant local landmarks & acronym expansion
-     * Tier 3: Google Places API Autocomplete (with Mapbox fallback)
-     * Tier 4: Native Android Geocoder fallback
+     * Tier 3: Google Places API Autocomplete (PRIMARY high-accuracy tier for all streets, POIs, businesses)
+     * Tier 4: Mapbox Places & Native Android Geocoder fallback
      */
     suspend fun fetchMapboxPlacesAutocompleteItems(
         query: String,
@@ -238,7 +280,7 @@ object GeocoderUtils {
 
         // 1. Proactive matching against curated Benin City AddressDatabase (0ms)
         try {
-            val dbMatches = com.esdispatch.data.AddressDatabase.searchItems(query, 8)
+            val dbMatches = com.esdispatch.data.AddressDatabase.searchItems(query, 6)
             results.addAll(dbMatches)
         } catch (_: Exception) {}
 
@@ -265,20 +307,19 @@ object GeocoderUtils {
             }
         }
 
-        // 3. Google Places API Autocomplete (Primary high-accuracy tier with Benin City bias)
-        if (cleanQ.length >= 3 && results.size < 6) {
-            try {
-                val googleItems = fetchGooglePlacesAutocompleteItems(query)
-                for (gItem in googleItems) {
-                    if (results.none { it.displayInput.contains(gItem.title, ignoreCase = true) || gItem.title.contains(it.title, ignoreCase = true) }) {
-                        results.add(gItem)
-                    }
+        // 3. Google Places API Autocomplete (PRIMARY high-accuracy tier for all streets, POIs, businesses)
+        // Eagerly executed for all queries >= 2 characters to provide Google Maps intelligence
+        try {
+            val googleItems = fetchGooglePlacesAutocompleteItems(query)
+            for (gItem in googleItems) {
+                if (results.none { it.displayInput.contains(gItem.title, ignoreCase = true) || gItem.title.contains(it.title, ignoreCase = true) }) {
+                    results.add(gItem)
                 }
-            } catch (_: Exception) {}
-        }
+            }
+        } catch (_: Exception) {}
 
-        // 4. Mapbox Places Autocomplete (Secondary backup tier)
-        if (cleanQ.length >= 3 && results.size < 4) {
+        // 4. Mapbox Places Autocomplete (Secondary backup tier, only when results < 3)
+        if (cleanQ.length >= 3 && results.size < 3) {
             try {
                 val token = com.esdispatch.BuildConfig.MAPBOX_ACCESS_TOKEN
                 if (!token.isNullOrBlank()) {

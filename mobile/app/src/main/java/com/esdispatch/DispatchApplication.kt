@@ -29,6 +29,17 @@ class DispatchApplication : Application() {
         createNotificationChannels()
         initializeFirebaseSafely()
         initializeAppCheck()
+        initializeGoogleMapsSafely()
+    }
+
+    private fun initializeGoogleMapsSafely() {
+        try {
+            com.google.android.gms.maps.MapsInitializer.initialize(this, com.google.android.gms.maps.MapsInitializer.Renderer.LATEST) { renderer ->
+                android.util.Log.i("DispatchApplication", "Google Maps initialized with renderer: $renderer")
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("DispatchApplication", "Google Maps pre-initialization warning: ${t.message}")
+        }
     }
 
     private fun initializeAppCheck() {

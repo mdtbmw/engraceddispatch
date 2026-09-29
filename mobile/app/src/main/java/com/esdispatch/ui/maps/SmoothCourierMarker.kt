@@ -114,103 +114,148 @@ object MapMarkerFactory {
      * - Deep obsidian disc
      * - Forward-facing chevron/arrow
      */
-    fun getCourierMarkerIcon(context: Context): BitmapDescriptor {
+    fun getCourierMarkerIcon(context: Context? = null): BitmapDescriptor? {
         courierIconCache?.let { return it }
 
-        val size = 96
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
+        return try {
+            if (context != null) {
+                try {
+                    com.google.android.gms.maps.MapsInitializer.initialize(context)
+                } catch (_: Throwable) {}
+            }
 
-        val center = size / 2f
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val size = 96
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
 
-        // Outer Gold ring / shadow
-        paint.color = android.graphics.Color.parseColor("#40FFB800")
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(center, center, center - 2f, paint)
+            val center = size / 2f
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Mid Gold border
-        paint.color = android.graphics.Color.parseColor("#FFB800")
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(center, center, center - 8f, paint)
+            // Outer Gold ring / shadow
+            paint.color = android.graphics.Color.parseColor("#40FFB800")
+            paint.style = Paint.Style.FILL
+            canvas.drawCircle(center, center, center - 2f, paint)
 
-        // Inner Obsidian disc
-        paint.color = android.graphics.Color.parseColor("#0E0E10")
-        canvas.drawCircle(center, center, center - 14f, paint)
+            // Mid Gold border
+            paint.color = android.graphics.Color.parseColor("#FFB800")
+            paint.style = Paint.Style.FILL
+            canvas.drawCircle(center, center, center - 8f, paint)
 
-        // Directional motorcycle / navigation arrow in Gold
-        paint.color = android.graphics.Color.parseColor("#FFB800")
-        paint.style = Paint.Style.FILL
-        val path = android.graphics.Path()
-        path.moveTo(center, center - 18)
-        path.lineTo(center + 14, center + 14)
-        path.lineTo(center, center + 7)
-        path.lineTo(center - 14, center + 14)
-        path.close()
-        canvas.drawPath(path, paint)
+            // Inner Obsidian disc
+            paint.color = android.graphics.Color.parseColor("#0E0E10")
+            canvas.drawCircle(center, center, center - 14f, paint)
 
-        val descriptor = BitmapDescriptorFactory.fromBitmap(bitmap)
-        courierIconCache = descriptor
-        return descriptor
+            // Directional motorcycle / navigation arrow in Gold
+            paint.color = android.graphics.Color.parseColor("#FFB800")
+            paint.style = Paint.Style.FILL
+            val path = android.graphics.Path()
+            path.moveTo(center, center - 18)
+            path.lineTo(center + 14, center + 14)
+            path.lineTo(center, center + 7)
+            path.lineTo(center - 14, center + 14)
+            path.close()
+            canvas.drawPath(path, paint)
+
+            val descriptor = BitmapDescriptorFactory.fromBitmap(bitmap)
+            courierIconCache = descriptor
+            descriptor
+        } catch (t: Throwable) {
+            android.util.Log.w("MapMarkerFactory", "getCourierMarkerIcon non-fatal fallback: ${t.message}")
+            try {
+                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)
+            } catch (_: Throwable) {
+                null
+            }
+        }
     }
 
     /**
      * Minimalist Gold Pickup Pin (Origin waypoint)
      */
-    fun getPickupMarkerIcon(): BitmapDescriptor {
+    fun getPickupMarkerIcon(context: Context? = null): BitmapDescriptor? {
         pickupIconCache?.let { return it }
 
-        val size = 64
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val center = size / 2f
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        return try {
+            if (context != null) {
+                try {
+                    com.google.android.gms.maps.MapsInitializer.initialize(context)
+                } catch (_: Throwable) {}
+            }
 
-        // Outer white border
-        paint.color = android.graphics.Color.WHITE
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(center, center, center - 4f, paint)
+            val size = 64
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            val center = size / 2f
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Inner Gold core
-        paint.color = android.graphics.Color.parseColor("#FFB800")
-        canvas.drawCircle(center, center, center - 10f, paint)
+            // Outer white border
+            paint.color = android.graphics.Color.WHITE
+            paint.style = Paint.Style.FILL
+            canvas.drawCircle(center, center, center - 4f, paint)
 
-        // Center Obsidian dot
-        paint.color = android.graphics.Color.parseColor("#0E0E10")
-        canvas.drawCircle(center, center, 6f, paint)
+            // Inner Gold core
+            paint.color = android.graphics.Color.parseColor("#FFB800")
+            canvas.drawCircle(center, center, center - 10f, paint)
 
-        val descriptor = BitmapDescriptorFactory.fromBitmap(bitmap)
-        pickupIconCache = descriptor
-        return descriptor
+            // Center Obsidian dot
+            paint.color = android.graphics.Color.parseColor("#0E0E10")
+            canvas.drawCircle(center, center, 6f, paint)
+
+            val descriptor = BitmapDescriptorFactory.fromBitmap(bitmap)
+            pickupIconCache = descriptor
+            descriptor
+        } catch (t: Throwable) {
+            android.util.Log.w("MapMarkerFactory", "getPickupMarkerIcon non-fatal fallback: ${t.message}")
+            try {
+                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)
+            } catch (_: Throwable) {
+                null
+            }
+        }
     }
 
     /**
      * Minimalist Obsidian Destination Pin (Dropoff waypoint)
      */
-    fun getDeliveryMarkerIcon(): BitmapDescriptor {
+    fun getDeliveryMarkerIcon(context: Context? = null): BitmapDescriptor? {
         deliveryIconCache?.let { return it }
 
-        val size = 64
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val center = size / 2f
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        return try {
+            if (context != null) {
+                try {
+                    com.google.android.gms.maps.MapsInitializer.initialize(context)
+                } catch (_: Throwable) {}
+            }
 
-        // Outer Gold border
-        paint.color = android.graphics.Color.parseColor("#FFB800")
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(center, center, center - 4f, paint)
+            val size = 64
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            val center = size / 2f
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Inner Obsidian core
-        paint.color = android.graphics.Color.parseColor("#0E0E10")
-        canvas.drawCircle(center, center, center - 10f, paint)
+            // Outer Gold border
+            paint.color = android.graphics.Color.parseColor("#FFB800")
+            paint.style = Paint.Style.FILL
+            canvas.drawCircle(center, center, center - 4f, paint)
 
-        // Center Gold dot
-        paint.color = android.graphics.Color.parseColor("#FFB800")
-        canvas.drawCircle(center, center, 6f, paint)
+            // Inner Obsidian core
+            paint.color = android.graphics.Color.parseColor("#0E0E10")
+            canvas.drawCircle(center, center, center - 10f, paint)
 
-        val descriptor = BitmapDescriptorFactory.fromBitmap(bitmap)
-        deliveryIconCache = descriptor
-        return descriptor
+            // Center Gold dot
+            paint.color = android.graphics.Color.parseColor("#FFB800")
+            canvas.drawCircle(center, center, 6f, paint)
+
+            val descriptor = BitmapDescriptorFactory.fromBitmap(bitmap)
+            deliveryIconCache = descriptor
+            descriptor
+        } catch (t: Throwable) {
+            android.util.Log.w("MapMarkerFactory", "getDeliveryMarkerIcon non-fatal fallback: ${t.message}")
+            try {
+                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+            } catch (_: Throwable) {
+                null
+            }
+        }
     }
 }

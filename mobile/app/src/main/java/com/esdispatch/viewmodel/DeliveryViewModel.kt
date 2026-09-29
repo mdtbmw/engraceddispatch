@@ -5090,7 +5090,7 @@ class DeliveryViewModel : WalletViewModel() {
         return com.esdispatch.data.AddressDatabase.getCoordinates(query)
     }
 
-    fun updateDraftPickup(address: String, lat: Double? = null, lng: Double? = null) {
+    fun updateDraftPickup(address: String, lat: Double? = null, lng: Double? = null, placeId: String? = null) {
         _parcelDraft.update { draft ->
             val provided = if (lat != null && lng != null && lat != 0.0 && lng != 0.0 && isWithinBeninCityBounds(lat, lng)) {
                 Pair(lat, lng)
@@ -5105,9 +5105,26 @@ class DeliveryViewModel : WalletViewModel() {
                 pickupLng = resolved?.second ?: draft.pickupLng.takeIf { !addressChanged }
             )
         }
+
+        // Asynchronously resolve sub-meter coordinates via Google Places / Geocoding if missing
+        if (address.isNotBlank() && (lat == null || lng == null || lat == 0.0 || lng == 0.0)) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val coords = if (!placeId.isNullOrBlank()) {
+                    com.esdispatch.utils.GeocoderUtils.fetchPlaceCoordinates(placeId)
+                } else null ?: com.esdispatch.utils.GeocoderUtils.geocodeAddress(com.esdispatch.DispatchApplication.instance, address)
+
+                if (coords != null && isWithinBeninCityBounds(coords.first, coords.second)) {
+                    _parcelDraft.update { current ->
+                        if (current.pickupAddress == address) {
+                            current.copy(pickupLat = coords.first, pickupLng = coords.second)
+                        } else current
+                    }
+                }
+            }
+        }
     }
 
-    fun updateDraftDelivery(address: String, lat: Double? = null, lng: Double? = null) {
+    fun updateDraftDelivery(address: String, lat: Double? = null, lng: Double? = null, placeId: String? = null) {
         _parcelDraft.update { draft ->
             val provided = if (lat != null && lng != null && lat != 0.0 && lng != 0.0 && isWithinBeninCityBounds(lat, lng)) {
                 Pair(lat, lng)
@@ -5121,6 +5138,23 @@ class DeliveryViewModel : WalletViewModel() {
                 deliveryLat = resolved?.first ?: draft.deliveryLat.takeIf { !addressChanged },
                 deliveryLng = resolved?.second ?: draft.deliveryLng.takeIf { !addressChanged }
             )
+        }
+
+        // Asynchronously resolve sub-meter coordinates via Google Places / Geocoding if missing
+        if (address.isNotBlank() && (lat == null || lng == null || lat == 0.0 || lng == 0.0)) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val coords = if (!placeId.isNullOrBlank()) {
+                    com.esdispatch.utils.GeocoderUtils.fetchPlaceCoordinates(placeId)
+                } else null ?: com.esdispatch.utils.GeocoderUtils.geocodeAddress(com.esdispatch.DispatchApplication.instance, address)
+
+                if (coords != null && isWithinBeninCityBounds(coords.first, coords.second)) {
+                    _parcelDraft.update { current ->
+                        if (current.deliveryAddress == address) {
+                            current.copy(deliveryLat = coords.first, deliveryLng = coords.second)
+                        } else current
+                    }
+                }
+            }
         }
     }
 
@@ -5416,7 +5450,12 @@ class DeliveryViewModel : WalletViewModel() {
 
         val draft = _parcelDraft.value
         val distanceKm = if (_isDynamicPricingEnabled.value) {
-            estimateDistanceBetween(draft.pickupAddress, draft.deliveryAddress)
+            if (draft.pickupLat != null && draft.pickupLng != null && draft.deliveryLat != null && draft.deliveryLng != null &&
+                draft.pickupLat != 0.0 && draft.deliveryLat != 0.0) {
+                haversineDistance(draft.pickupLat!!, draft.pickupLng!!, draft.deliveryLat!!, draft.deliveryLng!!)
+            } else {
+                estimateDistanceBetween(draft.pickupAddress, draft.deliveryAddress)
+            }
         } else {
             5.0 // Manual Mode disables the distance-based pricing multiplier and uses a flat distance default
         }
