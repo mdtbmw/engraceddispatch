@@ -178,25 +178,53 @@ object GeocoderUtils {
         val results = mutableListOf<SearchResultItem>()
         try {
             val expanded = expandQuery(cleanQ)
-            val encoded = java.net.URLEncoder.encode(expanded, "UTF-8")
-            // Biased to Benin City coordinates (6.3350, 5.6037) within 30km radius with Nigeria country filter
-            val urlString = "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$encoded&key=$apiKey&components=country:ng&location=6.3350,5.6037&radius=30000&strictbounds=false&language=en"
-            val conn = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
-            conn.requestMethod = "GET"
+
+            // Modern Google Places API (New) Autocomplete
+            val url = java.net.URL("https://places.googleapis.com/v1/places:autocomplete")
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            conn.setRequestProperty("X-Goog-Api-Key", apiKey)
+            conn.doOutput = true
             conn.connectTimeout = 3500
             conn.readTimeout = 3500
+
+            val postJson = org.json.JSONObject().apply {
+                put("input", expanded)
+                put("includedRegionCodes", org.json.JSONArray().put("ng"))
+                put("locationBias", org.json.JSONObject().apply {
+                    put("circle", org.json.JSONObject().apply {
+                        put("center", org.json.JSONObject().apply {
+                            put("latitude", 6.3350)
+                            put("longitude", 5.6037)
+                        })
+                        put("radius", 30000.0)
+                    })
+                })
+            }
+
+            conn.outputStream.bufferedWriter().use { it.write(postJson.toString()) }
+
             if (conn.responseCode == 200) {
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val obj = org.json.JSONObject(jsonStr)
-                val predictions = obj.optJSONArray("predictions")
-                if (predictions != null) {
-                    for (i in 0 until predictions.length()) {
-                        val p = predictions.getJSONObject(i)
-                        val placeId = p.optString("place_id")
-                        val description = p.optString("description")
-                        val sf = p.optJSONObject("structured_formatting")
-                        val mainText = sf?.optString("main_text") ?: description.split(",").firstOrNull()?.trim() ?: description
-                        val secondaryText = sf?.optString("secondary_text") ?: description.removePrefix(mainText).removePrefix(",").trim()
+                val suggestions = obj.optJSONArray("suggestions")
+                if (suggestions != null) {
+                    for (i in 0 until suggestions.length()) {
+                        val item = suggestions.getJSONObject(i)
+                        val pred = item.optJSONObject("placePrediction") ?: continue
+                        val rawPlaceId = pred.optString("placeId").ifBlank { pred.optString("place") }
+                        val placeId = rawPlaceId.removePrefix("places/")
+
+                        val textObj = pred.optJSONObject("text")
+                        val fullText = textObj?.optString("text") ?: ""
+
+                        val sf = pred.optJSONObject("structuredFormat")
+                        val mainText = sf?.optJSONObject("mainText")?.optString("text")
+                            ?: fullText.split(",").firstOrNull()?.trim()
+                            ?: fullText
+                        val secondaryText = sf?.optJSONObject("secondaryText")?.optString("text")
+                            ?: fullText.removePrefix(mainText).removePrefix(",").trim()
 
                         val cleanSec = secondaryText.replace(", Nigeria", "").replace(", Edo", "").trim()
                         val cleanMain = mainText.trim()
@@ -209,6 +237,41 @@ object GeocoderUtils {
                                 lng = null,
                                 placeId = placeId.ifBlank { null }
                             ))
+                        }
+                    }
+                }
+            } else {
+                // Fallback to legacy endpoint if Places API (New) returns non-200
+                val encoded = java.net.URLEncoder.encode(expanded, "UTF-8")
+                val legUrl = "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$encoded&key=$apiKey&components=country:ng&location=6.3350,5.6037&radius=30000&strictbounds=false&language=en"
+                val legConn = java.net.URL(legUrl).openConnection() as java.net.HttpURLConnection
+                legConn.connectTimeout = 3000
+                legConn.readTimeout = 3000
+                if (legConn.responseCode == 200) {
+                    val jsonStr = legConn.inputStream.bufferedReader().use { it.readText() }
+                    val obj = org.json.JSONObject(jsonStr)
+                    val predictions = obj.optJSONArray("predictions")
+                    if (predictions != null) {
+                        for (i in 0 until predictions.length()) {
+                            val p = predictions.getJSONObject(i)
+                            val placeId = p.optString("place_id")
+                            val description = p.optString("description")
+                            val sf = p.optJSONObject("structured_formatting")
+                            val mainText = sf?.optString("main_text") ?: description.split(",").firstOrNull()?.trim() ?: description
+                            val secondaryText = sf?.optString("secondary_text") ?: description.removePrefix(mainText).removePrefix(",").trim()
+
+                            val cleanSec = secondaryText.replace(", Nigeria", "").replace(", Edo", "").trim()
+                            val cleanMain = mainText.trim()
+
+                            if (cleanMain.isNotBlank() && !cleanMain.equals("Nigeria", ignoreCase = true)) {
+                                results.add(SearchResultItem(
+                                    title = cleanMain,
+                                    fullAddress = if (cleanSec.isNotBlank()) cleanSec else "Benin City, Edo State",
+                                    lat = null,
+                                    lng = null,
+                                    placeId = placeId.ifBlank { null }
+                                ))
+                            }
                         }
                     }
                 }
@@ -231,29 +294,55 @@ object GeocoderUtils {
      */
     suspend fun fetchPlaceCoordinates(placeId: String): Pair<Double, Double>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         if (placeId.isBlank()) return@withContext null
-        placeDetailsCache[placeId]?.let { return@withContext it }
+        val cleanPlaceId = placeId.removePrefix("places/")
+        placeDetailsCache[cleanPlaceId]?.let { return@withContext it }
 
         val apiKey = try { com.esdispatch.BuildConfig.GOOGLE_MAPS_API_KEY } catch (e: Throwable) { "" }
         if (apiKey.isBlank()) return@withContext null
 
         try {
-            val urlString = "https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&fields=geometry&key=$apiKey"
+            // Modern Places API (New) Place Details
+            val urlString = "https://places.googleapis.com/v1/places/" + java.net.URLEncoder.encode(cleanPlaceId, "UTF-8")
             val conn = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("X-Goog-Api-Key", apiKey)
+            conn.setRequestProperty("X-Goog-FieldMask", "location")
             conn.connectTimeout = 3500
             conn.readTimeout = 3500
+
             if (conn.responseCode == 200) {
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val obj = org.json.JSONObject(jsonStr)
-                val result = obj.optJSONObject("result")
-                val geometry = result?.optJSONObject("geometry")
-                val loc = geometry?.optJSONObject("location")
+                val loc = obj.optJSONObject("location")
                 if (loc != null) {
-                    val lat = loc.optDouble("lat")
-                    val lng = loc.optDouble("lng")
-                    if (lat != 0.0 && lng != 0.0) {
+                    val lat = loc.optDouble("latitude")
+                    val lng = loc.optDouble("longitude")
+                    if (lat != 0.0 && lng != 0.0 && !lat.isNaN() && !lng.isNaN()) {
                         val coords = Pair(lat, lng)
-                        placeDetailsCache[placeId] = coords
+                        placeDetailsCache[cleanPlaceId] = coords
                         return@withContext coords
+                    }
+                }
+            } else {
+                // Fallback to legacy endpoint
+                val legUrl = "https://maps.googleapis.com/maps/api/place/details/json?place_id=$cleanPlaceId&fields=geometry&key=$apiKey"
+                val legConn = java.net.URL(legUrl).openConnection() as java.net.HttpURLConnection
+                legConn.connectTimeout = 3000
+                legConn.readTimeout = 3000
+                if (legConn.responseCode == 200) {
+                    val jsonStr = legConn.inputStream.bufferedReader().use { it.readText() }
+                    val obj = org.json.JSONObject(jsonStr)
+                    val result = obj.optJSONObject("result")
+                    val geometry = result?.optJSONObject("geometry")
+                    val loc = geometry?.optJSONObject("location")
+                    if (loc != null) {
+                        val lat = loc.optDouble("lat")
+                        val lng = loc.optDouble("lng")
+                        if (lat != 0.0 && lng != 0.0 && !lat.isNaN() && !lng.isNaN()) {
+                            val coords = Pair(lat, lng)
+                            placeDetailsCache[cleanPlaceId] = coords
+                            return@withContext coords
+                        }
                     }
                 }
             }
