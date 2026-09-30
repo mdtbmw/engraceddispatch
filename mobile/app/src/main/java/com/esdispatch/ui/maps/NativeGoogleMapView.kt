@@ -56,6 +56,8 @@ fun NativeGoogleMapView(
     courierLastUpdated: Long = 0L,
     routeRetry: Int = 0,
     bottomInset: Dp = 120.dp,
+    recenterTrigger: Int = 0,
+    onPannedChanged: (Boolean) -> Unit = {},
     onGuidance: (RouteGuidance) -> Unit = {},
     onMapClick: ((LatLng) -> Unit)? = null
 ) {
@@ -158,18 +160,32 @@ fun NativeGoogleMapView(
     var previousZoom by remember { mutableFloatStateOf(zoom) }
     var framed by remember { mutableStateOf(false) }
     var panned by remember { mutableStateOf(false) }
-    var recenter by remember { mutableIntStateOf(0) }
+    LaunchedEffect(panned) {
+        onPannedChanged(panned)
+    }
+    LaunchedEffect(recenterTrigger) {
+        if (recenterTrigger > 0) {
+            panned = false
+        }
+    }
     LaunchedEffect(camera.isMoving) {
         if (camera.isMoving && camera.cameraMoveStartedReason == CameraMoveStartedReason.GESTURE) panned = true
     }
-    LaunchedEffect(followUser, is3D, recenter) { panned = false }
+    LaunchedEffect(followUser, is3D) { panned = false }
     // Depend on received fixes, never on each animation frame. Customer overview keeps the destination visible.
-    LaunchedEffect(loaded, courier, user.takeIf { followUser || hasNoBooking }, road.route, followUser, is3D, recenter) {
+    LaunchedEffect(loaded, courier, user.takeIf { followUser || hasNoBooking }, road.route, followUser, is3D, recenterTrigger) {
         if (!loaded || panned) return@LaunchedEffect
-        val target = if (followUser) user ?: courier else courier ?: pickupPosition ?: user
+        val target = if (followUser || hasNoBooking) user ?: courier else courier ?: pickupPosition ?: user
         val boundsPoints = (activeLeg?.points.orEmpty() + nextLeg?.points.orEmpty() + listOfNotNull(courier, pickupPosition, deliveryPosition))
-        val update = if (!isRider && !followUser && boundsPoints.distinct().size > 1) {
+        val update = if (!isRider && !followUser && !hasNoBooking && boundsPoints.distinct().size > 1) {
             CameraUpdateFactory.newLatLngBounds(LatLngBounds.builder().also { b -> boundsPoints.forEach { b.include(it) } }.build(), 70)
+        } else if (hasNoBooking && user != null) {
+            CameraUpdateFactory.newCameraPosition(CameraPosition.Builder()
+                .target(user)
+                .zoom(15.5f)
+                .tilt(if (is3D) 45f else 0f)
+                .bearing(0f)
+                .build())
         } else if (isRider && courier != null) {
             // Smarter rider camera: position slightly below center so more road ahead is visible
             // Dynamic zoom: Zoom in near upcoming turns (< 80m), zoom out on straightaways
@@ -192,7 +208,7 @@ fun NativeGoogleMapView(
                 .build())
         } else {
             CameraUpdateFactory.newCameraPosition(CameraPosition.Builder()
-                .target(target ?: defaultCenter).zoom(if (!framed && isRider && courier != null) 16.5f else camera.position.zoom)
+                .target(target ?: defaultCenter).zoom(if (!framed && isRider && courier != null) 16.5f else if (hasNoBooking && user != null) 15.5f else camera.position.zoom)
                 .tilt(if (is3D) 50f else 0f).bearing(if (isRider && is3D) courierBearing else 0f).build())
         }
         framed = true
@@ -220,11 +236,17 @@ fun NativeGoogleMapView(
     var courierIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
     var pickupIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
     var deliveryIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
+    var userIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
+    val userState = remember { MarkerState() }
     LaunchedEffect(Unit) {
         MapsInitializer.initialize(context)
         courierIcon = MapMarkerFactory.getCourierMarkerIcon(context)
         pickupIcon = MapMarkerFactory.getPickupMarkerIcon(context)
         deliveryIcon = MapMarkerFactory.getDeliveryMarkerIcon(context)
+        userIcon = MapMarkerFactory.getUserLocationMarkerIcon(context)
+    }
+    SideEffect {
+        user?.let { userState.position = it }
     }
     val pulse = rememberInfiniteTransition(label = "Live location")
     val pulseAlpha by pulse.animateFloat(0.20f, 0.05f,
@@ -233,9 +255,12 @@ fun NativeGoogleMapView(
         val visibleBottomInset = bottomInset.coerceAtMost(maxHeight * 0.55f)
         GoogleMap(
             modifier = Modifier.fillMaxSize(), cameraPositionState = camera,
-            properties = MapProperties(mapType = if (isSatellite) MapType.HYBRID else MapType.NORMAL,
-                isTrafficEnabled = showTraffic, isBuildingEnabled = is3D,
-                mapStyleOptions = if (isSatellite) null else if (isDarkTheme) BoltMapStyle.Dark else BoltMapStyle.Light),
+            properties = MapProperties(
+                mapType = if (isSatellite) MapType.HYBRID else MapType.NORMAL,
+                isTrafficEnabled = showTraffic,
+                isBuildingEnabled = true,
+                mapStyleOptions = if (isSatellite) null else if (isDarkTheme) BoltMapStyle.Dark else null
+            ),
             uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false,
                 compassEnabled = true, mapToolbarEnabled = false),
             contentPadding = PaddingValues(top = if (hasNoBooking) 16.dp else 150.dp.coerceAtMost(maxHeight * 0.25f), bottom = visibleBottomInset),
@@ -256,9 +281,22 @@ fun NativeGoogleMapView(
                     icon = courierIcon, rotation = smooth.currentBearing, flat = true,
                     anchor = Offset(0.5f, 0.5f), zIndex = 5f, alpha = if (fresh) 1f else 0.6f)
             }
-            if (!isRider && user != null) {
-                Circle(center = user, radius = 7.0, fillColor = androidx.compose.ui.graphics.Color(0xFF4285F4),
-                    strokeColor = androidx.compose.ui.graphics.Color.White, strokeWidth = 3f)
+            if (user != null) {
+                Circle(
+                    center = user,
+                    radius = 24.0,
+                    fillColor = androidx.compose.ui.graphics.Color(0x261A73E8),
+                    strokeColor = androidx.compose.ui.graphics.Color(0x661A73E8),
+                    strokeWidth = 1.5f
+                )
+                Marker(
+                    state = userState,
+                    title = "Your Location",
+                    snippet = "You are here",
+                    icon = userIcon,
+                    anchor = Offset(0.5f, 0.5f),
+                    zIndex = 4f
+                )
             }
             val geometry = activeLeg?.points ?: routePoints
             if (geometry.size >= 2 && !hasNoBooking) {
@@ -278,31 +316,20 @@ fun NativeGoogleMapView(
                     val remaining = listOf(courierPos ?: geometry[splitIdx]) + geometry.subList(splitIdx + 1, geometry.size)
 
                     // Traveled section (faded)
-                    Polyline(points = traveled, color = androidx.compose.ui.graphics.Color.Gray.copy(alpha = 0.45f), width = 8f,
+                    Polyline(points = traveled, color = androidx.compose.ui.graphics.Color.Gray.copy(alpha = 0.45f), width = 7f,
                         jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 1f)
 
-                    // Remaining section (prominent Gold + Obsidian casing)
-                    Polyline(points = remaining, color = Obsidian.copy(alpha = 0.90f), width = 16f,
+                    // Remaining section (crisp Gold + Obsidian casing)
+                    Polyline(points = remaining, color = Obsidian.copy(alpha = 0.90f), width = 13.5f,
                         jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
-                    Polyline(points = remaining, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 10f,
+                    Polyline(points = remaining, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 8f,
                         jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 3f)
                 } else {
-                    Polyline(points = geometry, color = Obsidian.copy(alpha = 0.85f), width = 15f,
+                    Polyline(points = geometry, color = Obsidian.copy(alpha = 0.85f), width = 13.5f,
                         jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 1f)
-                    Polyline(points = geometry, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 9f,
+                    Polyline(points = geometry, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 8f,
                         jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
                 }
-            }
-        }
-        if (panned) {
-            FilledTonalButton(onClick = { panned = false; recenter++ },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = visibleBottomInset + 12.dp)
-                    .heightIn(min = 44.dp),
-                shape = RoundedCornerShape(22.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Gold, contentColor = Obsidian)) {
-                Icon(if (isRider) Icons.Default.Navigation else Icons.Default.CenterFocusStrong, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text(if (isRider) "Resume navigation" else "Overview")
             }
         }
     }

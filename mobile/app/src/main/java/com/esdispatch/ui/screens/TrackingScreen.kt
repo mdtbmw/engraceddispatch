@@ -278,7 +278,10 @@ fun ActiveTrackingScreen(
             val detected = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 detectUserLocationCoords(context)
             }
-            if (userLocationTime == 0L) userCoords = detected
+            if (detected != null) {
+                userCoords = detected
+                userLocationTime = System.currentTimeMillis()
+            }
         } else {
             locationPermissionLauncher.launch(
                 arrayOf(
@@ -294,8 +297,7 @@ fun ActiveTrackingScreen(
         val callback = object : com.google.android.gms.location.LocationCallback() {
             override fun onLocationResult(res: com.google.android.gms.location.LocationResult) {
                 res.lastLocation?.let { loc ->
-                    if (!loc.hasAccuracy() || loc.accuracy > 75f || loc.time < userLocationTime ||
-                        System.currentTimeMillis() - loc.time !in -5000L..60000L ||
+                    if (!loc.hasAccuracy() || loc.accuracy > 100f ||
                         com.esdispatch.ui.maps.validMapPosition(loc.latitude, loc.longitude) == null) return
                     userCoords = Pair(loc.latitude, loc.longitude)
                     userLocationTime = loc.time
@@ -314,9 +316,22 @@ fun ActiveTrackingScreen(
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
         if (fineGranted || coarseGranted) {
+            try {
+                fusedClient.lastLocation.addOnSuccessListener { loc ->
+                    if (loc != null && com.esdispatch.ui.maps.validMapPosition(loc.latitude, loc.longitude) != null) {
+                        if (userCoords == null) {
+                            userCoords = Pair(loc.latitude, loc.longitude)
+                            userLocationTime = loc.time
+                            if (loc.hasBearing()) userLocationBearing = loc.bearing
+                            userLocationAccuracy = loc.accuracy
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
             val req = com.google.android.gms.location.LocationRequest.Builder(
-                com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, 5000
-            ).setMinUpdateIntervalMillis(2000).build()
+                com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, 4000
+            ).setMinUpdateIntervalMillis(1500).build()
             try {
                 fusedClient.requestLocationUpdates(req, callback, android.os.Looper.getMainLooper())
             } catch (e: Exception) {
@@ -508,6 +523,9 @@ fun ActiveTrackingScreen(
     }
 
 
+    var isMapPanned by remember { mutableStateOf(false) }
+    var recenterTrigger by remember { mutableIntStateOf(0) }
+
     var drawerState by remember(hasNoBooking) {
         mutableStateOf(DrawerState.COLLAPSED)
     }
@@ -517,20 +535,20 @@ fun ActiveTrackingScreen(
     val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
     val dynamicExpandedHeight = (screenHeight * 0.72f).coerceIn(340.dp, 580.dp)
     val dynamicCollapsedHeight = (screenHeight * 0.42f).coerceIn(220.dp, 360.dp)
-    val dynamicClosedHeight = if (hasNoBooking) 48.dp else 76.dp
+    val dynamicClosedHeight = 0.dp
 
     var dragOffsetDp by remember { mutableStateOf(0.dp) }
 
     val baseTargetHeight = when (drawerState) {
-        DrawerState.CLOSED -> dynamicClosedHeight
-        DrawerState.COLLAPSED -> if (hasNoBooking) 140.dp else dynamicCollapsedHeight
-        DrawerState.EXPANDED -> if (hasNoBooking) 140.dp else dynamicExpandedHeight
+        DrawerState.CLOSED -> 0.dp
+        DrawerState.COLLAPSED -> if (hasNoBooking) 290.dp else dynamicCollapsedHeight
+        DrawerState.EXPANDED -> if (hasNoBooking) 360.dp else dynamicExpandedHeight
     }
 
     val bottomCardHeight by animateDpAsState(
-        targetValue = (baseTargetHeight + dragOffsetDp).coerceIn(
-            dynamicClosedHeight,
-            if (hasNoBooking) 140.dp else dynamicExpandedHeight
+        targetValue = if (drawerState == DrawerState.CLOSED) 0.dp else (baseTargetHeight + dragOffsetDp).coerceIn(
+            160.dp,
+            if (hasNoBooking) 360.dp else dynamicExpandedHeight
         ),
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioLowBouncy,
@@ -539,7 +557,7 @@ fun ActiveTrackingScreen(
         label = "bottomCardHeight"
     )
 
-    val drawerDragModifier = Modifier.pointerInput(hasNoBooking, baseTargetHeight, dynamicCollapsedHeight, dynamicExpandedHeight, dynamicClosedHeight) {
+    val drawerDragModifier = Modifier.pointerInput(hasNoBooking, baseTargetHeight, dynamicCollapsedHeight, dynamicExpandedHeight) {
         detectVerticalDragGestures(
             onDragStart = {
                 dragOffsetDp = 0.dp
@@ -548,7 +566,7 @@ fun ActiveTrackingScreen(
                 change.consume()
                 val deltaDp = -dragAmount / density.density
                 dragOffsetDp = (dragOffsetDp + deltaDp.dp).coerceIn(
-                    -(baseTargetHeight - dynamicClosedHeight),
+                    -(baseTargetHeight - 120.dp),
                     (dynamicExpandedHeight - baseTargetHeight)
                 )
             },
@@ -556,10 +574,10 @@ fun ActiveTrackingScreen(
                 val currentEffectiveHeight = baseTargetHeight + dragOffsetDp
                 dragOffsetDp = 0.dp
                 if (hasNoBooking) {
-                    drawerState = if (currentEffectiveHeight > 94.dp) DrawerState.COLLAPSED else DrawerState.CLOSED
+                    drawerState = if (currentEffectiveHeight > 180.dp) DrawerState.COLLAPSED else DrawerState.CLOSED
                 } else {
                     val midExpanded = (dynamicCollapsedHeight + dynamicExpandedHeight) / 2
-                    val midCollapsed = (dynamicClosedHeight + dynamicCollapsedHeight) / 2
+                    val midCollapsed = dynamicCollapsedHeight / 2
                     drawerState = when {
                         currentEffectiveHeight >= midExpanded -> {
                             isGoingUp = false
@@ -831,7 +849,9 @@ fun ActiveTrackingScreen(
                     is3D = is3D,
                     courierLastUpdated = locationTime,
                     routeRetry = routeRetry,
-                    bottomInset = bottomCardHeight + 16.dp,
+                    bottomInset = if (drawerState == DrawerState.CLOSED) 72.dp else bottomCardHeight + 16.dp,
+                    recenterTrigger = recenterTrigger,
+                    onPannedChanged = { isMapPanned = it },
                     onGuidance = { roadGuidance = it }
                 ) }
             }
@@ -1000,6 +1020,16 @@ fun ActiveTrackingScreen(
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (isMapPanned) {
+                    MapControlButton(
+                        icon = if (isRider) Icons.Default.Navigation else Icons.Default.CenterFocusStrong,
+                        description = if (isRider) "Resume navigation" else "Recenter Map",
+                        isActive = true
+                    ) {
+                        recenterTrigger++
+                        isMapPanned = false
+                    }
+                }
                 MapControlButton(icon = Icons.Default.Add, description = "Zoom In") {
                     if (mapZoom < 20f) mapZoom += 0.5f
                 }
@@ -1031,207 +1061,104 @@ fun ActiveTrackingScreen(
         }
 
                     // --------------------------------------------------------------------------------------------
-                    // LOWER PORTION: COLLAPSIBLE DRWAVER (overlapping map, extremely pretty!)
+                    // LOWER PORTION: COLLAPSIBLE LUXURY DRAWER OR FLOATING CIRCLE
                     // --------------------------------------------------------------------------------------------
-                    val isDrawerClosed = drawerState == DrawerState.CLOSED
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .height(bottomCardHeight)
-                            .padding(
-                                horizontal = if (isDrawerClosed) 16.dp else 0.dp,
-                                vertical = if (isDrawerClosed) 8.dp else 0.dp
-                            )
-                            .zIndex(20f)
-                    ) {
-                        Card(
+                    if (drawerState == DrawerState.CLOSED) {
+                        // Floating 56dp luxury circle on bottom-left edge
+                        Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .then(drawerDragModifier),
-                            shape = if (isDrawerClosed) RoundedCornerShape(24.dp) else RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isDrawerClosed) (if (isDark) Obsidian else Color(0xFF18181B)) else (if (isDark) Obsidian else GoldenWhiteLight)
-                            ),
-                            border = BorderStroke(1.5.dp, if (isDrawerClosed) Gold else (if (isDark) Gold else BorderLight)),
-                            elevation = CardDefaults.cardElevation(defaultElevation = if (isDrawerClosed) 8.dp else 0.dp)
+                                .align(Alignment.BottomStart)
+                                .navigationBarsPadding()
+                                .padding(start = 18.dp, bottom = 20.dp)
+                                .zIndex(25f)
                         ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                val overrideStyle = androidx.compose.ui.text.TextStyle(
-                                    fontFamily = Poppins,
-                                    color = if (isDark) GoldLight else Obsidian
-                                )
-                                androidx.compose.runtime.CompositionLocalProvider(
-                                    androidx.compose.material3.LocalTextStyle provides overrideStyle,
-                                    androidx.compose.material3.LocalContentColor provides (if (isDark) GoldLight else Obsidian)
+                            Surface(
+                                onClick = { drawerState = DrawerState.COLLAPSED },
+                                shape = CircleShape,
+                                color = Gold,
+                                shadowElevation = 10.dp,
+                                modifier = Modifier.size(56.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                if (drawerState == DrawerState.CLOSED) {
-                                    // SLEEK COMPACT BOTTOM BAR WHEN DRAWER IS MINIMIZED
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clickable { drawerState = DrawerState.COLLAPSED }
-                                            .padding(horizontal = 16.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        if (hasNoBooking) {
-                                            if (isRider) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(36.dp)
-                                                            .clip(CircleShape)
-                                                            .background(Gold),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(Icons.Filled.DirectionsBike, null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                    }
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Text(userName.ifBlank { "Courier Profile" }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
-                                                }
-                                                Icon(Icons.Filled.KeyboardArrowUp, null, tint = Gold, modifier = Modifier.size(20.dp))
-                                            } else {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(36.dp)
-                                                            .clip(CircleShape)
-                                                            .background(Gold),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(Icons.Filled.Send, null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                    }
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Text("Tap to Book Express Dispatch", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Gold)
-                                                }
-                                                Icon(Icons.Filled.KeyboardArrowUp, null, tint = Gold, modifier = Modifier.size(20.dp))
-                                            }
+                                    Icon(
+                                        imageVector = if (hasNoBooking) {
+                                            if (isRider) Icons.Filled.DirectionsBike else Icons.Filled.LocalShipping
                                         } else {
-                                            val isCourierAssigned = parcel.courierName.isNotBlank() &&
-                                                !parcel.courierName.equals("unassigned", ignoreCase = true) &&
-                                                parcel.riderId.isNotBlank() &&
-                                                parcel.status != ParcelStatus.PENDING &&
-                                                parcel.status != ParcelStatus.QUEUED
-
+                                            Icons.Filled.DirectionsBike
+                                        },
+                                        contentDescription = "Expand Delivery Drawer",
+                                        tint = Obsidian,
+                                        modifier = Modifier.size(26.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Open Drawer Card (Collapsed or Expanded)
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .height(bottomCardHeight)
+                                .zIndex(20f)
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .then(drawerDragModifier),
+                                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isDark) Obsidian else GoldenWhiteLight
+                                ),
+                                border = BorderStroke(1.5.dp, if (isDark) Gold else BorderLight),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                            ) {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    val overrideStyle = androidx.compose.ui.text.TextStyle(
+                                        fontFamily = Poppins,
+                                        color = if (isDark) GoldLight else Obsidian
+                                    )
+                                    androidx.compose.runtime.CompositionLocalProvider(
+                                        androidx.compose.material3.LocalTextStyle provides overrideStyle,
+                                        androidx.compose.material3.LocalContentColor provides (if (isDark) GoldLight else Obsidian)
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxSize()) {
+                                            // Integrated top drag bar & minimize button
                                             Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp, vertical = 8.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.weight(1f)
+                                                horizontalArrangement = Arrangement.SpaceBetween
                                             ) {
-                                                if (isCourierAssigned) {
-                                                    CourierAvatarBadge(
-                                                        avatarUrl = resolvedCourierAvatar,
-                                                        name = resolvedCourierName,
-                                                        size = 42.dp,
-                                                        borderWidth = 1.5.dp
-                                                    )
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Column {
-                                                        Text(
-                                                            text = resolvedCourierName,
-                                                            fontSize = 13.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color.White,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                        Text(
-                                                            text = when (parcel.status) {
-                                                                ParcelStatus.DELIVERED -> "Delivered Successfully"
-                                                                ParcelStatus.ARRIVED -> "Rider Arrived"
-                                                                else -> "In Transit • Tap for details"
-                                                            },
-                                                            fontSize = 11.sp,
-                                                            color = Color(0xFFD4D4D8)
-                                                        )
-                                                    }
-                                                } else {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(38.dp)
-                                                            .clip(CircleShape)
-                                                            .background(Gold.copy(alpha = 0.2f))
-                                                            .border(1.dp, Gold, CircleShape),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            Icons.Filled.DirectionsBike,
-                                                            null,
-                                                            tint = Gold,
-                                                            modifier = Modifier.size(20.dp)
-                                                        )
-                                                    }
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Column {
-                                                        Text(
-                                                            text = "Request Queued",
-                                                            fontSize = 13.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color.White
-                                                        )
-                                                        Text(
-                                                            text = "Assigning verified rider…",
-                                                            fontSize = 11.sp,
-                                                            color = Color(0xFFD4D4D8)
-                                                        )
-                                                    }
-                                                }
-                                            }
-
-                                            // PIN / ETA indicator and expand action
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                if (isRider) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(8.dp),
-                                                        color = Gold.copy(alpha = 0.15f),
-                                                        border = BorderStroke(1.dp, Gold)
-                                                    ) {
-                                                        Text(
-                                                            text = roadGuidance.etaSeconds?.let { "${kotlin.math.ceil(it / 60).toInt().coerceAtLeast(1)} min to ${if (pickupPhase) "pickup" else "delivery"}" } ?: "ETA unavailable",
-                                                            color = Gold,
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                        )
-                                                    }
-                                                } else if (parcel.otpCode.isNotBlank()) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(8.dp),
-                                                        color = Gold.copy(alpha = 0.15f),
-                                                        border = BorderStroke(1.dp, Gold)
-                                                    ) {
-                                                        Text(
-                                                            text = "PIN: ${parcel.otpCode}",
-                                                            color = Gold,
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                        )
-                                                    }
-                                                }
-
+                                                Spacer(modifier = Modifier.size(32.dp))
                                                 Box(
                                                     modifier = Modifier
-                                                        .size(32.dp)
+                                                        .width(42.dp)
+                                                        .height(4.5.dp)
                                                         .clip(CircleShape)
-                                                        .background(Gold),
-                                                    contentAlignment = Alignment.Center
+                                                        .background(if (isLight) Slate else Gold.copy(alpha = 0.6f))
+                                                        .clickable { drawerState = DrawerState.CLOSED }
+                                                )
+                                                IconButton(
+                                                    onClick = { drawerState = DrawerState.CLOSED },
+                                                    modifier = Modifier.size(32.dp)
                                                 ) {
                                                     Icon(
-                                                        Icons.Filled.KeyboardArrowUp,
-                                                        contentDescription = "Expand",
-                                                        tint = Obsidian,
-                                                        modifier = Modifier.size(20.dp)
+                                                        imageVector = Icons.Filled.KeyboardArrowDown,
+                                                        contentDescription = "Minimize drawer",
+                                                        tint = if (isDark) Gold else Obsidian,
+                                                        modifier = Modifier.size(24.dp)
                                                     )
                                                 }
                                             }
-                                        }
-                                    }
-                                } else {
+
+                                            // Drawer Scrollable Content
+                                            Box(modifier = Modifier.fillMaxSize()) {
                                 // Upper Scrollable Content (only shown when not closed)
                                     if (hasNoBooking) {
                                         Box(
@@ -1316,25 +1243,41 @@ fun ActiveTrackingScreen(
                                                         }
                                                         Spacer(modifier = Modifier.height(14.dp))
                                                         Text(
-                                                            text = "No Active Delivery",
+                                                            text = "Express Fleet On Standby",
                                                             fontSize = 16.sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = AppOnSurface
                                                         )
                                                         Text(
-                                                            text = "You currently have no active deliveries in transit. Create a booking to track your courier in real time.",
+                                                            text = "No active deliveries in transit. Book an instant dispatch courier or browse verified shops in the marketplace.",
                                                             fontSize = 12.sp,
                                                             color = TextGray,
                                                             textAlign = TextAlign.Center,
-                                                            modifier = Modifier.padding(top = 6.dp, bottom = 18.dp)
+                                                            modifier = Modifier.padding(top = 4.dp, bottom = 14.dp)
                                                         )
-                                                        Button(
-                                                            onClick = { onNavigate("SendParcel") },
-                                                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
-                                                            shape = RoundedCornerShape(14.dp),
-                                                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                                                         ) {
-                                                            Text("BOOK NOW", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                                                            Button(
+                                                                onClick = { onNavigate("SendParcel") },
+                                                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                                shape = RoundedCornerShape(14.dp),
+                                                                modifier = Modifier.weight(1f).height(46.dp)
+                                                            ) {
+                                                                Text("BOOK DISPATCH", fontWeight = FontWeight.Black, fontSize = 12.sp)
+                                                            }
+                                                            OutlinedButton(
+                                                                onClick = { onNavigate("Marketplace") },
+                                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                                    contentColor = if (isDark) Gold else Obsidian
+                                                                ),
+                                                                border = BorderStroke(1.5.dp, Gold),
+                                                                shape = RoundedCornerShape(14.dp),
+                                                                modifier = Modifier.weight(1f).height(46.dp)
+                                                            ) {
+                                                                Text("MARKETPLACE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -2771,84 +2714,7 @@ fun ActiveTrackingScreen(
                                                     strokeWidth = 2.dp
                                                 )
                                             }
-                                        }
                                     }
-                                    }
-                                }
-                            }
-                    }
-                }
-            }
-
-                        // Sleek fluid draggable handle overlapping top center edge (only when not CLOSED)
-                        if (drawerState != DrawerState.CLOSED) {
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = AppSurface,
-                                border = BorderStroke(1.dp, if (isLight) Slate else Gold.copy(alpha = 0.4f)),
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .offset(y = (-18).dp)
-                                    .zIndex(30f)
-                                    .then(drawerDragModifier)
-                                    .clickable {
-                                        if (hasNoBooking) {
-                                            // Only two states: CLOSED and COLLAPSED
-                                            drawerState = if (drawerState == DrawerState.CLOSED) {
-                                                DrawerState.COLLAPSED
-                                            } else {
-                                                DrawerState.CLOSED
-                                            }
-                                        } else {
-                                            when (drawerState) {
-                                                DrawerState.CLOSED -> {
-                                                    drawerState = DrawerState.COLLAPSED
-                                                    isGoingUp = true
-                                                }
-                                                DrawerState.COLLAPSED -> {
-                                                    if (isGoingUp) {
-                                                        drawerState = DrawerState.EXPANDED
-                                                        isGoingUp = false
-                                                    } else {
-                                                        drawerState = DrawerState.CLOSED
-                                                        isGoingUp = true
-                                                    }
-                                                }
-                                                DrawerState.EXPANDED -> {
-                                                    drawerState = DrawerState.COLLAPSED
-                                                    isGoingUp = false
-                                                }
-                                            }
-                                        }
-                                    }
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                                ) {
-                                    // Sleek fluid drag pill handle bar
-                                    Box(
-                                        modifier = Modifier
-                                            .width(36.dp)
-                                            .height(4.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isLight) Slate else Gold.copy(alpha = 0.5f))
-                                    )
-                                    Icon(
-                                        imageVector = if (hasNoBooking) {
-                                            if (drawerState == DrawerState.CLOSED) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown
-                                        } else {
-                                            when (drawerState) {
-                                                DrawerState.CLOSED -> Icons.Default.KeyboardArrowUp
-                                                DrawerState.COLLAPSED -> if (isGoingUp) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown
-                                                DrawerState.EXPANDED -> Icons.Default.KeyboardArrowDown
-                                            }
-                                        },
-                                        contentDescription = "Toggle Drawer",
-                                        tint = if (isLight) Obsidian else Gold,
-                                        modifier = Modifier.size(16.dp)
-                                    )
                                 }
                             }
                         }
@@ -2857,6 +2723,12 @@ fun ActiveTrackingScreen(
             }
         }
     }
+}
+}
+}
+}
+}
+}
 /**
  * Floating Map Control buttons supporting custom zoom, traffic, or map mode triggers.
  */
@@ -2986,6 +2858,8 @@ fun LiveMapView(
     courierLastUpdated: Long = 0L,
     routeRetry: Int = 0,
     bottomInset: androidx.compose.ui.unit.Dp = 120.dp,
+    recenterTrigger: Int = 0,
+    onPannedChanged: (Boolean) -> Unit = {},
     onGuidance: (com.esdispatch.ui.maps.RouteGuidance) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -3015,6 +2889,8 @@ fun LiveMapView(
         courierLastUpdated = courierLastUpdated,
         routeRetry = routeRetry,
         bottomInset = bottomInset,
+        recenterTrigger = recenterTrigger,
+        onPannedChanged = onPannedChanged,
         onGuidance = { guidance ->
             onGuidance(guidance)
             if (guidance.distanceMeters != null && guidance.etaSeconds != null) onRouteTelemetry(guidance.distanceMeters, guidance.etaSeconds)

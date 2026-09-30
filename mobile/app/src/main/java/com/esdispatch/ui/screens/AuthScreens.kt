@@ -157,12 +157,15 @@ fun LoginScreen(
     val focusManager = LocalFocusManager.current
 
     val currentAuthUid by viewModel.firebaseUserId.collectAsState()
-    LaunchedEffect(currentAuthUid) {
+    val googleAuthInProg by viewModel.isGoogleAuthInProgress.collectAsState()
+    LaunchedEffect(currentAuthUid, googleAuthInProg) {
         val uid = currentAuthUid
         val prefs = context.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
-        val hasLocal = !prefs.getString("local_uid", "").isNullOrEmpty()
-        val hasFb = !uid.isNullOrEmpty() && !uid.startsWith("local_user_")
-        if (hasLocal || hasFb) {
+        val localUid = prefs.getString("local_uid", "") ?: ""
+        val savedPin = viewModel.getPinSecurely("local_pin")
+        val savedPhone = prefs.getString("local_phone", "") ?: ""
+        val isComplete = localUid.isNotBlank() && savedPin.isNotBlank() && savedPhone.isNotBlank()
+        if (isComplete && !googleAuthInProg && (!uid.isNullOrEmpty() || localUid.isNotEmpty())) {
             onNavigate("Dashboard")
         }
     }
@@ -204,12 +207,11 @@ fun LoginScreen(
                     viewModel.hidePreloader()
                     if (success) {
                         if (result == "incomplete") {
-                            // Profile in Firestore has no phone or PIN — user hasn't finished onboarding yet
+                            // User needs to set up PIN and phone number
                             viewModel.setGoogleAuthInProgress(true)
-                            Toast.makeText(context, "Almost there! Please complete your profile.", Toast.LENGTH_LONG).show()
-                            onNavigate("SignUp")
+                            Toast.makeText(context, "Welcome! Please set up your phone number and 4-digit PIN.", Toast.LENGTH_LONG).show()
+                            onNavigate("CompleteProfile")
                         } else {
-                            // result == null means fully onboarded — go straight to Dashboard
                             viewModel.setGoogleAuthInProgress(false)
                             Toast.makeText(context, "Welcome Back, $name!", Toast.LENGTH_LONG).show()
                             onNavigate("Preloader")
@@ -950,11 +952,10 @@ fun SignUpScreen(
                     viewModel.hidePreloader()
                     if (success) {
                         if (result == "incomplete") {
-                            // Firebase Auth succeeded but Firestore has no phone/PIN yet — stay on this screen
                             viewModel.setGoogleAuthInProgress(true)
-                            Toast.makeText(context, "Google authenticated! Please complete your profile.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Google authenticated! Please set up your phone number and 4-digit PIN.", Toast.LENGTH_LONG).show()
+                            onNavigate("CompleteProfile")
                         } else {
-                            // Fully onboarded — go directly to Dashboard
                             viewModel.setGoogleAuthInProgress(false)
                             Toast.makeText(context, "Welcome Back, $finalName!", Toast.LENGTH_LONG).show()
                             onNavigate("Preloader")
@@ -2372,6 +2373,7 @@ fun CompleteProfileScreen(
     
     var phone by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
     
     val isLight = MaterialTheme.colorScheme.background == BackgroundLight
@@ -2587,6 +2589,28 @@ fun CompleteProfileScreen(
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = "PIN", tint = if (isDark) Gold else Obsidian) },
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Confirm 4-Digit PIN Input
+                    OutlinedTextField(
+                        value = confirmPin,
+                        onValueChange = { if (it.length <= 4 && it.all { char -> char.isDigit() }) confirmPin = it },
+                        label = { Text("Confirm 4-Digit PIN", color = if (isDark) Gold.copy(alpha = 0.7f) else Obsidian.copy(alpha = 0.7f)) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (isDark) Gold else Obsidian,
+                            unfocusedBorderColor = fieldBorder,
+                            focusedContainerColor = fieldBg,
+                            unfocusedContainerColor = fieldBg,
+                            focusedTextColor = if (isDark) Color.White else Obsidian,
+                            unfocusedTextColor = if (isDark) Color.White else Obsidian
+                        ),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = PasswordVisualTransformation(),
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = "Confirm PIN", tint = if (isDark) Gold else Obsidian) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     
                     Spacer(modifier = Modifier.height(24.dp))
                     
@@ -2604,21 +2628,61 @@ fun CompleteProfileScreen(
                                 Toast.makeText(context, "PIN must be exactly 4 digits", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
+                            if (confirmPin != pin) {
+                                Toast.makeText(context, "PINs do not match", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
                             
                             isSaving = true
                             scope.launch {
                                 val emailVal = currentGoogleEmail.ifBlank { "google_user@gmail.com" }
+                                val cleanEmail = emailVal.trim().lowercase().replace("[^a-z0-9]".toRegex(), "_")
+                                val uid = viewModel.firebaseUserId.value ?: com.esdispatch.data.FirebaseManager.auth?.currentUser?.uid ?: "user_${System.currentTimeMillis()}"
+                                val hashedPin = com.esdispatch.viewmodel.SecurityUtils.hashPin(pin)
+
                                 viewModel.updateProfile(fullName, emailVal, phone)
                                 viewModel.setUserPin(pin)
+                                viewModel.savePinSecurely("local_pin", pin)
+                                viewModel.savePinSecurely("google_pin_$cleanEmail", pin)
                                 
                                 val prefs = context.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE)
                                 prefs.edit()
+                                    .putString("local_uid", uid)
                                     .putString("local_name", fullName)
                                     .putString("local_phone", phone)
-                                    .putString("local_pin", pin)
+                                    .putString("local_email", emailVal)
+                                    .putString("google_phone_$cleanEmail", phone)
+                                    .putString("google_name_$cleanEmail", fullName)
                                     .apply()
+
+                                try {
+                                    val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                    db.collection("users").document(uid).set(
+                                        mapOf(
+                                            "uid" to uid,
+                                            "name" to fullName,
+                                            "email" to emailVal,
+                                            "phone" to phone,
+                                            "pin" to hashedPin,
+                                            "securityPin" to hashedPin,
+                                            "isVerified" to true,
+                                            "emailVerified" to true,
+                                            "updatedAt" to com.google.firebase.Timestamp.now()
+                                        ),
+                                        com.google.firebase.firestore.SetOptions.merge()
+                                    )
+                                    val phoneKey = com.esdispatch.util.FormatUtils.normalizePhoneNumber(phone)
+                                    if (phoneKey.isNotBlank()) {
+                                        db.collection("phone_indices").document(phoneKey).set(
+                                            mapOf("uid" to uid, "email" to emailVal, "updatedAt" to com.google.firebase.Timestamp.now()),
+                                            com.google.firebase.firestore.SetOptions.merge()
+                                        )
+                                    }
+                                } catch (_: Exception) {}
                                 
-                                delay(500)
+                                viewModel.setGoogleAuthInProgress(false)
+                                viewModel.triggerWelcomeNotification(fullName)
+                                delay(300)
                                 isSaving = false
                                 Toast.makeText(context, "Profile Setup Complete!", Toast.LENGTH_SHORT).show()
                                 onNavigate("Preloader")

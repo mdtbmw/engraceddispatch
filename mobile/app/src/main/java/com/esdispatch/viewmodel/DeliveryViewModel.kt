@@ -120,7 +120,7 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
-    private fun savePinSecurely(key: String, pin: String) {
+    fun savePinSecurely(key: String, pin: String) {
         val ctx = appContext ?: return
         try {
             getEncryptedPrefs(ctx).edit().putString(key, pin).apply()
@@ -129,7 +129,7 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
-    private fun getPinSecurely(key: String, default: String = ""): String {
+    fun getPinSecurely(key: String, default: String = ""): String {
         val ctx = appContext ?: return default
         return try {
             getEncryptedPrefs(ctx).getString(key, default) ?: default
@@ -3851,39 +3851,45 @@ class DeliveryViewModel : WalletViewModel() {
                             val finalPhone = if (fsPhone.isNotBlank()) fsPhone else (customPhone ?: savedPhone ?: "")
                             val finalPin = if (fsPin.isNotBlank()) fsPin else (customPin ?: savedPin ?: "")
 
-                            updateProfile(finalName, fsEmail, finalPhone)
-                            if (finalPin.isNotEmpty()) {
-                                setUserPin(finalPin)
-                            }
-                            setLoginMode("google")
-
-                            prefs?.edit()
-                                ?.putString("local_uid", realUid)
-                                ?.putString("local_name", finalName)
-                                ?.putString("local_email", fsEmail)
-                                ?.putString("local_phone", finalPhone)
-                                ?.putString("google_phone_$cleanEmail", finalPhone)
-                                ?.putString("google_name_$cleanEmail", finalName)
-                                ?.apply()
-                            if (finalPin.isNotEmpty()) {
-                                savePinSecurely("google_pin_$cleanEmail", finalPin)
-                                savePinSecurely("local_pin", finalPin)
-                            }
-
-                            _isVerified.value = true
-                            savePref("is_verified", true)
-                            try {
-                                db.collection("users").document(realUid).update(
-                                    mapOf("isVerified" to true, "emailVerified" to true)
-                                )
-                            } catch (_: Exception) {}
-
                             val isProfileComplete = finalPhone.isNotBlank() && finalPin.isNotBlank()
-                            hidePreloader()
                             if (isProfileComplete) {
+                                updateProfile(finalName, fsEmail, finalPhone)
+                                if (finalPin.isNotEmpty()) {
+                                    setUserPin(finalPin)
+                                }
+                                setLoginMode("google")
+
+                                prefs?.edit()
+                                    ?.putString("local_uid", realUid)
+                                    ?.putString("local_name", finalName)
+                                    ?.putString("local_email", fsEmail)
+                                    ?.putString("local_phone", finalPhone)
+                                    ?.putString("google_phone_$cleanEmail", finalPhone)
+                                    ?.putString("google_name_$cleanEmail", finalName)
+                                    ?.apply()
+                                if (finalPin.isNotEmpty()) {
+                                    savePinSecurely("google_pin_$cleanEmail", finalPin)
+                                    savePinSecurely("local_pin", finalPin)
+                                }
+
+                                _isVerified.value = true
+                                savePref("is_verified", true)
+                                try {
+                                    db.collection("users").document(realUid).update(
+                                        mapOf("isVerified" to true, "emailVerified" to true)
+                                    )
+                                } catch (_: Exception) {}
+
+                                _isGoogleAuthInProgress.value = false
+                                hidePreloader()
                                 triggerWelcomeNotification(finalName)
                                 onComplete(true, null)
                             } else {
+                                // Profile is incomplete: DO NOT save local_uid yet so user is routed to onboarding PIN & details setup
+                                _userName.value = finalName
+                                _userEmail.value = fsEmail
+                                _isGoogleAuthInProgress.value = true
+                                hidePreloader()
                                 onComplete(true, "incomplete")
                             }
                         }
@@ -3898,19 +3904,36 @@ class DeliveryViewModel : WalletViewModel() {
                             val finalPhone = customPhone ?: savedPhone ?: ""
                             val finalPin = customPin ?: savedPin ?: ""
 
-                            updateProfile(finalName, email, finalPhone)
-                            if (finalPin.isNotEmpty()) setUserPin(finalPin)
-                            setLoginMode("google")
-
-                            _isVerified.value = true
-                            savePref("is_verified", true)
-
                             val isProfileComplete = finalPhone.isNotBlank() && finalPin.isNotBlank()
-                            hidePreloader()
                             if (isProfileComplete) {
+                                updateProfile(finalName, email, finalPhone)
+                                if (finalPin.isNotEmpty()) setUserPin(finalPin)
+                                setLoginMode("google")
+
+                                prefs?.edit()
+                                    ?.putString("local_uid", realUid)
+                                    ?.putString("local_name", finalName)
+                                    ?.putString("local_email", email)
+                                    ?.putString("local_phone", finalPhone)
+                                    ?.putString("google_phone_$cleanEmail", finalPhone)
+                                    ?.putString("google_name_$cleanEmail", finalName)
+                                    ?.apply()
+                                if (finalPin.isNotEmpty()) {
+                                    savePinSecurely("google_pin_$cleanEmail", finalPin)
+                                    savePinSecurely("local_pin", finalPin)
+                                }
+
+                                _isVerified.value = true
+                                savePref("is_verified", true)
+                                _isGoogleAuthInProgress.value = false
+                                hidePreloader()
                                 triggerWelcomeNotification(finalName)
                                 onComplete(true, null)
                             } else {
+                                _userName.value = finalName
+                                _userEmail.value = email
+                                _isGoogleAuthInProgress.value = true
+                                hidePreloader()
                                 onComplete(true, "incomplete")
                             }
                         }
