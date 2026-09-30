@@ -304,32 +304,43 @@ fun NativeGoogleMapView(
                     androidx.compose.ui.graphics.Color.LightGray else androidx.compose.ui.graphics.Color.DarkGray,
                     width = 6f, pattern = listOf(Dash(18f), Gap(10f)), zIndex = 0f) }
 
-                // Split active route into traveled (faded) and remaining (emphasized)
+                // Split active route into traveled (greyed-out) and remaining (crisp Gold)
                 val courierPos = smooth.currentPosition ?: courier
-                val splitIdx = if (courierPos != null && geometry.size > 2) {
-                    val idx = geometry.indices.minByOrNull { SphericalUtil.computeDistanceBetween(courierPos, geometry[it]) } ?: 0
-                    if (SphericalUtil.computeDistanceBetween(courierPos, geometry[idx]) < 75.0) idx else 0
-                } else 0
+                val split = splitRouteAtCourier(geometry, courierPos)
 
-                if (splitIdx > 0 && splitIdx < geometry.size - 1) {
-                    val traveled = geometry.subList(0, splitIdx + 1)
-                    val remaining = listOf(courierPos ?: geometry[splitIdx]) + geometry.subList(splitIdx + 1, geometry.size)
-
-                    // Traveled section (faded)
-                    Polyline(points = traveled, color = androidx.compose.ui.graphics.Color.Gray.copy(alpha = 0.45f), width = 7f,
-                        jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 1f)
-
-                    // Remaining section (crisp Gold + Obsidian casing)
-                    Polyline(points = remaining, color = Obsidian.copy(alpha = 0.90f), width = 13.5f,
-                        jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
-                    Polyline(points = remaining, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 8f,
-                        jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 3f)
-                } else {
-                    Polyline(points = geometry, color = Obsidian.copy(alpha = 0.85f), width = 13.5f,
-                        jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 1f)
-                    Polyline(points = geometry, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 8f,
-                        jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
+                // Traveled section (greyed-out trail showing how far the rider has traveled)
+                if (split.traveledPoints.size >= 2) {
+                    Polyline(
+                        points = split.traveledPoints,
+                        color = androidx.compose.ui.graphics.Color(0xFF71717A).copy(alpha = 0.55f),
+                        width = 6.5f,
+                        jointType = JointType.ROUND,
+                        startCap = RoundCap(),
+                        endCap = RoundCap(),
+                        zIndex = 1f
+                    )
                 }
+
+                // Remaining section (crisp brand Gold + Obsidian casing connected directly to rider)
+                val remaining = if (split.remainingPoints.size >= 2) split.remainingPoints else geometry
+                Polyline(
+                    points = remaining,
+                    color = Obsidian.copy(alpha = 0.90f),
+                    width = 13.5f,
+                    jointType = JointType.ROUND,
+                    startCap = RoundCap(),
+                    endCap = RoundCap(),
+                    zIndex = 2f
+                )
+                Polyline(
+                    points = remaining,
+                    color = Gold.copy(alpha = if (stale) 0.5f else 1f),
+                    width = 8f,
+                    jointType = JointType.ROUND,
+                    startCap = RoundCap(),
+                    endCap = RoundCap(),
+                    zIndex = 3f
+                )
             }
         }
     }

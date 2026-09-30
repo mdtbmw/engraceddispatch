@@ -1332,12 +1332,30 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun updateParcelStatusByRider(parcelId: String, nextStatus: ParcelStatus, progress: Float, onComplete: (Boolean, String?) -> Unit) {
+        val previousParcels = _parcels.value
+        val previousAssignments = _riderAssignments.value
+        val previousSelected = _selectedParcel.value
+
+        // Immediate optimistic update for frame-0 tactile UI response
+        _parcels.update { list -> list.map { if (it.id == parcelId) it.copy(status = nextStatus, progress = progress) else it } }
+        _riderAssignments.update { list -> list.map { if (it.id == parcelId) it.copy(status = nextStatus, progress = progress) else it } }
+        if (_selectedParcel.value?.id == parcelId) {
+            _selectedParcel.value = _selectedParcel.value?.copy(status = nextStatus, progress = progress)
+        }
+
         com.esdispatch.data.FirebaseManager.updateParcelStatusByRider(
             parcelId = parcelId,
             nextStatus = nextStatus,
             progress = progress,
             onComplete = { success, error ->
-                if (success) {
+                if (!success) {
+                    // Roll back to previous state on failure
+                    _parcels.value = previousParcels
+                    _riderAssignments.value = previousAssignments
+                    if (_selectedParcel.value?.id == parcelId) {
+                        _selectedParcel.value = previousSelected
+                    }
+                } else {
                     val p = _parcels.value.find { it.id == parcelId } ?: _riderAssignments.value.find { it.id == parcelId }
                     when (nextStatus) {
                         ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
@@ -4883,15 +4901,16 @@ class DeliveryViewModel : WalletViewModel() {
                                     telemetry.timestamp >= current.courierLastUpdated &&
                                     telemetry.latitude.isFinite() && telemetry.longitude.isFinite() &&
                                     telemetry.latitude in -90.0..90.0 && telemetry.longitude in -180.0..180.0 &&
-                                    (telemetry.latitude != 0.0 || telemetry.longitude != 0.0) && telemetry.accuracy <= 75f) {
-                                    // Never show a rider's other delivery as movement on this shipment.
-                                    _selectedParcel.value = if (telemetry.activeBookingId.isNotBlank() && telemetry.activeBookingId != parcelId &&
-                                        !(current.batchId.isNotBlank() && current.batchId == telemetry.activeBatchId)) {
-                                        current.copy(courierLatitude = null, courierLongitude = null, courierLastUpdated = 0L)
-                                    } else current.copy(
-                                        courierLatitude = telemetry.latitude, courierLongitude = telemetry.longitude,
-                                        courierBearing = telemetry.bearing, courierSpeed = telemetry.speed,
-                                        courierAccuracy = telemetry.accuracy, courierLastUpdated = telemetry.timestamp)
+                                    (telemetry.latitude != 0.0 || telemetry.longitude != 0.0) &&
+                                    (telemetry.accuracy <= 250f || telemetry.accuracy == 0f || current.courierLatitude == null)) {
+                                    _selectedParcel.value = current.copy(
+                                        courierLatitude = telemetry.latitude,
+                                        courierLongitude = telemetry.longitude,
+                                        courierBearing = telemetry.bearing,
+                                        courierSpeed = telemetry.speed,
+                                        courierAccuracy = telemetry.accuracy,
+                                        courierLastUpdated = telemetry.timestamp
+                                    )
                                 }
                             }
                         }

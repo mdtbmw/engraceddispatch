@@ -43,11 +43,83 @@ fun computeRouteTangentHeading(position: LatLng, roadPoints: List<LatLng>): Floa
             bestIndex = i
         }
     }
-    if (minDistance <= 75.0) {
+    // Snap to the forward heading along this segment towards destination
+    if (minDistance <= 250.0) {
         val heading = SphericalUtil.computeHeading(roadPoints[bestIndex], roadPoints[bestIndex + 1]).toFloat()
         return (heading % 360f + 360f) % 360f
     }
     return null
+}
+
+/**
+ * Data class representing the split of a route polyline at the courier's location:
+ * - traveledPoints: path from route origin up to the rider (greyed out)
+ * - remainingPoints: path from the rider onward to the destination (vibrant Gold)
+ */
+data class RouteSplit(
+    val traveledPoints: List<LatLng>,
+    val remainingPoints: List<LatLng>
+)
+
+/**
+ * Splits an active route polyline directly at the courier's location with zero gap.
+ * As the rider moves forward, the traveled trail grows behind them and is greyed out,
+ * while the remaining path ahead stays crisp brand Gold.
+ */
+fun splitRouteAtCourier(
+    geometry: List<LatLng>,
+    courierPos: LatLng?
+): RouteSplit {
+    if (courierPos == null || geometry.size < 2) {
+        return RouteSplit(
+            traveledPoints = emptyList(),
+            remainingPoints = geometry
+        )
+    }
+
+    var bestSegment = 0
+    var minDistance = Double.MAX_VALUE
+    var bestFraction = 0.0
+
+    for (i in 0 until geometry.size - 1) {
+        val a = geometry[i]
+        val b = geometry[i + 1]
+        val dist = com.google.maps.android.PolyUtil.distanceToLine(courierPos, a, b)
+        if (dist < minDistance) {
+            minDistance = dist
+            bestSegment = i
+            val segLen = SphericalUtil.computeDistanceBetween(a, b)
+            bestFraction = if (segLen > 0.1) {
+                val dAP = SphericalUtil.computeDistanceBetween(a, courierPos)
+                val dBP = SphericalUtil.computeDistanceBetween(b, courierPos)
+                (((dAP * dAP) - (dBP * dBP) + (segLen * segLen)) / (2 * segLen * segLen)).coerceIn(0.0, 1.0)
+            } else 0.0
+        }
+    }
+
+    // Exact snapped point on the road segment
+    val a = geometry[bestSegment]
+    val b = geometry[bestSegment + 1]
+    val snappedOnSegment = SphericalUtil.interpolate(a, b, bestFraction)
+
+    // Traveled: starts at geometry[0], goes through intermediate vertices, ends exactly at snappedOnSegment
+    val traveled = mutableListOf<LatLng>()
+    for (i in 0..bestSegment) {
+        traveled.add(geometry[i])
+    }
+    traveled.add(snappedOnSegment)
+
+    // Remaining: starts exactly at snappedOnSegment, continues through remaining vertices to destination
+    val remaining = mutableListOf<LatLng>()
+    remaining.add(snappedOnSegment)
+    for (i in (bestSegment + 1) until geometry.size) {
+        remaining.add(geometry[i])
+    }
+
+    return RouteSplit(
+        traveledPoints = traveled,
+        remainingPoints = remaining
+    )
 }
 
 /**
@@ -68,33 +140,37 @@ fun rememberSmoothCourierState(
         if (rawPosition == null) {
             state.clear()
         } else {
-            // Snap to route polyline if within 35 meters so bike drives directly on the road
+            // Strictly snap to route polyline so bike sits and drives directly on the line
             val snappedPosition = if (roadPoints.size >= 2) {
                 var bestSegment = 0
                 var minDistance = Double.MAX_VALUE
+                var bestFraction = 0.0
                 for (i in 0 until roadPoints.size - 1) {
-                    val dist = com.google.maps.android.PolyUtil.distanceToLine(rawPosition, roadPoints[i], roadPoints[i + 1])
+                    val a = roadPoints[i]
+                    val b = roadPoints[i + 1]
+                    val dist = com.google.maps.android.PolyUtil.distanceToLine(rawPosition, a, b)
                     if (dist < minDistance) {
                         minDistance = dist
                         bestSegment = i
+                        val segLen = SphericalUtil.computeDistanceBetween(a, b)
+                        bestFraction = if (segLen > 0.1) {
+                            val dAP = SphericalUtil.computeDistanceBetween(a, rawPosition)
+                            val dBP = SphericalUtil.computeDistanceBetween(b, rawPosition)
+                            (((dAP * dAP) - (dBP * dBP) + (segLen * segLen)) / (2 * segLen * segLen)).coerceIn(0.0, 1.0)
+                        } else 0.0
                     }
                 }
-                if (minDistance <= 35.0) {
+                if (minDistance <= 250.0) {
                     val a = roadPoints[bestSegment]
                     val b = roadPoints[bestSegment + 1]
-                    val segLen = SphericalUtil.computeDistanceBetween(a, b)
-                    if (segLen > 0.1) {
-                        val dAP = SphericalUtil.computeDistanceBetween(a, rawPosition)
-                        val dBP = SphericalUtil.computeDistanceBetween(b, rawPosition)
-                        val frac = (((dAP * dAP) - (dBP * dBP) + (segLen * segLen)) / (2 * segLen * segLen)).coerceIn(0.0, 1.0)
-                        SphericalUtil.interpolate(a, b, frac)
-                    } else rawPosition
+                    SphericalUtil.interpolate(a, b, bestFraction)
                 } else rawPosition
             } else rawPosition
 
-            // Always prioritize line tangent heading so bike faces along the line towards destination
+            // Lock bearing strictly to the road segment heading so the bike points forward along the line
+            // Realistically, bikes follow the road and do not rotate 360 degrees
             val routeBearing = computeRouteTangentHeading(snappedPosition, roadPoints)
-            val effectiveBearing = routeBearing ?: targetBearing.takeIf { it.isFinite() && it != 0f } ?: 0f
+            val effectiveBearing = routeBearing ?: targetBearing.takeIf { it.isFinite() && it != 0f } ?: state.currentBearing
 
             val prevPos = state.currentPosition
             val distance = if (prevPos != null) SphericalUtil.computeDistanceBetween(prevPos, snappedPosition) else 0.0
@@ -133,7 +209,7 @@ class SmoothCourierState {
         if (prev == null || !animate || SphericalUtil.computeDistanceBetween(prev, newPos) > 300) {
             currentPosition = newPos
             previousPosition = newPos
-            if (fallbackBearing != 0f && fallbackBearing.isFinite()) {
+            if (fallbackBearing.isFinite() && fallbackBearing != 0f) {
                 currentBearing = (fallbackBearing % 360f + 360f) % 360f
             }
             return
@@ -144,8 +220,8 @@ class SmoothCourierState {
         val startIndex = roadPoints.indices.minByOrNull { SphericalUtil.computeDistanceBetween(startPos, roadPoints[it]) }
         val endIndex = roadPoints.indices.minByOrNull { SphericalUtil.computeDistanceBetween(newPos, roadPoints[it]) }
         val candidate = if (startIndex != null && endIndex != null && endIndex > startIndex &&
-            SphericalUtil.computeDistanceBetween(startPos, roadPoints[startIndex]) < 35 &&
-            SphericalUtil.computeDistanceBetween(newPos, roadPoints[endIndex]) < 35) {
+            SphericalUtil.computeDistanceBetween(startPos, roadPoints[startIndex]) < 100 &&
+            SphericalUtil.computeDistanceBetween(newPos, roadPoints[endIndex]) < 100) {
             listOf(startPos) + roadPoints.subList(startIndex, endIndex + 1) + newPos
         } else listOf(startPos, newPos)
         val path = if (SphericalUtil.computeLength(candidate) <= SphericalUtil.computeDistanceBetween(startPos, newPos) * 2 + 40)
@@ -157,7 +233,7 @@ class SmoothCourierState {
         // Animate between received fixes, smoothly turning towards road tangent
         positionProgress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing)
         ) {
             var remaining = pathLength * value
             var segment = 0
@@ -168,13 +244,13 @@ class SmoothCourierState {
             val fraction = if (segments[segment] > 0) (remaining / segments[segment]).coerceIn(0.0, 1.0) else 1.0
             currentPosition = SphericalUtil.interpolate(path[segment], path[segment + 1], fraction)
 
-            // Smoothly align bike bearing to active line segment heading
+            // Smoothly align bike bearing to active line segment heading without 360 spinning
             if (path[segment] != path[segment + 1]) {
                 val segHeading = SphericalUtil.computeHeading(path[segment], path[segment + 1]).toFloat()
                 if (segHeading.isFinite()) {
                     val targetHeading = (segHeading % 360f + 360f) % 360f
                     val angleDelta = computeShortestAngle(currentBearing, targetHeading)
-                    currentBearing = (currentBearing + angleDelta * 0.15f % 360f + 360f) % 360f
+                    currentBearing = (currentBearing + angleDelta * 0.25f + 360f) % 360f
                 }
             }
         }
@@ -185,7 +261,7 @@ class SmoothCourierState {
             if (finalSegHeading.isFinite()) {
                 val finalTarget = (finalSegHeading % 360f + 360f) % 360f
                 val delta = computeShortestAngle(currentBearing, finalTarget)
-                currentBearing = (currentBearing + delta % 360f + 360f) % 360f
+                currentBearing = (currentBearing + delta + 360f) % 360f
             }
         }
     }
@@ -198,13 +274,13 @@ class SmoothCourierState {
             return
         }
         val delta = computeShortestAngle(currentBearing, normalizedTarget)
-        if (abs(delta) < 0.5f) return
+        if (abs(delta) < 1.0f) return
 
         val target = currentBearing + delta
         bearingAnim.snapTo(currentBearing)
         bearingAnim.animateTo(
             targetValue = target,
-            animationSpec = tween(durationMillis = 600, easing = LinearOutSlowInEasing)
+            animationSpec = tween(durationMillis = 400, easing = LinearOutSlowInEasing)
         ) {
             currentBearing = (value % 360f + 360f) % 360f
         }

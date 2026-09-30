@@ -54,6 +54,44 @@ internal class RoadRouteState {
     var failed by mutableStateOf(false)
 }
 
+/**
+ * Creates an instant fallback route polyline on frame 0 between waypoints,
+ * ensuring riders and customers see the route line and ETA immediately upon opening the map.
+ */
+internal fun generateInstantCorridorRoute(
+    origin: LatLng,
+    destination: LatLng,
+    intermediate: LatLng? = null
+): RoadRoute {
+    val legs = mutableListOf<RoadLeg>()
+    if (intermediate != null) {
+        legs.add(createInstantLeg(origin, intermediate))
+        legs.add(createInstantLeg(intermediate, destination))
+    } else {
+        legs.add(createInstantLeg(origin, destination))
+    }
+    return RoadRoute(legs)
+}
+
+private fun createInstantLeg(from: LatLng, to: LatLng): RoadLeg {
+    val distance = SphericalUtil.computeDistanceBetween(from, to)
+    val numSteps = 16
+    val points = (0..numSteps).map { i ->
+        val fraction = i.toDouble() / numSteps
+        SphericalUtil.interpolate(from, to, fraction)
+    }
+    // Estimated dispatch bike speed ~ 28 km/h = 7.8 m/s
+    val seconds = (distance / 7.8).coerceAtLeast(30.0)
+    val step = RoadStep(points, "Proceed along route")
+    return RoadLeg(
+        points = points,
+        steps = listOf(step),
+        meters = distance,
+        seconds = seconds,
+        congested = false
+    )
+}
+
 /** Poll only while visible. GPS updates do not cancel in-flight requests or issue one per frame. */
 @Composable
 internal fun rememberRoadRoute(
@@ -69,6 +107,15 @@ internal fun rememberRoadRoute(
     val latestCourier by rememberUpdatedState(courier)
     val latestFresh by rememberUpdatedState(fresh)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+
+    // Immediately generate instant corridor route on frame 0 so the line appears without delay
+    val initialOrigin = courier ?: pickup.position
+    val initialDest = if (phase == "return") pickup.position else delivery.position
+    val initialIntermediate = if (phase == "pickup" && courier != null) pickup.position else null
+    if (state.route == null && initialOrigin != null && initialDest != null) {
+        state.route = generateInstantCorridorRoute(initialOrigin, initialDest, initialIntermediate)
+    }
+
     LaunchedEffect(state, lifecycle, retry) {
         val hasEndpoints = when (phase) {
             "delivery" -> delivery.available
@@ -84,11 +131,6 @@ internal fun rememberRoadRoute(
             while (isActive) {
                 val now = android.os.SystemClock.elapsedRealtime()
                 val position = latestCourier.takeIf { latestFresh && phase != "planned" }
-                // An active delivery needs an actual rider location, never the pickup as a substitute.
-                if (phase != "planned" && position == null) {
-                    delay(5000)
-                    continue
-                }
                 val activePoints = state.route?.legs?.firstOrNull()?.points.orEmpty()
                 val offRoute = position != null && activePoints.size > 1 &&
                     !PolyUtil.isLocationOnPath(position, activePoints, false, 65.0)

@@ -243,6 +243,8 @@ fun ActiveTrackingScreen(
     var isHistoryUnlocked by remember { mutableStateOf(false) }
     var showFeedbackDialog by remember { mutableStateOf(false) }
     var showSupportDialog by remember { mutableStateOf(false) }
+    var isGuidanceDismissed by remember { mutableStateOf(false) }
+    var isActionSubmitting by remember { mutableStateOf(false) }
 
     val userAvatar by viewModel.photoUrl.collectAsState()
     var userCoords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
@@ -958,98 +960,47 @@ fun ActiveTrackingScreen(
             ) {
 
             if (!hasNoBooking && drawerState != DrawerState.EXPANDED && parcel.status !in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED, ParcelStatus.RETURNED)) {
-                com.esdispatch.ui.maps.RouteGuidanceCard(
-                    guidance = roadGuidance,
-                    onRetry = { routeRetry++ },
-                    onNavigate = if (isRider && parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP,
-                        ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.RETURN_TO_SENDER)) ({ toggleInAppNavigation() }) else null,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-            }
-
-            if (isRider && isNavigating) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Obsidian,
-                    border = BorderStroke(1.dp, Gold),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                if (!isGuidanceDismissed) {
+                    com.esdispatch.ui.maps.RouteGuidanceCard(
+                        guidance = roadGuidance,
+                        onRetry = { routeRetry++ },
+                        onNavigate = if (isRider && parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP,
+                            ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.RETURN_TO_SENDER)) ({ toggleInAppNavigation() }) else null,
+                        isRider = isRider,
+                        isVoiceMuted = isVoiceMuted,
+                        onToggleVoice = if (isRider && isNavigating) ({ isVoiceMuted = com.esdispatch.util.VoiceGuidanceManager.toggleMuted() }) else null,
+                        onOpenExternalMaps = if (isRider) ({ openExternalGoogleMaps() }) else null,
+                        onDismiss = { isGuidanceDismissed = true },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = Obsidian,
+                        border = BorderStroke(1.dp, Gold),
+                        shadowElevation = 3.dp,
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(top = 8.dp)
+                            .clickable { isGuidanceDismissed = false }
                     ) {
                         Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.weight(1f)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(Gold),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Navigation,
-                                    contentDescription = null,
-                                    tint = Obsidian,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = "3D IN-APP NAVIGATION",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Gold,
-                                    letterSpacing = 0.5.sp
-                                )
-                                Text(
-                                    text = if (isVoiceMuted) "Voice Muted" else "Voice Guidance Active",
-                                    fontSize = 11.sp,
-                                    color = Color.White.copy(alpha = 0.85f)
-                                )
-                            }
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            IconButton(
-                                onClick = {
-                                    isVoiceMuted = com.esdispatch.util.VoiceGuidanceManager.toggleMuted()
-                                },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isVoiceMuted) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
-                                    contentDescription = "Mute Voice",
-                                    tint = if (isVoiceMuted) Color.Gray else Gold,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-
-                            TextButton(
-                                onClick = { openExternalGoogleMaps() },
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Text("Maps App", fontSize = 10.sp, color = Gold, fontWeight = FontWeight.Bold)
-                            }
-
-                            TextButton(
-                                onClick = { toggleInAppNavigation() },
-                                colors = ButtonDefaults.textButtonColors(contentColor = Color.Red.copy(alpha = 0.9f)),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Text("Exit", fontSize = 10.sp, fontWeight = FontWeight.Black)
-                            }
+                            Icon(
+                                imageVector = Icons.Filled.Navigation,
+                                contentDescription = null,
+                                tint = Gold,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = roadGuidance.etaSeconds?.let { "${kotlin.math.ceil(it / 60).toInt()} min • View HUD" } ?: "View Navigation",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Gold
+                            )
                         }
                     }
                 }
@@ -2028,53 +1979,83 @@ fun ActiveTrackingScreen(
                                                         ParcelStatus.ASSIGNED -> {
                                                             Button(
                                                                 onClick = {
-                                                                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.PICKED_UP, 0.40f) { success, _ ->
-                                                                        if (success) Toast.makeText(context, "Pickup confirmed! Order is now picked up.", Toast.LENGTH_SHORT).show()
+                                                                    if (!isActionSubmitting) {
+                                                                        isActionSubmitting = true
+                                                                        com.esdispatch.util.SoundManager.playClick()
+                                                                        viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.PICKED_UP, 0.40f) { success, _ ->
+                                                                            isActionSubmitting = false
+                                                                            if (success) Toast.makeText(context, "Pickup confirmed! Order is now picked up.", Toast.LENGTH_SHORT).show()
+                                                                        }
                                                                     }
                                                                 },
+                                                                enabled = !isActionSubmitting,
                                                                 modifier = Modifier.fillMaxWidth().height(48.dp).tactilePress(scaleDown = 0.96f),
                                                                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                                                                 shape = RoundedCornerShape(14.dp)
                                                             ) {
-                                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                                                                    Icon(Icons.Filled.CheckCircle, null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                                    Text("CONFIRM PICKUP", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                if (isActionSubmitting) {
+                                                                    CircularProgressIndicator(strokeWidth = 2.5.dp, color = Obsidian, modifier = Modifier.size(20.dp))
+                                                                } else {
+                                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                                                        Icon(Icons.Filled.CheckCircle, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                                        Text("CONFIRM PICKUP", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                    }
                                                                 }
                                                             }
                                                         }
                                                         ParcelStatus.PICKED_UP -> {
                                                             Button(
                                                                 onClick = {
-                                                                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.TRANSIT, 0.60f) { success, _ ->
-                                                                        if (success) Toast.makeText(context, "In transit to destination! Customer notified.", Toast.LENGTH_SHORT).show()
+                                                                    if (!isActionSubmitting) {
+                                                                        isActionSubmitting = true
+                                                                        com.esdispatch.util.SoundManager.playClick()
+                                                                        viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.TRANSIT, 0.60f) { success, _ ->
+                                                                            isActionSubmitting = false
+                                                                            if (success) Toast.makeText(context, "In transit to destination! Customer notified.", Toast.LENGTH_SHORT).show()
+                                                                        }
                                                                     }
                                                                 },
+                                                                enabled = !isActionSubmitting,
                                                                 modifier = Modifier.fillMaxWidth().height(48.dp).tactilePress(scaleDown = 0.96f),
                                                                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                                                                 shape = RoundedCornerShape(14.dp)
                                                             ) {
-                                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                                                                    Icon(Icons.Filled.DirectionsBike, null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                                    Text("START TRANSIT", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                if (isActionSubmitting) {
+                                                                    CircularProgressIndicator(strokeWidth = 2.5.dp, color = Obsidian, modifier = Modifier.size(20.dp))
+                                                                } else {
+                                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                                                        Icon(Icons.Filled.DirectionsBike, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                                        Text("START TRANSIT", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                    }
                                                                 }
                                                             }
                                                         }
                                                         ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
                                                             Button(
                                                                 onClick = {
-                                                                    viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED, 0.90f) { success, _ ->
-                                                                        if (success) Toast.makeText(context, "Marked as arrived! Recipient notified.", Toast.LENGTH_SHORT).show()
+                                                                    if (!isActionSubmitting) {
+                                                                        isActionSubmitting = true
+                                                                        com.esdispatch.util.SoundManager.playClick()
+                                                                        viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED, 0.90f) { success, _ ->
+                                                                            isActionSubmitting = false
+                                                                            if (success) Toast.makeText(context, "Marked as arrived! Recipient notified.", Toast.LENGTH_SHORT).show()
+                                                                        }
                                                                     }
                                                                 },
+                                                                enabled = !isActionSubmitting,
                                                                 modifier = Modifier.fillMaxWidth().height(48.dp).tactilePress(scaleDown = 0.96f),
                                                                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                                                                 shape = RoundedCornerShape(14.dp)
                                                             ) {
-                                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                                    Icon(Icons.Filled.LocationOn, null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                                    Text("MARK ARRIVED AT DESTINATION", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                if (isActionSubmitting) {
+                                                                    CircularProgressIndicator(strokeWidth = 2.5.dp, color = Obsidian, modifier = Modifier.size(20.dp))
+                                                                } else {
+                                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                                        Icon(Icons.Filled.LocationOn, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                                        Text("MARK ARRIVED AT DESTINATION", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                    }
                                                                 }
                                                             }
                                                         }

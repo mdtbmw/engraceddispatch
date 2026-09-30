@@ -1,39 +1,165 @@
 package com.esdispatch.ui.maps
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.esdispatch.ui.theme.*
+import kotlin.math.ceil
 
+/**
+ * Compact, unified navigation and route guidance HUD.
+ * Provides clear road instructions, ETA, distance, voice toggle, external maps link,
+ * and a dismiss/minimize button to give riders an unobstructed view of the map.
+ */
 @Composable
 fun RouteGuidanceCard(
     guidance: RouteGuidance,
     onRetry: () -> Unit,
-    onNavigate: (() -> Unit)?,
+    onNavigate: (() -> Unit)? = null,
+    isRider: Boolean = false,
+    isVoiceMuted: Boolean = false,
+    onToggleVoice: (() -> Unit)? = null,
+    onOpenExternalMaps: (() -> Unit)? = null,
+    onDismiss: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(16.dp), color = Charcoal, shadowElevation = 0.dp) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(guidance.title, color = AppTextColor, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text(guidance.detail, color = TextGray, fontSize = 12.sp)
-            guidance.etaSeconds?.let { seconds ->
-                val distance = guidance.distanceMeters?.let { " • %.1f km".format(it / 1000) }.orEmpty()
-                Text("About ${kotlin.math.ceil(seconds / 60).toInt().coerceAtLeast(1)} min$distance" +
-                    if (guidance.congested) " • Slow traffic" else "",
-                    color = AppTextColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = Obsidian,
+        border = BorderStroke(1.dp, Gold.copy(alpha = 0.85f)),
+        shadowElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Maneuver / Status Icon Badge
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(Gold),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isRider) Icons.Filled.Navigation else Icons.Filled.DirectionsBike,
+                    contentDescription = null,
+                    tint = Obsidian,
+                    modifier = Modifier.size(17.dp)
+                )
             }
-            if (guidance.canRetry || onNavigate != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (guidance.canRetry) TextButton(onClick = onRetry, enabled = !guidance.loading,
-                        modifier = Modifier.heightIn(min = 44.dp),
-                        colors = ButtonDefaults.textButtonColors(contentColor = AppTextColor)) { Text("Retry") }
-                    if (onNavigate != null) TextButton(onClick = onNavigate, modifier = Modifier.heightIn(min = 44.dp),
-                        colors = ButtonDefaults.textButtonColors(contentColor = AppTextColor)) { Text("Open navigation") }
+
+            // Direction / Road Guidance details
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Text(
+                    text = guidance.title.ifBlank { "Following route" },
+                    color = Gold,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (guidance.etaSeconds != null) {
+                    val minutes = ceil(guidance.etaSeconds / 60).toInt().coerceAtLeast(1)
+                    val distance = guidance.distanceMeters?.let { " • %.1f km".format(it / 1000) }.orEmpty()
+                    val traffic = if (guidance.congested) " • Slow traffic" else ""
+                    Text(
+                        text = "About $minutes min$distance$traffic",
+                        color = Color.White.copy(alpha = 0.90f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    Text(
+                        text = guidance.detail.ifBlank { "Live route updated" },
+                        color = TextGray,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // Action controls (Voice, External Maps, Retry, Close/Minimize)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                if (guidance.canRetry) {
+                    TextButton(
+                        onClick = onRetry,
+                        enabled = !guidance.loading,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text("Retry", fontSize = 10.sp, color = Gold, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (isRider && onToggleVoice != null) {
+                    IconButton(
+                        onClick = onToggleVoice,
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isVoiceMuted) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                            contentDescription = if (isVoiceMuted) "Unmute Voice" else "Mute Voice",
+                            tint = if (isVoiceMuted) Color.Gray else Gold,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                if (isRider && onOpenExternalMaps != null) {
+                    IconButton(
+                        onClick = onOpenExternalMaps,
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Map,
+                            contentDescription = "Open in Maps",
+                            tint = Gold,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                if (onDismiss != null) {
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Minimize Navigation",
+                            tint = Color.White.copy(alpha = 0.75f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }

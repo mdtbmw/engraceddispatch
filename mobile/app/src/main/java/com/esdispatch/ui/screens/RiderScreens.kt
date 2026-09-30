@@ -1641,7 +1641,7 @@ fun RiderParcelCard(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                         modifier = Modifier
                             .height(36.dp)
-                            .tactilePress(scaleDown = 0.94f) { onUpdateStatus() }
+                            .tactilePress(scaleDown = 0.94f)
                     ) {
                         val currentRiderUid = com.esdispatch.data.FirebaseManager.auth?.currentUser?.uid ?: ""
                         val isAssignedToCurrentRider = (parcel.riderId.isNotBlank() && parcel.riderId == currentRiderUid) ||
@@ -2177,6 +2177,7 @@ fun RiderUpdateBottomSheetContent(
             Button(
                 onClick = {
                     isSubmitting = true
+                    com.esdispatch.util.SoundManager.playClick()
                     viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.TRANSIT, 0.60f) { success, err ->
                         isSubmitting = false
                         if (success) {
@@ -2212,6 +2213,7 @@ fun RiderUpdateBottomSheetContent(
             Button(
                 onClick = {
                     isSubmitting = true
+                    com.esdispatch.util.SoundManager.playClick()
                     viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED, 0.90f) { success, err ->
                         isSubmitting = false
                         if (success) {

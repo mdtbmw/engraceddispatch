@@ -102,6 +102,7 @@ class LocationService : Service() {
     }
 
     private var lastUserLocationSync = 0L
+    private var lastDeliveryLocationSync = 0L
 
     private fun startLocationUpdates() {
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000L)
@@ -177,8 +178,28 @@ class LocationService : Service() {
                 Log.e(TAG, "Failed to update fleet_locations: ${e.message}")
             }
 
-        // 2. Throttled sync to users/{userId} (at most once every 5 minutes) for offline dispatch matching
         val now = System.currentTimeMillis()
+
+        // 2. Direct sync to deliveries/{activeParcelId} for real-time customer map tracking (throttled 4s)
+        val pId = activeParcelId
+        if (!pId.isNullOrBlank() && now - lastDeliveryLocationSync > 4000L) {
+            lastDeliveryLocationSync = now
+            val deliveryUpdate = hashMapOf<String, Any>(
+                "courierLatitude" to location.latitude,
+                "courierLongitude" to location.longitude,
+                "courierBearing" to location.bearing,
+                "courierSpeed" to location.speed,
+                "courierAccuracy" to location.accuracy,
+                "courierLastUpdated" to gpsTimestamp
+            )
+            db.collection("deliveries").document(pId)
+                .set(deliveryUpdate, com.google.firebase.firestore.SetOptions.merge())
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "Non-fatal delivery telemetry update fallback: ${e.message}")
+                }
+        }
+
+        // 3. Throttled sync to users/{userId} (at most once every 5 minutes) for offline dispatch matching
         if (now - lastUserLocationSync > 300000L) {
             lastUserLocationSync = now
             val userLocationUpdate = hashMapOf<String, Any>(
