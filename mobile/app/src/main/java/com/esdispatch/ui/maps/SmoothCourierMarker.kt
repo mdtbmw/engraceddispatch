@@ -459,4 +459,111 @@ object MapMarkerFactory {
             }
         }
     }
+
+    /**
+     * Polished, flat circular pin with Brand Gold border containing the customer's profile photo
+     * or monogram initials. Flat with zero drop shadow per user & branding guidelines.
+     */
+    fun getCustomerAvatarMarkerIcon(
+        context: Context? = null,
+        avatarBitmap: Bitmap? = null,
+        initials: String = "C"
+    ): BitmapDescriptor? {
+        return try {
+            if (context != null) {
+                try {
+                    com.google.android.gms.maps.MapsInitializer.initialize(context)
+                } catch (_: Throwable) {}
+            }
+            val density = context?.resources?.displayMetrics?.density ?: 2f
+            val size = (44 * density).toInt().coerceAtLeast(64)
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            val center = size / 2f
+            val radius = center - (2 * density)
+
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+            // Outer Brand Gold ring
+            paint.color = android.graphics.Color.parseColor("#FFB800")
+            paint.style = Paint.Style.FILL
+            canvas.drawCircle(center, center, radius, paint)
+
+            // Inner dark Obsidian disc
+            val innerRadius = radius - (3.5f * density)
+            paint.color = android.graphics.Color.parseColor("#131312")
+            canvas.drawCircle(center, center, innerRadius, paint)
+
+            if (avatarBitmap != null) {
+                val clipPath = android.graphics.Path().apply {
+                    addCircle(center, center, innerRadius, android.graphics.Path.Direction.CW)
+                }
+                canvas.save()
+                canvas.clipPath(clipPath)
+                val srcRect = android.graphics.Rect(0, 0, avatarBitmap.width, avatarBitmap.height)
+                val dstRect = android.graphics.RectF(center - innerRadius, center - innerRadius, center + innerRadius, center + innerRadius)
+                canvas.drawBitmap(avatarBitmap, srcRect, dstRect, paint)
+                canvas.restore()
+            } else {
+                paint.color = android.graphics.Color.parseColor("#FFB800")
+                paint.textSize = innerRadius * 0.95f
+                paint.textAlign = Paint.Align.CENTER
+                paint.isFakeBoldText = true
+                val cleanInitials = initials.trim().take(2).uppercase().ifBlank { "C" }
+                val textBounds = android.graphics.Rect()
+                paint.getTextBounds(cleanInitials, 0, cleanInitials.length, textBounds)
+                val textY = center + (textBounds.height() / 2f) - textBounds.bottom
+                canvas.drawText(cleanInitials, center, textY, paint)
+            }
+
+            BitmapDescriptorFactory.fromBitmap(bitmap)
+        } catch (_: Throwable) {
+            getDeliveryMarkerIcon(context)
+        }
+    }
+
+    /**
+     * Subtle Curb Stop / Safe Parking Spot beacon for Non-Vehicular Pedestrian Handover.
+     */
+    fun getCurbMarkerIcon(context: Context? = null): BitmapDescriptor? {
+        return try {
+            if (context != null) {
+                try {
+                    com.google.android.gms.maps.MapsInitializer.initialize(context)
+                } catch (_: Throwable) {}
+            }
+            val density = context?.resources?.displayMetrics?.density ?: 2f
+            val size = (32 * density).toInt().coerceAtLeast(44)
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            val center = size / 2f
+            val radius = center - (2 * density)
+
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+            // Outer Gold border
+            paint.color = android.graphics.Color.parseColor("#FFB800")
+            paint.style = Paint.Style.FILL
+            canvas.drawCircle(center, center, radius, paint)
+
+            // Inner dark Obsidian disc
+            val innerRadius = radius - (2.5f * density)
+            paint.color = android.graphics.Color.parseColor("#131312")
+            canvas.drawCircle(center, center, innerRadius, paint)
+
+            // "P" symbol for Safe Parking / Curb stop
+            paint.color = android.graphics.Color.parseColor("#FFB800")
+            paint.textSize = innerRadius * 1.15f
+            paint.textAlign = Paint.Align.CENTER
+            paint.isFakeBoldText = true
+            val textBounds = android.graphics.Rect()
+            paint.getTextBounds("P", 0, 1, textBounds)
+            val textY = center + (textBounds.height() / 2f) - textBounds.bottom
+            canvas.drawText("P", center, textY, paint)
+
+            BitmapDescriptorFactory.fromBitmap(bitmap)
+        } catch (_: Throwable) {
+            null
+        }
+    }
 }

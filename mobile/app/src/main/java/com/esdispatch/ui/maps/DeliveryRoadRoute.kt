@@ -30,12 +30,30 @@ internal data class RoadWaypoint(val position: LatLng?, val address: String) {
     } ?: JSONObject().put("address", address)
 }
 
+internal data class NonVehicularAccess(
+    val isNonVehicular: Boolean = false,
+    val curbPoint: LatLng? = null,
+    val walkingPoints: List<LatLng> = emptyList(),
+    val walkingDistanceMeters: Double = 0.0
+)
+
 internal data class RoadStep(val points: List<LatLng>, val instruction: String)
 internal data class RoadLeg(
-    val points: List<LatLng>, val steps: List<RoadStep>,
-    val meters: Double, val seconds: Double, val congested: Boolean
+    val points: List<LatLng>,
+    val steps: List<RoadStep>,
+    val meters: Double,
+    val seconds: Double,
+    val congested: Boolean,
+    val nonVehicularAccess: NonVehicularAccess = NonVehicularAccess()
 )
-internal data class RoadRoute(val legs: List<RoadLeg>)
+internal data class RoadRoute(
+    val legs: List<RoadLeg>,
+    val fullContinuousPoints: List<LatLng> = emptyList(),
+    val walkingSpur: List<LatLng> = emptyList(),
+    val curbPoint: LatLng? = null,
+    val isNonVehicular: Boolean = false,
+    val walkingDistanceMeters: Double = 0.0
+)
 
 data class RouteGuidance(
     val title: String = "Finding your route",
@@ -45,7 +63,9 @@ data class RouteGuidance(
     val loading: Boolean = false,
     val canRetry: Boolean = false,
     val congested: Boolean = false,
-    val destination: LatLng? = null
+    val destination: LatLng? = null,
+    val isNonVehicularCurb: Boolean = false,
+    val curbWalkingMeters: Double = 0.0
 )
 
 internal class RoadRouteState {
@@ -70,7 +90,11 @@ internal fun generateInstantCorridorRoute(
     } else {
         legs.add(createInstantLeg(origin, destination))
     }
-    return RoadRoute(legs)
+    val fullPoints = legs.flatMap { it.points }
+    return RoadRoute(
+        legs = legs,
+        fullContinuousPoints = fullPoints
+    )
 }
 
 private fun createInstantLeg(from: LatLng, to: LatLng): RoadLeg {
@@ -101,22 +125,23 @@ internal fun rememberRoadRoute(
     phase: String,
     courier: LatLng?,
     fresh: Boolean,
-    retry: Int
+    retry: Int,
+    initialOrigin: LatLng? = null
 ): RoadRouteState {
-    val state = remember(pickup, delivery, phase) { RoadRouteState() }
+    val state = remember(pickup, delivery, phase, initialOrigin) { RoadRouteState() }
     val latestCourier by rememberUpdatedState(courier)
     val latestFresh by rememberUpdatedState(fresh)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
     // Immediately generate instant corridor route on frame 0 so the line appears without delay
-    val initialOrigin = courier ?: pickup.position
+    val routeOrigin = initialOrigin ?: courier ?: pickup.position
     val initialDest = if (phase == "return") pickup.position else delivery.position
-    val initialIntermediate = if (phase == "pickup" && courier != null) pickup.position else null
-    if (state.route == null && initialOrigin != null && initialDest != null) {
-        state.route = generateInstantCorridorRoute(initialOrigin, initialDest, initialIntermediate)
+    val initialIntermediate = if (phase in listOf("pickup", "delivery") && pickup.position != null && routeOrigin != pickup.position) pickup.position else null
+    if (state.route == null && routeOrigin != null && initialDest != null) {
+        state.route = generateInstantCorridorRoute(routeOrigin, initialDest, initialIntermediate)
     }
 
-    LaunchedEffect(state, lifecycle, retry) {
+    LaunchedEffect(state, lifecycle, retry, initialOrigin) {
         val hasEndpoints = when (phase) {
             "delivery" -> delivery.available
             "return" -> pickup.available
@@ -131,7 +156,11 @@ internal fun rememberRoadRoute(
             while (isActive) {
                 val now = android.os.SystemClock.elapsedRealtime()
                 val position = latestCourier.takeIf { latestFresh && phase != "planned" }
-                val activePoints = state.route?.legs?.firstOrNull()?.points.orEmpty()
+                val activePoints = if (phase == "delivery" && (state.route?.legs?.size ?: 0) > 1) {
+                    state.route?.legs?.getOrNull(1)?.points.orEmpty()
+                } else {
+                    state.route?.legs?.firstOrNull()?.points.orEmpty()
+                }
                 val offRoute = position != null && activePoints.size > 1 &&
                     !PolyUtil.isLocationOnPath(position, activePoints, false, 65.0)
                 val moved = position != null && lastOrigin?.let {
@@ -149,10 +178,20 @@ internal fun rememberRoadRoute(
                     state.loading = true
                     // Keep existing route visible while updating directions to prevent visual flashing and route loss
                     try {
-                        val origin = position?.let { RoadWaypoint(it, "") } ?: pickup
+                        val originWaypoint = if (offRoute && position != null) {
+                            RoadWaypoint(position, "")
+                        } else if (initialOrigin != null && (phase == "pickup" || phase == "delivery")) {
+                            RoadWaypoint(initialOrigin, "")
+                        } else if (position != null) {
+                            RoadWaypoint(position, "")
+                        } else {
+                            pickup
+                        }
                         val target = if (phase == "return") pickup else delivery
-                        val intermediate = pickup.takeIf { phase == "pickup" && position != null }
-                        val result = fetchRoadRoute(context, origin, target, intermediate)
+                        val hasIntermediate = (phase == "pickup" || (phase == "delivery" && initialOrigin != null && !offRoute)) &&
+                            pickup.position != null && originWaypoint.position != pickup.position
+                        val intermediate = if (hasIntermediate) pickup else null
+                        val result = fetchRoadRoute(context, originWaypoint, target, intermediate)
                         ensureActive()
                         state.route = result
                         lastSuccess = android.os.SystemClock.elapsedRealtime()
@@ -202,19 +241,98 @@ private suspend fun fetchRoadRoute(
         check(connection.responseCode == 200)
         val response = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
         val legs = response.getJSONArray("routes").getJSONObject(0).getJSONArray("legs")
-        RoadRoute(List(legs.length()) { index ->
+
+        val processedLegs = List(legs.length()) { index ->
             val leg = legs.getJSONObject(index)
-            val points = PolyUtil.decode(leg.getJSONObject("polyline").getString("encodedPolyline"))
-            require(points.size >= 2)
+            val rawPoints = PolyUtil.decode(leg.getJSONObject("polyline").getString("encodedPolyline")).toMutableList()
+            require(rawPoints.size >= 2)
             val steps = leg.optJSONArray("steps") ?: JSONArray()
             val intervals = leg.optJSONObject("travelAdvisory")?.optJSONArray("speedReadingIntervals") ?: JSONArray()
-            RoadLeg(points, List(steps.length()) { stepIndex ->
-                val step = steps.getJSONObject(stepIndex)
-                RoadStep(PolyUtil.decode(step.optJSONObject("polyline")?.optString("encodedPolyline").orEmpty()),
-                    step.optJSONObject("navigationInstruction")?.optString("instructions").orEmpty())
-            }, leg.getDouble("distanceMeters"), leg.getString("duration").removeSuffix("s").toDouble(),
-                (0 until intervals.length()).any { intervals.getJSONObject(it).optString("speed") in listOf("SLOW", "TRAFFIC_JAM") })
-        })
+
+            // 1. Connect origin waypoint directly into the start of the first leg
+            if (index == 0 && origin.position != null) {
+                val startDist = SphericalUtil.computeDistanceBetween(origin.position, rawPoints.first())
+                if (startDist > 1.0) {
+                    rawPoints.add(0, origin.position)
+                }
+            }
+
+            // 2. Connect intermediate waypoint (Pickup) seamlessly between leg 0 and leg 1
+            if (intermediate?.position != null) {
+                if (index == 0) {
+                    val endDist = SphericalUtil.computeDistanceBetween(rawPoints.last(), intermediate.position)
+                    if (endDist > 1.0) {
+                        rawPoints.add(intermediate.position)
+                    }
+                } else if (index == 1) {
+                    val startDist = SphericalUtil.computeDistanceBetween(intermediate.position, rawPoints.first())
+                    if (startDist > 1.0) {
+                        rawPoints.add(0, intermediate.position)
+                    }
+                }
+            }
+
+            // 3. Connect final destination and detect Non-Vehicular Pedestrian Access
+            var nonVehicular = NonVehicularAccess()
+            if (index == legs.length() - 1 && destination.position != null) {
+                val roadCurb = rawPoints.last()
+                val curbDistance = SphericalUtil.computeDistanceBetween(roadCurb, destination.position)
+                // Conservative, high-precision threshold: > 25 meters.
+                // Ordinary roadside storefronts, houses, and driveways are <= 25m.
+                // Genuinely pedestrian-only alleys, courtyards, and deep compounds are > 25m.
+                if (curbDistance > 25.0) {
+                    nonVehicular = NonVehicularAccess(
+                        isNonVehicular = true,
+                        curbPoint = roadCurb,
+                        walkingPoints = listOf(roadCurb, destination.position),
+                        walkingDistanceMeters = curbDistance
+                    )
+                } else if (curbDistance > 1.0) {
+                    // Close street frontage: connect motorized route line directly to door
+                    rawPoints.add(destination.position)
+                }
+            }
+
+            RoadLeg(
+                points = rawPoints,
+                steps = List(steps.length()) { stepIndex ->
+                    val step = steps.getJSONObject(stepIndex)
+                    RoadStep(
+                        PolyUtil.decode(step.optJSONObject("polyline")?.optString("encodedPolyline").orEmpty()),
+                        step.optJSONObject("navigationInstruction")?.optString("instructions").orEmpty()
+                    )
+                },
+                meters = leg.getDouble("distanceMeters"),
+                seconds = leg.getString("duration").removeSuffix("s").toDouble(),
+                congested = (0 until intervals.length()).any {
+                    intervals.getJSONObject(it).optString("speed") in listOf("SLOW", "TRAFFIC_JAM")
+                },
+                nonVehicularAccess = nonVehicular
+            )
+        }
+
+        val allPoints = mutableListOf<LatLng>()
+        for (l in processedLegs) {
+            if (allPoints.isEmpty()) {
+                allPoints.addAll(l.points)
+            } else {
+                if (allPoints.last() == l.points.first()) {
+                    allPoints.addAll(l.points.drop(1))
+                } else {
+                    allPoints.addAll(l.points)
+                }
+            }
+        }
+
+        val lastNonVehicular = processedLegs.lastOrNull()?.nonVehicularAccess ?: NonVehicularAccess()
+        RoadRoute(
+            legs = processedLegs,
+            fullContinuousPoints = allPoints,
+            walkingSpur = lastNonVehicular.walkingPoints,
+            curbPoint = lastNonVehicular.curbPoint,
+            isNonVehicular = lastNonVehicular.isNonVehicular,
+            walkingDistanceMeters = lastNonVehicular.walkingDistanceMeters
+        )
     } finally {
         connection.disconnect()
     }

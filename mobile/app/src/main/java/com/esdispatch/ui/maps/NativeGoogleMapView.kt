@@ -16,6 +16,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
+import coil.imageLoader
 import com.esdispatch.data.ParcelStatus
 import com.esdispatch.ui.theme.Gold
 import com.esdispatch.ui.theme.Obsidian
@@ -44,6 +46,10 @@ fun NativeGoogleMapView(
     hasNoBooking: Boolean = false,
     userCoords: Pair<Double, Double>? = null,
     isRider: Boolean = false,
+    initialRiderLat: Double? = null,
+    initialRiderLng: Double? = null,
+    customerAvatarUrl: String = "",
+    customerName: String = "",
     parcelStatus: ParcelStatus = ParcelStatus.PENDING,
     parcelPickupLat: Double? = null,
     parcelPickupLng: Double? = null,
@@ -86,6 +92,8 @@ fun NativeGoogleMapView(
     val courier = validMapPosition(courierLatitude, courierLongitude)
         .takeIf { phase in listOf("pickup", "delivery", "return") }
     val user = userCoords?.let { validMapPosition(it.first, it.second) }
+    val initialRiderPos = validMapPosition(initialRiderLat, initialRiderLng)
+
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(courierLastUpdated) {
         while (isActive) {
@@ -94,9 +102,12 @@ fun NativeGoogleMapView(
         }
     }
     val fresh = courier != null && courierLastUpdated > 0 && now - courierLastUpdated in -5000L..60000L
-    val road = rememberRoadRoute(context, pickup, delivery, phase, courier, fresh, routeRetry)
-    val activeLeg = road.route?.legs?.firstOrNull()
-    val nextLeg = road.route?.legs?.getOrNull(1)
+    val road = rememberRoadRoute(context, pickup, delivery, phase, courier, fresh, routeRetry, initialRiderPos)
+    val leg0 = road.route?.legs?.firstOrNull()
+    val leg1 = road.route?.legs?.getOrNull(1)
+    val activeLeg = if (phase == "delivery" && leg1 != null) leg1 else leg0
+    val nextLeg = if (phase == "pickup") leg1 else null
+
     val pickupPosition = pickup.position ?: when (phase) {
         "pickup" -> activeLeg?.points?.lastOrNull()
         "planned" -> activeLeg?.points?.firstOrNull()
@@ -149,8 +160,20 @@ fun NativeGoogleMapView(
             congested = activeLeg.congested
         )
     }.copy(destination = if (targetName == "pickup") pickupPosition else deliveryPosition)
+
+    val isCurbDetected = road.route?.isNonVehicular == true
+    val walkingDist = road.route?.walkingDistanceMeters ?: 0.0
+    val isNearCurb = isCurbDetected && (activeLeg?.meters ?: 0.0) <= 150.0 && phase == "delivery"
+    val finalGuidance = if (isNearCurb) {
+        guidance.copy(
+            title = if (isRider) "Safe Curb Handover" else "Arrival at Curb",
+            detail = if (isRider) "Road is pedestrian-only ahead. Meet at curb parking (~${walkingDist.toInt()}m walk)." else "Courier arriving at curb due to pedestrian path.",
+            isNonVehicularCurb = true,
+            curbWalkingMeters = walkingDist
+        )
+    } else guidance
     val latestGuidance by rememberUpdatedState(onGuidance)
-    LaunchedEffect(guidance) { latestGuidance(guidance) }
+    LaunchedEffect(finalGuidance) { latestGuidance(finalGuidance) }
 
     val defaultCenter = remember { LatLng(6.3350, 5.6037) }
     val camera = rememberCameraPositionState {
@@ -238,6 +261,37 @@ fun NativeGoogleMapView(
     var deliveryIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
     var userIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
     val userState = remember { MarkerState() }
+
+    var customerAvatarBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(customerAvatarUrl) {
+        if (customerAvatarUrl.isNotBlank()) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val request = coil.request.ImageRequest.Builder(context)
+                        .data(customerAvatarUrl)
+                        .allowHardware(false)
+                        .size(128, 128)
+                        .build()
+                    val result = (context.imageLoader.execute(request) as? coil.request.SuccessResult)?.drawable?.let {
+                        it.toBitmap()
+                    }
+                    if (result != null) {
+                        customerAvatarBitmap = result
+                    }
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+    var customerAvatarIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
+    var curbIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
+    val customerInitials = remember(customerName) {
+        customerName.split(" ").mapNotNull { it.firstOrNull() }.joinToString("").take(2).uppercase().ifBlank { "C" }
+    }
+    LaunchedEffect(customerAvatarBitmap, customerInitials) {
+        customerAvatarIcon = MapMarkerFactory.getCustomerAvatarMarkerIcon(context, customerAvatarBitmap, customerInitials)
+        curbIcon = MapMarkerFactory.getCurbMarkerIcon(context)
+    }
+
     LaunchedEffect(Unit) {
         MapsInitializer.initialize(context)
         courierIcon = MapMarkerFactory.getCourierMarkerIcon(context)
@@ -270,8 +324,19 @@ fun NativeGoogleMapView(
             if (!hasNoBooking) {
                 pickupPosition?.let { Marker(state = pickupState, title = "Pickup", snippet = pickupAddress,
                     icon = pickupIcon, anchor = Offset(0.5f, 0.5f), zIndex = 3f) }
-                deliveryPosition?.let { Marker(state = deliveryState, title = "Delivery", snippet = deliveryAddress,
-                    icon = deliveryIcon, anchor = Offset(0.5f, 0.5f), zIndex = 3f) }
+                deliveryPosition?.let { Marker(state = deliveryState, title = if (customerName.isNotBlank()) customerName else "Delivery", snippet = deliveryAddress,
+                    icon = customerAvatarIcon ?: deliveryIcon, anchor = Offset(0.5f, 0.5f), zIndex = 3f) }
+                val currentRoute = road.route
+                if (currentRoute?.isNonVehicular == true && currentRoute.curbPoint != null) {
+                    Marker(
+                        state = rememberMarkerState(position = currentRoute.curbPoint),
+                        title = "Safe Curb Handover",
+                        snippet = "Curb parking • ~${currentRoute.walkingDistanceMeters.toInt()}m walk to door",
+                        icon = curbIcon,
+                        anchor = Offset(0.5f, 0.5f),
+                        zIndex = 3.5f
+                    )
+                }
             }
             if (courier != null && smooth.currentPosition != null) {
                 if (fresh) Circle(center = courierState.position, radius = 12.0,
@@ -281,7 +346,8 @@ fun NativeGoogleMapView(
                     icon = courierIcon, rotation = smooth.currentBearing, flat = true,
                     anchor = Offset(0.5f, 0.5f), zIndex = 5f, alpha = if (fresh) 1f else 0.6f)
             }
-            if (user != null) {
+            // User location indicator only displayed during address browsing / empty map state
+            if (hasNoBooking && user != null) {
                 Circle(
                     center = user,
                     radius = 24.0,
@@ -298,49 +364,104 @@ fun NativeGoogleMapView(
                     zIndex = 4f
                 )
             }
-            val geometry = activeLeg?.points ?: routePoints
-            if (geometry.size >= 2 && !hasNoBooking) {
-                nextLeg?.let { Polyline(points = it.points, color = if (isDarkTheme)
-                    androidx.compose.ui.graphics.Color.LightGray else androidx.compose.ui.graphics.Color.DarkGray,
-                    width = 6f, pattern = listOf(Dash(18f), Gap(10f)), zIndex = 0f) }
-
-                // Split active route into traveled (greyed-out) and remaining (crisp Gold)
+            if (!hasNoBooking) {
                 val courierPos = smooth.currentPosition ?: courier
-                val split = splitRouteAtCourier(geometry, courierPos)
+                val isNonVehicular = road.route?.isNonVehicular == true
+                val walkingSpur = road.route?.walkingSpur.orEmpty()
 
-                // Traveled section (greyed-out trail showing how far the rider has traveled)
-                if (split.traveledPoints.size >= 2) {
+                if (leg0 != null && leg1 != null) {
+                    // Continuous 2-leg route: R0 -> Pickup -> Delivery
+                    if (phase == "pickup") {
+                        // Rider is on Leg 0 (heading to pickup)
+                        val split0 = splitRouteAtCourier(leg0.points, courierPos)
+                        // Traveled behind rider on Leg 0 (Greyed out)
+                        if (split0.traveledPoints.size >= 2) {
+                            Polyline(
+                                points = split0.traveledPoints,
+                                color = androidx.compose.ui.graphics.Color(0xFF71717A).copy(alpha = 0.55f),
+                                width = 6.5f,
+                                jointType = JointType.ROUND,
+                                startCap = RoundCap(),
+                                endCap = RoundCap(),
+                                zIndex = 1f
+                            )
+                        }
+                        // Remaining on Leg 0 (Vibrant Gold with Obsidian casing)
+                        val rem0 = if (split0.remainingPoints.size >= 2) split0.remainingPoints else leg0.points
+                        Polyline(points = rem0, color = Obsidian.copy(alpha = 0.90f), width = 13.5f, jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
+                        Polyline(points = rem0, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 8f, jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 3f)
+
+                        // Leg 1 ahead: Pickup -> Delivery (Connecting ahead to destination)
+                        Polyline(points = leg1.points, color = Obsidian.copy(alpha = 0.90f), width = 13.5f, jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
+                        Polyline(points = leg1.points, color = Gold.copy(alpha = if (stale) 0.5f else 0.90f), width = 8f, jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 3f)
+                    } else {
+                        // Phase is delivery (or return):
+                        // Leg 0 is fully completed: render entire Leg 0 in Greyed-out trail
+                        if (leg0.points.size >= 2) {
+                            Polyline(
+                                points = leg0.points,
+                                color = androidx.compose.ui.graphics.Color(0xFF71717A).copy(alpha = 0.55f),
+                                width = 6.5f,
+                                jointType = JointType.ROUND,
+                                startCap = RoundCap(),
+                                endCap = RoundCap(),
+                                zIndex = 1f
+                            )
+                        }
+                        // Rider is on Leg 1:
+                        val split1 = splitRouteAtCourier(leg1.points, courierPos)
+                        // Traveled behind rider on Leg 1 (Greyed out)
+                        if (split1.traveledPoints.size >= 2) {
+                            Polyline(
+                                points = split1.traveledPoints,
+                                color = androidx.compose.ui.graphics.Color(0xFF71717A).copy(alpha = 0.55f),
+                                width = 6.5f,
+                                jointType = JointType.ROUND,
+                                startCap = RoundCap(),
+                                endCap = RoundCap(),
+                                zIndex = 1f
+                            )
+                        }
+                        // Remaining on Leg 1 (Vibrant Gold with Obsidian casing)
+                        val rem1 = if (split1.remainingPoints.size >= 2) split1.remainingPoints else leg1.points
+                        Polyline(points = rem1, color = Obsidian.copy(alpha = 0.90f), width = 13.5f, jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
+                        Polyline(points = rem1, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 8f, jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 3f)
+                    }
+                } else {
+                    // Single leg (e.g. planned phase before rider accepts, or single leg corridor)
+                    val geometry = activeLeg?.points ?: routePoints
+                    if (geometry.size >= 2) {
+                        val split = splitRouteAtCourier(geometry, courierPos)
+                        if (split.traveledPoints.size >= 2) {
+                            Polyline(
+                                points = split.traveledPoints,
+                                color = androidx.compose.ui.graphics.Color(0xFF71717A).copy(alpha = 0.55f),
+                                width = 6.5f,
+                                jointType = JointType.ROUND,
+                                startCap = RoundCap(),
+                                endCap = RoundCap(),
+                                zIndex = 1f
+                            )
+                        }
+                        val remaining = if (split.remainingPoints.size >= 2) split.remainingPoints else geometry
+                        Polyline(points = remaining, color = Obsidian.copy(alpha = 0.90f), width = 13.5f, jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 2f)
+                        Polyline(points = remaining, color = Gold.copy(alpha = if (stale) 0.5f else 1f), width = 8f, jointType = JointType.ROUND, startCap = RoundCap(), endCap = RoundCap(), zIndex = 3f)
+                    }
+                }
+
+                // Walking spur for non-vehicular access from road curb directly to customer door
+                if (isNonVehicular && walkingSpur.size >= 2) {
                     Polyline(
-                        points = split.traveledPoints,
-                        color = androidx.compose.ui.graphics.Color(0xFF71717A).copy(alpha = 0.55f),
-                        width = 6.5f,
+                        points = walkingSpur,
+                        color = Gold,
+                        width = 6f,
+                        pattern = listOf(Dash(12f), Gap(8f)),
                         jointType = JointType.ROUND,
                         startCap = RoundCap(),
                         endCap = RoundCap(),
-                        zIndex = 1f
+                        zIndex = 3.5f
                     )
                 }
-
-                // Remaining section (crisp brand Gold + Obsidian casing connected directly to rider)
-                val remaining = if (split.remainingPoints.size >= 2) split.remainingPoints else geometry
-                Polyline(
-                    points = remaining,
-                    color = Obsidian.copy(alpha = 0.90f),
-                    width = 13.5f,
-                    jointType = JointType.ROUND,
-                    startCap = RoundCap(),
-                    endCap = RoundCap(),
-                    zIndex = 2f
-                )
-                Polyline(
-                    points = remaining,
-                    color = Gold.copy(alpha = if (stale) 0.5f else 1f),
-                    width = 8f,
-                    jointType = JointType.ROUND,
-                    startCap = RoundCap(),
-                    endCap = RoundCap(),
-                    zIndex = 3f
-                )
             }
         }
     }

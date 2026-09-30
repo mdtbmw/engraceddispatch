@@ -34,6 +34,8 @@ data class Parcel(
     val userId: String = "",
     val courierLatitude: Double? = null,
     val courierLongitude: Double? = null,
+    val initialCourierLat: Double? = null,
+    val initialCourierLng: Double? = null,
     val courierBearing: Float = 0f,
     val courierSpeed: Float = 0f,
     val courierAccuracy: Float = 0f,

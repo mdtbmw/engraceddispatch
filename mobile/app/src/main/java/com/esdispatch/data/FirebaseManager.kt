@@ -1043,6 +1043,8 @@ object FirebaseManager {
         val dateString = doc.getString("dateString") ?: "Today"
         val courierLatitude = doc.getSafeDoubleNullable("courierLatitude")
         val courierLongitude = doc.getSafeDoubleNullable("courierLongitude")
+        val initialCourierLat = doc.getSafeDoubleNullable("initialCourierLat")
+        val initialCourierLng = doc.getSafeDoubleNullable("initialCourierLng")
         val courierBearing = doc.getSafeDouble("courierBearing", 0.0).toFloat()
         val courierSpeed = doc.getSafeDouble("courierSpeed", 0.0).toFloat()
         val courierAccuracy = doc.getSafeDouble("courierAccuracy", 0.0).toFloat()
@@ -1110,6 +1112,8 @@ object FirebaseManager {
             userId = userId,
             courierLatitude = courierLatitude,
             courierLongitude = courierLongitude,
+            initialCourierLat = initialCourierLat,
+            initialCourierLng = initialCourierLng,
             courierBearing = courierBearing,
             courierSpeed = courierSpeed,
             courierAccuracy = courierAccuracy,
@@ -1359,6 +1363,8 @@ object FirebaseManager {
                 val dateString = snapshot.getString("dateString") ?: "Today"
                 val courierLatitude = snapshot.getSafeDoubleNullable("courierLatitude")
                 val courierLongitude = snapshot.getSafeDoubleNullable("courierLongitude")
+                val initialCourierLat = snapshot.getSafeDoubleNullable("initialCourierLat")
+                val initialCourierLng = snapshot.getSafeDoubleNullable("initialCourierLng")
                 val userId = snapshot.getString("userId") ?: ""
                 val riderId = snapshot.getString("riderId") ?: ""
                 val riderBikeNumber = snapshot.getString("riderBikeNumber") ?: ""
@@ -1394,6 +1400,8 @@ object FirebaseManager {
                     userId = userId,
                     courierLatitude = courierLatitude,
                     courierLongitude = courierLongitude,
+                    initialCourierLat = initialCourierLat,
+                    initialCourierLng = initialCourierLng,
                     riderId = riderId,
                     riderBikeNumber = riderBikeNumber,
                     otpCode = otpCode,
@@ -1544,6 +1552,8 @@ object FirebaseManager {
                             val dateString = doc.getString("dateString") ?: "Today"
                             val courierLatitude = doc.getSafeDoubleNullable("courierLatitude")
                             val courierLongitude = doc.getSafeDoubleNullable("courierLongitude")
+                            val initialCourierLat = doc.getSafeDoubleNullable("initialCourierLat")
+                            val initialCourierLng = doc.getSafeDoubleNullable("initialCourierLng")
                             val riderId = doc.getString("riderId") ?: ""
                             val riderBikeNumber = doc.getString("riderBikeNumber") ?: ""
                             val otpCode = doc.getString("otpCode") ?: ""
@@ -1578,6 +1588,8 @@ object FirebaseManager {
                                 userId = userId,
                                 courierLatitude = courierLatitude,
                                 courierLongitude = courierLongitude,
+                                initialCourierLat = initialCourierLat,
+                                initialCourierLng = initialCourierLng,
                                 riderId = riderId,
                                 riderBikeNumber = riderBikeNumber,
                                 otpCode = otpCode,
@@ -2005,7 +2017,17 @@ object FirebaseManager {
     /**
      * Accept a pending parcel and assign to rider in Firestore atomically with reservation checks.
      */
-    fun acceptParcelByRider(parcelId: String, riderId: String, riderName: String, riderPhone: String, riderBikeNumber: String, requireOnline: Boolean = true, onComplete: (Boolean, String?) -> Unit) {
+    fun acceptParcelByRider(
+        parcelId: String,
+        riderId: String,
+        riderName: String,
+        riderPhone: String,
+        riderBikeNumber: String,
+        requireOnline: Boolean = true,
+        riderLat: Double? = null,
+        riderLng: Double? = null,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
         val db = firestore
         if (db == null) {
             onComplete(false, "Firestore not available")
@@ -2045,6 +2067,12 @@ object FirebaseManager {
             transaction.update(docRef, "progress", 0.15f)
             transaction.update(docRef, "acceptedAt", now)
             transaction.update(docRef, "lastUpdated", now)
+            if (riderLat != null && riderLng != null) {
+                transaction.update(docRef, "initialCourierLat", riderLat)
+                transaction.update(docRef, "initialCourierLng", riderLng)
+                transaction.update(docRef, "courierLatitude", riderLat)
+                transaction.update(docRef, "courierLongitude", riderLng)
+            }
             
             // Log to timeline subcollection
             val timelineRef = docRef.collection("timeline").document()
@@ -2063,17 +2091,22 @@ object FirebaseManager {
         }.addOnSuccessListener { parcelUserId ->
             if (parcelUserId.isNotEmpty()) {
                 val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
-                userDocRef.update(
-                    mapOf(
-                        "status" to "ASSIGNED",
-                        "riderId" to riderId,
-                        "courierName" to riderName,
-                        "courierPhone" to riderPhone,
-                        "riderBikeNumber" to riderBikeNumber,
-                        "progress" to 0.15f,
-                        "lastUpdated" to System.currentTimeMillis()
-                    )
-                ).addOnFailureListener { e ->
+                val updates = mutableMapOf<String, Any>(
+                    "status" to "ASSIGNED",
+                    "riderId" to riderId,
+                    "courierName" to riderName,
+                    "courierPhone" to riderPhone,
+                    "riderBikeNumber" to riderBikeNumber,
+                    "progress" to 0.15f,
+                    "lastUpdated" to System.currentTimeMillis()
+                )
+                if (riderLat != null && riderLng != null) {
+                    updates["initialCourierLat"] = riderLat
+                    updates["initialCourierLng"] = riderLng
+                    updates["courierLatitude"] = riderLat
+                    updates["courierLongitude"] = riderLng
+                }
+                userDocRef.update(updates).addOnFailureListener { e ->
                     Log.e(TAG, "Failed to update subcollection: ${e.message}")
                 }
                 sendNotificationToUser(

@@ -1269,6 +1269,8 @@ class DeliveryViewModel : WalletViewModel() {
         val riderName = _userName.value
         val riderPhone = _userPhone.value
         val riderBike = _bikeNumber.value
+        val currentLat = _riderCurrentCoords.value?.first ?: _currentUserDeviceLocation.value?.first
+        val currentLng = _riderCurrentCoords.value?.second ?: _currentUserDeviceLocation.value?.second
 
         com.esdispatch.data.FirebaseManager.acceptParcelByRider(
             parcelId = parcelId,
@@ -1276,6 +1278,8 @@ class DeliveryViewModel : WalletViewModel() {
             riderName = riderName,
             riderPhone = riderPhone,
             riderBikeNumber = riderBike,
+            riderLat = currentLat,
+            riderLng = currentLng,
             onComplete = { success, err ->
                 if (success) {
                     val p = _parcels.value.find { it.id == parcelId } ?: _riderAssignments.value.find { it.id == parcelId }

@@ -60,7 +60,11 @@ fun RouteGuidanceCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (isRider) Icons.Filled.Navigation else Icons.Filled.DirectionsBike,
+                    imageVector = when {
+                        guidance.isNonVehicularCurb -> Icons.Filled.DirectionsWalk
+                        isRider -> Icons.Filled.Navigation
+                        else -> Icons.Filled.DirectionsBike
+                    },
                     contentDescription = null,
                     tint = Obsidian,
                     modifier = Modifier.size(17.dp)
@@ -81,7 +85,16 @@ fun RouteGuidanceCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                if (guidance.etaSeconds != null) {
+                if (guidance.isNonVehicularCurb) {
+                    Text(
+                        text = guidance.detail.ifBlank { "Park at curb • Walk into door (~${guidance.curbWalkingMeters.toInt()}m)" },
+                        color = Color.White.copy(alpha = 0.95f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else if (guidance.etaSeconds != null) {
                     val minutes = ceil(guidance.etaSeconds / 60).toInt().coerceAtLeast(1)
                     val distance = guidance.distanceMeters?.let { " • %.1f km".format(it / 1000) }.orEmpty()
                     val traffic = if (guidance.congested) " • Slow traffic" else ""
