@@ -223,7 +223,9 @@ fun BatchBookingScreen(
 
     LaunchedEffect(pickup, batchStops, sName, sPhone) {
         val firstStop = batchStops.firstOrNull()
-        viewModel.updateDraftPickup(pickup)
+        if (pickup.isNotBlank() && pickup != draft.pickupAddress) {
+            viewModel.updateDraftPickup(pickup, draft.pickupLat, draft.pickupLng)
+        }
         viewModel.updateDraftDelivery(firstStop?.destinationAddress ?: "", firstStop?.lat, firstStop?.lng)
         viewModel.updateDraftSenderInfo(sName, sPhone)
         viewModel.updateDraftReceiverInfo(firstStop?.recipientName ?: "", firstStop?.recipientPhone ?: "")

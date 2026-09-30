@@ -230,8 +230,12 @@ fun EconomyBookingScreen(
     }
 
     LaunchedEffect(pickup, delivery) {
-        viewModel.updateDraftPickup(pickup)
-        viewModel.updateDraftDelivery(delivery)
+        if (pickup.isNotBlank() && pickup != draft.pickupAddress) {
+            viewModel.updateDraftPickup(pickup)
+        }
+        if (delivery.isNotBlank() && delivery != draft.deliveryAddress) {
+            viewModel.updateDraftDelivery(delivery)
+        }
     }
 
     // Address autocomplete via AddressDatabase (instant) + Mapbox Places (async refinement)
@@ -1279,8 +1283,8 @@ fun EconomyBookingScreen(
                 walletBalance = viewModel.walletBalance.collectAsState().value,
                 onConfirmWalletPayment = {
                     showCheckoutSheet = false
-                    viewModel.updateDraftPickup(pickup)
-                    viewModel.updateDraftDelivery(delivery)
+                    viewModel.updateDraftPickup(pickup, draft.pickupLat, draft.pickupLng)
+                    viewModel.updateDraftDelivery(delivery, draft.deliveryLat, draft.deliveryLng)
                     viewModel.updateDraftSenderInfo(sName, sPhone)
                     viewModel.updateDraftReceiverInfo(rName, rPhone)
                     viewModel.updateDraftSpecs(
@@ -1315,8 +1319,8 @@ fun EconomyBookingScreen(
                 onPaymentComplete = { reference ->
                     showPaystackSheet = false
                     viewModel.topUpWallet(pendingAmount, reference)
-                    viewModel.updateDraftPickup(pickup)
-                    viewModel.updateDraftDelivery(delivery)
+                    viewModel.updateDraftPickup(pickup, draft.pickupLat, draft.pickupLng)
+                    viewModel.updateDraftDelivery(delivery, draft.deliveryLat, draft.deliveryLng)
                     viewModel.updateDraftSenderInfo(sName, sPhone)
                     viewModel.updateDraftReceiverInfo(rName, rPhone)
                     viewModel.finalizeDraftPrice("Economy", quotePrice)

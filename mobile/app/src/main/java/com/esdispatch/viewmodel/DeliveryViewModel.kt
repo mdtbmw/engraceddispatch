@@ -200,6 +200,7 @@ class DeliveryViewModel : WalletViewModel() {
             }
         }
         _totalEarned.value = prefs.getString("total_earned", "0.0")?.toDoubleOrNull() ?: 0.0
+        _totalTipsEarned.value = prefs.getString("total_tips_earned", "0.0")?.toDoubleOrNull() ?: 0.0
         _deliveryCount.value = prefs.getInt("delivery_count", 0)
         _loyaltyPoints.value = prefs.getInt("loyalty_points", 0)
         _promoSavings.value = prefs.getString("promo_savings", "0.0")?.toDoubleOrNull() ?: 0.0
@@ -1246,9 +1247,12 @@ class DeliveryViewModel : WalletViewModel() {
                 }
                 previousAssignedIds = currentAssignedIds
                 _riderAssignments.value = list
-                val totalTips = list.filter { it.status == com.esdispatch.data.ParcelStatus.DELIVERED }
+                val deliveredTips = list.filter { it.status == com.esdispatch.data.ParcelStatus.DELIVERED }
                     .sumOf { it.tipAmount }
-                _totalTipsEarned.value = totalTips
+                if (deliveredTips > _totalTipsEarned.value) {
+                    _totalTipsEarned.value = deliveredTips
+                    savePref("total_tips_earned", deliveredTips)
+                }
             }
         }
     }
@@ -3242,6 +3246,12 @@ class DeliveryViewModel : WalletViewModel() {
                                         _totalEarned.value = earned
                                         savePref("total_earned", earned)
                                     }
+
+                                    val tips = (data["totalTipsEarned"] as? Number)?.toDouble() ?: (data["tipsEarned"] as? Number)?.toDouble()
+                                    if (tips != null) {
+                                        _totalTipsEarned.value = tips
+                                        savePref("total_tips_earned", tips)
+                                    }
                                     
                                     val rawPin = data["pin"] as? String ?: data["userPin"] as? String
                                     if (!rawPin.isNullOrEmpty()) {
@@ -5119,6 +5129,7 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun updateDraftPickup(address: String, lat: Double? = null, lng: Double? = null, placeId: String? = null) {
+        if (address.isBlank()) return
         _parcelDraft.update { draft ->
             val provided = if (lat != null && lng != null && lat != 0.0 && lng != 0.0 && isWithinBeninCityBounds(lat, lng)) {
                 Pair(lat, lng)
@@ -5126,11 +5137,14 @@ class DeliveryViewModel : WalletViewModel() {
                 null
             }
             val addressChanged = !draft.pickupAddress.equals(address, ignoreCase = true)
-            val resolved = provided ?: if (addressChanged) resolveAddressCoords(address) else null
+            val staticResolved = if (addressChanged) resolveAddressCoords(address) else null
+            val effectiveLat = provided?.first ?: staticResolved?.first ?: draft.pickupLat
+            val effectiveLng = provided?.second ?: staticResolved?.second ?: draft.pickupLng
+
             draft.copy(
                 pickupAddress = address,
-                pickupLat = resolved?.first ?: draft.pickupLat.takeIf { !addressChanged },
-                pickupLng = resolved?.second ?: draft.pickupLng.takeIf { !addressChanged }
+                pickupLat = effectiveLat,
+                pickupLng = effectiveLng
             )
         }
 
@@ -5153,6 +5167,7 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun updateDraftDelivery(address: String, lat: Double? = null, lng: Double? = null, placeId: String? = null) {
+        if (address.isBlank()) return
         _parcelDraft.update { draft ->
             val provided = if (lat != null && lng != null && lat != 0.0 && lng != 0.0 && isWithinBeninCityBounds(lat, lng)) {
                 Pair(lat, lng)
@@ -5160,11 +5175,14 @@ class DeliveryViewModel : WalletViewModel() {
                 null
             }
             val addressChanged = !draft.deliveryAddress.equals(address, ignoreCase = true)
-            val resolved = provided ?: if (addressChanged) resolveAddressCoords(address) else null
+            val staticResolved = if (addressChanged) resolveAddressCoords(address) else null
+            val effectiveLat = provided?.first ?: staticResolved?.first ?: draft.deliveryLat
+            val effectiveLng = provided?.second ?: staticResolved?.second ?: draft.deliveryLng
+
             draft.copy(
                 deliveryAddress = address,
-                deliveryLat = resolved?.first ?: draft.deliveryLat.takeIf { !addressChanged },
-                deliveryLng = resolved?.second ?: draft.deliveryLng.takeIf { !addressChanged }
+                deliveryLat = effectiveLat,
+                deliveryLng = effectiveLng
             )
         }
 
@@ -5658,8 +5676,13 @@ class DeliveryViewModel : WalletViewModel() {
         // Device GPS is only a fallback when no pickup address was entered;
         // a typed address must never be stamped with the user's GPS point.
         val deviceFallback = draft.pickupAddress.isBlank()
-        val effectivePickupLat = draft.pickupLat ?: if (deviceFallback) _currentUserDeviceLocation.value?.first else null
-        val effectivePickupLng = draft.pickupLng ?: if (deviceFallback) _currentUserDeviceLocation.value?.second else null
+        val resolvedPickup = if (draft.pickupAddress.isNotBlank()) resolveAddressCoords(draft.pickupAddress) else null
+        val effectivePickupLat = draft.pickupLat ?: resolvedPickup?.first ?: if (deviceFallback) _currentUserDeviceLocation.value?.first else null
+        val effectivePickupLng = draft.pickupLng ?: resolvedPickup?.second ?: if (deviceFallback) _currentUserDeviceLocation.value?.second else null
+
+        val resolvedDelivery = if (draft.deliveryAddress.isNotBlank()) resolveAddressCoords(draft.deliveryAddress) else null
+        val effectiveDeliveryLat = draft.deliveryLat ?: resolvedDelivery?.first
+        val effectiveDeliveryLng = draft.deliveryLng ?: resolvedDelivery?.second
 
         // Create new Parcel record
         val newParcel = Parcel(
@@ -5688,8 +5711,8 @@ class DeliveryViewModel : WalletViewModel() {
             createdAt = System.currentTimeMillis(),
             pickupLat = effectivePickupLat,
             pickupLng = effectivePickupLng,
-            deliveryLat = draft.deliveryLat,
-            deliveryLng = draft.deliveryLng,
+            deliveryLat = effectiveDeliveryLat,
+            deliveryLng = effectiveDeliveryLng,
             declaredValue = draft.declaredValue,
             senderEmail = _userEmail.value,
             paymentStatus = "PAID"
@@ -6231,10 +6254,21 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
     fun clearAppCache(context: Context): Boolean {
         return try {
-            context.cacheDir?.deleteRecursively()
-            context.externalCacheDir?.deleteRecursively()
+            context.cacheDir?.listFiles()?.forEach { file ->
+                try { file.deleteRecursively() } catch (_: Exception) {}
+            }
+            context.externalCacheDir?.listFiles()?.forEach { file ->
+                try { file.deleteRecursively() } catch (_: Exception) {}
+            }
+            try {
+                coil.Coil.imageLoader(context).apply {
+                    memoryCache?.clear()
+                    diskCache?.clear()
+                }
+            } catch (_: Throwable) {}
             true
         } catch (e: Exception) {
             false
@@ -6338,7 +6372,7 @@ class DeliveryViewModel : WalletViewModel() {
             val dismissed = notifPrefs.getStringSet("dismissed_notification_ids", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
             dismissed.addAll(allIds)
             notifPrefs.edit()
-                .putStringSet("dismissed_notification_ids", dismissed)
+                .putStringSet("dismissed_notification_ids", HashSet(dismissed))
                 .putBoolean("notifications_cleared_by_user", true)
                 .apply()
         }
@@ -6358,7 +6392,7 @@ class DeliveryViewModel : WalletViewModel() {
             val notifPrefs = ctx.getSharedPreferences("esdispatch_notifications", android.content.Context.MODE_PRIVATE)
             val dismissed = notifPrefs.getStringSet("dismissed_notification_ids", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
             dismissed.add(notificationId)
-            notifPrefs.edit().putStringSet("dismissed_notification_ids", dismissed).apply()
+            notifPrefs.edit().putStringSet("dismissed_notification_ids", HashSet(dismissed)).apply()
         }
         val uid = _firebaseUserId.value
         viewModelScope.launch {
@@ -6411,7 +6445,7 @@ class DeliveryViewModel : WalletViewModel() {
                                 val status = doc.getString("status")?.uppercase() ?: ""
                                 notifiedSet.add("${doc.id}_$status")
                             }
-                            notifPrefs?.edit()?.putStringSet("notified_events", notifiedSet)?.apply()
+                            notifPrefs?.edit()?.putStringSet("notified_events", HashSet(notifiedSet))?.apply()
                             isInitialSnapshot = false
                             return@addSnapshotListener
                         }
@@ -6432,7 +6466,7 @@ class DeliveryViewModel : WalletViewModel() {
                                     continue
                                 }
                                 notifiedSet.add(eventKey)
-                                notifPrefs?.edit()?.putStringSet("notified_events", notifiedSet)?.apply()
+                                notifPrefs?.edit()?.putStringSet("notified_events", HashSet(notifiedSet))?.apply()
 
                                 val isBooked = status == "PENDING" || status == "BOOKED"
                                 val isAssigned = status == "ASSIGNED"
@@ -8100,7 +8134,7 @@ class DeliveryViewModel : WalletViewModel() {
                 val loaded = snapshot.documents.mapNotNull { doc ->
                     val itemId = doc.getString("itemId") ?: doc.id
                     val title = doc.getString("title") ?: return@mapNotNull null
-                    val price = doc.getDouble("price") ?: return@mapNotNull null
+                    val price = doc.getSafeDouble("price", -1.0).takeIf { it >= 0.0 } ?: return@mapNotNull null
                     val imageUrl = doc.getString("imageUrl") ?: ""
                     val vendorStore = doc.getString("vendorStore") ?: ""
                     val category = doc.getString("category") ?: "General"
@@ -8178,7 +8212,7 @@ class DeliveryViewModel : WalletViewModel() {
                         }
                     }
                     effectiveSubtotal = currentCart.sumOf { c ->
-                        (freshProducts[c.item.id]?.getDouble("price") ?: c.item.price) * c.quantity
+                        (freshProducts[c.item.id]?.getSafeDouble("price", c.item.price) ?: c.item.price) * c.quantity
                     }
                     effectiveGrandTotal = (effectiveSubtotal + deliveryFee - pointsDiscount).coerceAtLeast(0.0)
 
@@ -8194,7 +8228,7 @@ class DeliveryViewModel : WalletViewModel() {
                             )
                             if (storeSnap.exists()) {
                                 storeId = storeSnap.id
-                                rate = storeSnap.getDouble("commissionRate") ?: 8.5
+                                rate = storeSnap.getSafeDouble("commissionRate", 8.5)
                             }
                         } else {
                             val legacyQuery = com.google.android.gms.tasks.Tasks.await(
@@ -8202,11 +8236,11 @@ class DeliveryViewModel : WalletViewModel() {
                             )
                             if (!legacyQuery.isEmpty) {
                                 storeId = legacyQuery.documents[0].id
-                                rate = legacyQuery.documents[0].getDouble("commissionRate") ?: 8.5
+                                rate = legacyQuery.documents[0].getSafeDouble("commissionRate", 8.5)
                             }
                         }
                         val vendorSubtotal = items.sumOf { c ->
-                            (freshProducts[c.item.id]?.getDouble("price") ?: c.item.price) * c.quantity
+                            (freshProducts[c.item.id]?.getSafeDouble("price", c.item.price) ?: c.item.price) * c.quantity
                         }
                         val commissionAmount = vendorSubtotal * (rate / 100.0)
                         splits.add(
@@ -8226,7 +8260,7 @@ class DeliveryViewModel : WalletViewModel() {
                         val walletSnap = com.google.android.gms.tasks.Tasks.await(
                             firestore.collection("users").document(userId).get()
                         )
-                        val balance = walletSnap.getDouble("walletBalance") ?: _walletBalance.value
+                        val balance = walletSnap.getSafeDouble("walletBalance", _walletBalance.value)
                         if (balance < effectiveGrandTotal) {
                             val short = effectiveGrandTotal - balance
                             return@withContext "Insufficient wallet balance. You need NGN ${String.format("%,.2f", short)} more to complete this purchase."
@@ -8273,7 +8307,7 @@ class DeliveryViewModel : WalletViewModel() {
                             }
 
                             if (isWalletPayment && userSnap != null) {
-                                val balance = userSnap.getDouble("walletBalance") ?: 0.0
+                                val balance = userSnap.getSafeDouble("walletBalance", 0.0)
                                 if (balance < effectiveGrandTotal) {
                                     throw com.google.firebase.firestore.FirebaseFirestoreException(
                                         "Insufficient wallet balance.",
@@ -8330,7 +8364,7 @@ class DeliveryViewModel : WalletViewModel() {
                                             "productId" to c.item.id,
                                             "title" to c.item.title,
                                             "category" to c.item.category,
-                                            "price" to (freshProducts[c.item.id]?.getDouble("price") ?: c.item.price),
+                                            "price" to (freshProducts[c.item.id]?.getSafeDouble("price", c.item.price) ?: c.item.price),
                                             "quantity" to c.quantity,
                                             "vendorStore" to c.item.vendorStore,
                                             "vendorId" to c.item.vendorId

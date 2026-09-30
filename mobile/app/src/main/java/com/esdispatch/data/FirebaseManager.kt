@@ -698,7 +698,7 @@ object FirebaseManager {
 
         db.runTransaction { transaction ->
             val snapshot = transaction.get(userRef)
-            val currentBalance = snapshot.getDouble("walletBalance") ?: 0.0
+            val currentBalance = snapshot.getSafeDouble("walletBalance", 0.0)
             val newBalance = currentBalance + amountDelta
             if (newBalance < 0.0) {
                 throw com.google.firebase.firestore.FirebaseFirestoreException(
@@ -795,7 +795,7 @@ object FirebaseManager {
 
         db.runTransaction { transaction ->
             val snap = transaction.get(userRef)
-            val currentBalance = snap.getDouble("walletBalance") ?: 0.0
+            val currentBalance = snap.getSafeDouble("walletBalance", 0.0)
             if (currentBalance < amount) {
                 throw com.google.firebase.firestore.FirebaseFirestoreException(
                     "Insufficient wallet balance: ₦${String.format("%,.2f", currentBalance)} available",
@@ -957,7 +957,7 @@ object FirebaseManager {
 
         db.runTransaction { transaction ->
             val userSnapshot = transaction.get(userRef)
-            val currentBalance = userSnapshot.getDouble("walletBalance") ?: 0.0
+            val currentBalance = userSnapshot.getSafeDouble("walletBalance", 0.0)
             if (currentBalance < cost) {
                 throw com.google.firebase.firestore.FirebaseFirestoreException(
                     "Insufficient wallet balance (₦${String.format("%,.0f", currentBalance)} available, ₦${String.format("%,.0f", cost)} required).",
@@ -2398,7 +2398,7 @@ object FirebaseManager {
                 
                 if (isValid) {
                     val parcelUserId = snapshot.getString("userId") ?: ""
-                    val price = snapshot.getDouble("price") ?: 0.0
+                    val price = snapshot.getSafeDouble("price", 0.0)
                     val riderId = snapshot.getString("riderId")?.takeIf { it.isNotBlank() }
                         ?: snapshot.getString("driverId") ?: ""
                     val alreadyPaid = snapshot.getBoolean("payoutCredited") ?: false
@@ -2419,7 +2419,7 @@ object FirebaseManager {
 
                         if (riderRef != null && riderSnap != null && !alreadyPaid && payoutAmount > 0.0) {
                             transaction.update(docRef, "payoutCredited", true)
-                            val currentBal = riderSnap.getDouble("walletBalance") ?: 0.0
+                            val currentBal = riderSnap.getSafeDouble("walletBalance", 0.0)
                             transaction.update(riderRef, "walletBalance", currentBal + payoutAmount)
 
                             val txRef = "TX-PAYOUT-${java.util.UUID.randomUUID().toString().take(8).uppercase()}"
@@ -2671,6 +2671,49 @@ object FirebaseManager {
                         "timestamp" to now
                     )
                     db.collection("users").document(effectiveCustomerId).collection("transactions").document(txRef).set(txMap)
+                    db.collection("transactions").document(txRef).set(txMap)
+                }
+
+                // Credit rider wallet and record ledger credit transaction
+                if (resolvedRiderId.isNotBlank()) {
+                    val riderRef = db.collection("users").document(resolvedRiderId)
+                    riderRef.set(
+                        mapOf(
+                            "walletBalance" to com.google.firebase.firestore.FieldValue.increment(actualTip),
+                            "totalTipsEarned" to com.google.firebase.firestore.FieldValue.increment(actualTip),
+                            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                        ),
+                        com.google.firebase.firestore.SetOptions.merge()
+                    )
+
+                    val riderTxRef = "ESD-TIP-IN-$now"
+                    val riderTxMap = hashMapOf(
+                        "id" to riderTxRef,
+                        "userId" to resolvedRiderId,
+                        "title" to "Tip Received from Customer",
+                        "date" to "Today",
+                        "amount" to actualTip,
+                        "type" to "CREDIT",
+                        "status" to "SUCCESS",
+                        "isTopUp" to true,
+                        "reference" to tipId,
+                        "timestamp" to now
+                    )
+                    riderRef.collection("transactions").document(riderTxRef).set(riderTxMap)
+                    db.collection("transactions").document(riderTxRef).set(riderTxMap)
+
+                    // Notify rider in-app
+                    val notifRef = "NOTIF-TIP-$now"
+                    val notifData = hashMapOf(
+                        "id" to notifRef,
+                        "title" to "Tip Received! ₦${String.format("%,.0f", actualTip)}",
+                        "description" to "A customer tipped you ₦${String.format("%,.0f", actualTip)} for delivery ${parcelId.takeLast(6)}. Great work!",
+                        "read" to false,
+                        "time" to "Just now",
+                        "timestamp" to now,
+                        "createdAt" to com.google.firebase.Timestamp.now()
+                    )
+                    riderRef.collection("notifications").document(notifRef).set(notifData)
                 }
             }
 
@@ -3015,10 +3058,10 @@ object FirebaseManager {
                 val lat = snapshot.getSafeDoubleNullable("latitude") ?: snapshot.getSafeDoubleNullable("lat")
                 val lng = snapshot.getSafeDoubleNullable("longitude") ?: snapshot.getSafeDoubleNullable("lng")
                 if (lat != null && lng != null) {
-                    val bearing = snapshot.getDouble("bearing")?.toFloat()
-                        ?: snapshot.getDouble("heading")?.toFloat() ?: 0f
-                    val speed = snapshot.getDouble("speed")?.toFloat() ?: 0f
-                    val accuracy = snapshot.getDouble("accuracy")?.toFloat() ?: 0f
+                    val bearing = (snapshot.getSafeDoubleNullable("bearing")
+                        ?: snapshot.getSafeDoubleNullable("heading") ?: 0.0).toFloat()
+                    val speed = snapshot.getSafeDouble("speed", 0.0).toFloat()
+                    val accuracy = snapshot.getSafeDouble("accuracy", 0.0).toFloat()
                     val timestamp = snapshot.getLong("timestamp") ?: snapshot.getLong("updatedAt") ?: 0L
                     val activeBookingId = snapshot.getString("activeBookingId") ?: ""
                     trySend(

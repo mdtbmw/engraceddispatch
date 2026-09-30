@@ -166,6 +166,11 @@ class MainActivity : FragmentActivity() {
         super.onResume()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        com.esdispatch.util.VoiceGuidanceManager.shutdown()
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -223,6 +228,7 @@ class MainActivity : FragmentActivity() {
 
         enableEdgeToEdge()
         com.esdispatch.util.SoundManager.initialize(this)
+        com.esdispatch.util.VoiceGuidanceManager.initialize(this)
         com.esdispatch.data.MyFirebaseMessagingService.createNotificationChannels(this)
         setContent {
             val context = androidx.compose.ui.platform.LocalContext.current

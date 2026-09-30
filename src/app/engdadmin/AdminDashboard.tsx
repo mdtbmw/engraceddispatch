@@ -10514,6 +10514,30 @@ function TipPayoutsTab({
       addToast("success", `Payout of ₦${p.amount.toLocaleString()} approved!`);
       if (targetUserId) {
         try {
+          const userTxQuery = query(
+            collection(db, "users", targetUserId, "transactions"),
+            where("reference", "==", p.id)
+          );
+          const userTxSnap = await getDocs(userTxQuery);
+          for (const txDoc of userTxSnap.docs) {
+            await updateDoc(txDoc.ref, {
+              status: "SUCCESS",
+              title: userRole === "rider" ? "Courier Tip Payout (Approved)" : "Wallet Refund (Approved)",
+              approvedAt: Timestamp.now(),
+            });
+            try {
+              await updateDoc(doc(db, "transactions", txDoc.id), {
+                status: "SUCCESS",
+                title: userRole === "rider" ? "Courier Tip Payout (Approved)" : "Wallet Refund (Approved)",
+                approvedAt: Timestamp.now(),
+              });
+            } catch (_) {}
+          }
+        } catch (e) {
+          console.error("Error updating transaction status:", e);
+        }
+
+        try {
           await addDoc(collection(db, "users", targetUserId, "notifications"), {
             title: "Withdrawal Approved",
             description: `Your withdrawal request of ₦${p.amount.toLocaleString()} has been approved and processed to ${p.bankName} (${p.accountNumber}).`,

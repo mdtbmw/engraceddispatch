@@ -383,22 +383,6 @@ fun ActiveTrackingScreen(
         }
     }
 
-    LaunchedEffect(isRider, activeParcel?.id, activeParcel?.status, locationPermissionRevision) {
-        if (isRider && activeParcel?.status !in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED, ParcelStatus.RETURNED)) {
-            val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
-                context,
-                android.Manifest.permission.ACCESS_FINE_LOCATION
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            if (fineGranted) {
-                com.esdispatch.util.LocationService.start(
-                    context = context,
-                    parcelId = activeParcel?.id,
-                    batchId = activeParcel?.batchId
-                )
-            }
-        }
-    }
-
     val previewParcel = remember {
         Parcel(
             id = "",
@@ -421,6 +405,47 @@ fun ActiveTrackingScreen(
 
     val parcel = activeParcel ?: previewParcel
     val hasNoBooking = activeParcel == null
+
+    val resolvedPickupLat = remember(parcel.pickupLat, parcel.pickupAddress) {
+        parcel.pickupLat?.takeIf { it != 0.0 }
+            ?: com.esdispatch.data.AddressDatabase.searchItems(parcel.pickupAddress).firstOrNull()?.lat
+    }
+    val resolvedPickupLng = remember(parcel.pickupLng, parcel.pickupAddress) {
+        parcel.pickupLng?.takeIf { it != 0.0 }
+            ?: com.esdispatch.data.AddressDatabase.searchItems(parcel.pickupAddress).firstOrNull()?.lng
+    }
+    val resolvedDeliveryLat = remember(parcel.deliveryLat, parcel.deliveryAddress) {
+        parcel.deliveryLat?.takeIf { it != 0.0 }
+            ?: com.esdispatch.data.AddressDatabase.searchItems(parcel.deliveryAddress).firstOrNull()?.lat
+    }
+    val resolvedDeliveryLng = remember(parcel.deliveryLng, parcel.deliveryAddress) {
+        parcel.deliveryLng?.takeIf { it != 0.0 }
+            ?: com.esdispatch.data.AddressDatabase.searchItems(parcel.deliveryAddress).firstOrNull()?.lng
+    }
+
+    LaunchedEffect(isRider, activeParcel?.id, activeParcel?.status, locationPermissionRevision, resolvedPickupLat, resolvedDeliveryLat) {
+        if (isRider && activeParcel?.status !in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED, ParcelStatus.RETURNED)) {
+            val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (fineGranted) {
+                val isPickup = activeParcel?.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP)
+                val targetLat = if (isPickup) resolvedPickupLat else resolvedDeliveryLat
+                val targetLng = if (isPickup) resolvedPickupLng else resolvedDeliveryLng
+                val targetType = if (isPickup) "PICKUP" else "DELIVERY"
+
+                com.esdispatch.util.LocationService.start(
+                    context = context,
+                    parcelId = activeParcel?.id,
+                    batchId = activeParcel?.batchId,
+                    stopLat = targetLat,
+                    stopLng = targetLng,
+                    stopType = targetType
+                )
+            }
+        }
+    }
 
     LaunchedEffect(hasNoBooking, parcel.id, parcel.status, parcel.progress) {
         val statusText = when (parcel.status) {
@@ -628,15 +653,40 @@ fun ActiveTrackingScreen(
         mutableStateOf(com.esdispatch.ui.maps.RouteGuidance())
     }
     var routeRetry by remember(parcel.id) { mutableIntStateOf(0) }
+    var isSatelliteMode by remember { mutableStateOf(false) }
+    var showTraffic by remember { mutableStateOf(true) }
+    var mapZoom by remember { mutableFloatStateOf(14.5f) }
+    var followUser by remember(hasNoBooking) { mutableStateOf(hasNoBooking) }
     var is3D by remember { mutableStateOf(false) }
+    var isNavigating by remember(parcel.id) { mutableStateOf(false) }
+    var isVoiceMuted by remember { mutableStateOf(false) }
     val realDistanceKm = roadGuidance.distanceMeters?.div(1000)?.toFloat()
     val pickupPhase = parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP)
     val navigationAddress = if (pickupPhase || parcel.status == ParcelStatus.RETURN_TO_SENDER) parcel.pickupAddress else parcel.deliveryAddress
-    fun openRoadNavigation() {
+
+    fun toggleInAppNavigation() {
+        isNavigating = !isNavigating
+        if (isNavigating) {
+            is3D = true
+            followUser = true
+            isMapPanned = false
+            recenterTrigger++
+            mapZoom = 17.2f
+            val targetName = if (pickupPhase) "pickup" else "destination"
+            com.esdispatch.util.VoiceGuidanceManager.speak(
+                "Starting driving guidance to $targetName. Follow the road route.",
+                isUrgent = true
+            )
+        } else {
+            com.esdispatch.util.VoiceGuidanceManager.stop()
+        }
+    }
+
+    fun openExternalGoogleMaps() {
         val destination = roadGuidance.destination?.let { "${it.latitude},${it.longitude}" }
             ?: navigationAddress.takeIf { it.isNotBlank() }
         if (destination == null) {
-            Toast.makeText(context, "Confirm the destination with support before starting navigation.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Destination address is not available for external maps.", Toast.LENGTH_LONG).show()
             return
         }
         try {
@@ -646,8 +696,15 @@ fun ActiveTrackingScreen(
             try {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${Uri.encode(destination)}&travelmode=driving")))
             } catch (_: android.content.ActivityNotFoundException) {
-                Toast.makeText(context, "No navigation app is available on this device.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "No external navigation app is available on this device.", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    // Voice announcement when guidance changes during active in-app navigation
+    LaunchedEffect(roadGuidance.detail, isNavigating) {
+        if (isNavigating && !isVoiceMuted && roadGuidance.detail.isNotBlank() && !roadGuidance.loading) {
+            com.esdispatch.util.VoiceGuidanceManager.speak(roadGuidance.detail)
         }
     }
 
@@ -656,45 +713,86 @@ fun ActiveTrackingScreen(
     var consecutiveArrivalPings by remember(parcel.id, parcel.status) { mutableIntStateOf(0) }
     var showArrivalPrompt by remember(parcel.id, parcel.status) { mutableStateOf(false) }
     var arrivalPromptDismissed by remember(parcel.id, parcel.status) { mutableStateOf(false) }
+    var isPickupArrival by remember(parcel.id, parcel.status) { mutableStateOf(false) }
+
     val locationTime = if (isRider) userLocationTime else parcel.courierLastUpdated
-    LaunchedEffect(locationTime, parcel.status) {
-        val deliveryPhase = parcel.status in listOf(ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY)
+    LaunchedEffect(locationTime, parcel.status, userCoords) {
+        val isPickup = parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP)
+        val isDelivery = parcel.status in listOf(ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY)
         val recent = locationTime > 0 && System.currentTimeMillis() - locationTime in -5000L..60000L
-        if (!deliveryPhase || !recent) {
+        if ((!isPickup && !isDelivery) || !recent) {
             showInAppNotificationBanner = false
             consecutiveArrivalPings = 0
             return@LaunchedEffect
         }
         val position = if (isRider) userCoords else parcel.courierLatitude?.let { lat -> parcel.courierLongitude?.let { lat to it } }
-        val target = com.esdispatch.ui.maps.validMapPosition(parcel.deliveryLat, parcel.deliveryLng) ?: roadGuidance.destination
+        val target = if (isPickup) {
+            com.esdispatch.ui.maps.validMapPosition(resolvedPickupLat, resolvedPickupLng)
+        } else {
+            com.esdispatch.ui.maps.validMapPosition(resolvedDeliveryLat, resolvedDeliveryLng) ?: roadGuidance.destination
+        }
         if (position != null && target != null) {
             val meters = FloatArray(1)
             android.location.Location.distanceBetween(position.first, position.second, target.latitude, target.longitude, meters)
-            if (isRider && meters[0] <= 50f && userLocationAccuracy <= 50f) {
+            val threshold = if (userLocationAccuracy > 0f) (50f + (userLocationAccuracy * 0.5f)).coerceIn(50f, 85f) else 50f
+            if (isRider && meters[0] <= threshold) {
                 consecutiveArrivalPings++
-                if (consecutiveArrivalPings >= 2 && !arrivalPromptDismissed) showArrivalPrompt = true
-            } else consecutiveArrivalPings = 0
+                if (consecutiveArrivalPings >= 2 && !arrivalPromptDismissed) {
+                    if (isPickup && parcel.status == ParcelStatus.ASSIGNED) {
+                        isPickupArrival = true
+                        showArrivalPrompt = true
+                        com.esdispatch.util.VoiceGuidanceManager.speak(
+                            "You have arrived at the pickup location. Please collect the parcel from the sender.",
+                            isUrgent = true
+                        )
+                    } else if (isDelivery) {
+                        isPickupArrival = false
+                        showArrivalPrompt = true
+                        com.esdispatch.util.VoiceGuidanceManager.speak(
+                            "You have arrived at the delivery destination. Please verify the recipient's handover PIN.",
+                            isUrgent = true
+                        )
+                    }
+                }
+            } else {
+                consecutiveArrivalPings = 0
+            }
             if (!isRider && meters[0] <= 1609.34f && !hasNotifiedWithinOneMile) {
                 hasNotifiedWithinOneMile = true
                 showInAppNotificationBanner = true
             }
         }
     }
+
     if (showArrivalPrompt) {
-        AlertDialog(onDismissRequest = { showArrivalPrompt = false; arrivalPromptDismissed = true },
-            title = { Text("At the delivery address?") },
-            text = { Text("You’re near the destination. Confirm when you have arrived safely.") },
-            confirmButton = { TextButton(onClick = {
-                showArrivalPrompt = false
-                arrivalPromptDismissed = true
-                viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED, 0.95f) { ok, _ ->
-                    if (!ok) {
-                        arrivalPromptDismissed = false
-                        Toast.makeText(context, "Could not update arrival. Please try again.", Toast.LENGTH_LONG).show()
+        val isPickup = isPickupArrival
+        AlertDialog(
+            onDismissRequest = { showArrivalPrompt = false; arrivalPromptDismissed = true },
+            title = { Text(if (isPickup) "At Pickup Location?" else "At Delivery Address?") },
+            text = {
+                Text(
+                    if (isPickup) "You are near the sender's pickup address. Confirm arrival to notify the customer."
+                    else "You are near the destination. Confirm arrival to proceed with handover PIN verification."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showArrivalPrompt = false
+                    arrivalPromptDismissed = true
+                    val targetStatus = if (isPickup) ParcelStatus.ARRIVED_PICKUP else ParcelStatus.ARRIVED
+                    val targetProgress = if (isPickup) 0.40f else 0.95f
+                    viewModel.updateParcelStatusByRider(parcel.id, targetStatus, targetProgress) { ok, _ ->
+                        if (!ok) {
+                            arrivalPromptDismissed = false
+                            Toast.makeText(context, "Could not update arrival. Please try again.", Toast.LENGTH_LONG).show()
+                        }
                     }
-                }
-            }) { Text("I’ve arrived") } },
-            dismissButton = { TextButton(onClick = { showArrivalPrompt = false; arrivalPromptDismissed = true }) { Text("Not yet") } })
+                }) { Text(if (isPickup) "I've Arrived at Pickup" else "I've Arrived") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showArrivalPrompt = false; arrivalPromptDismissed = true }) { Text("Not yet") }
+            }
+        )
     }
 
 
@@ -708,11 +806,6 @@ fun ActiveTrackingScreen(
 
     // ------------------------------------------------------------------------------------------------
     // Map view configurations driven by live GPS telemetry
-    var isSatelliteMode by remember { mutableStateOf(false) }
-    var showTraffic by remember { mutableStateOf(true) }
-    var mapZoom by remember { mutableFloatStateOf(14.5f) }
-    var followUser by remember(hasNoBooking) { mutableStateOf(hasNoBooking) }
-
     val accentIconColor = if (isLight) Obsidian else Gold
     val accentTextColor = if (isLight) Obsidian else Gold
 
@@ -839,10 +932,10 @@ fun ActiveTrackingScreen(
                     userCoords = userCoords,
                     isRider = isRider,
                     parcelStatus = parcel.status,
-                    parcelPickupLat = parcel.pickupLat,
-                    parcelPickupLng = parcel.pickupLng,
-                    parcelDeliveryLat = parcel.deliveryLat,
-                    parcelDeliveryLng = parcel.deliveryLng,
+                    parcelPickupLat = resolvedPickupLat,
+                    parcelPickupLng = resolvedPickupLng,
+                    parcelDeliveryLat = resolvedDeliveryLat,
+                    parcelDeliveryLng = resolvedDeliveryLng,
                     courierName = resolvedCourierName,
                     courierPhone = resolvedCourierPhone,
                     isDarkTheme = isDark,
@@ -868,10 +961,98 @@ fun ActiveTrackingScreen(
                 com.esdispatch.ui.maps.RouteGuidanceCard(
                     guidance = roadGuidance,
                     onRetry = { routeRetry++ },
-                    onNavigate = if (isRider && roadGuidance.canRetry && parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP,
-                        ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.RETURN_TO_SENDER)) ({ openRoadNavigation() }) else null,
+                    onNavigate = if (isRider && parcel.status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP,
+                        ParcelStatus.PICKED_UP, ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.RETURN_TO_SENDER)) ({ toggleInAppNavigation() }) else null,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+            }
+
+            if (isRider && isNavigating) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Obsidian,
+                    border = BorderStroke(1.dp, Gold),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(Gold),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Navigation,
+                                    contentDescription = null,
+                                    tint = Obsidian,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "3D IN-APP NAVIGATION",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Gold,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Text(
+                                    text = if (isVoiceMuted) "Voice Muted" else "Voice Guidance Active",
+                                    fontSize = 11.sp,
+                                    color = Color.White.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    isVoiceMuted = com.esdispatch.util.VoiceGuidanceManager.toggleMuted()
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isVoiceMuted) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                                    contentDescription = "Mute Voice",
+                                    tint = if (isVoiceMuted) Color.Gray else Gold,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            TextButton(
+                                onClick = { openExternalGoogleMaps() },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Maps App", fontSize = 10.sp, color = Gold, fontWeight = FontWeight.Bold)
+                            }
+
+                            TextButton(
+                                onClick = { toggleInAppNavigation() },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Color.Red.copy(alpha = 0.9f)),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Exit", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                }
             }
 
             // Customer proximity notification from fresh delivery telemetry only.
@@ -1001,7 +1182,7 @@ fun ActiveTrackingScreen(
                 if (isRider && !hasNoBooking) {
                     MapControlButton(icon = Icons.Filled.Explore, description = "Toggle 3D navigation view", isActive = is3D) { is3D = !is3D }
                     if (parcel.status !in listOf(ParcelStatus.PENDING, ParcelStatus.QUEUED, ParcelStatus.OFFERED, ParcelStatus.RESERVED_NEXT, ParcelStatus.DELIVERED, ParcelStatus.CANCELLED, ParcelStatus.RETURNED)) {
-                        MapControlButton(icon = Icons.Filled.Navigation, description = "Open turn-by-turn navigation") { openRoadNavigation() }
+                        MapControlButton(icon = Icons.Filled.Navigation, description = "Toggle in-app navigation", isActive = isNavigating) { toggleInAppNavigation() }
                     }
                 }
             }

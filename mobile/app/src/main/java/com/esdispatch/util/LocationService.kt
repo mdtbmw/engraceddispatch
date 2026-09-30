@@ -206,7 +206,7 @@ class LocationService : Service() {
         Location.distanceBetween(location.latitude, location.longitude, stopLat, stopLng, results)
         val distanceMeters = results[0]
 
-        if (location.accuracy <= 50f && distanceMeters <= 50.0f && !hasTriggeredArrivalForCurrentStop) {
+        if (distanceMeters <= 50.0f && (location.accuracy <= 100f || !location.hasAccuracy()) && !hasTriggeredArrivalForCurrentStop) {
             hasTriggeredArrivalForCurrentStop = true
             Log.d(TAG, "Proximity arrival detected for stop: $distanceMeters m")
             val notification = createNotification("Near your ${if (activeStopType == "PICKUP") "pickup" else "delivery"}",

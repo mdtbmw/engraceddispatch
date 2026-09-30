@@ -96,9 +96,13 @@ fun rememberSmoothCourierState(
             val routeBearing = computeRouteTangentHeading(snappedPosition, roadPoints)
             val effectiveBearing = routeBearing ?: targetBearing.takeIf { it.isFinite() && it != 0f } ?: 0f
 
-            kotlinx.coroutines.coroutineScope {
-                launch { state.animateToPosition(snappedPosition, animate, roadPoints) }
-                launch { state.animateToBearing(effectiveBearing, animate) }
+            val prevPos = state.currentPosition
+            val distance = if (prevPos != null) SphericalUtil.computeDistanceBetween(prevPos, snappedPosition) else 0.0
+
+            if (prevPos == null || distance >= 1.5) {
+                state.animateToPosition(snappedPosition, animate, roadPoints, effectiveBearing)
+            } else {
+                state.animateToBearing(effectiveBearing, animate)
             }
         }
     }
@@ -119,11 +123,19 @@ class SmoothCourierState {
 
     fun clear() { currentPosition = null }
 
-    suspend fun animateToPosition(newPos: LatLng, animate: Boolean = true, roadPoints: List<LatLng> = emptyList()) {
+    suspend fun animateToPosition(
+        newPos: LatLng,
+        animate: Boolean = true,
+        roadPoints: List<LatLng> = emptyList(),
+        fallbackBearing: Float = 0f
+    ) {
         val prev = currentPosition
         if (prev == null || !animate || SphericalUtil.computeDistanceBetween(prev, newPos) > 300) {
             currentPosition = newPos
             previousPosition = newPos
+            if (fallbackBearing != 0f && fallbackBearing.isFinite()) {
+                currentBearing = (fallbackBearing % 360f + 360f) % 360f
+            }
             return
         }
 
@@ -142,7 +154,7 @@ class SmoothCourierState {
         val pathLength = segments.sum()
         positionProgress.snapTo(0f)
 
-        // Animate between received fixes, following road bends and updating bike bearing to segment tangent
+        // Animate between received fixes, smoothly turning towards road tangent
         positionProgress.animateTo(
             targetValue = 1f,
             animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing)
@@ -156,19 +168,36 @@ class SmoothCourierState {
             val fraction = if (segments[segment] > 0) (remaining / segments[segment]).coerceIn(0.0, 1.0) else 1.0
             currentPosition = SphericalUtil.interpolate(path[segment], path[segment + 1], fraction)
 
-            // Synchronously rotate the bike to face the active road line segment
+            // Smoothly align bike bearing to active line segment heading
             if (path[segment] != path[segment + 1]) {
                 val segHeading = SphericalUtil.computeHeading(path[segment], path[segment + 1]).toFloat()
                 if (segHeading.isFinite()) {
-                    currentBearing = (segHeading % 360f + 360f) % 360f
+                    val targetHeading = (segHeading % 360f + 360f) % 360f
+                    val angleDelta = computeShortestAngle(currentBearing, targetHeading)
+                    currentBearing = (currentBearing + angleDelta * 0.15f % 360f + 360f) % 360f
                 }
+            }
+        }
+
+        // Settle bearing at destination segment orientation
+        if (path.size >= 2) {
+            val finalSegHeading = SphericalUtil.computeHeading(path[path.size - 2], path.last()).toFloat()
+            if (finalSegHeading.isFinite()) {
+                val finalTarget = (finalSegHeading % 360f + 360f) % 360f
+                val delta = computeShortestAngle(currentBearing, finalTarget)
+                currentBearing = (currentBearing + delta % 360f + 360f) % 360f
             }
         }
     }
 
     suspend fun animateToBearing(targetBearing: Float, animate: Boolean = true) {
-        if (!animate) { currentBearing = (targetBearing % 360f + 360f) % 360f; return }
-        val delta = computeShortestAngle(currentBearing, targetBearing)
+        if (!targetBearing.isFinite()) return
+        val normalizedTarget = (targetBearing % 360f + 360f) % 360f
+        if (!animate) {
+            currentBearing = normalizedTarget
+            return
+        }
+        val delta = computeShortestAngle(currentBearing, normalizedTarget)
         if (abs(delta) < 0.5f) return
 
         val target = currentBearing + delta

@@ -12,6 +12,7 @@ import androidx.biometric.BiometricManager
 import com.esdispatch.data.CardInfo
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -2039,6 +2040,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(pageBg)
     ) {
+        BackHandler { onNavigate("BACK") }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -2046,7 +2048,7 @@ fun SettingsScreen(
         ) {
             ScreenHeader(
                 title = "Settings",
-                onBack = { onNavigate("Profile") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(
@@ -2808,6 +2810,7 @@ fun RiderReviewScreen(
             .fillMaxSize()
             .background(LuxuryBlack)
     ) {
+        BackHandler { onNavigate("BACK") }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -2815,7 +2818,7 @@ fun RiderReviewScreen(
         ) {
             ScreenHeader(
                 title = "Rate Rider",
-                onBack = { onNavigate("Profile") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(
@@ -2940,6 +2943,7 @@ fun AddressBookScreen(
             .fillMaxSize()
             .background(LuxuryBlack)
     ) {
+        BackHandler { onNavigate("BACK") }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -2947,7 +2951,7 @@ fun AddressBookScreen(
         ) {
             ScreenHeader(
                 title = "Address Book",
-                onBack = { onNavigate("Profile") },
+                onBack = { onNavigate("BACK") },
                 rightContent = {
                     Icon(
                         Icons.Filled.Add,
@@ -3308,6 +3312,7 @@ fun NotificationsScreen(
         )
     }
 
+    BackHandler { onNavigate("BACK") }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -3315,7 +3320,7 @@ fun NotificationsScreen(
     ) {
         ScreenHeader(
             title = "Notifications Hub",
-            onBack = { onNavigate("Profile") },
+            onBack = { onNavigate("BACK") },
             rightContent = {
                 if (list.isNotEmpty()) {
                     TextButton(
@@ -3696,6 +3701,7 @@ fun PromotionsScreen(
             .fillMaxSize()
             .background(LuxuryBlack)
     ) {
+        BackHandler { onNavigate("BACK") }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -3703,7 +3709,7 @@ fun PromotionsScreen(
         ) {
             ScreenHeader(
                 title = "Promotions",
-                onBack = { onNavigate("Profile") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(
@@ -3825,6 +3831,7 @@ fun ReferralScreen(
             .fillMaxSize()
             .background(LuxuryBlack)
     ) {
+        BackHandler { onNavigate("BACK") }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -3832,7 +3839,7 @@ fun ReferralScreen(
         ) {
             ScreenHeader(
                 title = "Refer a Friend",
-                onBack = { onNavigate("Profile") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(
@@ -6974,6 +6981,7 @@ fun NotificationSettingsScreen(
             .fillMaxSize()
             .background(LuxuryBlack)
     ) {
+        BackHandler { onNavigate("BACK") }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -6981,7 +6989,7 @@ fun NotificationSettingsScreen(
         ) {
             ScreenHeader(
                 title = "Push Stage Alerts",
-                onBack = { onNavigate("Settings") }
+                onBack = { onNavigate("BACK") }
             )
 
             RoundedSheet(
