@@ -21,6 +21,7 @@ dist/
 /build
 mobile/app/build/
 mobile/.gradle/
+*.apk
 
 # Duplicate standalone landing page app (deprecated)
 /landing page/
