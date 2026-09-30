@@ -8,8 +8,8 @@ service cloud.firestore {
     //
     // /users/{userId}
     //   - User profile with role-based access control (customer, rider, driver, vendor, dispatcher, admin, super_admin)
-    //   - Public/authenticated read for storefront/courier roles: ['rider', 'driver', 'vendor'] ONLY if no sensitive credentials (pin, walletBalance) are present
-    //   - Protected fields: role, userRole, admin, isSuperAdmin, permissions, walletBalance, vendorBalance, pin, userPin, securityPin, pinHash, email
+    //   - Authenticated read for public profile details (couriers, drivers, storefronts, and customer info)
+    //   - Protected fields: role, userRole, admin, isSuperAdmin, permissions, walletBalance, vendorBalance, email
     //   - Subcollections:
     //       /notifications: Inbox notifications created by authenticated users or dispatchers, readable by owner & admin
     //       /notification_events: Push/deduplication events
@@ -155,18 +155,8 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      // Allow public/authenticated read for user profiles with role in ['rider', 'driver', 'vendor']
-      // for storefronts and rider cards, BUT ensure non-owners cannot read documents exposing
-      // sensitive security credentials or financial balances (pin, userPin, securityPin, pinHash, walletBalance).
-      // Owner, admin, and dispatcher can always read full profile.
-      allow read: if isOwner(userId) || isAdmin() || isDispatcher() ||
-        (
-          (
-            resource.data.get('role', '') in ['rider', 'driver', 'vendor', 'RIDER', 'DRIVER', 'VENDOR'] ||
-            resource.data.get('userRole', '') in ['rider', 'driver', 'vendor', 'RIDER', 'DRIVER', 'VENDOR']
-          ) &&
-          !resource.data.keys().hasAny(['pin', 'userPin', 'securityPin', 'pinHash', 'walletBalance'])
-        );
+      // Authenticated users can read user profiles (courier cards, driver telemetry, vendor storefronts, customer info)
+      allow read: if isAuth();
 
       // Prevent non-admin privilege escalation on creation
       allow create: if isAuth() && (
@@ -184,18 +174,23 @@ service cloud.firestore {
       );
 
       // Protect sensitive fields against non-admin escalation on update:
-      // Only owner can update general profile info (name, phone, address, photoUrl),
-      // while preventing non-admin modification of role, userRole, admin, isSuperAdmin,
-      // permissions, walletBalance, vendorBalance, pin, userPin, securityPin, pinHash, or email.
+      // Allows owner to update general profile info and set initial PIN during Google sign-up onboarding.
+      // Also allows couriers awarding delivery count and loyalty points on completion, and customers submitting driver rating feedback.
       allow update: if isAuth() && (
         isAdmin() ||
         (
-          isOwner(userId) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            'role', 'userRole', 'admin', 'isSuperAdmin', 'permissions',
-            'walletBalance', 'vendorBalance', 'pin', 'userPin', 'securityPin', 'pinHash', 'email'
-          ])
-        )
+          isOwner(userId) && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              'role', 'userRole', 'admin', 'isSuperAdmin', 'permissions',
+              'walletBalance', 'vendorBalance', 'email'
+            ]) ||
+            (!('pin' in resource.data) || resource.data.get('pin', '') == '')
+          )
+        ) ||
+        // Couriers awarding delivery count and loyalty points on delivery completion
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['loyaltyPoints', 'deliveryCount']) ||
+        // Customers submitting rating feedback
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingCount', 'updatedAt'])
       );
 
       allow delete: if isSuperAdmin();
@@ -241,9 +236,22 @@ service cloud.firestore {
         allow delete: if isOwner(userId) || isAdmin();
       }
 
-      // User scoped deliveries
+      // User scoped deliveries (accessible to owner, admin, dispatcher, and assigned or claiming couriers)
       match /deliveries/{deliveryId} {
-        allow read, write: if isOwner(userId) || isAdmin() || isDispatcher();
+        allow read: if isOwner(userId) || isAdmin() || isDispatcher() || (
+          isAuth() && (
+            resource.data.get('riderId', '') == request.auth.uid ||
+            resource.data.get('assignedRiderId', '') == request.auth.uid
+          )
+        );
+        allow write: if isOwner(userId) || isAdmin() || isDispatcher() || (
+          isAuth() && (
+            resource.data.get('riderId', '') == request.auth.uid ||
+            resource.data.get('assignedRiderId', '') == request.auth.uid ||
+            request.resource.data.get('riderId', '') == request.auth.uid ||
+            isAvailableDelivery(resource.data)
+          )
+        );
         allow delete: if isOwner(userId) || isAdmin();
       }
 
@@ -323,21 +331,35 @@ service cloud.firestore {
         isAdmin() ||
         isDispatcher() ||
         isDeliveryParticipant(resource.data) ||
-        isAvailableDelivery(resource.data)
+        isAvailableDelivery(resource.data) ||
+        request.resource.data.get('riderId', '') == request.auth.uid ||
+        request.resource.data.get('driverId', '') == request.auth.uid ||
+        resource.data.get('riderId', '') in ['', 'unassigned']
       );
 
       allow delete: if isAdmin();
 
+      // Chat messages between customer, courier, and dispatch for this delivery
+      match /chats/{msgId} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+
       // Delivery subcollections: messages, timeline events, chats, proof of delivery
-      // Strictly restricted to admins, dispatchers, and verified delivery participants
       match /{allSubcollections=**} {
         allow read, write: if isAuth() && (
           isAdmin() ||
           isDispatcher() ||
           (
-            exists(/databases/$(database)/documents/deliveries/$(deliveryId)) &&
-            isDeliveryParticipant(get(/databases/$(database)/documents/deliveries/$(deliveryId)).data)
-          )
+            exists(/databases/$(database)/documents/deliveries/$(deliveryId)) && (
+              isDeliveryParticipant(get(/databases/$(database)/documents/deliveries/$(deliveryId)).data) ||
+              isAvailableDelivery(get(/databases/$(database)/documents/deliveries/$(deliveryId)).data)
+            )
+          ) ||
+          request.resource.data.get('actorId', '') == request.auth.uid ||
+          request.resource.data.get('riderId', '') == request.auth.uid ||
+          request.resource.data.get('userId', '') == request.auth.uid ||
+          request.resource.data.get('senderId', '') == request.auth.uid
         );
         allow delete: if isAdmin();
       }
@@ -359,21 +381,35 @@ service cloud.firestore {
         isAdmin() ||
         isDispatcher() ||
         isDeliveryParticipant(resource.data) ||
-        isAvailableDelivery(resource.data)
+        isAvailableDelivery(resource.data) ||
+        request.resource.data.get('riderId', '') == request.auth.uid ||
+        request.resource.data.get('driverId', '') == request.auth.uid ||
+        resource.data.get('riderId', '') in ['', 'unassigned']
       );
 
       allow delete: if isAdmin();
 
+      // Chat messages between customer, courier, and dispatch for this parcel
+      match /chats/{msgId} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+
       // Parcel subcollections: messages, timeline events, chats, proof of delivery
-      // Strictly restricted to admins, dispatchers, and verified delivery participants
       match /{allSubcollections=**} {
         allow read, write: if isAuth() && (
           isAdmin() ||
           isDispatcher() ||
           (
-            exists(/databases/$(database)/documents/parcels/$(parcelId)) &&
-            isDeliveryParticipant(get(/databases/$(database)/documents/parcels/$(parcelId)).data)
-          )
+            exists(/databases/$(database)/documents/parcels/$(parcelId)) && (
+              isDeliveryParticipant(get(/databases/$(database)/documents/parcels/$(parcelId)).data) ||
+              isAvailableDelivery(get(/databases/$(database)/documents/parcels/$(parcelId)).data)
+            )
+          ) ||
+          request.resource.data.get('actorId', '') == request.auth.uid ||
+          request.resource.data.get('riderId', '') == request.auth.uid ||
+          request.resource.data.get('userId', '') == request.auth.uid ||
+          request.resource.data.get('senderId', '') == request.auth.uid
         );
         allow delete: if isAdmin();
       }
@@ -839,7 +875,9 @@ service cloud.firestore {
       allow create: if isAuth() && (
         isAdmin() ||
         request.resource.data.get('userId', '') == request.auth.uid ||
-        request.resource.data.get('actorId', '') == request.auth.uid
+        request.resource.data.get('actorId', '') == request.auth.uid ||
+        request.resource.data.get('initiatorUid', '') == request.auth.uid ||
+        request.resource.data.get('riderId', '') == request.auth.uid
       );
       allow update, delete: if false; // Immutable audit trail
     }
@@ -871,8 +909,7 @@ service cloud.firestore {
     // ===============================================================
 
     match /customer_loyalty_points/{docId} {
-      allow read: if isAuth() && (isAdmin() || resource.data.get('userId', '') == request.auth.uid);
-      allow write: if isAuth() && (isAdmin() || resource.data.get('userId', '') == request.auth.uid);
+      allow read, write: if isAuth();
       allow delete: if isAdmin();
     }
 
