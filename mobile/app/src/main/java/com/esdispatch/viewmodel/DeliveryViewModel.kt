@@ -5766,10 +5766,10 @@ class DeliveryViewModel : WalletViewModel() {
         val effectiveDeliveryLat = draft.deliveryLat ?: resolvedDelivery?.first
         val effectiveDeliveryLng = draft.deliveryLng ?: resolvedDelivery?.second
 
-        // Create new Parcel record
+        // Create new Parcel record with clean ESD-XXXXXX tracking ID
+        val bookingSerial = (100000..999999).random().toString()
         val newParcel = Parcel(
-            id = com.esdispatch.data.FirebaseManager.firestore?.collection("deliveries")?.document()?.id
-                ?: ("PC-" + java.util.UUID.randomUUID().toString().replace("-", "").take(10).uppercase()),
+            id = "ESD-$bookingSerial",
             itemName = draft.itemName.ifBlank { if (draft.selectedService == "Express") "Express Parcel" else "New Parcel (${draft.selectedService})" },
             imageUrl = "https://images.unsplash.com/photo-1589409514187-c21d14bf0d13?w=100&h=100&fit=crop",
             status = ParcelStatus.PENDING,

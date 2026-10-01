@@ -74,48 +74,6 @@ internal class RoadRouteState {
     var failed by mutableStateOf(false)
 }
 
-/**
- * Creates an instant fallback route polyline on frame 0 between waypoints,
- * ensuring riders and customers see the route line and ETA immediately upon opening the map.
- */
-internal fun generateInstantCorridorRoute(
-    origin: LatLng,
-    destination: LatLng,
-    intermediate: LatLng? = null
-): RoadRoute {
-    val legs = mutableListOf<RoadLeg>()
-    if (intermediate != null) {
-        legs.add(createInstantLeg(origin, intermediate))
-        legs.add(createInstantLeg(intermediate, destination))
-    } else {
-        legs.add(createInstantLeg(origin, destination))
-    }
-    val fullPoints = legs.flatMap { it.points }
-    return RoadRoute(
-        legs = legs,
-        fullContinuousPoints = fullPoints
-    )
-}
-
-private fun createInstantLeg(from: LatLng, to: LatLng): RoadLeg {
-    val distance = SphericalUtil.computeDistanceBetween(from, to)
-    val numSteps = 16
-    val points = (0..numSteps).map { i ->
-        val fraction = i.toDouble() / numSteps
-        SphericalUtil.interpolate(from, to, fraction)
-    }
-    // Estimated dispatch bike speed ~ 28 km/h = 7.8 m/s
-    val seconds = (distance / 7.8).coerceAtLeast(30.0)
-    val step = RoadStep(points, "Proceed along route")
-    return RoadLeg(
-        points = points,
-        steps = listOf(step),
-        meters = distance,
-        seconds = seconds,
-        congested = false
-    )
-}
-
 /** Poll only while visible. GPS updates do not cancel in-flight requests or issue one per frame. */
 @Composable
 internal fun rememberRoadRoute(
@@ -128,14 +86,14 @@ internal fun rememberRoadRoute(
     retry: Int,
     initialOrigin: LatLng? = null
 ): RoadRouteState {
-    val state = remember(pickup, delivery, phase, initialOrigin) { RoadRouteState() }
+    val state = remember(pickup.position, delivery.position) { RoadRouteState() }
     val latestCourier by rememberUpdatedState(courier)
     val latestFresh by rememberUpdatedState(fresh)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
     // Real road route begins loading on request — no fake straight line on frame 0
 
-    LaunchedEffect(state, lifecycle, retry, initialOrigin) {
+    LaunchedEffect(state, lifecycle, retry, phase, initialOrigin) {
         val hasEndpoints = when (phase) {
             "delivery" -> delivery.available
             "return" -> pickup.available

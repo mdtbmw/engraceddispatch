@@ -38,8 +38,13 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +64,28 @@ import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
+
+/**
+ * Transforms Markdown bold tokens (**bold text**) into real Jetpack Compose AnnotatedString Bold styling.
+ * Eliminates ugly asterisks in ESAI responses.
+ */
+internal fun parseMarkdownBold(text: String): AnnotatedString {
+    if (!text.contains("**")) {
+        return AnnotatedString(text)
+    }
+    return buildAnnotatedString {
+        val parts = text.split("**")
+        parts.forEachIndexed { index, part ->
+            if (index % 2 == 1) {
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append(part)
+                }
+            } else {
+                append(part)
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,8 +134,32 @@ fun SupportChatScreen(
     var isAiTyping by remember { mutableStateOf(false) }
     var typingAgentText by remember { mutableStateOf("ESAI is typing...") }
     var showVoiceCallHUD by remember { mutableStateOf(false) }
+    var isCallActive by remember { mutableStateOf(false) }
+    var callActiveSeconds by remember { mutableStateOf(0) }
     var isRecordingVoiceNote by remember { mutableStateOf(false) }
     var recordingDuration by remember { mutableStateOf(0) }
+    var showParcelSelectorSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isCallActive) {
+        if (isCallActive) {
+            while (isCallActive) {
+                delay(1000L)
+                callActiveSeconds++
+            }
+        } else {
+            callActiveSeconds = 0
+        }
+    }
+
+    val latestActionMsgId = remember(chatMessages) {
+        chatMessages.lastOrNull {
+            it.isAi && (it.messageText.contains("motorcycle", ignoreCase = true) ||
+                    it.messageText.contains("courier", ignoreCase = true) ||
+                    it.messageText.contains("dispatch", ignoreCase = true) ||
+                    it.messageText.contains("book", ignoreCase = true) ||
+                    it.messageText.contains("fare", ignoreCase = true))
+        }?.id
+    }
 
     LaunchedEffect(isRecordingVoiceNote) {
         if (isRecordingVoiceNote) {
@@ -235,6 +286,37 @@ fun SupportChatScreen(
                 val parcel = selectedParcel
                 val activeParcelsList = activeParcels
                 val aiReply = when {
+                    lower.contains("inquir") || lower.contains("shipment") || lower.contains("selected") -> {
+                        if (parcel != null) {
+                            val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
+                            when (parcel.status) {
+                                ParcelStatus.DELIVERED -> {
+                                    "I have linked your completed shipment **$displayId** (${parcel.itemName.ifBlank { "Delivery Package" }}). " +
+                                            "Our system records that this delivery was completed to **${parcel.deliveryAddress.ifBlank { "recipient address" }}** with verified recipient PIN handover. " +
+                                            "Would you like an electronic receipt, want to tip the assigned courier, or need to report any discrepancy?"
+                                }
+                                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+                                    val courierInfo = if (parcel.courierName.isNotBlank()) "Courier **${parcel.courierName}** (${parcel.riderBikeNumber.ifBlank { "Dispatch Motorcycle" }})" else "An assigned fleet courier"
+                                    "Your shipment **$displayId** is currently in **TRANSIT**. $courierInfo is en route along Benin City corridors towards **${parcel.deliveryAddress}**. " +
+                                            "Telemetry confirms normal pace. Tap **Track on Live Radar** below for real-time map GPS tracking."
+                                }
+                                ParcelStatus.ARRIVED_PICKUP -> {
+                                    "Courier **${parcel.courierName.ifBlank { "Fleet Rider" }}** has arrived at the pickup location (**${parcel.pickupAddress}**) to collect **$displayId**."
+                                }
+                                ParcelStatus.PENDING -> {
+                                    "Shipment **$displayId** (${parcel.itemName}) is registered and queued in our Central Dispatch Pool. Couriers within your pickup radius are receiving the mission broadcast right now."
+                                }
+                                ParcelStatus.CANCELLED -> {
+                                    "Shipment **$displayId** was cancelled. Any associated delivery charges or escrow holds have been refunded back to your wallet balance."
+                                }
+                                else -> {
+                                    "Shipment **$displayId** (${parcel.itemName}) is currently in status **${parcel.status.name}**. Let me know how I can assist you with this order."
+                                }
+                            }
+                        } else {
+                            "You can link any active or completed delivery to this ticket by tapping the parcel selector bar above."
+                        }
+                    }
                     lower.contains("where") || lower.contains("track") || lower.contains("status") || lower.contains("rider") -> {
                         if (parcel != null) {
                             val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
@@ -245,10 +327,13 @@ fun SupportChatScreen(
                         } else if (activeParcelsList.isNotEmpty()) {
                             val p = activeParcelsList.first()
                             val displayId = FormatUtils.formatDisplayTrackingId(p.id)
-                            "You have an active shipment **$displayId** (${p.itemName}). Status: **${p.status.name}**."
+                            "You have an active shipment **$displayId** (${p.itemName}). Status: **${p.status.name}**. Assigned courier: **${p.courierName.ifBlank { "Searching rider pool" }}**."
                         } else {
-                            "You currently have no active deliveries in transit. To book a new courier, tap 'Send Package' on your dashboard."
+                            "You currently have no active deliveries in transit. To book a new courier, tap 'Send Package' on your dashboard, or use the dispatch draft below."
                         }
+                    }
+                    lower.contains("book") || lower.contains("send") || lower.contains("dispatch") || lower.contains("bike") -> {
+                        "I have prepared an express dispatch draft for you below. Our motorcycle couriers are on standby across Ring Road, GRA, Uselu, and Airport Road corridors. Tap **Confirm & Book** to proceed or **Change Route** to adjust landmarks."
                     }
                     lower.contains("delay") || lower.contains("traffic") || lower.contains("late") -> {
                         "Benin City operational corridors (Ring Road, Uselu, and Sapele Road) occasionally experience peak congestion. Our fleet routing dynamically reroutes riders to avoid bottlenecks. Your delivery is prioritized!"
@@ -263,7 +348,9 @@ fun SupportChatScreen(
                         "Our Marketplace connects verified Benin City vendors. Orders placed through Marketplace stores include automated dispatch delivery directly to your doorstep."
                     }
                     else -> {
-                        "Thank you for reaching out to ESDispatch Support. I have logged this inquiry under Ticket **#$ticketNumber** ($urgency priority). Is there anything specific about your shipments or account I can help clarify?"
+                        "Thank you for reaching out to ESDispatch Support. I have logged this inquiry under Ticket **#$ticketNumber** ($urgency priority). " +
+                                (if (parcel != null) "Currently linked to shipment **${FormatUtils.formatDisplayTrackingId(parcel.id)}**. " else "") +
+                                "How can I assist you with your deliveries, bookings, or account today?"
                     }
                 }
 
@@ -459,6 +546,7 @@ fun SupportChatScreen(
                                     shape = RoundedCornerShape(8.dp),
                                     color = Gold,
                                     modifier = Modifier.clickable {
+                                        isCallActive = true
                                         showVoiceCallHUD = true
                                     }
                                 ) {
@@ -491,35 +579,105 @@ fun SupportChatScreen(
                             }
                         }
 
-                        // Active Parcel Link Selector
-                        if (activeParcels.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(8.dp))
+                        // Linked Shipment Selector Row
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isDark) Charcoal.copy(alpha = 0.7f) else Slate.copy(alpha = 0.25f),
+                            border = BorderStroke(1.dp, if (selectedParcel != null) Gold.copy(alpha = 0.5f) else (if (isDark) Slate.copy(alpha = 0.4f) else Slate)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showParcelSelectorSheet = true }
+                        ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Filled.LocalShipping, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
-                                Text("Linked Parcel:", fontSize = 11.sp, color = secondaryText)
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(activeParcels) { p ->
-                                        val isSelected = selectedParcel?.id == p.id
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = if (isSelected) Gold else (if (isDark) Charcoal else Slate.copy(alpha = 0.3f)),
-                                            modifier = Modifier.clickable {
-                                                selectedParcel = if (isSelected) null else p
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                Icon(
+                                    Icons.Filled.LocalShipping,
+                                    contentDescription = null,
+                                    tint = Gold,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                if (selectedParcel != null) {
+                                    val p = selectedParcel!!
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Linked: ${FormatUtils.formatDisplayTrackingId(p.id)} • ${p.itemName.ifBlank { "Delivery Package" }}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = primaryText,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "Status: ${p.status.name} • Tap to switch parcel",
+                                            fontSize = 9.sp,
+                                            color = secondaryText
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Gold
+                                    ) {
+                                        Text(
+                                            text = "Switch",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Obsidian,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = if (parcels.isNotEmpty()) "Select shipment to inquire (${parcels.size} available)..." else "No parcels found • Inquire generally",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Gold,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(
+                                        Icons.Filled.ChevronRight,
+                                        contentDescription = null,
+                                        tint = Gold,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Quick 1-tap Active Parcel Chips if active shipments exist
+                        if (activeParcels.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                item {
+                                    Text("Active:", fontSize = 10.sp, color = secondaryText, fontWeight = FontWeight.SemiBold)
+                                }
+                                items(activeParcels) { p ->
+                                    val isSelected = selectedParcel?.id == p.id
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSelected) Gold else (if (isDark) Charcoal else Slate.copy(alpha = 0.35f)),
+                                        border = BorderStroke(0.8.dp, if (isSelected) Gold else Gold.copy(alpha = 0.3f)),
+                                        modifier = Modifier.clickable {
+                                            selectedParcel = if (isSelected) null else p
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            if (!isSelected) {
+                                                handleSendMessage("Inquiring about active shipment ${FormatUtils.formatDisplayTrackingId(p.id)} (${p.itemName.ifBlank { "Package" }})")
                                             }
-                                        ) {
-                                            Text(
-                                                text = FormatUtils.formatDisplayTrackingId(p.id),
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isSelected) Obsidian else primaryText,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                            )
                                         }
+                                    ) {
+                                        Text(
+                                            text = FormatUtils.formatDisplayTrackingId(p.id),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) Obsidian else primaryText,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
                                     }
                                 }
                             }
@@ -550,6 +708,68 @@ fun SupportChatScreen(
                             Column {
                                 Text("Connecting with Support Specialist...", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = primaryText)
                                 Text("Sarah M. from Central Dispatch is joining the chat", fontSize = 10.sp, color = secondaryText)
+                            }
+                        }
+                    }
+                }
+
+                // Minimized Voice Call Floating Banner
+                AnimatedVisibility(
+                    visible = isCallActive && !showVoiceCallHUD,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 4.dp)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                showVoiceCallHUD = true
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isDark) Charcoal else GoldenWhiteSurface,
+                        border = BorderStroke(1.dp, Gold)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(shape = CircleShape, color = Color(0xFF4CAF50), modifier = Modifier.size(8.dp)) {}
+                                Text(
+                                    text = "Voice Call in Progress (${String.format("%02d:%02d", callActiveSeconds / 60, callActiveSeconds % 60)})",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = primaryText
+                                )
+                                Text("• Tap to view", fontSize = 10.sp, color = Gold, fontWeight = FontWeight.SemiBold)
+                            }
+                            IconButton(
+                                onClick = {
+                                    val duration = callActiveSeconds
+                                    isCallActive = false
+                                    val mins = duration / 60
+                                    val secs = duration % 60
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.sendSupportChatMessage(
+                                        messageText = "Voice Concierge Call Completed (${String.format("%02d:%02d", mins, secs)}). Inquiry resolved.",
+                                        ticketId = ticketNumber,
+                                        deliveryId = selectedParcel?.id ?: "",
+                                        isAi = true,
+                                        urgency = urgency
+                                    )
+                                },
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFE53935))
+                            ) {
+                                Icon(Icons.Filled.CallEnd, contentDescription = "End Call", tint = Color.White, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
@@ -620,12 +840,14 @@ fun SupportChatScreen(
 
                     items(chatMessages, key = { it.id }) { msg ->
                         val isUser = msg.senderRole == "customer" || msg.senderId == currentUserId
+                        val isLatestAction = (msg.id == latestActionMsgId)
                         SupportMessageBubble(
                             message = msg,
                             isUser = isUser,
                             isDark = isDark,
                             primaryText = primaryText,
                             secondaryText = secondaryText,
+                            isLatestAction = isLatestAction,
                             onSwipeToReply = {
                                 replyingTo = msg
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -977,6 +1199,7 @@ fun SupportChatScreen(
                                     if (hasInput) {
                                         handleSendMessage()
                                     } else {
+                                        isCallActive = true
                                         showVoiceCallHUD = true
                                     }
                                 },
@@ -1020,12 +1243,15 @@ fun SupportChatScreen(
                 secondaryText = secondaryText,
                 isRepresentativeJoined = isRepresentativeJoined,
                 representativeName = representativeName,
+                callSeconds = callActiveSeconds,
                 onDismiss = { showVoiceCallHUD = false },
-                onEndCall = { durationSec, actionTaken ->
+                onEndCall = { durationSec, _ ->
+                    val duration = if (durationSec > 0) durationSec else callActiveSeconds
+                    isCallActive = false
                     showVoiceCallHUD = false
-                    val mins = durationSec / 60
-                    val secs = durationSec % 60
-                    val summaryText = "Voice Concierge Call Completed (${String.format("%02d:%02d", mins, secs)}). ${if (actionTaken.isNotBlank()) "Action: $actionTaken" else "Inquiry resolved."}"
+                    val mins = duration / 60
+                    val secs = duration % 60
+                    val summaryText = "Voice Concierge Call Completed (${String.format("%02d:%02d", mins, secs)}). Inquiry resolved."
                     viewModel.sendSupportChatMessage(
                         messageText = summaryText,
                         ticketId = ticketNumber,
@@ -1035,12 +1261,32 @@ fun SupportChatScreen(
                     )
                 },
                 onNavigateToBooking = {
+                    isCallActive = false
                     showVoiceCallHUD = false
                     onNavigate("SendParcel")
                 },
                 onNavigateToTracking = {
+                    isCallActive = false
                     showVoiceCallHUD = false
                     onNavigate("ActiveTracking")
+                }
+            )
+        }
+
+        // 4. Select Parcel Bottom Sheet (All shipments - active, delivered, past)
+        if (showParcelSelectorSheet) {
+            SelectParcelBottomSheet(
+                parcels = parcels,
+                selectedParcelId = selectedParcel?.id,
+                isDark = isDark,
+                primaryText = primaryText,
+                secondaryText = secondaryText,
+                onDismiss = { showParcelSelectorSheet = false },
+                onSelect = { parcel ->
+                    selectedParcel = parcel
+                    showParcelSelectorSheet = false
+                    val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
+                    handleSendMessage("Inquiring about shipment #$displayId (${parcel.itemName.ifBlank { "Delivery Package" }})")
                 }
             )
         }
@@ -1054,6 +1300,7 @@ private fun SupportMessageBubble(
     isDark: Boolean,
     primaryText: Color,
     secondaryText: Color,
+    isLatestAction: Boolean = true,
     onSwipeToReply: () -> Unit,
     onNavigate: (String) -> Unit = {},
     onQuickAction: (String) -> Unit = {}
@@ -1198,7 +1445,7 @@ private fun SupportMessageBubble(
 
                     if (message.messageText.isNotBlank()) {
                         Text(
-                            text = message.messageText,
+                            text = parseMarkdownBold(message.messageText),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             color = bubbleTextColor,
@@ -1213,6 +1460,7 @@ private fun SupportMessageBubble(
                             msgLower.contains("motorcycle") || msgLower.contains("courier") || msgLower.contains("dispatch") || msgLower.contains("book") || msgLower.contains("fare") -> {
                                 ChatBookingActionCard(
                                     isDark = isDark,
+                                    isActionActive = isLatestAction,
                                     onConfirm = { onNavigate("SendParcel") },
                                     onSelectLocation = { onQuickAction("Select destination for courier dispatch") }
                                 )
@@ -1387,6 +1635,7 @@ private fun WaveformBars() {
 @Composable
 private fun ChatBookingActionCard(
     isDark: Boolean,
+    isActionActive: Boolean = true,
     onConfirm: () -> Unit,
     onSelectLocation: () -> Unit
 ) {
@@ -1396,7 +1645,7 @@ private fun ChatBookingActionCard(
             .padding(top = 8.dp),
         shape = RoundedCornerShape(12.dp),
         color = if (isDark) Charcoal else GoldenWhiteSurface,
-        border = BorderStroke(1.dp, Gold)
+        border = BorderStroke(1.dp, if (isActionActive) Gold else Gold.copy(alpha = 0.25f))
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
@@ -1405,47 +1654,89 @@ private fun ChatBookingActionCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(Icons.Filled.DirectionsBike, contentDescription = null, tint = Gold, modifier = Modifier.size(15.dp))
-                    Text("EXPRESS DISPATCH DRAFT", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Gold)
+                    Icon(
+                        Icons.Filled.DirectionsBike,
+                        contentDescription = null,
+                        tint = if (isActionActive) Gold else TextGray,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        if (isActionActive) "EXPRESS DISPATCH DRAFT" else "EXPRESS DISPATCH [EXPIRED DRAFT]",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isActionActive) Gold else TextGray
+                    )
                 }
-                Text("₦1,200", fontSize = 11.sp, fontWeight = FontWeight.Black, color = if (isDark) Color.White else Obsidian)
+                Text(
+                    "₦1,200",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = if (isDark) (if (isActionActive) Color.White else TextGray) else (if (isActionActive) Obsidian else TextGray)
+                )
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("• From: Benin Central (Ring Road)", fontSize = 11.sp, color = if (isDark) Color.White else Obsidian, fontWeight = FontWeight.Medium)
-                Text("• To: Airport Road / GRA Corridor", fontSize = 11.sp, color = if (isDark) Color.White else Obsidian, fontWeight = FontWeight.Medium)
+                Text(
+                    "• From: Benin Central (Ring Road)",
+                    fontSize = 11.sp,
+                    color = if (isActionActive) (if (isDark) Color.White else Obsidian) else TextGray,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    "• To: Airport Road / GRA Corridor",
+                    fontSize = 11.sp,
+                    color = if (isActionActive) (if (isDark) Color.White else Obsidian) else TextGray,
+                    fontWeight = FontWeight.Medium
+                )
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (!isActionActive) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (isDark) Obsidian else Slate.copy(alpha = 0.2f),
-                    border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.4f)),
-                    modifier = Modifier.weight(1f).clickable { onSelectLocation() }
+                    color = if (isDark) Obsidian.copy(alpha = 0.5f) else Slate.copy(alpha = 0.15f),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Change Route",
+                        text = "Draft superseded by newer inquiry",
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Gold,
+                        fontWeight = FontWeight.Medium,
+                        color = TextGray,
                         modifier = Modifier.padding(vertical = 6.dp),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
+            } else {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isDark) Obsidian else Slate.copy(alpha = 0.2f),
+                        border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.4f)),
+                        modifier = Modifier.weight(1f).clickable { onSelectLocation() }
+                    ) {
+                        Text(
+                            text = "Change Route",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Gold,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
 
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Gold,
-                    modifier = Modifier.weight(1.3f).clickable { onConfirm() }
-                ) {
-                    Text(
-                        text = "Confirm & Book",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Obsidian,
-                        modifier = Modifier.padding(vertical = 6.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Gold,
+                        modifier = Modifier.weight(1.3f).clickable { onConfirm() }
+                    ) {
+                        Text(
+                            text = "Confirm & Book",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Obsidian,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
                 }
             }
         }
@@ -1611,456 +1902,597 @@ fun VoiceCallHUDModal(
     secondaryText: Color,
     isRepresentativeJoined: Boolean,
     representativeName: String,
+    callSeconds: Int = 0,
     onDismiss: () -> Unit,
     onEndCall: (durationSec: Int, actionTaken: String) -> Unit,
-    onNavigateToBooking: () -> Unit,
-    onNavigateToTracking: () -> Unit
+    onNavigateToBooking: () -> Unit = {},
+    onNavigateToTracking: () -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
-    var callSeconds by remember { mutableStateOf(0) }
     var isMuted by remember { mutableStateOf(false) }
     var isSpeakerOn by remember { mutableStateOf(true) }
-    var isBookingConfirmed by remember { mutableStateOf(false) }
-    var showLocationSelector by remember { mutableStateOf(false) }
-    var actionNote by remember { mutableStateOf("") }
 
-    var pickupLocation by remember { mutableStateOf("Current GPS Location (Ring Road)") }
-    var destinationLocation by remember { mutableStateOf("Airport Road, GRA, Benin City") }
-    val estimatedFare = "1,200"
-
-    // Call duration timer
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000L)
-            callSeconds++
-        }
-    }
-
-    // Dynamic dialogue subtitles depending on seconds
-    val dynamicSubtitle = remember(callSeconds, isBookingConfirmed, destinationLocation) {
-        when {
-            isBookingConfirmed -> "ESAI: Dispatch order confirmed! Courier ESD-842 is en route to $pickupLocation. ETA 4 minutes."
-            callSeconds < 3 -> "Connecting to high-fidelity dispatch audio stream..."
-            callSeconds < 7 -> "ESAI: Hello! I am your AI concierge. Tell me where you want to send a package or which shipment to track."
-            callSeconds < 14 -> "User: I need to dispatch a package to $destinationLocation."
-            else -> "ESAI: I found an express motorcycle nearby. Route via Sapele Road (4.2 km). Estimated fare is ₦$estimatedFare. Tap below to confirm dispatch."
-        }
-    }
-
-    // Concentric breathing rings animation
-    val infiniteTransition = rememberInfiniteTransition()
+    // Concentric breathing rings animation for active speech/connection
+    val infiniteTransition = rememberInfiniteTransition(label = "VoiceCallRings")
     val ring1Scale by infiniteTransition.animateFloat(
         initialValue = 0.85f,
         targetValue = 1.35f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = FastOutSlowInEasing),
+            animation = tween(2400, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
-        )
+        ),
+        label = "ring1Scale"
     )
     val ring1Alpha by infiniteTransition.animateFloat(
-        initialValue = 0.45f,
+        initialValue = 0.40f,
         targetValue = 0.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = FastOutSlowInEasing),
+            animation = tween(2400, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
-        )
+        ),
+        label = "ring1Alpha"
     )
     val ring2Scale by infiniteTransition.animateFloat(
         initialValue = 0.75f,
-        targetValue = 1.2f,
+        targetValue = 1.20f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, delayMillis = 600, easing = FastOutSlowInEasing),
+            animation = tween(2400, delayMillis = 600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
-        )
+        ),
+        label = "ring2Scale"
     )
     val ring2Alpha by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
+        initialValue = 0.30f,
         targetValue = 0.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, delayMillis = 600, easing = FastOutSlowInEasing),
+            animation = tween(2400, delayMillis = 600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
-        )
+        ),
+        label = "ring2Alpha"
     )
+
+    // Animated audio waveform heights (reacts rhythmically during call)
+    val wave1 by infiniteTransition.animateFloat(initialValue = 6f, targetValue = 24f, animationSpec = infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w1")
+    val wave2 by infiniteTransition.animateFloat(initialValue = 16f, targetValue = 8f, animationSpec = infiniteRepeatable(tween(480, delayMillis = 80, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w2")
+    val wave3 by infiniteTransition.animateFloat(initialValue = 10f, targetValue = 28f, animationSpec = infiniteRepeatable(tween(390, delayMillis = 160, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w3")
+    val wave4 by infiniteTransition.animateFloat(initialValue = 22f, targetValue = 6f, animationSpec = infiniteRepeatable(tween(450, delayMillis = 240, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w4")
+    val wave5 by infiniteTransition.animateFloat(initialValue = 8f, targetValue = 22f, animationSpec = infiniteRepeatable(tween(470, delayMillis = 120, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w5")
+    val wave6 by infiniteTransition.animateFloat(initialValue = 18f, targetValue = 10f, animationSpec = infiniteRepeatable(tween(410, delayMillis = 200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w6")
+    val wave7 by infiniteTransition.animateFloat(initialValue = 7f, targetValue = 20f, animationSpec = infiniteRepeatable(tween(460, delayMillis = 280, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w7")
+
+    // Theme-adaptive styling: strictly NOT black or dark mode unless dark theme is enabled!
+    val screenBg = if (isDark) LuxuryBlack else GoldenWhite
+    val controlBg = if (isDark) Charcoal else Color.White
+    val controlBorder = if (isDark) Gold.copy(alpha = 0.25f) else Slate.copy(alpha = 0.4f)
+    val callerTitle = if (isRepresentativeJoined) representativeName else "Support Concierge"
+    val callerSubtitle = if (isRepresentativeJoined) "Customer Care Specialist" else "Live Dispatch Assistant"
+    val formattedDuration = String.format("%02d:%02d", callSeconds / 60, callSeconds % 60)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .zIndex(99f)
-            .background(Color(0xFF0D0D11))
+            .background(screenBg)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top Bar
+            // 1. Top Bar: Clean, organized header with minimize and connection status
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = onDismiss,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onDismiss()
+                    },
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.08f))
+                        .background(if (isDark) Charcoal else Slate.copy(alpha = 0.25f))
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Minimize Call", tint = Gold, modifier = Modifier.size(24.dp))
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = "Minimize Call",
+                        tint = if (isDark) Gold else Obsidian,
+                        modifier = Modifier.size(26.dp)
+                    )
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = if (isRepresentativeJoined) representativeName.uppercase() else "ESAI LOGISTICS CONCIERGE",
-                        fontSize = 12.sp,
+                        text = "ESDISPATCH CONCIERGE",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
                         color = Gold,
                         letterSpacing = 1.2.sp
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
-                        Surface(shape = CircleShape, color = Color(0xFF4CAF50), modifier = Modifier.size(6.dp)) {}
+                        Surface(
+                            shape = CircleShape,
+                            color = if (callSeconds < 3) Gold else Color(0xFF4CAF50),
+                            modifier = Modifier.size(6.dp)
+                        ) {}
                         Text(
-                            text = "256-BIT ENCRYPTED STREAM",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF4CAF50)
+                            text = if (callSeconds < 3) "Connecting..." else "Connected",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (callSeconds < 3) Gold else (if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32))
                         )
                     }
                 }
 
+                // Call Duration Badge
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color.White.copy(alpha = 0.08f),
-                    border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.3f))
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isDark) Charcoal else Color.White,
+                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate.copy(alpha = 0.4f))
                 ) {
                     Text(
-                        text = String.format("%02d:%02d", callSeconds / 60, callSeconds % 60),
-                        fontSize = 11.sp,
+                        text = formattedDuration,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Gold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        color = if (isDark) Gold else Obsidian,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                     )
                 }
             }
 
-            // Center Visualizer & Concentric Rings
+            // 2. Center Stage: Caller avatar with clean animated breathing rings, name, status, and waveform
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.padding(vertical = 12.dp)
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.weight(1f)
             ) {
                 Box(
-                    modifier = Modifier.size(160.dp),
+                    modifier = Modifier.size(190.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     // Outer Ring 1
                     Box(
                         modifier = Modifier
-                            .size(160.dp)
+                            .size(190.dp)
                             .scale(ring1Scale)
                             .clip(CircleShape)
-                            .border(1.5.dp, Gold.copy(alpha = ring1Alpha), CircleShape)
+                            .border(1.5.dp, Gold.copy(alpha = if (isDark) ring1Alpha * 0.45f else ring1Alpha * 0.25f), CircleShape)
                     )
                     // Outer Ring 2
                     Box(
                         modifier = Modifier
-                            .size(130.dp)
+                            .size(150.dp)
                             .scale(ring2Scale)
                             .clip(CircleShape)
-                            .border(1.5.dp, Gold.copy(alpha = ring2Alpha), CircleShape)
+                            .border(1.5.dp, Gold.copy(alpha = if (isDark) ring2Alpha * 0.35f else ring2Alpha * 0.20f), CircleShape)
                     )
-                    // Core Orb
+                    // Core Orb: Obsidian surface with Gold border and icon ensures maximum contrast in both light and dark modes
                     Box(
                         modifier = Modifier
-                            .size(90.dp)
+                            .size(108.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF141416))
-                            .border(2.dp, Gold, CircleShape),
+                            .background(if (isDark) Charcoal else Obsidian)
+                            .border(2.5.dp, Gold, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = if (isRepresentativeJoined) Icons.Filled.Headphones else Icons.Filled.GraphicEq,
+                            imageVector = if (isRepresentativeJoined) Icons.Filled.SupportAgent else Icons.Filled.HeadsetMic,
                             contentDescription = null,
                             tint = Gold,
-                            modifier = Modifier.size(38.dp)
+                            modifier = Modifier.size(48.dp)
                         )
                     }
                 }
 
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = if (isRepresentativeJoined) representativeName else "ESAI Autonomous Dispatch",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White
-                    )
-                    Text(
-                        text = if (isRepresentativeJoined) "Central Operations Support" else "Active Real-Time Speech Telemetry",
-                        fontSize = 11.sp,
-                        color = TextGray
-                    )
-                }
-            }
+                Spacer(modifier = Modifier.height(20.dp))
 
-            // Live Speech-to-Text Transcript HUD
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                color = Color(0xFF16161A),
-                border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Text(
+                    text = callerTitle,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color.White else Obsidian,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = callerSubtitle,
+                    fontSize = 13.sp,
+                    color = secondaryText,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Clean status chip
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isMuted) Color(0xFFE53935).copy(alpha = 0.12f) else (if (isDark) Charcoal else Slate.copy(alpha = 0.22f)),
+                    border = BorderStroke(0.8.dp, if (isMuted) Color(0xFFE53935).copy(alpha = 0.4f) else (if (isDark) Gold.copy(alpha = 0.25f) else Color.Transparent))
                 ) {
-                    Icon(Icons.Filled.RecordVoiceOver, contentDescription = null, tint = Gold, modifier = Modifier.size(18.dp))
                     Text(
-                        text = dynamicSubtitle,
+                        text = if (callSeconds < 3) "Establishing voice line..." else if (isMuted) "Microphone is muted" else "Voice line active",
                         fontSize = 12.sp,
-                        color = Color.White,
-                        lineHeight = 17.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        color = if (isMuted) Color(0xFFE53935) else (if (isDark) Gold else Obsidian),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     )
                 }
-            }
 
-            // In-Call Interactive Dispatch Order Card
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF1A1A20),
-                border = BorderStroke(1.dp, if (isBookingConfirmed) Color(0xFF4CAF50) else Gold)
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (isBookingConfirmed) "CONFIRMED DISPATCH ORDER" else "DISPATCH ORDER DRAFT",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            color = if (isBookingConfirmed) Color(0xFF4CAF50) else Gold,
-                            letterSpacing = 1.sp
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Gold.copy(alpha = 0.15f)
-                        ) {
-                            Text(
-                                text = "₦$estimatedFare",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Gold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
+                Spacer(modifier = Modifier.height(28.dp))
 
-                    // Route Points
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(shape = CircleShape, color = Color(0xFF4CAF50), modifier = Modifier.size(8.dp)) {}
-                            Text(text = "Pickup: $pickupLocation", fontSize = 11.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(shape = CircleShape, color = Gold, modifier = Modifier.size(8.dp)) {}
-                            Text(text = "Drop-off: $destinationLocation", fontSize = 11.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-
-                    // Hub Selector if open
-                    if (showLocationSelector) {
-                        Text("Popular Benin City Hubs:", fontSize = 10.sp, color = TextGray)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            val hubs = listOf("Ring Road", "UNIBEN Main Gate", "GRA Boundary", "Airport Road", "Sapele Road", "Ikpoba Hill")
-                            items(hubs) { hub ->
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (destinationLocation.contains(hub)) Gold else Color.White.copy(alpha = 0.1f),
-                                    modifier = Modifier.clickable {
-                                        destinationLocation = "$hub, Benin City"
-                                        showLocationSelector = false
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    }
-                                ) {
-                                    Text(
-                                        text = hub,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (destinationLocation.contains(hub)) Obsidian else Color.White,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Interactive Action Button
-                    if (!isBookingConfirmed) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { showLocationSelector = !showLocationSelector },
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color.White.copy(alpha = 0.08f),
-                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
-                            ) {
-                                Text(
-                                    text = if (showLocationSelector) "Close Hubs" else "Change Hub",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Gold,
-                                    modifier = Modifier.padding(vertical = 10.dp),
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
-                            }
-
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1.3f)
-                                    .clickable {
-                                        isBookingConfirmed = true
-                                        actionNote = "Dispatched courier to $destinationLocation (₦$estimatedFare)"
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    },
-                                shape = RoundedCornerShape(10.dp),
-                                color = Gold
-                            ) {
-                                Text(
-                                    text = "Confirm & Dispatch",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Obsidian,
-                                    modifier = Modifier.padding(vertical = 10.dp),
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
-                            }
-                        }
-                    } else {
+                // Rhythmic Audio Waveform Bars (Clean, uncluttered, animated)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    val bars = listOf(wave1, wave2, wave3, wave4, wave5, wave6, wave7)
+                    bars.forEach { h ->
                         Surface(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onEndCall(callSeconds, actionNote)
-                                    onNavigateToTracking()
-                                },
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF4CAF50)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 10.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Filled.Radar, contentDescription = null, tint = Obsidian, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Track Live Dispatch Radar",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Obsidian
-                                )
-                            }
-                        }
+                                .width(3.5.dp)
+                                .height((if (isMuted) 4f else h).dp),
+                            shape = RoundedCornerShape(2.dp),
+                            color = if (isMuted) TextGray else Gold
+                        ) {}
                     }
                 }
             }
 
-            // Bottom Call Controls Row
+            // 3. Bottom Call Controls: Clean, symmetrical, beautifully spaced
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Mic Mute Toggle
-                IconButton(
-                    onClick = {
-                        isMuted = !isMuted
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    },
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .background(if (isMuted) Color(0xFFE53935).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.1f))
-                ) {
-                    Icon(
-                        imageVector = if (isMuted) Icons.Filled.MicOff else Icons.Filled.Mic,
-                        contentDescription = "Mute Microphone",
-                        tint = if (isMuted) Color(0xFFE53935) else Color.White,
-                        modifier = Modifier.size(22.dp)
+                // Control 1: Mute Toggle
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    IconButton(
+                        onClick = {
+                            isMuted = !isMuted
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        },
+                        modifier = Modifier
+                            .size(58.dp)
+                            .clip(CircleShape)
+                            .background(if (isMuted) Color(0xFFE53935).copy(alpha = 0.15f) else controlBg)
+                            .border(1.dp, if (isMuted) Color(0xFFE53935) else controlBorder, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = if (isMuted) Icons.Filled.MicOff else Icons.Filled.Mic,
+                            contentDescription = if (isMuted) "Unmute Microphone" else "Mute Microphone",
+                            tint = if (isMuted) Color(0xFFE53935) else (if (isDark) Color.White else Obsidian),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Text(
+                        text = if (isMuted) "Unmute" else "Mute",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isDark) TextGray else Obsidian
                     )
                 }
 
-                // Speakerphone Toggle
-                IconButton(
-                    onClick = {
-                        isSpeakerOn = !isSpeakerOn
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    },
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .background(if (isSpeakerOn) Gold.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.1f))
-                ) {
-                    Icon(
-                        imageVector = if (isSpeakerOn) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
-                        contentDescription = "Toggle Speaker",
-                        tint = if (isSpeakerOn) Gold else Color.White,
-                        modifier = Modifier.size(22.dp)
+                // Control 2: Speakerphone Toggle
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    IconButton(
+                        onClick = {
+                            isSpeakerOn = !isSpeakerOn
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        },
+                        modifier = Modifier
+                            .size(58.dp)
+                            .clip(CircleShape)
+                            .background(if (isSpeakerOn) Gold.copy(alpha = 0.2f) else controlBg)
+                            .border(1.dp, if (isSpeakerOn) Gold else controlBorder, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = if (isSpeakerOn) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
+                            contentDescription = if (isSpeakerOn) "Turn Off Speaker" else "Turn On Speaker",
+                            tint = if (isSpeakerOn) (if (isDark) Gold else Obsidian) else (if (isDark) Color.White else Obsidian),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Text(
+                        text = "Speaker",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isDark) TextGray else Obsidian
                     )
                 }
 
-                // In-Call Chat (Minimizes to text chat)
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.1f))
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Chat,
-                        contentDescription = "Text Chat",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
+                // Control 3: In-Call Chat / Minimize (Returns cleanly to chat while call persists)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onDismiss()
+                        },
+                        modifier = Modifier
+                            .size(58.dp)
+                            .clip(CircleShape)
+                            .background(controlBg)
+                            .border(1.dp, controlBorder, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Chat,
+                            contentDescription = "Text Chat",
+                            tint = if (isDark) Color.White else Obsidian,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Text(
+                        text = "Message",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isDark) TextGray else Obsidian
                     )
                 }
 
-                // End Call Button
-                IconButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onEndCall(callSeconds, actionNote)
-                    },
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFE53935))
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.CallEnd,
-                        contentDescription = "End Call",
-                        tint = Color.White,
-                        modifier = Modifier.size(26.dp)
+                // Control 4: End Call Button (Prominent red circular button)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onEndCall(callSeconds, "")
+                        },
+                        modifier = Modifier
+                            .size(58.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFE53935))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CallEnd,
+                            contentDescription = "End Call",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Text(
+                        text = "End",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFE53935)
                     )
                 }
             }
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SelectParcelBottomSheet(
+    parcels: List<Parcel>,
+    selectedParcelId: String?,
+    isDark: Boolean,
+    primaryText: Color,
+    secondaryText: Color,
+    onDismiss: () -> Unit,
+    onSelect: (Parcel) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filtered = remember(parcels, searchQuery) {
+        if (searchQuery.isBlank()) parcels
+        else parcels.filter {
+            it.id.contains(searchQuery, ignoreCase = true) ||
+            it.itemName.contains(searchQuery, ignoreCase = true) ||
+            it.deliveryAddress.contains(searchQuery, ignoreCase = true) ||
+            it.pickupAddress.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = if (isDark) Obsidian else GoldenWhite,
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(color = Gold)
+        },
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Select Shipment to Inquire",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = primaryText
+                    )
+                    Text(
+                        text = "Choose any active or past delivery to discuss with ESAI",
+                        fontSize = 12.sp,
+                        color = secondaryText
+                    )
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = if (isDark) Charcoal else Slate.copy(alpha = 0.3f),
+                    modifier = Modifier.clickable { onDismiss() }
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Close",
+                        tint = primaryText,
+                        modifier = Modifier.padding(6.dp).size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Search Bar
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search by ID, item name, or address...", fontSize = 12.sp, color = secondaryText) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Gold, modifier = Modifier.size(18.dp)) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = if (isDark) Slate.copy(alpha = 0.4f) else Slate,
+                    focusedContainerColor = if (isDark) Charcoal else GoldenWhiteSurface,
+                    unfocusedContainerColor = if (isDark) Charcoal else GoldenWhiteSurface,
+                    focusedTextColor = primaryText,
+                    unfocusedTextColor = primaryText
+                ),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (filtered.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 36.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Filled.Inventory2, contentDescription = null, tint = secondaryText, modifier = Modifier.size(40.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("No shipments found", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryText)
+                        Text("All deliveries booked on your account will appear here.", fontSize = 11.sp, color = secondaryText)
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(filtered, key = { it.id }) { parcel ->
+                        val isSelected = parcel.id == selectedParcelId
+                        val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) (if (isDark) Charcoal else GoldenWhiteSurface) else (if (isDark) Charcoal.copy(alpha = 0.6f) else GoldenWhiteLight),
+                            border = BorderStroke(
+                                if (isSelected) 1.5.dp else 1.dp,
+                                if (isSelected) Gold else (if (isDark) Slate.copy(alpha = 0.3f) else Slate.copy(alpha = 0.5f))
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSelect(parcel)
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = when (parcel.status) {
+                                        ParcelStatus.DELIVERED -> Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> Gold.copy(alpha = 0.2f)
+                                        ParcelStatus.CANCELLED -> Color(0xFFFF5252).copy(alpha = 0.15f)
+                                        else -> Gold.copy(alpha = 0.15f)
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = when (parcel.status) {
+                                                ParcelStatus.DELIVERED -> Icons.Filled.CheckCircle
+                                                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> Icons.Filled.DirectionsBike
+                                                ParcelStatus.CANCELLED -> Icons.Filled.Cancel
+                                                else -> Icons.Filled.LocalShipping
+                                            },
+                                            contentDescription = null,
+                                            tint = when (parcel.status) {
+                                                ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
+                                                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> Gold
+                                                ParcelStatus.CANCELLED -> Color(0xFFFF5252)
+                                                else -> Gold
+                                            },
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(displayId, fontSize = 12.sp, fontWeight = FontWeight.Black, color = primaryText)
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = when (parcel.status) {
+                                                ParcelStatus.DELIVERED -> Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                                ParcelStatus.TRANSIT -> Gold.copy(alpha = 0.2f)
+                                                else -> Slate.copy(alpha = 0.3f)
+                                            }
+                                        ) {
+                                            Text(
+                                                text = parcel.status.name,
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = when (parcel.status) {
+                                                    ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
+                                                    ParcelStatus.TRANSIT -> Gold
+                                                    else -> primaryText
+                                                },
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = parcel.itemName.ifBlank { "Standard Dispatch Item" },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = primaryText,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (parcel.deliveryAddress.isNotBlank()) {
+                                        Text(
+                                            text = "To: ${parcel.deliveryAddress}",
+                                            fontSize = 10.sp,
+                                            color = secondaryText,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                if (isSelected) {
+                                    Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Gold, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+    }
+}
+

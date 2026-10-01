@@ -42,10 +42,12 @@ object FormatUtils {
             .removePrefix("ESD-")
             .removePrefix("TRK-")
             .removePrefix("ORD-")
+            .removePrefix("PC-")
+            .removePrefix("PRC-")
             .replace("-", "")
             .replace("#", "")
             .filter { it.isLetterOrDigit() }
-        val slice = if (stripped.length > 8) stripped.take(8) else stripped
+        val slice = if (stripped.length > 6) stripped.take(6) else stripped
         return "ESD-$slice"
     }
 

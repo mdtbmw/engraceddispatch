@@ -100,7 +100,7 @@ fun ProofOfDeliveryScreen(
     }
 
     val isAlreadyOtpVerified = remember(parcel?.otpVerified) { parcel?.otpVerified == true }
-    var isPinVerified by remember(isAlreadyOtpVerified, isPickup) { mutableStateOf(isPickup || isAlreadyOtpVerified) }
+    var isPinVerified by remember(cleanParcelId) { mutableStateOf(isPickup || isAlreadyOtpVerified) }
 
     var otpInput by remember { mutableStateOf("") }
     var isVerifyingOtp by remember { mutableStateOf(false) }
@@ -174,36 +174,34 @@ fun ProofOfDeliveryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(HeaderBgColor)
+            .background(pageBg)
     ) {
-        ScreenHeader(
-            title = when {
-                isPickup -> "Pickup Photo Proof"
-                isSignatureStep -> "Customer Signature"
-                !isPinVerified -> "Recipient Handover PIN"
-                capturedBitmap != null -> "Confirm Delivery Photo"
-                else -> "Capture Delivery Photo"
-            },
-            onBack = {
-                if (isSignatureStep) {
-                    isSignatureStep = false
-                } else if (capturedBitmap != null) {
-                    capturedBitmap = null
-                } else if (isPinVerified && !isPickup && !isAlreadyOtpVerified) {
-                    isPinVerified = false
-                } else {
-                    navController.popBackStack()
+            ScreenHeader(
+                title = when {
+                    isPickup -> "Pickup Photo Proof"
+                    isSignatureStep -> "Customer Signature"
+                    !isPinVerified -> "Recipient Handover PIN"
+                    capturedBitmap != null -> "Confirm Delivery Photo"
+                    else -> "Capture Delivery Photo"
+                },
+                shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp),
+                onBack = {
+                    if (isSignatureStep) {
+                        isSignatureStep = false
+                    } else if (capturedBitmap != null) {
+                        capturedBitmap = null
+                    } else if (isPinVerified && !isPickup && !isAlreadyOtpVerified) {
+                        isPinVerified = false
+                    } else {
+                        navController.popBackStack()
+                    }
                 }
-            }
-        )
+            )
 
-        RoundedSheet(
-            modifier = Modifier.weight(1f),
-            containerColor = pageBg
-        ) {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -907,7 +905,6 @@ fun ProofOfDeliveryScreen(
             }
         }
     }
-}
 }
 
 @Composable

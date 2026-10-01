@@ -61,6 +61,7 @@ fun V2DashboardScreen(
     val parcels by viewModel.parcels.collectAsState()
     val archivedParcelIds by viewModel.archivedParcelIds.collectAsState()
     val promotions by viewModel.promotions.collectAsState()
+    val marketplaceProducts by viewModel.marketplaceProducts.collectAsState()
     val sections by viewModel.dashboardSectionsEnabled.collectAsState()
     val dashboardVariant by viewModel.dashboardVariant.collectAsState()
 
@@ -132,7 +133,16 @@ fun V2DashboardScreen(
                 if (sections["promo_banner"] != false) {
                     item {
                         Spacer(modifier = Modifier.height(22.dp))
-                        HeroCarousel()
+                        HeroCarousel(
+                            products = marketplaceProducts,
+                            onAddToCart = { item ->
+                                viewModel.addToCart(item)
+                                android.widget.Toast.makeText(context, "Added ${item.title} to cart", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            onProductClick = {
+                                onNavigate("Marketplace")
+                            }
+                        )
                     }
                 }
 
@@ -162,6 +172,9 @@ fun V2DashboardScreen(
                             onApplyPromo = { code ->
                                 viewModel.applyPromoCode(code) { success, msg ->
                                     android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                    if (success) {
+                                        onNavigate("SendParcel")
+                                    }
                                 }
                             }
                         )
