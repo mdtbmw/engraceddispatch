@@ -4,6 +4,7 @@ import com.esdispatch.BuildConfig
 import com.esdispatch.data.ParcelStatus
 import com.esdispatch.ui.theme.Hugeicons
 import com.esdispatch.ui.theme.AnimatedHugeIcon
+import com.esdispatch.util.SoundManager
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -845,6 +846,28 @@ fun PinInputField(
     val maxDigits = 4
     val focusRequesters = remember { List(4) { FocusRequester() } }
 
+    val shakeOffset = remember { Animatable(0f) }
+    LaunchedEffect(isError) {
+        if (isError) {
+            SoundManager.playErrorBuzz()
+            shakeOffset.snapTo(0f)
+            shakeOffset.animateTo(
+                targetValue = 0f,
+                animationSpec = keyframes {
+                    durationMillis = 400
+                    0f at 0
+                    (-14f) at 50
+                    14f at 100
+                    (-10f) at 160
+                    10f at 220
+                    (-6f) at 280
+                    6f at 340
+                    0f at 400
+                }
+            )
+        }
+    }
+
     // Create a list of 4 characters representing the PIN
     val digits = remember(pin) {
         List(4) { index -> pin.getOrNull(index)?.toString() ?: "" }
@@ -864,7 +887,7 @@ fun PinInputField(
     }
 
     Row(
-        modifier = modifier,
+        modifier = modifier.offset(x = shakeOffset.value.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1010,6 +1033,7 @@ fun PinInputField(
 fun WalletCheckoutSheet(
     bookingPrice: Double,
     walletBalance: Double,
+    isSubmitting: Boolean = false,
     onConfirmWalletPayment: () -> Unit,
     onFundRequired: (Double) -> Unit,
     onDismiss: () -> Unit
@@ -1021,7 +1045,7 @@ fun WalletCheckoutSheet(
     val missingAmount = bookingPrice - walletBalance
 
     AppModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
         Column(
@@ -1045,7 +1069,10 @@ fun WalletCheckoutSheet(
                     color = if (isDark) Gold else Obsidian
                 )
                 
-                IconButton(onClick = onDismiss) {
+                IconButton(
+                    onClick = { if (!isSubmitting) onDismiss() },
+                    enabled = !isSubmitting
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
@@ -1198,7 +1225,37 @@ fun WalletCheckoutSheet(
                 }
             }
 
-            if (isSufficient) {
+            if (isSubmitting) {
+                Surface(
+                    color = if (isDark) Charcoal else GoldenWhite,
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.5f) else Gold),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            color = if (isDark) Gold else Obsidian,
+                            strokeWidth = 2.5.dp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Securing Dispatch...",
+                            fontFamily = SpaceGrotesk,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp,
+                            fontSize = 14.sp,
+                            color = if (isDark) Gold else Obsidian
+                        )
+                    }
+                }
+            } else if (isSufficient) {
                 SwipeToConfirmButton(
                     text = "Swipe to Confirm Payment",
                     onConfirm = {

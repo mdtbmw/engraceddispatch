@@ -68,6 +68,7 @@ fun EconomyBookingScreen(
     val currentUserPhone by viewModel.userPhone.collectAsState()
     val adminDiscountEnabled by viewModel.adminDiscountEnabled.collectAsState()
     val adminDiscountPercent by viewModel.adminDiscountPercent.collectAsState()
+    val isBookingSubmitting by viewModel.isBookingSubmitting.collectAsState()
 
     var sName by remember { mutableStateOf(draft.senderName.ifBlank { currentUserName }) }
     var sPhone by remember { mutableStateOf(draft.senderPhone.ifBlank { currentUserPhone }) }
@@ -1242,7 +1243,7 @@ fun EconomyBookingScreen(
                 val isPhoneValid = isSPhoneValid && isRPhoneValid
                 val isAddressesValid = pickup.trim().length >= 6 && delivery.trim().length >= 6 &&
                     !pickup.trim().equals(delivery.trim(), ignoreCase = true)
-                val isBookingEnabled = isAddressesValid && isPhoneValid && pendingQuote is PendingQuote.Success && cargoFeasibility.isFeasible
+                val isBookingEnabled = isAddressesValid && isPhoneValid && pendingQuote is PendingQuote.Success && cargoFeasibility.isFeasible && !isBookingSubmitting
 
                 Button(
                     onClick = {
@@ -1266,7 +1267,7 @@ fun EconomyBookingScreen(
                     border = BorderStroke(1.2.dp, if (isBookingEnabled) Gold else Color.Gray.copy(alpha = 0.3f))
                 ) {
                     Text(
-                        if (!cargoFeasibility.isFeasible) "Limit Exceeded" else "Book Economy",
+                        if (!cargoFeasibility.isFeasible) "Limit Exceeded" else if (isBookingSubmitting) "Booking..." else "Book Economy",
                         fontSize = if (!cargoFeasibility.isFeasible) 13.sp else 15.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = if (isBookingEnabled) Gold else TextGray
@@ -1281,8 +1282,8 @@ fun EconomyBookingScreen(
             WalletCheckoutSheet(
                 bookingPrice = quotePrice,
                 walletBalance = viewModel.walletBalance.collectAsState().value,
+                isSubmitting = isBookingSubmitting,
                 onConfirmWalletPayment = {
-                    showCheckoutSheet = false
                     viewModel.updateDraftPickup(pickup, draft.pickupLat, draft.pickupLng)
                     viewModel.updateDraftDelivery(delivery, draft.deliveryLat, draft.deliveryLng)
                     viewModel.updateDraftSenderInfo(sName, sPhone)
@@ -1297,6 +1298,7 @@ fun EconomyBookingScreen(
                     )
                     viewModel.finalizeDraftPrice("Economy", quotePrice)
                     viewModel.confirmBooking { ok, msg ->
+                        showCheckoutSheet = false
                         if (ok) {
                             onNavigate("PaymentSuccess")
                         } else {

@@ -19,7 +19,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import com.esdispatch.ui.theme.Gold
 import com.esdispatch.ui.theme.Obsidian
 
@@ -43,9 +46,18 @@ fun CourierAvatarBadge(
 
     val isValidUrl = remember(avatarUrl) {
         avatarUrl.isNotBlank() &&
-            (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) &&
-            !avatarUrl.contains("unsplash.com")
+            (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://"))
     }
+
+    val context = LocalContext.current
+    val painter = rememberAsyncImagePainter(
+        model = ImageRequest.Builder(context)
+            .data(if (isValidUrl) avatarUrl else null)
+            .crossfade(300)
+            .build()
+    )
+
+    val isImageLoaded = isValidUrl && painter.state !is AsyncImagePainter.State.Error
 
     Box(
         modifier = modifier
@@ -55,9 +67,9 @@ fun CourierAvatarBadge(
             .background(Obsidian),
         contentAlignment = Alignment.Center
     ) {
-        if (isValidUrl) {
+        if (isImageLoaded) {
             Image(
-                painter = rememberAsyncImagePainter(avatarUrl),
+                painter = painter,
                 contentDescription = "Courier Avatar",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

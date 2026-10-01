@@ -62,6 +62,7 @@ import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.components.RoundedSheet
 import com.esdispatch.ui.components.QuiltedBackground
 import com.esdispatch.ui.components.PinInputField
+import com.esdispatch.util.ShimmerBox
 import com.esdispatch.ui.theme.*
 import androidx.compose.ui.viewinterop.AndroidView
 import com.esdispatch.data.*
@@ -1472,23 +1473,6 @@ fun WalletScreen(
         label = "balanceAnimation"
     )
 
-    var currentPage by remember { mutableStateOf(0) }
-    val itemsPerPage = 3
-    
-    val totalPages = remember(txs) {
-        ((txs.size + itemsPerPage - 1) / itemsPerPage).coerceAtLeast(1)
-    }
-
-    val paginatedTxs = remember(txs, currentPage) {
-        val startIndex = currentPage * itemsPerPage
-        val endIndex = minOf(startIndex + itemsPerPage, txs.size)
-        if (startIndex < txs.size) {
-            txs.subList(startIndex, endIndex)
-        } else {
-            emptyList()
-        }
-    }
-
     var showFundWithdrawSheet by remember { mutableStateOf(false) }
     var sheetMode by remember { mutableStateOf("fund") } // fund or withdraw
     var showPaystackSheet by remember { mutableStateOf(false) }
@@ -1628,11 +1612,26 @@ fun WalletScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             if (txs.isEmpty() && loadingTransactions) {
-                                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(color = Gold, modifier = Modifier.size(32.dp))
+                                repeat(3) {
+                                    ShimmerBox(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(68.dp),
+                                        shape = RoundedCornerShape(24.dp),
+                                        isDark = isDark
+                                    )
+                                }
+                            } else if (txs.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("No transactions yet", color = TextGray, fontSize = 13.sp)
                                 }
                             }
-                            paginatedTxs.forEach { tx ->
+                            txs.forEach { tx ->
                                 Surface(
                                     shape = RoundedCornerShape(24.dp),
                                     color = AppSurface,
@@ -1710,86 +1709,6 @@ fun WalletScreen(
                                         )
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    // Dynamic transaction pagination controls at the absolute bottom
-                    if (totalPages > 1) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val activeColor = if (isDark) Gold else Obsidian
-                            val activeTextColor = if (isDark) Obsidian else Gold
-                            val inactiveBg = if (isDark) Charcoal else Color(0xFFF1F5F9)
-                            val inactiveTextColor = if (isDark) TextGray else TextGray
-                            val borderColor = if (isDark) Color(0xFF2C2C2C) else Color(0xFFE2E8F0)
-
-                            // Previous button
-                            IconButton(
-                                onClick = { if (currentPage > 0) currentPage-- },
-                                enabled = currentPage > 0,
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(if (currentPage > 0) inactiveBg else inactiveBg.copy(alpha = 0.5f))
-                                    .border(1.dp, borderColor, CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.ArrowBack,
-                                    contentDescription = "Previous Page",
-                                    tint = if (currentPage > 0) (if (isDark) Gold else Obsidian) else TextGray,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            // Page Numbers
-                            for (i in 0 until totalPages) {
-                                val isSelected = i == currentPage
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                    .background(if (isSelected) activeColor else inactiveBg)
-                                    .border(1.dp, if (isSelected) activeColor else borderColor, CircleShape)
-                                    .clickable { currentPage = i },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "${i + 1}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) activeTextColor else inactiveTextColor
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(6.dp))
-                            }
-
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            // Next button
-                            IconButton(
-                                onClick = { if (currentPage < totalPages - 1) currentPage++ },
-                                enabled = currentPage < totalPages - 1,
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(if (currentPage < totalPages - 1) inactiveBg else inactiveBg.copy(alpha = 0.5f))
-                                    .border(1.dp, borderColor, CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.ArrowForward,
-                                    contentDescription = "Next Page",
-                                    tint = if (currentPage < totalPages - 1) (if (isDark) Gold else Obsidian) else TextGray,
-                                    modifier = Modifier.size(16.dp)
-                                )
                             }
                         }
                     }

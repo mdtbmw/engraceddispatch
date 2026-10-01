@@ -2,9 +2,13 @@ package com.esdispatch.ui.screens
 
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -81,10 +85,15 @@ fun PaymentSuccessScreen(
     onNavigate: (String) -> Unit
 ) {
     val scale = remember { Animatable(0f) }
+    val stampScale = remember { Animatable(2.2f) }
+    val stampAlpha = remember { Animatable(0f) }
     var triggerConfetti by remember { mutableStateOf(false) }
     val isLight = MaterialTheme.colorScheme.background == BackgroundLight
     val isDark = !isLight
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    var isCopied by remember { mutableStateOf(false) }
+
     val parcels by viewModel.parcels.collectAsState()
     val selectedParcel by viewModel.selectedParcel.collectAsState()
     val draft by viewModel.parcelDraft.collectAsState()
@@ -102,6 +111,32 @@ fun PaymentSuccessScreen(
     val displayDelivery = latestParcel?.deliveryAddress?.ifBlank { null } ?: draft.deliveryAddress.ifBlank { "Scheduled Delivery Destination" }
     val displayItem = latestParcel?.itemName?.ifBlank { null } ?: "Premium Package Dispatch"
 
+    val animatedPrice by animateFloatAsState(
+        targetValue = displayPrice.toFloat(),
+        animationSpec = tween(durationMillis = 1100, delayMillis = 200, easing = FastOutSlowInEasing),
+        label = "animatedPrice"
+    )
+
+    val infiniteTransition = rememberInfiniteTransition(label = "pulseRing")
+    val pulseRingScale by infiniteTransition.animateFloat(
+        initialValue = 0.96f,
+        targetValue = 1.14f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+    val pulseRingAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
     LaunchedEffect(Unit) {
         SoundManager.playCelebrationFanfare()
         triggerConfetti = true
@@ -112,6 +147,16 @@ fun PaymentSuccessScreen(
                 stiffness = Spring.StiffnessLow
             )
         )
+        kotlinx.coroutines.delay(350)
+        stampAlpha.snapTo(1f)
+        stampScale.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(
+                dampingRatio = 0.55f,
+                stiffness = 350f
+            )
+        )
+        SoundManager.playClick()
     }
 
     androidx.activity.compose.BackHandler {
@@ -151,7 +196,7 @@ fun PaymentSuccessScreen(
                 ) {
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Celebration circle card
+                    // Luxury Gold Brand Seal with breathing aura
                     Box(
                         modifier = Modifier
                             .size(160.dp)
@@ -160,22 +205,23 @@ fun PaymentSuccessScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(130.dp)
-                                .background(Gold.copy(alpha = 0.15f), CircleShape)
+                                .size(136.dp)
+                                .scale(pulseRingScale)
+                                .background(Gold.copy(alpha = pulseRingAlpha), CircleShape)
                         )
                         Surface(
-                            modifier = Modifier.size(110.dp),
+                            modifier = Modifier.size(112.dp),
                             shape = CircleShape,
                             color = Charcoal,
-                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f)),
+                            border = BorderStroke(2.dp, Gold),
                             shadowElevation = 0.dp
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = Icons.Filled.CheckCircle,
-                                    contentDescription = "Success",
-                                    tint = Color(0xFF4CAF50),
-                                    modifier = Modifier.size(56.dp)
+                                    painter = painterResource(id = com.esdispatch.R.drawable.ic_logo),
+                                    contentDescription = "ESDispatch Seal",
+                                    tint = Gold,
+                                    modifier = Modifier.size(54.dp)
                                 )
                             }
                         }
@@ -206,15 +252,29 @@ fun PaymentSuccessScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text("ESDISPATCH", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Gold, fontFamily = SpaceGrotesk)
-                                    Text("PREMIUM LOGISTICS & DISPATCH", fontSize = 8.sp, fontWeight = FontWeight.Medium, color = TextGray, letterSpacing = 1.sp)
+                                    Text("ESDISPATCH", fontSize = 14.sp, fontWeight = FontWeight.Black, color = Gold, fontFamily = SpaceGrotesk, letterSpacing = 1.sp)
+                                    Text("PREMIUM LOGISTICS & DISPATCH", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = TextGray, letterSpacing = 1.sp)
                                 }
                                 Box(
                                     modifier = Modifier
-                                        .background(Gold.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        .graphicsLayer {
+                                            scaleX = stampScale.value
+                                            scaleY = stampScale.value
+                                            alpha = stampAlpha.value
+                                            rotationZ = -10f
+                                        }
+                                        .border(2.dp, Gold, RoundedCornerShape(8.dp))
+                                        .background(Gold.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
                                 ) {
-                                    Text("PAID", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                    Text(
+                                        text = "PAID",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Gold,
+                                        letterSpacing = 2.sp,
+                                        fontFamily = SpaceGrotesk
+                                    )
                                 }
                             }
 
@@ -229,26 +289,43 @@ fun PaymentSuccessScreen(
                             ) {
                                 Column {
                                     Text("TRACKING ID", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(top = 4.dp)
-                                            .background(if (isDark) BackgroundDark else BackgroundLight, RoundedCornerShape(8.dp))
-                                            .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    Surface(
+                                        onClick = {
+                                            clipboardManager.setText(AnnotatedString(displayTrackingId))
+                                            SoundManager.playClick()
+                                            isCopied = true
+                                            Toast.makeText(context, "Tracking ID copied to clipboard", Toast.LENGTH_SHORT).show()
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isDark) BackgroundDark else GoldenWhite,
+                                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.4f) else Obsidian.copy(alpha = 0.3f)),
+                                        modifier = Modifier.padding(top = 4.dp)
                                     ) {
-                                        Text(
-                                            text = displayTrackingId,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = AppTextColor,
-                                            fontFamily = SpaceGrotesk
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = displayTrackingId,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = if (isDark) Color.White else Obsidian,
+                                                fontFamily = SpaceGrotesk
+                                            )
+                                            Icon(
+                                                imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                                contentDescription = "Copy Tracking ID",
+                                                tint = if (isCopied) SuccessGreen else if (isDark) Gold else Obsidian,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
                                     }
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("AMOUNT PAID", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextGray)
                                     Text(
-                                        text = "₦${String.format("%,.2f", displayPrice)}",
+                                        text = "₦${String.format("%,.2f", animatedPrice.toDouble())}",
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Gold,
@@ -366,15 +443,25 @@ fun PaymentSuccessScreen(
                                     .height(52.dp),
                                 shape = RoundedCornerShape(16.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Charcoal else GoldenWhite),
-                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                                border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.4f) else Obsidian.copy(alpha = 0.3f))
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Icon(Icons.Default.Share, contentDescription = "Share details", tint = Gold, modifier = Modifier.size(16.dp))
+                                    Icon(
+                                        Icons.Default.Share,
+                                        contentDescription = "Share details",
+                                        tint = if (isDark) Gold else Obsidian,
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Share", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                    Text(
+                                        "Share",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Gold else Obsidian
+                                    )
                                 }
                             }
 
@@ -385,10 +472,17 @@ fun PaymentSuccessScreen(
                                     .weight(1f)
                                     .height(52.dp),
                                 shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(1.5.dp, Color(0xFF333333)),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Gold)
+                                border = BorderStroke(1.5.dp, if (isDark) Color(0xFF333333) else Obsidian.copy(alpha = 0.4f)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = if (isDark) Gold else Obsidian
+                                )
                             ) {
-                                Text("Back to Home", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Back to Home",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Gold else Obsidian
+                                )
                             }
                         }
                     }

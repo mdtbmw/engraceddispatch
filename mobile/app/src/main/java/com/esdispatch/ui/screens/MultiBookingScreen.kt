@@ -72,6 +72,7 @@ fun MultiBookingScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val isBookingSubmitting by viewModel.isBookingSubmitting.collectAsState()
 
     var stops by remember {
         mutableStateOf(
@@ -1043,7 +1044,7 @@ fun MultiBookingScreen(
                 val isRPhoneValid = rPhone.isNotBlank() && viewModel.isValidNigerianPhoneNumber(rPhone)
                 val isStopsPhoneValid = stops.all { it.recipientPhone.isBlank() || viewModel.isValidNigerianPhoneNumber(it.recipientPhone) }
                 val isContactValid = sName.trim().isNotBlank() && isSPhoneValid && rName.trim().isNotBlank() && isRPhoneValid && isStopsPhoneValid
-                val isBookingEnabled = isAddressesValid && isStopsValid && isContactValid && cargoValidation.isFeasible && pendingQuote is PendingQuote.Success
+                val isBookingEnabled = isAddressesValid && isStopsValid && isContactValid && cargoValidation.isFeasible && pendingQuote is PendingQuote.Success && !isBookingSubmitting
 
                 Button(
                     onClick = {
@@ -1066,7 +1067,12 @@ fun MultiBookingScreen(
                     ),
                     border = BorderStroke(1.2.dp, if (isBookingEnabled) Gold else Color.Gray.copy(alpha = 0.3f))
                 ) {
-                    Text("Book Multi-Pick", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (isBookingEnabled) Gold else TextGray)
+                    Text(
+                        if (isBookingSubmitting) "Booking..." else "Book Multi-Pick",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isBookingEnabled) Gold else TextGray
+                    )
                 }
             }
         }
@@ -1078,8 +1084,8 @@ fun MultiBookingScreen(
         WalletCheckoutSheet(
             bookingPrice = quotePrice,
             walletBalance = viewModel.walletBalance.collectAsState().value,
+            isSubmitting = isBookingSubmitting,
             onConfirmWalletPayment = {
-                showCheckoutSheet = false
                 val firstStop = stops.firstOrNull()
                 viewModel.updateDraftPickup(firstStop?.address ?: "", firstStop?.lat, firstStop?.lng)
                 viewModel.updateDraftDelivery(delivery)
@@ -1094,6 +1100,7 @@ fun MultiBookingScreen(
                 }
                 viewModel.finalizeDraftPrice("Multi", quotePrice)
                 viewModel.confirmBooking { ok, msg ->
+                    showCheckoutSheet = false
                     if (ok) {
                         onNavigate("PaymentSuccess")
                     } else {

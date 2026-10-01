@@ -2611,128 +2611,136 @@ object FirebaseManager {
         val effectiveCustomerId = customerId.ifBlank { auth?.currentUser?.uid ?: "" }
         val parcelDoc = db.collection("deliveries").document(parcelId)
         
-        val proceedWithRatingAndTip: (String) -> Unit = { resolvedRiderId ->
+        val proceedWithRatingAndTip: (String, com.google.firebase.firestore.DocumentSnapshot?) -> Unit = { resolvedRiderId, pSnap ->
             val actualTip = tipAmount.coerceAtLeast(0.0)
             val now = System.currentTimeMillis()
-            val ratingId = "RATE-$parcelId-$now"
-            val tipId = "TIP-$parcelId-$now"
+            val ratingId = "RATE-$parcelId"
+            val tipId = "TIP-$parcelId"
 
-            val deliveryUpdates = hashMapOf<String, Any>(
-                "isRated" to true,
-                "customerRating" to rating,
-                "tipAmount" to actualTip,
-                "tipCredited" to (actualTip > 0.0),
-                "updatedAt" to com.google.firebase.Timestamp.now(),
-                "lastUpdated" to now
-            )
+            val alreadyRated = pSnap?.getBoolean("isRated") == true
+            val alreadyTipped = pSnap?.getBoolean("tipCredited") == true
 
-            // 1. Update primary deliveries document
-            try {
-                parcelDoc.set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
-                db.collection("parcels").document(parcelId)
-                    .set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
-            } catch (e: Exception) {
-                Log.w(TAG, "Notice: could not update delivery doc rating fields: ${e.message}")
-            }
+            if (alreadyRated && (actualTip <= 0.0 || alreadyTipped)) {
+                Log.d(TAG, "Feedback/tip already recorded for parcel $parcelId. Skipping duplicate processing.")
+                onComplete(true, null)
+            } else {
+                val deliveryUpdates = hashMapOf<String, Any>(
+                    "isRated" to true,
+                    "customerRating" to rating,
+                    "tipAmount" to actualTip,
+                    "tipCredited" to (actualTip > 0.0),
+                    "updatedAt" to com.google.firebase.Timestamp.now(),
+                    "lastUpdated" to now
+                )
 
-            // 2. Dual write to customer user delivery subcollection
-            if (effectiveCustomerId.isNotEmpty()) {
+                // 1. Update primary deliveries document
                 try {
-                    db.collection("users").document(effectiveCustomerId).collection("deliveries").document(parcelId)
+                    parcelDoc.set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
+                    db.collection("parcels").document(parcelId)
                         .set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
-                } catch (_: Exception) {}
-            }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Notice: could not update delivery doc rating fields: ${e.message}")
+                }
 
-            // 3. Record customer review/rating in root ratings collection
-            val ratingData = hashMapOf(
-                "id" to ratingId,
-                "parcelId" to parcelId,
-                "riderId" to resolvedRiderId,
-                "userId" to effectiveCustomerId,
-                "customerId" to effectiveCustomerId,
-                "rating" to rating,
-                "createdAt" to com.google.firebase.Timestamp.now()
-            )
-            db.collection("ratings").document(ratingId)
-                .set(ratingData, com.google.firebase.firestore.SetOptions.merge())
+                // 2. Dual write to customer user delivery subcollection
+                if (effectiveCustomerId.isNotEmpty()) {
+                    try {
+                        db.collection("users").document(effectiveCustomerId).collection("deliveries").document(parcelId)
+                            .set(deliveryUpdates, com.google.firebase.firestore.SetOptions.merge())
+                    } catch (_: Exception) {}
+                }
 
-            // 4. If tip is provided, create tip record in /rider_tips
-            if (actualTip > 0.0) {
-                val tipData = hashMapOf(
-                    "id" to tipId,
+                // 3. Record customer review/rating in root ratings collection
+                val ratingData = hashMapOf(
+                    "id" to ratingId,
                     "parcelId" to parcelId,
                     "riderId" to resolvedRiderId,
                     "userId" to effectiveCustomerId,
                     "customerId" to effectiveCustomerId,
-                    "amount" to actualTip,
-                    "status" to "COMPLETED",
+                    "rating" to rating,
                     "createdAt" to com.google.firebase.Timestamp.now()
                 )
-                db.collection("rider_tips").document(tipId)
-                    .set(tipData, com.google.firebase.firestore.SetOptions.merge())
+                db.collection("ratings").document(ratingId)
+                    .set(ratingData, com.google.firebase.firestore.SetOptions.merge())
 
-                // Record ledger debit for customer
-                if (effectiveCustomerId.isNotEmpty()) {
-                    val txRef = "ESD-TIP-OUT-$now"
-                    val txMap = hashMapOf(
-                        "id" to txRef,
+                // 4. If tip is provided, create tip record in /rider_tips
+                if (actualTip > 0.0 && !alreadyTipped) {
+                    val tipData = hashMapOf(
+                        "id" to tipId,
+                        "parcelId" to parcelId,
+                        "riderId" to resolvedRiderId,
                         "userId" to effectiveCustomerId,
-                        "title" to "Tip to Courier",
-                        "date" to "Today",
+                        "customerId" to effectiveCustomerId,
                         "amount" to actualTip,
-                        "type" to "DEBIT",
-                        "status" to "SUCCESS",
-                        "isTopUp" to false,
-                        "timestamp" to now
-                    )
-                    db.collection("users").document(effectiveCustomerId).collection("transactions").document(txRef).set(txMap)
-                    db.collection("transactions").document(txRef).set(txMap)
-                }
-
-                // Credit rider wallet and record ledger credit transaction
-                if (resolvedRiderId.isNotBlank()) {
-                    val riderRef = db.collection("users").document(resolvedRiderId)
-                    riderRef.set(
-                        mapOf(
-                            "walletBalance" to com.google.firebase.firestore.FieldValue.increment(actualTip),
-                            "totalTipsEarned" to com.google.firebase.firestore.FieldValue.increment(actualTip),
-                            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                        ),
-                        com.google.firebase.firestore.SetOptions.merge()
-                    )
-
-                    val riderTxRef = "ESD-TIP-IN-$now"
-                    val riderTxMap = hashMapOf(
-                        "id" to riderTxRef,
-                        "userId" to resolvedRiderId,
-                        "title" to "Tip Received from Customer",
-                        "date" to "Today",
-                        "amount" to actualTip,
-                        "type" to "CREDIT",
-                        "status" to "SUCCESS",
-                        "isTopUp" to true,
-                        "reference" to tipId,
-                        "timestamp" to now
-                    )
-                    riderRef.collection("transactions").document(riderTxRef).set(riderTxMap)
-                    db.collection("transactions").document(riderTxRef).set(riderTxMap)
-
-                    // Notify rider in-app
-                    val notifRef = "NOTIF-TIP-$now"
-                    val notifData = hashMapOf(
-                        "id" to notifRef,
-                        "title" to "Tip Received! ₦${String.format("%,.0f", actualTip)}",
-                        "description" to "A customer tipped you ₦${String.format("%,.0f", actualTip)} for delivery ${parcelId.takeLast(6)}. Great work!",
-                        "read" to false,
-                        "time" to "Just now",
-                        "timestamp" to now,
+                        "status" to "COMPLETED",
                         "createdAt" to com.google.firebase.Timestamp.now()
                     )
-                    riderRef.collection("notifications").document(notifRef).set(notifData)
-                }
-            }
+                    db.collection("rider_tips").document(tipId)
+                        .set(tipData, com.google.firebase.firestore.SetOptions.merge())
 
-            onComplete(true, null)
+                    // Record ledger debit for customer
+                    if (effectiveCustomerId.isNotEmpty()) {
+                        val txRef = "ESD-TIP-OUT-$parcelId"
+                        val txMap = hashMapOf(
+                            "id" to txRef,
+                            "userId" to effectiveCustomerId,
+                            "title" to "Tip to Courier",
+                            "date" to "Today",
+                            "amount" to actualTip,
+                            "type" to "DEBIT",
+                            "status" to "SUCCESS",
+                            "isTopUp" to false,
+                            "timestamp" to now
+                        )
+                        db.collection("users").document(effectiveCustomerId).collection("transactions").document(txRef).set(txMap)
+                        db.collection("transactions").document(txRef).set(txMap)
+                    }
+
+                    // Credit rider wallet and record ledger credit transaction
+                    if (resolvedRiderId.isNotBlank()) {
+                        val riderRef = db.collection("users").document(resolvedRiderId)
+                        riderRef.set(
+                            mapOf(
+                                "walletBalance" to com.google.firebase.firestore.FieldValue.increment(actualTip),
+                                "totalTipsEarned" to com.google.firebase.firestore.FieldValue.increment(actualTip),
+                                "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                            ),
+                            com.google.firebase.firestore.SetOptions.merge()
+                        )
+
+                        val riderTxRef = "ESD-TIP-IN-$parcelId"
+                        val riderTxMap = hashMapOf(
+                            "id" to riderTxRef,
+                            "userId" to resolvedRiderId,
+                            "title" to "Tip Received from Customer",
+                            "date" to "Today",
+                            "amount" to actualTip,
+                            "type" to "CREDIT",
+                            "status" to "SUCCESS",
+                            "isTopUp" to true,
+                            "reference" to tipId,
+                            "timestamp" to now
+                        )
+                        riderRef.collection("transactions").document(riderTxRef).set(riderTxMap)
+                        db.collection("transactions").document(riderTxRef).set(riderTxMap)
+
+                        // Notify rider in-app
+                        val notifRef = "NOTIF-TIP-$parcelId"
+                        val notifData = hashMapOf(
+                            "id" to notifRef,
+                            "title" to "Tip Received! ₦${String.format("%,.0f", actualTip)}",
+                            "description" to "A customer tipped you ₦${String.format("%,.0f", actualTip)} for delivery ${parcelId.takeLast(6)}. Great work!",
+                            "read" to false,
+                            "time" to "Just now",
+                            "timestamp" to now,
+                            "createdAt" to com.google.firebase.Timestamp.now()
+                        )
+                        riderRef.collection("notifications").document(notifRef).set(notifData)
+                    }
+                }
+
+                onComplete(true, null)
+            }
         }
 
         parcelDoc.get().addOnSuccessListener { parcelSnap ->
@@ -2741,10 +2749,10 @@ object FirebaseManager {
                     parcelSnap.getString("riderId") ?: parcelSnap.getString("driverId") ?: ""
                 } else ""
             }
-            proceedWithRatingAndTip(effectiveRiderId)
+            proceedWithRatingAndTip(effectiveRiderId, parcelSnap)
         }.addOnFailureListener { e ->
             Log.w(TAG, "parcelDoc fetch failed (${e.message}), proceeding with direct rating and tip")
-            proceedWithRatingAndTip(riderId)
+            proceedWithRatingAndTip(riderId, null)
         }
     }
 

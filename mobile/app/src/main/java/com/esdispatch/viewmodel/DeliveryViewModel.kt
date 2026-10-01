@@ -5666,7 +5666,14 @@ class DeliveryViewModel : WalletViewModel() {
         _parcelDraft.update { it.copy(selectedService = serviceType, price = basePrice) }
     }
 
+    private val _isBookingSubmitting = MutableStateFlow(false)
+    val isBookingSubmitting: StateFlow<Boolean> = _isBookingSubmitting.asStateFlow()
+
     private var isBookingSubmissionInProgress = false
+        set(value) {
+            field = value
+            _isBookingSubmitting.value = value
+        }
 
     fun confirmBooking(onComplete: ((Boolean, String) -> Unit)? = null) {
         if (isBookingSubmissionInProgress) {

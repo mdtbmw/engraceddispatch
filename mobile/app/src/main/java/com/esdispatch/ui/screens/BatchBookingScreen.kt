@@ -82,6 +82,7 @@ fun BatchBookingScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val isBookingSubmitting by viewModel.isBookingSubmitting.collectAsState()
 
     var pickup by remember { mutableStateOf(draft.pickupAddress) }
     var batchStops by remember {
@@ -509,7 +510,7 @@ fun BatchBookingScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(18.dp)) {
-                        Text("Sender Contact Details", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Gold)
+                        Text("Sender Contact Details", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = if (isDark) Gold else Obsidian)
                         Spacer(modifier = Modifier.height(14.dp))
                         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutlinedTextField(
@@ -1100,7 +1101,7 @@ fun BatchBookingScreen(
                 val isAllRecipientsPhoneValid = batchStops.all { it.recipientPhone.isNotBlank() && viewModel.isValidNigerianPhoneNumber(it.recipientPhone) }
                 val isContactValid = sName.trim().isNotBlank() && isSPhoneValid && batchStops.all { it.recipientName.trim().isNotBlank() } && isAllRecipientsPhoneValid
                 val isCargoValid = !isOverweight && batchStops.all { !com.esdispatch.util.CargoFeasibilityValidator.isStrictlyInfeasible(it.itemName, it.weight.toDoubleOrNull() ?: 1.0) }
-                val isBookingEnabled = isAddressesValid && isContactValid && isCargoValid && pendingQuote is PendingQuote.Success
+                val isBookingEnabled = isAddressesValid && isContactValid && isCargoValid && pendingQuote is PendingQuote.Success && !isBookingSubmitting
 
                 Button(
                     onClick = {
@@ -1123,7 +1124,12 @@ fun BatchBookingScreen(
                     ),
                     border = BorderStroke(1.2.dp, if (isBookingEnabled) Gold else Color.Gray.copy(alpha = 0.3f))
                 ) {
-                    Text("Book Batch", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (isBookingEnabled) Gold else TextGray)
+                    Text(
+                        if (isBookingSubmitting) "Booking..." else "Book Batch",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isBookingEnabled) Gold else TextGray
+                    )
                 }
             }
         }
@@ -1135,8 +1141,8 @@ fun BatchBookingScreen(
             WalletCheckoutSheet(
                 bookingPrice = quotePrice,
                 walletBalance = viewModel.walletBalance.collectAsState().value,
+                isSubmitting = isBookingSubmitting,
                 onConfirmWalletPayment = {
-                    showCheckoutSheet = false
                     val finalizedStops = batchStops.map { stop ->
                         stop.copy(
                             pickupAddress = if (useSamePickupLocation || stop.pickupAddress.isBlank()) pickup else stop.pickupAddress,
@@ -1150,6 +1156,7 @@ fun BatchBookingScreen(
                         stops = finalizedStops,
                         totalCost = quotePrice
                     ) { ok, msg ->
+                        showCheckoutSheet = false
                         if (ok) {
                             onNavigate("PaymentSuccess")
                         } else {

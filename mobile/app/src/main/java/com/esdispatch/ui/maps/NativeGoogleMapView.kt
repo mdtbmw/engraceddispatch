@@ -364,7 +364,14 @@ fun NativeGoogleMapView(
                     zIndex = 4f
                 )
             }
-            if (!hasNoBooking) {
+
+            val isDeliveryActive = !hasNoBooking && parcelStatus !in listOf(
+                ParcelStatus.DELIVERED,
+                ParcelStatus.CANCELLED,
+                ParcelStatus.RETURNED
+            ) && phase != "none"
+
+            if (isDeliveryActive) {
                 val courierPos = smooth.currentPosition ?: courier
                 val isNonVehicular = road.route?.isNonVehicular == true
                 val walkingSpur = road.route?.walkingSpur.orEmpty()

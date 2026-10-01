@@ -140,7 +140,7 @@ fun HistoryOrderCard(
                             Icon(
                                 imageVector = Icons.Filled.ReportProblem,
                                 contentDescription = null,
-                                tint = Gold,
+                                tint = if (dark) Gold else Color(0xFF996B00),
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(

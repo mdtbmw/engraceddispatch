@@ -487,14 +487,14 @@ fun ActiveTrackingScreen(
 
     val walletBalance by viewModel.walletBalance.collectAsState()
 
-    val trackingPrefs = remember(context) { context.getSharedPreferences("esdispatch_prefs", android.content.Context.MODE_PRIVATE) }
-    val isFeedbackDismissed = remember(parcel.id, parcel.feedbackDismissed) {
-        parcel.feedbackDismissed || trackingPrefs.getBoolean("feedback_dismissed_${parcel.id}", false)
+    val trackingPrefs = remember(context) { context.getSharedPreferences("esdispatch_feedback_prefs", android.content.Context.MODE_PRIVATE) }
+    var isFeedbackDismissedState by remember(parcel.id) {
+        mutableStateOf(parcel.feedbackDismissed || trackingPrefs.getBoolean("feedback_dismissed_${parcel.id}", false))
     }
 
     // Automatically and intelligently pop up Feedback & Tip dialog once when delivery is completed
-    LaunchedEffect(parcel.status, parcel.isRated, isRider, isFeedbackDismissed, parcel.id) {
-        if (!isRider && parcel.status == ParcelStatus.DELIVERED && !parcel.isRated && parcel.id.isNotBlank() && !isFeedbackDismissed) {
+    LaunchedEffect(parcel.status, parcel.isRated, isRider, isFeedbackDismissedState, parcel.id) {
+        if (!isRider && parcel.status == ParcelStatus.DELIVERED && !parcel.isRated && parcel.id.isNotBlank() && !isFeedbackDismissedState) {
             showFeedbackDialog = true
         }
     }
@@ -506,10 +506,13 @@ fun ActiveTrackingScreen(
             walletBalance = walletBalance,
             onDismiss = {
                 showFeedbackDialog = false
+                isFeedbackDismissedState = true
                 trackingPrefs.edit().putBoolean("feedback_dismissed_${parcel.id}", true).apply()
                 viewModel.dismissFeedback(parcel.id)
             },
             onSubmit = { rating, tip ->
+                showFeedbackDialog = false
+                isFeedbackDismissedState = true
                 trackingPrefs.edit().putBoolean("feedback_dismissed_${parcel.id}", true).apply()
                 viewModel.dismissFeedback(parcel.id)
                 viewModel.rateAndTipRider(
@@ -523,7 +526,6 @@ fun ActiveTrackingScreen(
                         } else {
                             Toast.makeText(context, "Error: ${error ?: "Submission failed"}", Toast.LENGTH_LONG).show()
                         }
-                        showFeedbackDialog = false
                     }
                 )
             }
@@ -568,14 +570,14 @@ fun ActiveTrackingScreen(
 
     val baseTargetHeight = when (drawerState) {
         DrawerState.CLOSED -> 0.dp
-        DrawerState.COLLAPSED -> if (hasNoBooking) 290.dp else dynamicCollapsedHeight
-        DrawerState.EXPANDED -> if (hasNoBooking) 360.dp else dynamicExpandedHeight
+        DrawerState.COLLAPSED -> if (hasNoBooking) 390.dp else dynamicCollapsedHeight
+        DrawerState.EXPANDED -> if (hasNoBooking) 540.dp else dynamicExpandedHeight
     }
 
     val bottomCardHeight by animateDpAsState(
         targetValue = if (drawerState == DrawerState.CLOSED) 0.dp else (baseTargetHeight + dragOffsetDp).coerceIn(
             160.dp,
-            if (hasNoBooking) 360.dp else dynamicExpandedHeight
+            if (hasNoBooking) 540.dp else dynamicExpandedHeight
         ),
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioLowBouncy,
@@ -592,16 +594,23 @@ fun ActiveTrackingScreen(
             onVerticalDrag = { change, dragAmount ->
                 change.consume()
                 val deltaDp = -dragAmount / density.density
+                val maxExpansion = if (hasNoBooking) 540.dp else dynamicExpandedHeight
                 dragOffsetDp = (dragOffsetDp + deltaDp.dp).coerceIn(
                     -(baseTargetHeight - 120.dp),
-                    (dynamicExpandedHeight - baseTargetHeight)
+                    (maxExpansion - baseTargetHeight)
                 )
             },
             onDragEnd = {
                 val currentEffectiveHeight = baseTargetHeight + dragOffsetDp
                 dragOffsetDp = 0.dp
                 if (hasNoBooking) {
-                    drawerState = if (currentEffectiveHeight > 180.dp) DrawerState.COLLAPSED else DrawerState.CLOSED
+                    val midExpanded = (390.dp + 540.dp) / 2
+                    val midCollapsed = 390.dp / 2
+                    drawerState = when {
+                        currentEffectiveHeight >= midExpanded -> DrawerState.EXPANDED
+                        currentEffectiveHeight >= midCollapsed -> DrawerState.COLLAPSED
+                        else -> DrawerState.CLOSED
+                    }
                 } else {
                     val midExpanded = (dynamicCollapsedHeight + dynamicExpandedHeight) / 2
                     val midCollapsed = dynamicCollapsedHeight / 2
@@ -627,29 +636,7 @@ fun ActiveTrackingScreen(
         )
     }
 
-    var weatherLabel by remember { mutableStateOf("Weather unavailable") }
-    LaunchedEffect(Unit) {
-        weatherLabel = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            val lat = parcel.pickupLat ?: parcel.courierLatitude ?: 6.3350
-            val lng = parcel.pickupLng ?: parcel.courierLongitude ?: 5.6037
-            val connection = java.net.URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&current=temperature_2m,weather_code")
-                .openConnection() as java.net.HttpURLConnection
-            try {
-                connection.connectTimeout = 4000
-                connection.readTimeout = 4000
-                val weather = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() }).getJSONObject("current")
-                val condition = when (weather.getInt("weather_code")) {
-                    0 -> "Clear"
-                    1, 2, 3 -> "Cloudy"
-                    45, 48 -> "Fog"
-                    in 51..82 -> "Rain"
-                    in 95..99 -> "Storm"
-                    else -> "Weather"
-                }
-                "$condition ${weather.getDouble("temperature_2m").toInt()}°C"
-            } catch (_: Exception) { "Weather unavailable" } finally { connection.disconnect() }
-        }
-    }
+    val weatherLabel = "Benin City, Nigeria"
 
     var roadGuidance by remember(parcel.id, parcel.status) {
         mutableStateOf(com.esdispatch.ui.maps.RouteGuidance())
@@ -1469,54 +1456,78 @@ fun ActiveTrackingScreen(
                                             }
 
                                             // Rating & Tipping Card for Customer
-                                            if (!isRider) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(20.dp),
-                                                    color = if (isDark) Charcoal else GoldenWhiteLight,
-                                                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.2f) else Slate),
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) {
-                                                    Column(
-                                                        modifier = Modifier.padding(18.dp),
-                                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                                             if (!isRider) {
+                                                if (!parcel.isRated && !isFeedbackDismissedState) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(20.dp),
+                                                        color = if (isDark) Charcoal else GoldenWhiteLight,
+                                                        border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.2f) else Slate),
+                                                        modifier = Modifier.fillMaxWidth()
                                                     ) {
-                                                        Row(
-                                                            modifier = Modifier.fillMaxWidth(),
-                                                            verticalAlignment = Alignment.CenterVertically
+                                                        Column(
+                                                            modifier = Modifier.padding(18.dp),
+                                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                                            verticalArrangement = Arrangement.spacedBy(14.dp)
                                                         ) {
-                                                            CourierAvatarBadge(
-                                                                avatarUrl = resolvedCourierAvatar,
-                                                                name = resolvedCourierName,
-                                                                size = 44.dp
-                                                            )
-                                                            Spacer(modifier = Modifier.width(12.dp))
-                                                            Column(modifier = Modifier.weight(1f)) {
-                                                                Text(
-                                                                    text = resolvedCourierName,
-                                                                    fontWeight = FontWeight.Bold,
-                                                                    fontSize = 14.sp,
-                                                                    color = AppOnSurface
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                CourierAvatarBadge(
+                                                                    avatarUrl = resolvedCourierAvatar,
+                                                                    name = resolvedCourierName,
+                                                                    size = 44.dp
                                                                 )
-                                                                Text(
-                                                                    text = "Delivered your parcel safely",
-                                                                    fontSize = 11.sp,
-                                                                    color = TextGray
-                                                                )
+                                                                Spacer(modifier = Modifier.width(12.dp))
+                                                                Column(modifier = Modifier.weight(1f)) {
+                                                                    Text(
+                                                                        text = resolvedCourierName,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        fontSize = 14.sp,
+                                                                        color = AppOnSurface
+                                                                    )
+                                                                    Text(
+                                                                        text = "Delivered your parcel safely",
+                                                                        fontSize = 11.sp,
+                                                                        color = TextGray
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            Button(
+                                                                onClick = { showFeedbackDialog = true },
+                                                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                                shape = RoundedCornerShape(14.dp),
+                                                                modifier = Modifier.fillMaxWidth().height(46.dp)
+                                                            ) {
+                                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                    Icon(Icons.Filled.Star, contentDescription = null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                                    Text("RATE & TIP COURIER", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                                                }
                                                             }
                                                         }
-
-                                                        Button(
-                                                            onClick = { showFeedbackDialog = true },
-                                                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
-                                                            shape = RoundedCornerShape(14.dp),
-                                                            modifier = Modifier.fillMaxWidth().height(46.dp)
+                                                    }
+                                                } else if (parcel.isRated) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(16.dp),
+                                                        color = if (isDark) Charcoal else GoldenWhiteLight,
+                                                        border = BorderStroke(1.dp, if (isDark) BorderDark else Slate),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.Center
                                                         ) {
-                                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                                Icon(Icons.Filled.Star, contentDescription = null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                                Spacer(modifier = Modifier.width(8.dp))
-                                                                Text("RATE & TIP COURIER", fontWeight = FontWeight.Black, fontSize = 13.sp)
-                                                            }
+                                                            Icon(Icons.Filled.Verified, contentDescription = null, tint = Gold, modifier = Modifier.size(18.dp))
+                                                            Spacer(modifier = Modifier.width(8.dp))
+                                                            Text(
+                                                                text = "Courier Rated • Thank you for your feedback!",
+                                                                fontSize = 12.sp,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                color = if (isDark) Gold else Obsidian
+                                                            )
                                                         }
                                                     }
                                                 }
@@ -1981,30 +1992,57 @@ fun ActiveTrackingScreen(
                                                     Spacer(modifier = Modifier.height(10.dp))
                                                     when (parcel.status) {
                                                         ParcelStatus.ASSIGNED -> {
+                                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                                OutlinedButton(
+                                                                    onClick = {
+                                                                        if (!isActionSubmitting) {
+                                                                            isActionSubmitting = true
+                                                                            com.esdispatch.util.SoundManager.playClick()
+                                                                            viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.ARRIVED_PICKUP, 0.25f) { success, _ ->
+                                                                                isActionSubmitting = false
+                                                                                if (success) Toast.makeText(context, "Marked as arrived at pickup location!", Toast.LENGTH_SHORT).show()
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    enabled = !isActionSubmitting,
+                                                                    modifier = Modifier.weight(1f).height(48.dp).tactilePress(scaleDown = 0.96f),
+                                                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isDark) Gold else Obsidian),
+                                                                    border = BorderStroke(1.dp, if (isDark) Gold else Slate),
+                                                                    shape = RoundedCornerShape(14.dp)
+                                                                ) {
+                                                                    Text("ARRIVED PICKUP", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                                                }
+
+                                                                Button(
+                                                                    onClick = {
+                                                                        onNavigate("ProofOfDelivery/${parcel.id}?isPickup=true")
+                                                                    },
+                                                                    enabled = !isActionSubmitting,
+                                                                    modifier = Modifier.weight(1f).height(48.dp).tactilePress(scaleDown = 0.96f),
+                                                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
+                                                                    shape = RoundedCornerShape(14.dp)
+                                                                ) {
+                                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                                                        Icon(Icons.Filled.CameraAlt, null, tint = Obsidian, modifier = Modifier.size(16.dp))
+                                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                                        Text("CONFIRM PICKUP", fontWeight = FontWeight.Black, fontSize = 11.sp)
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        ParcelStatus.ARRIVED_PICKUP -> {
                                                             Button(
                                                                 onClick = {
-                                                                    if (!isActionSubmitting) {
-                                                                        isActionSubmitting = true
-                                                                        com.esdispatch.util.SoundManager.playClick()
-                                                                        viewModel.updateParcelStatusByRider(parcel.id, ParcelStatus.PICKED_UP, 0.40f) { success, _ ->
-                                                                            isActionSubmitting = false
-                                                                            if (success) Toast.makeText(context, "Pickup confirmed! Order is now picked up.", Toast.LENGTH_SHORT).show()
-                                                                        }
-                                                                    }
+                                                                    onNavigate("ProofOfDelivery/${parcel.id}?isPickup=true")
                                                                 },
-                                                                enabled = !isActionSubmitting,
                                                                 modifier = Modifier.fillMaxWidth().height(48.dp).tactilePress(scaleDown = 0.96f),
                                                                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Obsidian),
                                                                 shape = RoundedCornerShape(14.dp)
                                                             ) {
-                                                                if (isActionSubmitting) {
-                                                                    CircularProgressIndicator(strokeWidth = 2.5.dp, color = Obsidian, modifier = Modifier.size(20.dp))
-                                                                } else {
-                                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                                                                        Icon(Icons.Filled.CheckCircle, null, tint = Obsidian, modifier = Modifier.size(18.dp))
-                                                                        Spacer(modifier = Modifier.width(8.dp))
-                                                                        Text("CONFIRM PICKUP", fontWeight = FontWeight.Black, fontSize = 13.sp)
-                                                                    }
+                                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                                                    Icon(Icons.Filled.CameraAlt, null, tint = Obsidian, modifier = Modifier.size(18.dp))
+                                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                                    Text("SNAP PHOTO & CONFIRM PICKUP", fontWeight = FontWeight.Black, fontSize = 13.sp)
                                                                 }
                                                             }
                                                         }

@@ -40,6 +40,7 @@ import com.esdispatch.ui.components.RoundedSheet
 import com.esdispatch.ui.components.StaggeredItem
 import com.esdispatch.ui.components.HistoryOrderCard
 import com.esdispatch.ui.components.CancelDeliverySecurityDialog
+import com.esdispatch.util.ShimmerBox
 import com.esdispatch.ui.theme.*
 import com.esdispatch.viewmodel.DeliveryViewModel
 
@@ -65,27 +66,6 @@ fun OrderLogsScreen(
             "Delivered" -> sorted.filter { it.status == ParcelStatus.DELIVERED }
             "Cancelled" -> sorted.filter { it.status == ParcelStatus.CANCELLED }
             else -> sorted
-        }
-    }
-
-    var currentPage by remember { mutableStateOf(0) }
-    val itemsPerPage = 4
-
-    val totalPages = remember(filteredParcels) {
-        ((filteredParcels.size + itemsPerPage - 1) / itemsPerPage).coerceAtLeast(1)
-    }
-
-    LaunchedEffect(activeFilter) {
-        currentPage = 0
-    }
-
-    val paginatedParcels = remember(filteredParcels, currentPage) {
-        val startIndex = currentPage * itemsPerPage
-        val endIndex = minOf(startIndex + itemsPerPage, filteredParcels.size)
-        if (startIndex < filteredParcels.size) {
-            filteredParcels.subList(startIndex, endIndex)
-        } else {
-            emptyList()
         }
     }
 
@@ -157,14 +137,17 @@ fun OrderLogsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
-
-                    if (paginatedParcels.isEmpty() && loadingParcels) {
-                        item {
-                            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = Gold, modifier = Modifier.size(40.dp))
-                            }
+                    if (filteredParcels.isEmpty() && loadingParcels) {
+                        items(3) {
+                            ShimmerBox(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp),
+                                shape = RoundedCornerShape(24.dp),
+                                isDark = isDark
+                            )
                         }
-                    } else if (paginatedParcels.isEmpty()) {
+                    } else if (filteredParcels.isEmpty()) {
                         item {
                             Column(
                                 modifier = Modifier
@@ -177,7 +160,7 @@ fun OrderLogsScreen(
                         }
                     }
 
-                    itemsIndexed(paginatedParcels) { index, parcel ->
+                    itemsIndexed(filteredParcels) { index, parcel ->
                         // StaggeredItem animated entry
                         StaggeredItem(index = index) {
                             HistoryOrderCard(
@@ -204,15 +187,6 @@ fun OrderLogsScreen(
                             )
                         }
                     }
-                }
-
-                // Clean and cool pagination controls
-                if (totalPages > 1) {
-                    PaginationControls(
-                        currentPage = currentPage,
-                        totalPages = totalPages,
-                        onPageSelected = { currentPage = it }
-                    )
                 }
             }
         }
