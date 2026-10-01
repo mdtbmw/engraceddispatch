@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,10 +41,12 @@ fun HistoryOrderCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(20.dp))
             .tactilePress(scaleDown = 0.98f, onClick = onClick),
         shape = RoundedCornerShape(20.dp),
         color = Charcoal, // Adaptive Charcoal surface
         shadowElevation = 0.dp,
+        tonalElevation = 0.dp,
         border = BorderStroke(1.dp, if (dark) BorderDark else Slate)
     ) {
         Column(
@@ -214,8 +217,10 @@ fun HistoryOrderCard(
                         onClick = onRebook,
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp),
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(10.dp)),
                         shape = RoundedCornerShape(10.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp),
                         border = BorderStroke(1.dp, if (dark) Color(0x40FFB800) else Slate),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = if (dark) Gold else Obsidian
@@ -241,8 +246,10 @@ fun HistoryOrderCard(
                     onClick = onViewReceipt,
                     modifier = Modifier
                         .weight(1f)
-                        .height(38.dp),
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(10.dp)),
                     shape = RoundedCornerShape(10.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp),
                     colors = ButtonDefaults.filledTonalButtonColors(
                         containerColor = if (dark) Color(0xFF222226) else GoldenWhiteSurface,
                         contentColor = if (dark) Color.White else Obsidian

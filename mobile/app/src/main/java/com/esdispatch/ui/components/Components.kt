@@ -1313,50 +1313,124 @@ fun SwipeToConfirmButton(
         else android.provider.Settings.Global.getFloat(context.contentResolver,
             android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
     }
-    val settledOffset by animateFloatAsState(
-        targetValue = if (submitting) travel else swipeOffset,
-        animationSpec = if (reducedMotion) snap() else spring(stiffness = 400f, dampingRatio = 0.70f),
-        label = "Bike swipe settle"
-    )
-    val offset = if (dragging) swipeOffset else settledOffset
+
+    val bikeAnimX = remember { androidx.compose.animation.core.Animatable(0f) }
+    val bikeAnimY = remember { androidx.compose.animation.core.Animatable(0f) }
+    val bikeAlpha = remember { androidx.compose.animation.core.Animatable(1f) }
+
+    LaunchedEffect(swipeOffset, dragging, submitting) {
+        if (!submitting) {
+            bikeAnimY.snapTo(0f)
+            bikeAlpha.snapTo(1f)
+            if (dragging) {
+                bikeAnimX.snapTo(swipeOffset)
+            } else {
+                bikeAnimX.animateTo(
+                    targetValue = 0f,
+                    animationSpec = if (reducedMotion) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(stiffness = 400f, dampingRatio = 0.70f)
+                )
+            }
+        }
+    }
+
     LaunchedEffect(submitting) {
         if (submitting) {
-            if (!reducedMotion) kotlinx.coroutines.delay(400)
+            if (!reducedMotion) {
+                // Phase 1: Drive smoothly into the end of the button and accelerate off the right edge
+                try { com.esdispatch.util.SoundManager.playDispatchSweep() } catch (_: Throwable) {}
+                bikeAnimX.animateTo(
+                    targetValue = trackWidth + with(density) { 60.dp.toPx() },
+                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 340, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                )
+                // Phase 2: Come out again from the bottom and drive out across the screen
+                bikeAlpha.snapTo(0f)
+                bikeAnimY.snapTo(with(density) { 48.dp.toPx() })
+                bikeAnimX.snapTo(-with(density) { thumbWidth.toPx() })
+                bikeAlpha.animateTo(1f, animationSpec = androidx.compose.animation.core.tween(70))
+
+                bikeAnimX.animateTo(
+                    targetValue = trackWidth + with(density) { 120.dp.toPx() },
+                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 440, easing = androidx.compose.animation.core.EaseInOutQuart)
+                )
+            }
+            // Phase 3: Bike has driven out! Trigger confirm callback so the checkout drawer closes and pulsing preloader shows
             currentConfirm()
         }
     }
+
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
-    Box(modifier = modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(32.dp))
-        .background(if (isDark) Obsidian else GoldenWhite)
-        .onGloballyPositioned { trackWidth = it.size.width.toFloat() }
-        .semantics {
-            contentDescription = text
-            stateDescription = if (submitting) "Processing payment" else "Swipe right to confirm"
-            if (submitting) disabled()
-            onClick(label = "Confirm payment") {
-                if (!submitting && travel > 0f) { submitting = true; true } else false
-            }
-        }, contentAlignment = Alignment.CenterStart) {
-        Text(text = if (submitting) "Processing payment…" else text,
-            modifier = Modifier.align(Alignment.Center).padding(start = if (submitting) 16.dp else 76.dp, end = if (submitting) 84.dp else 16.dp)
-                .graphicsLayer { alpha = if (submitting) 1f else (1f - swipeOffset / travel.coerceAtLeast(1f)).coerceIn(0f, 1f) },
-            fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = AppTextColor)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .wrapContentHeight()
+            .onGloballyPositioned { trackWidth = it.size.width.toFloat() },
+        contentAlignment = Alignment.TopStart
+    ) {
+        // Track pill
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .clip(RoundedCornerShape(32.dp))
+                .background(if (isDark) Obsidian else GoldenWhite)
+                .semantics {
+                    contentDescription = text
+                    stateDescription = if (submitting) "Processing payment" else "Swipe right to confirm"
+                    if (submitting) disabled()
+                    onClick(label = "Confirm payment") {
+                        if (!submitting && travel > 0f) {
+                            submitting = true
+                            true
+                        } else false
+                    }
+                },
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(
+                text = if (submitting) "Dispatching…" else text,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(start = if (submitting) 16.dp else 76.dp, end = if (submitting) 84.dp else 16.dp)
+                    .graphicsLayer {
+                        alpha = if (submitting) 1f else (1f - swipeOffset / travel.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                    },
+                fontFamily = SpaceGrotesk,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                color = AppTextColor
+            )
+        }
+
+        // Delivery Bike - free to drive into and out of the track and swoop along the bottom
         androidx.compose.foundation.Image(
             painter = painterResource(com.esdispatch.R.drawable.delivery_bike_side),
             contentDescription = null,
-            modifier = Modifier.offset(x = with(density) { offset.toDp() } + inset)
-                .width(thumbWidth).height(56.dp)
+            modifier = Modifier
+                .offset(
+                    x = with(density) { bikeAnimX.value.toDp() } + inset,
+                    y = with(density) { bikeAnimY.value.toDp() } + 4.dp
+                )
+                .graphicsLayer {
+                    alpha = bikeAlpha.value
+                }
+                .width(thumbWidth)
+                .height(56.dp)
                 .pointerInput(travel, submitting) {
                     if (!submitting) detectHorizontalDragGestures(
                         onDragStart = { dragging = true },
                         onDragEnd = {
                             dragging = false
-                            if (travel > 0 && swipeOffset >= travel * 0.92f) {
+                            if (travel > 0 && swipeOffset >= travel * 0.90f) {
                                 swipeOffset = travel
                                 submitting = true
-                            } else swipeOffset = 0f
+                            } else {
+                                swipeOffset = 0f
+                            }
                         },
-                        onDragCancel = { dragging = false; swipeOffset = 0f },
+                        onDragCancel = {
+                            dragging = false
+                            swipeOffset = 0f
+                        },
                         onHorizontalDrag = { change, amount ->
                             change.consume()
                             swipeOffset = (swipeOffset + amount).coerceIn(0f, travel)

@@ -1286,8 +1286,10 @@ fun ProfileScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp)
+                            .clip(RoundedCornerShape(24.dp))
                             .border(1.dp, Color.Red.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                         shape = RoundedCornerShape(24.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (isDark) Charcoal else GoldenWhiteLight,
                             contentColor = Color.Red
@@ -2343,8 +2345,10 @@ fun SettingsScreen(
                         onClick = { showSignOutDialog = true },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(54.dp),
+                            .height(54.dp)
+                            .clip(RoundedCornerShape(20.dp)),
                         shape = RoundedCornerShape(20.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
                         border = BorderStroke(1.dp, Color.Red),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (isDark) Color(0xFF181010) else Color(0xFFFFF5F5),

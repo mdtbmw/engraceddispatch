@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -130,57 +132,74 @@ fun AddressAutocompleteField(
             )
 
             // Use Current Location GPS trigger chip
-            Surface(
-                onClick = {
-                    val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
-                        context, android.Manifest.permission.ACCESS_FINE_LOCATION
-                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            var showGpsDialog by remember { mutableStateOf(false) }
+            var lastGpsLocation by remember { mutableStateOf<android.location.Location?>(null) }
 
-                    val coarseGranted = androidx.core.content.ContextCompat.checkSelfPermission(
-                        context, android.Manifest.permission.ACCESS_COARSE_LOCATION
-                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            fun triggerGpsDetect() {
+                val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-                    if (!fineGranted && !coarseGranted) {
-                        Toast.makeText(context, "Location permission required to auto-detect address", Toast.LENGTH_SHORT).show()
-                        return@Surface
-                    }
+                val coarseGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-                    isLocatingGPS = true
-                    try {
-                        fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
-                            if (loc != null) {
-                                scope.launch {
-                                    val detectedAddress = GeocoderUtils.reverseGeocodeCoordinates(context, loc.latitude, loc.longitude)
-                                    val item = SearchResultItem(
-                                        title = "",
-                                        fullAddress = detectedAddress,
-                                        lat = loc.latitude,
-                                        lng = loc.longitude
-                                    )
-                                    onValueChange(detectedAddress)
-                                    onAddressSelected(item)
-                                    showDropdown = false
-                                    isLocatingGPS = false
-                                }
-                            } else {
+                if (!fineGranted && !coarseGranted) {
+                    Toast.makeText(context, "Location permission required to auto-detect address", Toast.LENGTH_SHORT).show()
+                    return
+                }
+
+                isLocatingGPS = true
+                try {
+                    fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                        if (loc != null) {
+                            lastGpsLocation = loc
+                            scope.launch {
+                                val detectedAddress = GeocoderUtils.reverseGeocodeCoordinates(context, loc.latitude, loc.longitude)
+                                val item = SearchResultItem(
+                                    title = "",
+                                    fullAddress = detectedAddress,
+                                    lat = loc.latitude,
+                                    lng = loc.longitude
+                                )
+                                onValueChange(detectedAddress)
+                                onAddressSelected(item)
+                                showDropdown = false
                                 isLocatingGPS = false
-                                Toast.makeText(context, "Unable to get GPS location. Please type address.", Toast.LENGTH_SHORT).show()
                             }
-                        }.addOnFailureListener {
+                        } else {
                             isLocatingGPS = false
-                            Toast.makeText(context, "GPS detection error. Please type address manually.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Unable to get GPS location. Please type address.", Toast.LENGTH_SHORT).show()
                         }
-                    } catch (e: Exception) {
+                    }.addOnFailureListener {
                         isLocatingGPS = false
-                        Toast.makeText(context, "Location error: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "GPS detection error. Please type address manually.", Toast.LENGTH_SHORT).show()
                     }
-                },
+                } catch (e: Exception) {
+                    isLocatingGPS = false
+                    Toast.makeText(context, "Location error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            // Use Current Location GPS trigger chip - strictly clipped to 12.dp with zero escaped shadow
+            Surface(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { triggerGpsDetect() },
+                            onLongPress = { showGpsDialog = true }
+                        )
+                    },
                 shape = RoundedCornerShape(12.dp),
                 color = chipBg,
+                shadowElevation = 0.dp,
+                tonalElevation = 0.dp,
                 border = BorderStroke(1.dp, chipBorder)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (isLocatingGPS) {
@@ -204,6 +223,50 @@ fun AddressAutocompleteField(
                         color = chipText
                     )
                 }
+            }
+
+            if (showGpsDialog) {
+                AlertDialog(
+                    onDismissRequest = { showGpsDialog = false },
+                    title = {
+                        Text(
+                            text = "GPS Calibration & Telemetry",
+                            fontFamily = SpaceGrotesk,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = AppTextColor
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = if (lastGpsLocation != null)
+                                    "Latitude: ${String.format("%.6f", lastGpsLocation!!.latitude)}\nLongitude: ${String.format("%.6f", lastGpsLocation!!.longitude)}\nAccuracy: ±${lastGpsLocation!!.accuracy.toInt()}m\nProvider: ${lastGpsLocation!!.provider ?: "FusedLocation"}"
+                                else
+                                    "No GPS coordinates cached yet. Tap 'Refresh GPS' to perform live satellite triangulation across Benin City.",
+                                fontSize = 13.sp,
+                                color = TextGray
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showGpsDialog = false
+                                triggerGpsDetect()
+                            }
+                        ) {
+                            Text("Refresh GPS", color = Gold, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showGpsDialog = false }) {
+                            Text("Dismiss", color = TextGray)
+                        }
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    containerColor = Charcoal
+                )
             }
         }
 

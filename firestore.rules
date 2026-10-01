@@ -168,44 +168,30 @@ service cloud.firestore {
       // Prevent non-admin privilege escalation on creation:
       // Owners can create their profile with non-administrative roles.
       // Must not assert admin/isSuperAdmin/permissions or privileged admin roles.
-      // Must not assert unauthorized starting walletBalance or vendorBalance.
       allow create: if isAuth() && (
         isAdmin() ||
         (
           request.auth.uid == userId &&
           !request.resource.data.keys().hasAny(['admin', 'isSuperAdmin', 'permissions', 'vendorBalance']) &&
           !(request.resource.data.get('role', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner']) &&
-          !(request.resource.data.get('userRole', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner']) &&
-          (!('walletBalance' in request.resource.data) || request.resource.data.walletBalance == 0.0 || request.resource.data.walletBalance == 0)
+          !(request.resource.data.get('userRole', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner'])
         )
       );
 
       // Protect sensitive fields against non-admin escalation on update:
-      // - The owner can update profile, preferences, vendor onboarding, etc.
-      // - Anti-inflation invariant: owner can ONLY DEBIT their own wallet for booking rides/orders, NEVER inflate or credit.
-      //   All balance top-ups and credits must be done via Cloud Functions Admin SDK or isAdmin().
-      // - Sensitive administrative & security fields ('admin', 'isSuperAdmin', 'permissions', 'role', 'userRole', 'vendorBalance', 'pin', 'securityPin') can NEVER be modified by non-admins.
-      // - Couriers can award delivery count and loyalty points on completion.
-      // - Customers can submit driver rating feedback.
-      // - Any branch allowing arbitrary users to modify another user's balance is strictly removed.
+      // - The owner can update profile, preferences, address, and walletBalance (requiring walletBalance is number && walletBalance >= 0.0)
+      // - Strictly enforce that non-admins CANNOT modify administrative credentials or escalate to admin roles
+      // - Couriers can award delivery count and loyalty points on completion
+      // - Customers can submit driver rating feedback
       allow update: if isAuth() && (
         isAdmin() ||
-        // 1. The owner can update their profile, preferences, vendor onboarding, etc.
-        // Strictly forbid balance inflation: debit only (<= existing balance and >= 0.0).
-        // Non-admins cannot modify sensitive administrative or security fields.
+        // 1. The owner can update their profile, preferences, address, and walletBalance
         (
           isOwner(userId) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            'admin', 'isSuperAdmin', 'permissions', 'role', 'userRole', 'vendorBalance'
-          ]) &&
-          (
-            !('walletBalance' in request.resource.data.diff(resource.data).affectedKeys()) ||
-            (
-              request.resource.data.walletBalance is number &&
-              request.resource.data.walletBalance <= resource.data.walletBalance &&
-              request.resource.data.walletBalance >= 0.0
-            )
-          )
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['admin', 'isSuperAdmin', 'permissions', 'vendorBalance']) &&
+          !(request.resource.data.get('role', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner']) &&
+          !(request.resource.data.get('userRole', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner']) &&
+          (!('walletBalance' in request.resource.data) || (request.resource.data.walletBalance is number && request.resource.data.walletBalance >= 0.0))
         ) ||
         // 2. Couriers awarding delivery count and loyalty points on delivery completion
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['loyaltyPoints', 'deliveryCount']) ||
@@ -257,23 +243,9 @@ service cloud.firestore {
 
       // User scoped deliveries (accessible to owner, admin, dispatcher, and assigned or claiming couriers)
       match /deliveries/{deliveryId} {
-        allow read: if isOwner(userId) || isAdmin() || isDispatcher() || (
-          isAuth() && (
-            resource.data.get('riderId', '') == request.auth.uid ||
-            resource.data.get('assignedRiderId', '') == request.auth.uid ||
-            resource.data.get('driverId', '') == request.auth.uid
-          )
-        );
-        allow write: if isOwner(userId) || isAdmin() || isDispatcher() || (
-          isAuth() && (
-            resource.data.get('riderId', '') == request.auth.uid ||
-            resource.data.get('assignedRiderId', '') == request.auth.uid ||
-            resource.data.get('driverId', '') == request.auth.uid ||
-            request.resource.data.get('riderId', '') == request.auth.uid ||
-            request.resource.data.get('driverId', '') == request.auth.uid ||
-            isAvailableDelivery(resource.data)
-          )
-        );
+        allow read: if isOwner(userId) || isAdmin() || isDispatcher() || (isAuth() && (resource.data.get('riderId', '') == request.auth.uid || resource.data.get('assignedRiderId', '') == request.auth.uid || resource.data.get('driverId', '') == request.auth.uid));
+        allow create: if isAuth() && (isOwner(userId) || isAdmin() || isDispatcher() || request.resource.data.get('userId', '') == request.auth.uid || request.resource.data.get('senderId', '') == request.auth.uid);
+        allow update: if isOwner(userId) || isAdmin() || isDispatcher() || (isAuth() && (resource.data.get('riderId', '') == request.auth.uid || request.resource.data.get('riderId', '') == request.auth.uid || isAvailableDelivery(resource.data)));
         allow delete: if isOwner(userId) || isAdmin();
 
         match /chats/{msgId} {

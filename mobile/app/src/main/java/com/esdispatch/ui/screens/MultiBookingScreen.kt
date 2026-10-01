@@ -1086,6 +1086,7 @@ fun MultiBookingScreen(
             walletBalance = viewModel.walletBalance.collectAsState().value,
             isSubmitting = isBookingSubmitting,
             onConfirmWalletPayment = {
+                showCheckoutSheet = false
                 val firstStop = stops.firstOrNull()
                 viewModel.updateDraftPickup(firstStop?.address ?: "", firstStop?.lat, firstStop?.lng)
                 viewModel.updateDraftDelivery(delivery)
@@ -1100,7 +1101,6 @@ fun MultiBookingScreen(
                 }
                 viewModel.finalizeDraftPrice("Multi", quotePrice)
                 viewModel.confirmBooking { ok, msg ->
-                    showCheckoutSheet = false
                     if (ok) {
                         onNavigate("PaymentSuccess")
                     } else {

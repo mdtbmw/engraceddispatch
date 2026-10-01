@@ -1143,6 +1143,7 @@ fun BatchBookingScreen(
                 walletBalance = viewModel.walletBalance.collectAsState().value,
                 isSubmitting = isBookingSubmitting,
                 onConfirmWalletPayment = {
+                    showCheckoutSheet = false
                     val finalizedStops = batchStops.map { stop ->
                         stop.copy(
                             pickupAddress = if (useSamePickupLocation || stop.pickupAddress.isBlank()) pickup else stop.pickupAddress,
@@ -1156,7 +1157,6 @@ fun BatchBookingScreen(
                         stops = finalizedStops,
                         totalCost = quotePrice
                     ) { ok, msg ->
-                        showCheckoutSheet = false
                         if (ok) {
                             onNavigate("PaymentSuccess")
                         } else {

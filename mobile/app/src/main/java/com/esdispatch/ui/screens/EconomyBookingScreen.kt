@@ -1284,6 +1284,7 @@ fun EconomyBookingScreen(
                 walletBalance = viewModel.walletBalance.collectAsState().value,
                 isSubmitting = isBookingSubmitting,
                 onConfirmWalletPayment = {
+                    showCheckoutSheet = false
                     viewModel.updateDraftPickup(pickup, draft.pickupLat, draft.pickupLng)
                     viewModel.updateDraftDelivery(delivery, draft.deliveryLat, draft.deliveryLng)
                     viewModel.updateDraftSenderInfo(sName, sPhone)
@@ -1298,7 +1299,6 @@ fun EconomyBookingScreen(
                     )
                     viewModel.finalizeDraftPrice("Economy", quotePrice)
                     viewModel.confirmBooking { ok, msg ->
-                        showCheckoutSheet = false
                         if (ok) {
                             onNavigate("PaymentSuccess")
                         } else {

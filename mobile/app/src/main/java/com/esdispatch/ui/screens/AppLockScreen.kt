@@ -358,6 +358,7 @@ fun AppLockScreen(
                 fontWeight = FontWeight.SemiBold,
                 color = TextGray,
                 modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
                     .clickable {
                         viewModel.unlockApp()
                         onSignOut()

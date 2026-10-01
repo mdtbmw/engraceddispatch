@@ -2841,13 +2841,16 @@ class DeliveryViewModel : WalletViewModel() {
             val localRole = prefs.getString("local_role", "customer") ?: "customer"
             val localBike = prefs.getString("local_bike_number", "") ?: ""
             
+            val currentUser = com.esdispatch.data.FirebaseManager.auth?.currentUser
+            if (currentUser != null) {
+                _firebaseUserId.value = currentUser.uid
+            }
             if (_firebaseConnected.value) {
                 setupFcmTokenAndSubscription()
-                val currentUser = com.esdispatch.data.FirebaseManager.auth?.currentUser
-                if (currentUser != null) {
-                    _firebaseUserId.value = currentUser.uid
-                    val db = com.esdispatch.data.FirebaseManager.firestore
-                    if (db != null) {
+            }
+            if (currentUser != null) {
+                val db = com.esdispatch.data.FirebaseManager.firestore
+                if (db != null) {
                         db.collection("users").document(currentUser.uid).get()
                             .addOnSuccessListener { doc ->
                                 val fsName = if (doc.exists()) doc.getString("name") ?: "" else ""
@@ -2974,7 +2977,7 @@ class DeliveryViewModel : WalletViewModel() {
                             }
                         }
                     }
-                } else {
+                } else if (_firebaseConnected.value) {
                     com.esdispatch.data.FirebaseManager.signInUserAnonymously { success, user ->
                         if (success && user != null) {
                             android.util.Log.d("DeliveryViewModel", "Firebase Auth successful: User ${user.uid}")
@@ -2987,21 +2990,20 @@ class DeliveryViewModel : WalletViewModel() {
                             )
                         }
                     }
+                } else {
+                    if (localUid.isNotEmpty() && localEmail.isNotEmpty()) {
+                        _firebaseUserId.value = localUid
+                        _userRole.value = localRole
+                        _bikeNumber.value = localBike
+                        _activeViewMode.value = localRole
+                        updateProfile(localName, localEmail, localPhone)
+                        setUserPin(getPinSecurely("local_pin", ""))
+                        setLoginMode("pin")
+                        android.util.Log.d("DeliveryViewModel", "Local offline session restored on start: $localUid")
+                    }
                 }
-            } else {
-                if (localUid.isNotEmpty() && localEmail.isNotEmpty()) {
-                    _firebaseUserId.value = localUid
-                    _userRole.value = localRole
-                    _bikeNumber.value = localBike
-                    _activeViewMode.value = localRole
-                    updateProfile(localName, localEmail, localPhone)
-                    setUserPin(getPinSecurely("local_pin", ""))
-                    setLoginMode("pin")
-                    android.util.Log.d("DeliveryViewModel", "Local offline session restored on start: $localUid")
-                }
-            }
-            android.util.Log.d("DeliveryViewModel", "Firebase App initialized successfully.")
-        } catch (e: Exception) {
+                android.util.Log.d("DeliveryViewModel", "Firebase App initialized successfully.")
+            } catch (e: Exception) {
             _firebaseConnected.value = false
             android.util.Log.w("DeliveryViewModel", "Firebase initialization deferred or using local configuration: ${e.message}")
         }
@@ -4757,10 +4759,18 @@ class DeliveryViewModel : WalletViewModel() {
     fun getBiometricCredentials(): Pair<String, String>? {
         val ctx = appContext ?: return null
         val prefs = ctx.getSharedPreferences("esdispatch_prefs", Context.MODE_PRIVATE)
-        val email = prefs.getString("biometric_email", "") ?: ""
-        val pin = getPinSecurely("biometric_pin")
-        if (email.isNotEmpty() && pin.isNotEmpty()) {
-            return Pair(email, pin)
+        val bioEmail = prefs.getString("biometric_email", "") ?: ""
+        val bioPin = getPinSecurely("biometric_pin")
+        if (bioEmail.isNotEmpty() && bioPin.isNotEmpty()) {
+            return Pair(bioEmail, bioPin)
+        }
+        val savedEmail = prefs.getString("remembered_email", "")?.takeIf { it.isNotBlank() }
+            ?: prefs.getString("local_email", "")?.takeIf { it.isNotBlank() }
+            ?: prefs.getString("user_email", "")?.takeIf { it.isNotBlank() }
+            ?: ""
+        val savedPin = getPinSecurely("local_pin").ifEmpty { getPinSecurely("user_pin") }
+        if (savedEmail.isNotEmpty() && savedPin.isNotEmpty()) {
+            return Pair(savedEmail, savedPin)
         }
         return null
     }
@@ -5835,8 +5845,11 @@ class DeliveryViewModel : WalletViewModel() {
                 _walletBalance.value = newBalance
                 savePref("wallet_balance", newBalance)
                 finalizeBookingLocally(newParcel)
-                hidePreloader()
-                onComplete?.invoke(true, "Booking confirmed")
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(1000)
+                    hidePreloader()
+                    onComplete?.invoke(true, "Booking confirmed")
+                }
             }
         } else {
             // Unauthenticated / guest fallback: offline booking
@@ -5850,8 +5863,11 @@ class DeliveryViewModel : WalletViewModel() {
             _walletBalance.value -= cost
             savePref("wallet_balance", _walletBalance.value)
             finalizeBookingLocally(newParcel)
-            hidePreloader()
-            onComplete?.invoke(true, "Booking confirmed (offline)")
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(1000)
+                hidePreloader()
+                onComplete?.invoke(true, "Booking confirmed (offline)")
+            }
         }
     }
 

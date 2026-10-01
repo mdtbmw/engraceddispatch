@@ -352,10 +352,12 @@ fun V2DashboardScreen(
                             onClick = { quickViewParcel = parcel },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 6.dp),
+                                .padding(horizontal = 24.dp, vertical = 6.dp)
+                                .clip(RoundedCornerShape(24.dp)),
                             shape = RoundedCornerShape(24.dp),
                             color = AppSurface,
                             shadowElevation = 0.dp,
+                            tonalElevation = 0.dp,
                             border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
                         ) {
                             Column {

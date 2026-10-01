@@ -147,6 +147,7 @@ fun LoginScreen(
     // Google Sign-In & Biometrics
     var showBiometricEnroll by remember { mutableStateOf(false) }
     var showBiometricAuth by remember { mutableStateOf(false) }
+    var showBiometricGuidanceDialog by remember { mutableStateOf(false) }
     var showGoogleErrorDialog by remember { mutableStateOf(false) }
     var googleErrorCode by remember { mutableIntStateOf(0) }
 
@@ -459,7 +460,9 @@ fun LoginScreen(
                             shape = RoundedCornerShape(24.dp),
                             border = BorderStroke(1.dp, fieldBorder),
                             color = fieldBg,
-                            modifier = Modifier.size(62.dp)
+                            shadowElevation = 0.dp,
+                            tonalElevation = 0.dp,
+                            modifier = Modifier.size(62.dp).clip(RoundedCornerShape(24.dp))
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -494,6 +497,7 @@ fun LoginScreen(
                                     isValidatingPin = true
                                     viewModel.signInWithFirebase(email, pin) { success, errorText ->
                                         if (success) {
+                                            viewModel.saveBiometricCredentials(email, pin)
                                             Toast.makeText(context, "Access Granted! Welcome Back.", Toast.LENGTH_SHORT).show()
                                             onNavigate("Preloader")
                                         } else {
@@ -505,8 +509,17 @@ fun LoginScreen(
                                     }
                                 }
                             },
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(24.dp)),
                             shape = RoundedCornerShape(24.dp),
+                            elevation = ButtonDefaults.buttonElevation(
+                                defaultElevation = 0.dp,
+                                pressedElevation = 0.dp,
+                                focusedElevation = 0.dp,
+                                hoveredElevation = 0.dp
+                            ),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isLight) Obsidian else Gold,
                                 contentColor = if (isLight) Gold else Obsidian
@@ -535,11 +548,16 @@ fun LoginScreen(
                         // Biometric/Fingerprint Login Button on the right
                         Surface(
                             onClick = {
-                                val activity = context as? androidx.fragment.app.FragmentActivity
                                 val creds = viewModel.getBiometricCredentials()
                                 val authEmail = creds?.first ?: email.ifEmpty { viewModel.userEmail.value }
-                                val biometricPin = creds?.second ?: registeredPin
+                                val biometricPin = creds?.second ?: registeredPin.ifEmpty { viewModel.getPinSecurely("local_pin") }
 
+                                if (authEmail.isBlank() || biometricPin.isBlank()) {
+                                    showBiometricGuidanceDialog = true
+                                    return@Surface
+                                }
+
+                                val activity = context as? androidx.fragment.app.FragmentActivity
                                 if (activity != null) {
                                     com.esdispatch.util.BiometricHelper.authenticate(
                                         activity = activity,
@@ -547,19 +565,16 @@ fun LoginScreen(
                                         subtitle = "Authorize secure access",
                                         description = "Scan your fingerprint or screen lock credentials to unlock.",
                                         onSuccess = {
-                                            if (authEmail.isNotBlank() && biometricPin.isNotBlank()) {
-                                                isValidatingPin = true
-                                                viewModel.signInWithFirebase(authEmail, biometricPin) { success, errorText ->
-                                                    if (success) {
-                                                        Toast.makeText(context, "Biometrics Verified! Welcome Back.", Toast.LENGTH_SHORT).show()
-                                                        onNavigate("Preloader")
-                                                    } else {
-                                                        Toast.makeText(context, errorText ?: "Invalid credentials loaded from biometrics.", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                    isValidatingPin = false
+                                            isValidatingPin = true
+                                            viewModel.signInWithFirebase(authEmail, biometricPin) { success, errorText ->
+                                                if (success) {
+                                                    viewModel.saveBiometricCredentials(authEmail, biometricPin)
+                                                    Toast.makeText(context, "Biometrics Verified! Welcome Back.", Toast.LENGTH_SHORT).show()
+                                                    onNavigate("Preloader")
+                                                } else {
+                                                    Toast.makeText(context, errorText ?: "Invalid credentials loaded from biometrics.", Toast.LENGTH_SHORT).show()
                                                 }
-                                            } else {
-                                                Toast.makeText(context, "Biometrics verified! Please enter your email to proceed.", Toast.LENGTH_LONG).show()
+                                                isValidatingPin = false
                                             }
                                         },
                                         onError = { err ->
@@ -567,18 +582,17 @@ fun LoginScreen(
                                         }
                                     )
                                 } else {
-                                    val isRegistered = viewModel.biometricRegistered.value
-                                    if (isRegistered) {
-                                        showBiometricAuth = true
-                                    } else {
-                                        showBiometricEnroll = true
-                                    }
+                                    showBiometricAuth = true
                                 }
                             },
                             shape = RoundedCornerShape(24.dp),
                             border = BorderStroke(1.dp, fieldBorder),
                             color = fieldBg,
-                            modifier = Modifier.size(62.dp)
+                            shadowElevation = 0.dp,
+                            tonalElevation = 0.dp,
+                            modifier = Modifier
+                                .size(62.dp)
+                                .clip(RoundedCornerShape(24.dp))
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -746,6 +760,66 @@ fun LoginScreen(
                 }
             },
             containerColor = if (isDark) Obsidian else Color.White
+        )
+    }
+
+    if (showBiometricGuidanceDialog) {
+        AlertDialog(
+            onDismissRequest = { showBiometricGuidanceDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Fingerprint,
+                        contentDescription = null,
+                        tint = if (isDark) Gold else Obsidian,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Biometric Quick-Login",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = if (isDark) Color.White else Obsidian
+                    )
+                }
+            },
+            text = {
+                Text(
+                    text = "No registered account was detected on this device. Please sign in with your email and PIN, or create a new account to enable 1-tap biometric login.",
+                    fontSize = 14.sp,
+                    color = TextGray,
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showBiometricGuidanceDialog = false
+                        onNavigate("SignUp")
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isDark) Gold else Obsidian,
+                        contentColor = if (isDark) Obsidian else Color.White
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(0.dp, 0.dp),
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                ) {
+                    Text("Create Account", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showBiometricGuidanceDialog = false
+                        step = LoginStep.EMAIL
+                    }
+                ) {
+                    Text("Sign In with Email", color = if (isDark) Gold else Obsidian, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            containerColor = if (isDark) Charcoal else Color.White,
+            shape = RoundedCornerShape(20.dp)
         )
     }
 
@@ -1156,8 +1230,17 @@ fun SignUpScreen(
                                             googleSignInLauncher.launch(googleSignInClient.signInIntent)
                                         }
                                     },
-                                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp)
+                                        .clip(RoundedCornerShape(20.dp)),
                                     shape = RoundedCornerShape(20.dp),
+                                    elevation = ButtonDefaults.buttonElevation(
+                                        defaultElevation = 0.dp,
+                                        pressedElevation = 0.dp,
+                                        focusedElevation = 0.dp,
+                                        hoveredElevation = 0.dp
+                                    ),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = if (isDark) Charcoal else GoldenWhiteLight,
                                         contentColor = if (isDark) Color.White else Obsidian
@@ -1247,8 +1330,15 @@ fun SignUpScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(60.dp),
+                                    .height(60.dp)
+                                    .clip(RoundedCornerShape(24.dp)),
                                 shape = RoundedCornerShape(24.dp),
+                                elevation = ButtonDefaults.buttonElevation(
+                                    defaultElevation = 0.dp,
+                                    pressedElevation = 0.dp,
+                                    focusedElevation = 0.dp,
+                                    hoveredElevation = 0.dp
+                                ),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (isLight) Obsidian else Gold,
                                     contentColor = if (isLight) Gold else Obsidian
@@ -1464,8 +1554,15 @@ fun SignUpScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(60.dp),
+                                    .height(60.dp)
+                                    .clip(RoundedCornerShape(24.dp)),
                                 shape = RoundedCornerShape(24.dp),
+                                elevation = ButtonDefaults.buttonElevation(
+                                    defaultElevation = 0.dp,
+                                    pressedElevation = 0.dp,
+                                    focusedElevation = 0.dp,
+                                    hoveredElevation = 0.dp
+                                ),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (isLight) Obsidian else Gold,
                                     contentColor = if (isLight) Gold else Obsidian
@@ -1709,7 +1806,8 @@ fun SignUpScreen(
                                     },
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(58.dp),
+                                        .height(58.dp)
+                                        .clip(RoundedCornerShape(22.dp)),
                                     shape = RoundedCornerShape(22.dp),
                                     border = BorderStroke(1.5.dp, if (isLight) Obsidian else Gold),
                                     colors = ButtonDefaults.outlinedButtonColors(
@@ -1767,8 +1865,9 @@ fun SignUpScreen(
                                                 viewModel.completeGoogleSignUp(phone, pin) { success, errorText ->
                                                     isRegistering = false
                                                     if (success) {
+                                                        viewModel.saveBiometricCredentials(email, pin)
                                                         viewModel.setGoogleAuthInProgress(false)
-                                                        com.esdispatch.util.CustomToastBridge.show("Google Registration Complete!", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                                                        com.esdispatch.util.CustomToastBridge.show("Google Registration Complete! 1-Tap Biometrics Linked.", com.esdispatch.viewmodel.ToastType.SUCCESS)
                                                         onNavigate("Preloader")
                                                     } else {
                                                         com.esdispatch.util.CustomToastBridge.show(errorText ?: "Registration failed. Try again.", com.esdispatch.viewmodel.ToastType.ERROR)
@@ -1778,7 +1877,8 @@ fun SignUpScreen(
                                                 viewModel.signUpWithFirebase(fullName, email, phone, pin, "customer", "") { success, errorText ->
                                                     isRegistering = false
                                                     if (success) {
-                                                        com.esdispatch.util.CustomToastBridge.show("Account Created with Security PIN!", com.esdispatch.viewmodel.ToastType.SUCCESS)
+                                                        viewModel.saveBiometricCredentials(email, pin)
+                                                        com.esdispatch.util.CustomToastBridge.show("Account Created! 1-Tap Biometrics Linked.", com.esdispatch.viewmodel.ToastType.SUCCESS)
                                                         onNavigate("Preloader")
                                                     } else {
                                                         com.esdispatch.util.CustomToastBridge.show(errorText ?: "Registration failed. Try again.", com.esdispatch.viewmodel.ToastType.ERROR)
@@ -1790,8 +1890,15 @@ fun SignUpScreen(
                                     enabled = !isRegistering,
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(58.dp),
+                                        .height(58.dp)
+                                        .clip(RoundedCornerShape(22.dp)),
                                     shape = RoundedCornerShape(22.dp),
+                                    elevation = ButtonDefaults.buttonElevation(
+                                        defaultElevation = 0.dp,
+                                        pressedElevation = 0.dp,
+                                        focusedElevation = 0.dp,
+                                        hoveredElevation = 0.dp
+                                    ),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = if (isLight) Obsidian else Gold,
                                         contentColor = if (isLight) Gold else Obsidian
@@ -2693,7 +2800,15 @@ fun CompleteProfileScreen(
                             contentColor = if (isDark) Obsidian else GoldenWhiteLight
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
+                        elevation = ButtonDefaults.buttonElevation(
+                            defaultElevation = 0.dp,
+                            pressedElevation = 0.dp,
+                            focusedElevation = 0.dp,
+                            hoveredElevation = 0.dp
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp)),
                         contentPadding = PaddingValues(vertical = 14.dp),
                         enabled = !isSaving
                     ) {

@@ -28,6 +28,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.roundToInt
 import androidx.compose.foundation.Image
@@ -66,6 +67,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Redeem
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
@@ -2239,15 +2241,23 @@ fun ParcelCard(
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
     val innerBgColor = if (isDark) Color(0xFF1D1D1D) else GoldenWhiteLight
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    var showQuickActionDialog by remember { mutableStateOf(false) }
 
     Surface(
-        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 6.dp),
+            .padding(horizontal = 24.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { showQuickActionDialog = true }
+                )
+            },
         shape = RoundedCornerShape(24.dp),
         color = AppSurface,
         shadowElevation = 0.dp,
+        tonalElevation = 0.dp,
         border = BorderStroke(1.dp, if (isDark) BorderDark else Slate)
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
@@ -2512,6 +2522,119 @@ fun ParcelCard(
                 }
             }
         }
+    }
+
+    if (showQuickActionDialog) {
+        AlertDialog(
+            onDismissRequest = { showQuickActionDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.LocalShipping,
+                        contentDescription = null,
+                        tint = if (isDark) Gold else Obsidian,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Shipment Quick Actions",
+                        fontFamily = SpaceGrotesk,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = if (isDark) Color.White else Obsidian
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "${parcel.itemName} (${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(parcel.id)})",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        color = AppTextColor
+                    )
+                    Text(
+                        text = "To: ${parcel.deliveryAddress}",
+                        fontSize = 12.sp,
+                        color = TextGray
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    // Quick Action 1: Copy Tracking ID
+                    Surface(
+                        onClick = {
+                            showQuickActionDialog = false
+                            onCopyTrackingId(parcel.id)
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isDark) Charcoal else GoldenWhiteLight,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)),
+                        shadowElevation = 0.dp,
+                        tonalElevation = 0.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ContentCopy, null, tint = Gold, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Copy Tracking Code", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = AppTextColor)
+                        }
+                    }
+
+                    // Quick Action 2: View Live Tracking
+                    Surface(
+                        onClick = {
+                            showQuickActionDialog = false
+                            onClick()
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isDark) Charcoal else GoldenWhiteLight,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)),
+                        shadowElevation = 0.dp,
+                        tonalElevation = 0.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Place, null, tint = Gold, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Open Live GPS Radar", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = AppTextColor)
+                        }
+                    }
+
+                    // Quick Action 3: View Full Mission Details
+                    Surface(
+                        onClick = {
+                            showQuickActionDialog = false
+                            onQuickView(parcel)
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isDark) Charcoal else GoldenWhiteLight,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)),
+                        shadowElevation = 0.dp,
+                        tonalElevation = 0.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.ReceiptLong, null, tint = Gold, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("View Mission Waybill Details", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = AppTextColor)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showQuickActionDialog = false }) {
+                    Text("Close", color = Gold, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = if (isDark) Obsidian else Color.White,
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 }
 

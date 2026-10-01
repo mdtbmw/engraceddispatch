@@ -52,7 +52,7 @@ fun GlobalPreloaderOverlay(
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .background(Color(0xD90A0A0A)) // Luxury dark translucent glassmorphism
+                .background(Color.White) // Solid white background per explicit user direction (strictly non-transparent)
                 .zIndex(9999999f)
                 .pointerInput(Unit) {
                     awaitEachGesture {
@@ -66,8 +66,8 @@ fun GlobalPreloaderOverlay(
         ) {
             val infiniteTransition = rememberInfiniteTransition(label = "preloaderBreath")
             val scale by infiniteTransition.animateFloat(
-                initialValue = 0.86f,
-                targetValue = 1.08f,
+                initialValue = 0.90f,
+                targetValue = 1.10f,
                 animationSpec = infiniteRepeatable(
                     animation = tween(850, easing = EaseInOutQuad),
                     repeatMode = RepeatMode.Reverse
@@ -75,7 +75,7 @@ fun GlobalPreloaderOverlay(
                 label = "scale"
             )
             val alpha by infiniteTransition.animateFloat(
-                initialValue = 0.70f,
+                initialValue = 0.85f,
                 targetValue = 1.0f,
                 animationSpec = infiniteRepeatable(
                     animation = tween(850, easing = EaseInOutQuad),
@@ -89,13 +89,13 @@ fun GlobalPreloaderOverlay(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.padding(horizontal = 32.dp)
             ) {
-                // Minimal clean raw brand logo in Gold
+                // Raw brand logo in Obsidian on solid white background (AGENTS.md strict contrast lock: No Gold on White)
                 Icon(
                     painter = painterResource(id = R.drawable.ic_logo),
                     contentDescription = "Loading",
-                    tint = Gold,
+                    tint = com.esdispatch.ui.theme.Obsidian,
                     modifier = Modifier
-                        .size(54.dp)
+                        .size(58.dp)
                         .graphicsLayer {
                             scaleX = scale
                             scaleY = scale
@@ -104,13 +104,23 @@ fun GlobalPreloaderOverlay(
                 )
 
                 if (message.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
                     Text(
                         text = message,
-                        color = GoldLight,
-                        fontSize = 13.sp,
+                        color = com.esdispatch.ui.theme.Obsidian,
+                        fontSize = 14.sp,
+                        fontFamily = com.esdispatch.ui.theme.SpaceGrotesk,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "PREMIUM LOGISTICS & DISPATCH",
+                        color = com.esdispatch.ui.theme.TextGray,
+                        fontSize = 10.sp,
+                        fontFamily = com.esdispatch.ui.theme.SpaceGrotesk,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
                     )
                 }
             }
