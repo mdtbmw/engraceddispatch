@@ -9,9 +9,10 @@ service cloud.firestore {
     // /users/{userId}
     //   - User profile with role-based access control (customer, rider, driver, vendor, dispatcher, admin, super_admin)
     //   - Authenticated read for public profile details (couriers, drivers, storefronts, customer names)
-    //   - Protected administrative fields: admin, isSuperAdmin, permissions, role, userRole
-    //   - Owner updates: profile, preferences, PIN, walletBalance (bookings, checkouts, topups, refunds)
-    //   - External updates: courier delivery completion (loyaltyPoints, deliveryCount), customer driver ratings (rating, ratingCount, updatedAt), customer gratuity/tips (walletBalance, totalTipsEarned, rating, ratingCount, updatedAt)
+    //   - Protected administrative & security fields: admin, isSuperAdmin, permissions, role, userRole, vendorBalance, pin, securityPin
+    //   - Owner updates: profile, preferences, address; walletBalance (strictly debit-only for ride/order booking; balance inflation strictly forbidden)
+    //   - Server-only updates: balance top-ups, tip credits, vendor payouts via Cloud Functions Admin SDK or admin
+    //   - External updates: courier delivery completion (loyaltyPoints, deliveryCount), customer driver ratings (rating, ratingCount, updatedAt)
     //   - Subcollections:
     //       /notifications: User in-app notifications
     //       /notification_events: Push/deduplication tracking
@@ -167,43 +168,49 @@ service cloud.firestore {
       // Prevent non-admin privilege escalation on creation:
       // Owners can create their profile with non-administrative roles.
       // Must not assert admin/isSuperAdmin/permissions or privileged admin roles.
+      // Must not assert unauthorized starting walletBalance or vendorBalance.
       allow create: if isAuth() && (
         isAdmin() ||
         (
           request.auth.uid == userId &&
-          !request.resource.data.keys().hasAny(['admin', 'isSuperAdmin', 'permissions']) &&
+          !request.resource.data.keys().hasAny(['admin', 'isSuperAdmin', 'permissions', 'vendorBalance']) &&
           !(request.resource.data.get('role', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner']) &&
-          !(request.resource.data.get('userRole', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner'])
+          !(request.resource.data.get('userRole', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner']) &&
+          (!('walletBalance' in request.resource.data) || request.resource.data.walletBalance == 0.0 || request.resource.data.walletBalance == 0)
         )
       );
 
       // Protect sensitive fields against non-admin escalation on update:
-      // - The owner can update profile, preferences, PIN, and walletBalance (for booking rides, topups, checkouts, refunds).
-      // - The owner is strictly forbidden from privilege escalation: cannot set or modify admin, isSuperAdmin, permissions, or set role/userRole to privileged roles.
+      // - The owner can update profile, preferences, vendor onboarding, etc.
+      // - Anti-inflation invariant: owner can ONLY DEBIT their own wallet for booking rides/orders, NEVER inflate or credit.
+      //   All balance top-ups and credits must be done via Cloud Functions Admin SDK or isAdmin().
+      // - Sensitive administrative & security fields ('admin', 'isSuperAdmin', 'permissions', 'role', 'userRole', 'vendorBalance', 'pin', 'securityPin') can NEVER be modified by non-admins.
       // - Couriers can award delivery count and loyalty points on completion.
       // - Customers can submit driver rating feedback.
-      // - Customers can tip couriers (updating courier walletBalance, totalTipsEarned, rating, ratingCount, updatedAt).
+      // - Any branch allowing arbitrary users to modify another user's balance is strictly removed.
       allow update: if isAuth() && (
         isAdmin() ||
-        // The owner can update their profile, wallet balance, PIN, preferences, vendor onboarding, etc.
+        // 1. The owner can update their profile, preferences, vendor onboarding, etc.
+        // Strictly forbid balance inflation: debit only (<= existing balance and >= 0.0).
+        // Non-admins cannot modify sensitive administrative or security fields.
         (
           isOwner(userId) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['admin', 'isSuperAdmin', 'permissions']) &&
-          !(request.resource.data.get('role', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner']) &&
-          !(request.resource.data.get('userRole', '') in ['admin', 'super_admin', 'dispatcher', 'manager', 'owner', 'Admin', 'SuperAdmin', 'Dispatcher', 'Manager', 'Owner'])
-        ) ||
-        // Couriers awarding delivery count and loyalty points on delivery completion
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['loyaltyPoints', 'deliveryCount']) ||
-        // Customers submitting rating feedback on courier
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingCount', 'updatedAt']) ||
-        // Customers tipping courier (updates courier's walletBalance, totalTipsEarned, rating, ratingCount)
-        (
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['admin', 'isSuperAdmin', 'permissions', 'role', 'userRole']) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'admin', 'isSuperAdmin', 'permissions', 'role', 'userRole', 'vendorBalance'
+          ]) &&
           (
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'totalTipsEarned', 'rating', 'ratingCount', 'updatedAt']) ||
-            request.resource.data.diff(resource.data).affectedKeys().hasAny(['walletBalance', 'totalTipsEarned', 'rating', 'ratingCount', 'updatedAt'])
+            !('walletBalance' in request.resource.data.diff(resource.data).affectedKeys()) ||
+            (
+              request.resource.data.walletBalance is number &&
+              request.resource.data.walletBalance <= resource.data.walletBalance &&
+              request.resource.data.walletBalance >= 0.0
+            )
           )
-        )
+        ) ||
+        // 2. Couriers awarding delivery count and loyalty points on delivery completion
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['loyaltyPoints', 'deliveryCount']) ||
+        // 3. Customers submitting rating feedback on courier
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingCount', 'updatedAt'])
       );
 
       allow delete: if isSuperAdmin();
@@ -268,6 +275,31 @@ service cloud.firestore {
           )
         );
         allow delete: if isOwner(userId) || isAdmin();
+
+        match /chats/{msgId} {
+          allow read, write: if isAuth();
+          allow delete: if isAdmin();
+        }
+
+        match /messages/{msgId} {
+          allow read, write: if isAuth();
+          allow delete: if isAdmin();
+        }
+
+        match /timeline/{eventId} {
+          allow read, write: if isAuth();
+          allow delete: if isAdmin();
+        }
+
+        match /pod_events/{eventId} {
+          allow read, write: if isAuth();
+          allow delete: if isAdmin();
+        }
+
+        match /{allSubcollections=**} {
+          allow read, write: if isAuth();
+          allow delete: if isAdmin();
+        }
       }
 
       // Saved delivery addresses
@@ -275,18 +307,18 @@ service cloud.firestore {
         allow read, write, delete: if isOwner(userId) || isAdmin();
       }
 
-      // Saved payment cards
+      // Saved payment cards (Private security subcollection)
       match /payment_cards/{cardId} {
         allow read, write, delete: if isOwner(userId) || isAdmin();
       }
 
-      // Security events and login logs
+      // Security events and login logs (Private security subcollection)
       match /security_events/{eventId} {
         allow read, create: if isOwner(userId) || isAdmin();
         allow update, delete: if isAdmin();
       }
 
-      // Activity logs
+      // Activity logs (Private security subcollection)
       match /activity_logs/{logId} {
         allow read, create: if isOwner(userId) || isAdmin();
         allow update, delete: if isAdmin();
@@ -299,8 +331,25 @@ service cloud.firestore {
         allow update, delete: if isAdmin();
       }
 
-      // Cryptographic verification OTP records
+      // Cryptographic verification OTP records (Private security subcollection)
       match /verification_otp/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      match /verification_otps/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      // Private security credentials subcollections
+      match /security/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      match /private/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      match /credentials/{docId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
 
@@ -355,13 +404,27 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
 
-      // Chat messages between customer, courier, and dispatch for this delivery
+      // Delivery subcollections: chats, messages, timeline events, proof of delivery (pod_events)
       match /chats/{msgId} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
 
-      // Delivery subcollections: messages, timeline events, chats, proof of delivery
+      match /messages/{msgId} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+
+      match /timeline/{eventId} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+
+      match /pod_events/{eventId} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+
       match /{allSubcollections=**} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
@@ -392,13 +455,27 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
 
-      // Chat messages between customer, courier, and dispatch for this parcel
+      // Parcel subcollections: chats, messages, timeline events, proof of delivery (pod_events)
       match /chats/{msgId} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();
       }
 
-      // Parcel subcollections: messages, timeline events, chats, proof of delivery
+      match /messages/{msgId} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+
+      match /timeline/{eventId} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+
+      match /pod_events/{eventId} {
+        allow read, write: if isAuth();
+        allow delete: if isAdmin();
+      }
+
       match /{allSubcollections=**} {
         allow read, write: if isAuth();
         allow delete: if isAdmin();

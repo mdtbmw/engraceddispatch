@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onDeliveryStatusEmailTrigger = exports.requestPasswordReset = exports.checkPhoneUnique = exports.testSmtpConnection = exports.verifyEmailOtp = exports.sendEmailOtp = exports.onContactCreated = exports.onRiderSubcollectionChanged = exports.onNotificationCreated = exports.onRiderDocumentChanged = exports.processVendorPayout = exports.completeDeliveryWithProof = exports.verifyDeliveryOtp = exports.verifyPaymentAndTopUp = exports.onDeliveryStatusUpdated = exports.onDeliveryCreatedAutoDispatch = exports.onUserCreatedSendWelcome = void 0;
+exports.paystackWebhook = exports.askDispatchAssistant = exports.onDeliveryStatusEmailTrigger = exports.requestPasswordReset = exports.checkPhoneUnique = exports.testSmtpConnection = exports.verifyEmailOtp = exports.sendEmailOtp = exports.onContactCreated = exports.onRiderSubcollectionChanged = exports.onNotificationCreated = exports.onRiderDocumentChanged = exports.processVendorPayout = exports.completeDeliveryWithProof = exports.verifyDeliveryOtp = exports.verifyPaymentAndTopUp = exports.onDeliveryStatusUpdated = exports.onDeliveryCreatedAutoDispatch = exports.onUserCreatedSendWelcome = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
@@ -491,40 +491,33 @@ exports.verifyPaymentAndTopUp = functions.https.onCall(async (data, context) => 
         throw new functions.https.HttpsError('invalid-argument', 'Valid payment reference is required.');
     }
     const paystackSecret = process.env.PAYSTACK_SECRET_KEY || ((_a = functions.config().paystack) === null || _a === void 0 ? void 0 : _a.secret);
-    if (reference.startsWith('TEST_MOCK_')) {
-        if (process.env.NODE_ENV === 'production') {
-            throw new functions.https.HttpsError('failed-precondition', 'Mock payments are strictly disallowed in production environment.');
-        }
-    }
-    else if (paystackSecret) {
-        // If live secret key is configured, verify against Paystack API
-        try {
-            const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-                method: 'GET',
-                headers: {
-                    Authorization: `Bearer ${paystackSecret}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-            const resJson = await response.json();
-            if (!resJson.status || ((_b = resJson.data) === null || _b === void 0 ? void 0 : _b.status) !== 'success') {
-                throw new functions.https.HttpsError('permission-denied', `Paystack verification failed: ${resJson.message || 'Unsuccessful'}`);
-            }
-            // Validate amount from gateway (Paystack returns in kobo)
-            const verifiedAmountNaira = (Number((_c = resJson.data) === null || _c === void 0 ? void 0 : _c.amount) || 0) / 100;
-            if (Math.abs(verifiedAmountNaira - amount) > 0.05) {
-                throw new functions.https.HttpsError('invalid-argument', `Amount mismatch: Gateway received ₦${verifiedAmountNaira}, but requested ₦${amount}`);
-            }
-        }
-        catch (err) {
-            console.error('[Paystack Verification Error]', err);
-            if (err instanceof functions.https.HttpsError)
-                throw err;
-            throw new functions.https.HttpsError('internal', 'Error contacting payment gateway.');
-        }
-    }
-    else {
+    if (!paystackSecret) {
         throw new functions.https.HttpsError('failed-precondition', 'Payment gateway configuration is missing.');
+    }
+    // Strictly verify transaction reference against Paystack API
+    try {
+        const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${paystackSecret}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        const resJson = await response.json();
+        if (!resJson.status || ((_b = resJson.data) === null || _b === void 0 ? void 0 : _b.status) !== 'success') {
+            throw new functions.https.HttpsError('permission-denied', `Paystack verification failed: ${resJson.message || 'Unsuccessful'}`);
+        }
+        // Validate amount from gateway (Paystack returns in kobo)
+        const verifiedAmountNaira = (Number((_c = resJson.data) === null || _c === void 0 ? void 0 : _c.amount) || 0) / 100;
+        if (Math.abs(verifiedAmountNaira - amount) > 0.05) {
+            throw new functions.https.HttpsError('invalid-argument', `Amount mismatch: Gateway received ₦${verifiedAmountNaira}, but requested ₦${amount}`);
+        }
+    }
+    catch (err) {
+        console.error('[Paystack Verification Error]', err);
+        if (err instanceof functions.https.HttpsError)
+            throw err;
+        throw new functions.https.HttpsError('internal', 'Error contacting payment gateway.');
     }
     const userRef = db.collection('users').doc(uid);
     const ledgerRef = db.collection('system_ledger').doc(reference);
@@ -1227,5 +1220,176 @@ exports.onDeliveryStatusEmailTrigger = functions.firestore
         }
     }
     return null;
+});
+/**
+ * Secure proxy callable for Gemini AI Dispatch Assistant.
+ * Uses the server-side GEMINI_API_KEY environment variable.
+ * Enforces authentication and input length limits.
+ */
+exports.askDispatchAssistant = functions.https.onCall(async (data, context) => {
+    var _a, _b, _c, _d, _e, _f;
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to use AI Assistant.');
+    }
+    const { prompt } = data;
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'Valid prompt is required.');
+    }
+    if (prompt.length > 5000) {
+        throw new functions.https.HttpsError('invalid-argument', 'Prompt exceeds maximum length.');
+    }
+    const geminiKey = process.env.GEMINI_API_KEY || ((_a = functions.config().gemini) === null || _a === void 0 ? void 0 : _a.key);
+    if (!geminiKey) {
+        return {
+            success: false,
+            message: 'AI Assistant service is currently in maintenance. Please contact dispatch support.'
+        };
+    }
+    try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${geminiKey}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.7 }
+            })
+        });
+        if (!response.ok) {
+            console.warn(`[Gemini Assistant API Error] Status: ${response.status}`);
+            return {
+                success: false,
+                message: 'Our dispatch assistant is momentarily unavailable. Please check your active deliveries or contact dispatch support directly.'
+            };
+        }
+        const jsonRes = await response.json();
+        const candidateText = (_f = (_e = (_d = (_c = (_b = jsonRes === null || jsonRes === void 0 ? void 0 : jsonRes.candidates) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.content) === null || _d === void 0 ? void 0 : _d.parts) === null || _e === void 0 ? void 0 : _e[0]) === null || _f === void 0 ? void 0 : _f.text;
+        if (candidateText) {
+            return {
+                success: true,
+                text: candidateText
+            };
+        }
+        return {
+            success: true,
+            text: 'How else can I assist you with your logistics and deliveries today?'
+        };
+    }
+    catch (error) {
+        console.error('[Gemini Assistant Error]', error);
+        return {
+            success: false,
+            message: 'Unable to communicate with AI Assistant. Please try again shortly.'
+        };
+    }
+});
+/**
+ * HTTPS Webhook to process asynchronous Paystack payment events (e.g. Bank Transfer, USSD, Card charge).
+ * Verifies Paystack HMAC-SHA512 signature, records transaction idempotently in system_ledger,
+ * and updates user wallet balance or marks delivery paid.
+ */
+exports.paystackWebhook = functions.https.onRequest(async (req, res) => {
+    var _a, _b;
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed');
+        return;
+    }
+    const paystackSecret = process.env.PAYSTACK_SECRET_KEY || ((_a = functions.config().paystack) === null || _a === void 0 ? void 0 : _a.secret);
+    if (!paystackSecret) {
+        console.error('[Paystack Webhook] Missing PAYSTACK_SECRET_KEY configuration.');
+        res.status(500).send('Webhook configuration missing.');
+        return;
+    }
+    const crypto = await Promise.resolve().then(() => __importStar(require('crypto')));
+    const signature = req.headers['x-paystack-signature'];
+    const hash = crypto.createHmac('sha512', paystackSecret).update(req.rawBody || JSON.stringify(req.body)).digest('hex');
+    if (signature !== hash) {
+        console.warn('[Paystack Webhook] Invalid signature rejected.');
+        res.status(401).send('Invalid signature.');
+        return;
+    }
+    const event = req.body;
+    if ((event === null || event === void 0 ? void 0 : event.event) === 'charge.success') {
+        const data = event.data;
+        const reference = data.reference;
+        const amountKobo = Number(data.amount) || 0;
+        const amountNaira = amountKobo / 100;
+        const customerEmail = (_b = data.customer) === null || _b === void 0 ? void 0 : _b.email;
+        const metadata = data.metadata || {};
+        const userId = metadata.userId || metadata.uid;
+        const deliveryId = metadata.deliveryId || metadata.parcelId;
+        console.log(`[Paystack Webhook] charge.success: Ref=${reference}, Amount=₦${amountNaira}, Email=${customerEmail}`);
+        const ledgerRef = db.collection('system_ledger').doc(reference);
+        try {
+            await db.runTransaction(async (txn) => {
+                var _a;
+                const ledgerSnap = await txn.get(ledgerRef);
+                if (ledgerSnap.exists) {
+                    console.log(`[Paystack Webhook] Reference ${reference} already processed.`);
+                    return;
+                }
+                // 1. If linked to a user wallet top-up
+                let targetUid = userId;
+                if (!targetUid && customerEmail) {
+                    const userQuery = await db.collection('users').where('email', '==', customerEmail.toLowerCase().trim()).limit(1).get();
+                    if (!userQuery.empty) {
+                        targetUid = userQuery.docs[0].id;
+                    }
+                }
+                if (targetUid) {
+                    const userRef = db.collection('users').doc(targetUid);
+                    const userSnap = await txn.get(userRef);
+                    if (userSnap.exists) {
+                        const currentBal = ((_a = userSnap.data()) === null || _a === void 0 ? void 0 : _a.walletBalance) || 0.0;
+                        const newBal = currentBal + amountNaira;
+                        txn.update(userRef, {
+                            walletBalance: newBal,
+                            updatedAt: firestore_1.FieldValue.serverTimestamp()
+                        });
+                        const txRef = userRef.collection('transactions').doc(reference);
+                        txn.set(txRef, {
+                            id: reference,
+                            userId: targetUid,
+                            title: 'Wallet Top Up (Paystack Webhook)',
+                            amount: amountNaira,
+                            isTopUp: true,
+                            type: 'CREDIT',
+                            status: 'SUCCESS',
+                            reference: reference,
+                            date: new Date().toLocaleDateString('en-GB'),
+                            timestamp: Date.now(),
+                            createdAt: firestore_1.FieldValue.serverTimestamp()
+                        });
+                    }
+                }
+                // 2. If linked to a delivery payment
+                if (deliveryId) {
+                    const delRef = db.collection('deliveries').doc(deliveryId);
+                    txn.update(delRef, {
+                        paymentStatus: 'PAID',
+                        paymentReference: reference,
+                        paidAmount: amountNaira,
+                        lastUpdated: Date.now()
+                    });
+                }
+                // 3. Record in immutable ledger
+                txn.set(ledgerRef, {
+                    reference: reference,
+                    userId: targetUid || 'anonymous',
+                    amount: amountNaira,
+                    currency: 'NGN',
+                    gateway: 'PAYSTACK',
+                    type: deliveryId ? 'DELIVERY_PAYMENT' : 'WALLET_TOPUP',
+                    status: 'COMPLETED',
+                    webhookVerified: true,
+                    createdAt: firestore_1.FieldValue.serverTimestamp()
+                });
+            });
+        }
+        catch (err) {
+            console.error('[Paystack Webhook Transaction Error]', err);
+        }
+    }
+    res.status(200).json({ status: 'success' });
 });
 //# sourceMappingURL=index.js.map

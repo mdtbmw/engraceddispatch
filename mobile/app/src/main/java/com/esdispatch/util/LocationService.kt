@@ -103,6 +103,8 @@ class LocationService : Service() {
 
     private var lastUserLocationSync = 0L
     private var lastDeliveryLocationSync = 0L
+    private var lastFleetLocationSync = 0L
+    private var lastBroadcastLocation: Location? = null
 
     private fun startLocationUpdates() {
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000L)
@@ -154,34 +156,52 @@ class LocationService : Service() {
 
     private fun broadcastToFirebase(userId: String, location: Location, gpsTimestamp: Long) {
         val db = FirebaseManager.firestore ?: return
-
-        // 1. Primary write to fleet_locations telemetry document
-        val fleetData = hashMapOf<String, Any>(
-            "riderId" to userId,
-            "latitude" to location.latitude,
-            "longitude" to location.longitude,
-            "lat" to location.latitude,
-            "lng" to location.longitude,
-            "accuracy" to location.accuracy,
-            "speed" to location.speed,
-            "bearing" to location.bearing,
-            "heading" to location.bearing,
-            "timestamp" to gpsTimestamp,
-            "updatedAt" to System.currentTimeMillis(),
-            "activeBookingId" to (activeParcelId ?: ""),
-            "activeBatchId" to (activeBatchId ?: "")
-        )
-
-        db.collection("fleet_locations").document(userId)
-            .set(fleetData, com.google.firebase.firestore.SetOptions.merge())
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to update fleet_locations: ${e.message}")
-            }
-
         val now = System.currentTimeMillis()
+        val pId = activeParcelId
+        val isTripActive = !pId.isNullOrBlank()
+
+        val lastLoc = lastBroadcastLocation
+        val distanceMoved = if (lastLoc != null) lastLoc.distanceTo(location) else Float.MAX_VALUE
+        val timeSinceLastSync = now - lastFleetLocationSync
+
+        // Performance & Cost Throttling:
+        // - If on an active delivery trip: update if moved >= 5m OR time >= 4000ms.
+        // - If stationary / idle (no active delivery): update ONLY if moved >= 10m OR time >= 60,000ms (heartbeat).
+        val shouldBroadcastFleet = if (isTripActive) {
+            distanceMoved >= 5f || timeSinceLastSync >= 4000L
+        } else {
+            distanceMoved >= 10f || timeSinceLastSync >= 60000L
+        }
+
+        if (shouldBroadcastFleet) {
+            lastFleetLocationSync = now
+            lastBroadcastLocation = Location(location)
+
+            // 1. Primary write to fleet_locations telemetry document
+            val fleetData = hashMapOf<String, Any>(
+                "riderId" to userId,
+                "latitude" to location.latitude,
+                "longitude" to location.longitude,
+                "lat" to location.latitude,
+                "lng" to location.longitude,
+                "accuracy" to location.accuracy,
+                "speed" to location.speed,
+                "bearing" to location.bearing,
+                "heading" to location.bearing,
+                "timestamp" to gpsTimestamp,
+                "updatedAt" to now,
+                "activeBookingId" to (activeParcelId ?: ""),
+                "activeBatchId" to (activeBatchId ?: "")
+            )
+
+            db.collection("fleet_locations").document(userId)
+                .set(fleetData, com.google.firebase.firestore.SetOptions.merge())
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "Failed to update fleet_locations: ${e.message}")
+                }
+        }
 
         // 2. Direct sync to deliveries/{activeParcelId} for real-time customer map tracking (throttled 4s)
-        val pId = activeParcelId
         if (!pId.isNullOrBlank() && now - lastDeliveryLocationSync > 4000L) {
             lastDeliveryLocationSync = now
             val deliveryUpdate = hashMapOf<String, Any>(

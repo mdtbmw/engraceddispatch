@@ -1914,7 +1914,7 @@ object FirebaseManager {
         val currentUid = auth?.currentUser?.uid ?: ""
         val listener = db.collection("deliveries")
             .whereIn("status", listOf("PENDING", "QUEUED", "OFFERED", "pending", "queued"))
-            .limit(50)
+            .limit(100)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to available deliveries: ${error.message}")
@@ -1935,6 +1935,8 @@ object FirebaseManager {
                             Log.e(TAG, "Error parsing available delivery: ${e.message}")
                         }
                     }
+                    // Sort descending by creation timestamp so fresh bookings are always placed at the top of the rider pool
+                    list.sortByDescending { it.createdAt.takeIf { t -> t > 0L } ?: it.id.filter { c -> c.isDigit() }.toLongOrNull() ?: 0L }
                     trySend(list)
                 }
             }
@@ -2087,8 +2089,7 @@ object FirebaseManager {
                 "note" to "Courier accepted mission"
             ))
 
-            snapshot.getString("userId") ?: ""
-        }.addOnSuccessListener { parcelUserId ->
+            val parcelUserId = snapshot.getString("userId") ?: ""
             if (parcelUserId.isNotEmpty()) {
                 val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
                 val updates = mutableMapOf<String, Any>(
@@ -2098,7 +2099,7 @@ object FirebaseManager {
                     "courierPhone" to riderPhone,
                     "riderBikeNumber" to riderBikeNumber,
                     "progress" to 0.15f,
-                    "lastUpdated" to System.currentTimeMillis()
+                    "lastUpdated" to now
                 )
                 if (riderLat != null && riderLng != null) {
                     updates["initialCourierLat"] = riderLat
@@ -2106,9 +2107,12 @@ object FirebaseManager {
                     updates["courierLatitude"] = riderLat
                     updates["courierLongitude"] = riderLng
                 }
-                userDocRef.update(updates).addOnFailureListener { e ->
-                    Log.e(TAG, "Failed to update subcollection: ${e.message}")
-                }
+                transaction.set(userDocRef, updates, com.google.firebase.firestore.SetOptions.merge())
+            }
+
+            parcelUserId
+        }.addOnSuccessListener { parcelUserId ->
+            if (parcelUserId.isNotEmpty()) {
                 sendNotificationToUser(
                     userId = parcelUserId,
                     title = "Courier Assigned",
@@ -2215,17 +2219,18 @@ object FirebaseManager {
                         "actorRole" to "rider",
                         "timestamp" to now
                     ))
-                }.addOnSuccessListener {
-                    // Update user personal delivery subcollection
+
+                    // Atomically update user personal delivery subcollection
                     if (parcelUserId.isNotEmpty()) {
                         val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
-                        userDocRef.update(
-                            mapOf(
-                                "status" to nextStatus.name,
-                                "progress" to progress,
-                                "lastUpdated" to now
-                            )
-                        )
+                        transaction.set(userDocRef, mapOf(
+                            "status" to nextStatus.name,
+                            "progress" to progress,
+                            "lastUpdated" to now
+                        ), com.google.firebase.firestore.SetOptions.merge())
+                    }
+                }.addOnSuccessListener {
+                    if (parcelUserId.isNotEmpty()) {
                         val statusTitle = when(nextStatus) {
                             ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> "Parcel Out for Delivery"
                             ParcelStatus.DELIVERED -> "Parcel Delivered Successfully"
@@ -2323,22 +2328,22 @@ object FirebaseManager {
         val docRef = db.collection("deliveries").document(parcelId)
         docRef.get().addOnSuccessListener { snapshot ->
             if (snapshot.exists()) {
+                val parcelUserId = snapshot.getString("userId") ?: ""
+                val now = System.currentTimeMillis()
                 db.runTransaction { transaction ->
                     transaction.update(docRef, "riderId", riderId)
                     transaction.update(docRef, "riderBikeNumber", riderBikeNumber)
-                    transaction.update(docRef, "lastUpdated", System.currentTimeMillis())
-                }.addOnSuccessListener {
-                    val parcelUserId = snapshot.getString("userId") ?: ""
+                    transaction.update(docRef, "lastUpdated", now)
+
                     if (parcelUserId.isNotEmpty()) {
                         val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
-                        userDocRef.update(
-                            mapOf(
-                                "riderId" to riderId,
-                                "riderBikeNumber" to riderBikeNumber,
-                                "lastUpdated" to System.currentTimeMillis()
-                            )
-                        )
+                        transaction.set(userDocRef, mapOf(
+                            "riderId" to riderId,
+                            "riderBikeNumber" to riderBikeNumber,
+                            "lastUpdated" to now
+                        ), com.google.firebase.firestore.SetOptions.merge())
                     }
+                }.addOnSuccessListener {
                     onComplete(true, null)
                 }.addOnFailureListener { e ->
                     onComplete(false, e.message ?: "Failed to update assignment.")
@@ -2437,54 +2442,25 @@ object FirebaseManager {
                     val alreadyPaid = snapshot.getBoolean("payoutCredited") ?: false
                     val payoutAmount = price * 0.80
 
+                    val now = System.currentTimeMillis()
                     db.runTransaction { transaction ->
-                        val riderRef = if (!alreadyPaid && riderId.isNotEmpty() && payoutAmount > 0.0) {
-                            db.collection("users").document(riderId)
-                        } else null
-                        val riderSnap = riderRef?.let { transaction.get(it) }
-
                         transaction.update(docRef, "status", "HANDOVER_VERIFIED")
                         transaction.update(docRef, "progress", 0.95f)
                         transaction.update(docRef, "otpVerified", true)
                         transaction.update(docRef, "otpAttempts", 0)
-                        transaction.update(docRef, "otpVerifiedAt", System.currentTimeMillis())
-                        transaction.update(docRef, "lastUpdated", System.currentTimeMillis())
+                        transaction.update(docRef, "otpVerifiedAt", now)
+                        transaction.update(docRef, "lastUpdated", now)
 
-                        if (riderRef != null && riderSnap != null && !alreadyPaid && payoutAmount > 0.0) {
-                            transaction.update(docRef, "payoutCredited", true)
-                            val currentBal = riderSnap.getSafeDouble("walletBalance", 0.0)
-                            transaction.update(riderRef, "walletBalance", currentBal + payoutAmount)
-
-                            val txRef = "TX-PAYOUT-${java.util.UUID.randomUUID().toString().take(8).uppercase()}"
-                            val txnMap = hashMapOf(
-                                "id" to txRef,
-                                "userId" to riderId,
-                                "amount" to payoutAmount,
-                                "title" to "Delivery Payout (80%)",
-                                "type" to "CREDIT",
-                                "status" to "SUCCESS",
-                                "isTopUp" to true,
-                                "reference" to txRef,
-                                "deliveryId" to parcelId,
-                                "timestamp" to System.currentTimeMillis()
-                            )
-                            transaction.set(riderRef.collection("transactions").document(txRef), txnMap)
-                            transaction.set(db.collection("transactions").document(txRef), txnMap)
-                        }
-                    }.addOnSuccessListener {
-                        // Update subcollection to HANDOVER_VERIFIED
                         if (parcelUserId.isNotEmpty()) {
                             val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
-                            userDocRef.update(
-                                mapOf(
-                                    "status" to "HANDOVER_VERIFIED",
-                                    "progress" to 0.95f,
-                                    "otpVerified" to true,
-                                    "lastUpdated" to System.currentTimeMillis()
-                                )
-                            )
+                            transaction.set(userDocRef, mapOf(
+                                "status" to "HANDOVER_VERIFIED",
+                                "progress" to 0.95f,
+                                "otpVerified" to true,
+                                "lastUpdated" to now
+                            ), com.google.firebase.firestore.SetOptions.merge())
                         }
-
+                    }.addOnSuccessListener {
                         onComplete(true, null)
                     }.addOnFailureListener { e ->
                         onComplete(false, e.message ?: "Failed to verify OTP.")
@@ -2545,19 +2521,32 @@ object FirebaseManager {
                 transaction.get(userRef)
             } else null
 
+            val now = System.currentTimeMillis()
+            val userDeliveryRef = if (userId.isNotEmpty()) {
+                db.collection("users").document(userId).collection("deliveries").document(parcelId)
+            } else null
+
             // --- ALL WRITES AFTER READS ---
             transaction.update(parcelRef, mapOf(
                 "status" to "DELIVERED",
                 "progress" to 1.0f,
-                "completedTimestamp" to System.currentTimeMillis()
+                "completedTimestamp" to now
             ))
+
+            if (userDeliveryRef != null) {
+                transaction.set(userDeliveryRef, mapOf(
+                    "status" to "DELIVERED",
+                    "progress" to 1.0f,
+                    "completedTimestamp" to now
+                ), com.google.firebase.firestore.SetOptions.merge())
+            }
 
             if (!loyaltySnap.exists()) {
                 val loyaltyData = hashMapOf(
                     "parcelId" to parcelId,
                     "userId" to userId,
                     "pointsAwarded" to 15,
-                    "awardedAt" to System.currentTimeMillis(),
+                    "awardedAt" to now,
                     "verified" to true
                 )
                 transaction.set(loyaltyRecordRef, loyaltyData)
@@ -2573,13 +2562,6 @@ object FirebaseManager {
                 }
             }
         }.addOnSuccessListener {
-            if (userId.isNotEmpty()) {
-                db.collection("users").document(userId).collection("deliveries").document(parcelId)
-                    .update(mapOf("status" to "DELIVERED", "progress" to 1.0f))
-                    .addOnFailureListener { e ->
-                        Log.e(TAG, "Failed to update user delivery subcollection: ${e.message}")
-                    }
-            }
             onComplete(true, null)
         }.addOnFailureListener { e ->
             onComplete(false, e.message ?: "Failed to process delivery completion securely.")

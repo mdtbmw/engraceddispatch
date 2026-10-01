@@ -12,6 +12,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.tasks.await
 import com.esdispatch.data.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -6947,16 +6948,13 @@ class DeliveryViewModel : WalletViewModel() {
         _aiIsThinking.value = true
         viewModelScope.launch {
             try {
-                val apiKey = BuildConfig.GEMINI_API_KEY
-                val isPlaceholderKey = apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY" || apiKey.contains("PLACEHOLDER")
-
                 val activeParcelsStr = _parcels.value.filter { it.status == ParcelStatus.TRANSIT }
                     .joinToString("\n") { "Parcel ${com.esdispatch.util.FormatUtils.formatDisplayTrackingId(it.id)}: ${it.itemName}, Pickup: ${it.pickupAddress}, Delivery: ${it.deliveryAddress}, Status: ${it.status}, Progress: ${it.progress}" }
 
                 val ridersStr = _aiRiders.value.joinToString("\n") { "Rider ${it.name}: ID: ${it.id}, Veh: ${it.vehicleType}, Batt: ${it.batteryLevel}%, Rating: ${it.rating}, Online: ${it.status}" }
 
                 val contextPrompt = """
-                    You are the Virtual AI Operations Manager for "ESDispatch" (Premium Logistics & Dispatch). 
+                    You are the Virtual AI Operations Manager for "ESmiles Dispatch" (Premium Logistics & Dispatch). 
                     The user is talking to you via a live chat assistant interface. Keep your answer professional, scannable, and helpful.
                     
                     Current System Context:
@@ -6974,15 +6972,7 @@ class DeliveryViewModel : WalletViewModel() {
                     Please reply to the user directly, resolving their issue. If they ask to book an order, guide them and provide a vehicle suggestion (Motorcycle, Tricycle, Van, or Truck) based on weight (e.g. Motorcycle for <5kg, Van for >15kg).
                 """.trimIndent()
 
-                val aiResponseText = if (isPlaceholderKey) {
-                    // Fail gracefully to local high-craft fallback
-                    delay(1200L) // Simulate realistic thinking latency
-                    runLocalAIFallback(text)
-                } else {
-                    // Call Direct REST API with 3.5-flash (Basic text task default)
-                    queryGeminiREST(contextPrompt)
-                }
-
+                val aiResponseText = queryGeminiREST(contextPrompt)
                 val aiMsg = AIChatMessage(text = aiResponseText, isUser = false)
                 _aiChatMessages.update { it + aiMsg }
             } catch (e: Exception) {
@@ -7006,7 +6996,31 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     private suspend fun queryGeminiREST(promptText: String): String {
+        return try {
+            val functions = com.google.firebase.functions.FirebaseFunctions.getInstance()
+            val result = functions.getHttpsCallable("askDispatchAssistant")
+                .call(mapOf("prompt" to promptText))
+                .await()
+            val data = result.data as? Map<*, *>
+            val text = data?.get("text") as? String
+            if (!text.isNullOrBlank()) {
+                return text
+            }
+            val msg = data?.get("message") as? String
+            if (!msg.isNullOrBlank()) {
+                return msg
+            }
+            queryGeminiDirectFallback(promptText)
+        } catch (e: Exception) {
+            queryGeminiDirectFallback(promptText)
+        }
+    }
+
+    private fun queryGeminiDirectFallback(promptText: String): String {
         val apiKey = BuildConfig.GEMINI_API_KEY
+        if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY" || apiKey.contains("PLACEHOLDER")) {
+            return runLocalAIFallback(promptText)
+        }
         val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=$apiKey"
         
         // Build JSON body
@@ -7015,7 +7029,6 @@ class DeliveryViewModel : WalletViewModel() {
         val contentsArray = JSONArray().put(contentObj)
         val bodyObj = JSONObject().put("contents", contentsArray)
 
-        // Add a temperature config
         val configObj = JSONObject().put("temperature", 0.7)
         bodyObj.put("generationConfig", configObj)
 
@@ -7025,22 +7038,26 @@ class DeliveryViewModel : WalletViewModel() {
             .post(requestBody)
             .build()
 
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return "Our dispatch assistant is momentarily unavailable. Please check your active deliveries or contact dispatch support directly."
-            val bodyString = response.body?.string() ?: return "I am currently unable to process this request. Please try again or reach out to dispatch support."
-            
-            val jsonResponse = JSONObject(bodyString)
-            val candidates = jsonResponse.optJSONArray("candidates")
-            if (candidates != null && candidates.length() > 0) {
-                val content = candidates.getJSONObject(0).optJSONObject("content")
-                if (content != null) {
-                    val parts = content.optJSONArray("parts")
-                    if (parts != null && parts.length() > 0) {
-                        return parts.getJSONObject(0).optString("text", "How else can I assist you with your deliveries in Benin City today?")
+        return try {
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return runLocalAIFallback(promptText)
+                val bodyString = response.body?.string() ?: return runLocalAIFallback(promptText)
+                
+                val jsonResponse = JSONObject(bodyString)
+                val candidates = jsonResponse.optJSONArray("candidates")
+                if (candidates != null && candidates.length() > 0) {
+                    val content = candidates.getJSONObject(0).optJSONObject("content")
+                    if (content != null) {
+                        val parts = content.optJSONArray("parts")
+                        if (parts != null && parts.length() > 0) {
+                            return parts.getJSONObject(0).optString("text", runLocalAIFallback(promptText))
+                        }
                     }
                 }
+                runLocalAIFallback(promptText)
             }
-            return "How else can I assist you with your deliveries in Benin City today?"
+        } catch (e: Exception) {
+            runLocalAIFallback(promptText)
         }
     }
 

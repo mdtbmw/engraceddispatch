@@ -675,6 +675,10 @@ fun ProofOfDeliveryScreen(
 
                                         viewModel.uploadDeliveryPhotoAndVerify(parcelId, photoBytes, "proof") { photoSuccess, _ ->
                                             isUploading = false
+                                            if (!photoSuccess) {
+                                                Toast.makeText(context, "Failed to upload handover photo. Please check your network and retry.", Toast.LENGTH_LONG).show()
+                                                return@uploadDeliveryPhotoAndVerify
+                                            }
                                             if (signatureRequired) {
                                                 isSignatureStep = true
                                             } else {

@@ -55,6 +55,12 @@ service firebase.storage {
       allow write: if isAuthenticated() && isValidImage() && isUnderSize(10 * 1024 * 1024);
     }
 
+    // 3c. Deliveries Proof & Photos (Alias /deliveries/{parcelId}/{fileName} <= 10MB)
+    match /deliveries/{parcelId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidImage() && isUnderSize(10 * 1024 * 1024);
+    }
+
     // 4. Delivery Proofs (Legacy alias /pod/{deliveryId}/{fileName})
     match /pod/{deliveryId}/{fileName} {
       allow read: if isAuthenticated();

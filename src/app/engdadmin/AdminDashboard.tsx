@@ -1429,7 +1429,7 @@ function Sidebar({ sidebar, setSidebar, tab, setTab, mobileSidebar, setMobileSid
         <EdLogoSvg size={28} />
         {sidebar && (
           <div className="flex flex-col ml-3">
-            <span className="text-[#FFB800] text-sm font-black leading-tight">ES</span>
+            <span className="text-[#FFB800] text-sm font-black leading-tight">ESMILES</span>
             <span className="text-[#FFB800] text-sm font-black leading-tight">DISPATCH</span>
           </div>
         )}

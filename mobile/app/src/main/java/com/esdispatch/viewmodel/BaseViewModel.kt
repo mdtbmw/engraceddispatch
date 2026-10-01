@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.StateFlow
 
 open class BaseViewModel : ViewModel() {
     var appContext: Context? = null
+        set(value) {
+            field = value?.applicationContext
+        }
     protected val _firebaseUserId = MutableStateFlow<String?>(null)
     val firebaseUserId: StateFlow<String?> = _firebaseUserId.asStateFlow()
 

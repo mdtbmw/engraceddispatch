@@ -45,8 +45,8 @@ android {
     buildConfigField("String", "PAYSTACK_PUBLIC_KEY", "\"$paystackKey\"")
     val googleWebClientId = resolveEnv("GOOGLE_WEB_CLIENT_ID")
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
-    val geminiApiKey = resolveEnv("GEMINI_API_KEY")
-    buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
+    // GEMINI_API_KEY is handled securely via backend Cloud Functions (askDispatchAssistant)
+    buildConfigField("String", "GEMINI_API_KEY", "\"\"")
     val googleMapsApiKey = resolveEnv("GOOGLE_MAPS_API_KEY")
     buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsApiKey\"")
     manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey

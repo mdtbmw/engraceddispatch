@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">ESDispatch</string>
+    <string name="app_name">ESmiles Dispatch</string>
     <string name="track_parcel_title">Track Shipment</string>
     <string name="track_parcel_placeholder">Enter Tracking Number (e.g. 70D20800B)</string>
     <string name="track_parcel_button">Track Parcel</string>

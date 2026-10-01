@@ -498,37 +498,33 @@ export const verifyPaymentAndTopUp = functions.https.onCall(async (data, context
 
   const paystackSecret = process.env.PAYSTACK_SECRET_KEY || functions.config().paystack?.secret;
 
-  if (reference.startsWith('TEST_MOCK_')) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new functions.https.HttpsError('failed-precondition', 'Mock payments are strictly disallowed in production environment.');
-    }
-  } else if (paystackSecret) {
-    // If live secret key is configured, verify against Paystack API
-    try {
-      const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${paystackSecret}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const resJson: any = await response.json();
-      if (!resJson.status || resJson.data?.status !== 'success') {
-        throw new functions.https.HttpsError('permission-denied', `Paystack verification failed: ${resJson.message || 'Unsuccessful'}`);
-      }
-
-      // Validate amount from gateway (Paystack returns in kobo)
-      const verifiedAmountNaira = (Number(resJson.data?.amount) || 0) / 100;
-      if (Math.abs(verifiedAmountNaira - amount) > 0.05) {
-        throw new functions.https.HttpsError('invalid-argument', `Amount mismatch: Gateway received ₦${verifiedAmountNaira}, but requested ₦${amount}`);
-      }
-    } catch (err: any) {
-      console.error('[Paystack Verification Error]', err);
-      if (err instanceof functions.https.HttpsError) throw err;
-      throw new functions.https.HttpsError('internal', 'Error contacting payment gateway.');
-    }
-  } else {
+  if (!paystackSecret) {
     throw new functions.https.HttpsError('failed-precondition', 'Payment gateway configuration is missing.');
+  }
+
+  // Strictly verify transaction reference against Paystack API
+  try {
+    const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${paystackSecret}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    const resJson: any = await response.json();
+    if (!resJson.status || resJson.data?.status !== 'success') {
+      throw new functions.https.HttpsError('permission-denied', `Paystack verification failed: ${resJson.message || 'Unsuccessful'}`);
+    }
+
+    // Validate amount from gateway (Paystack returns in kobo)
+    const verifiedAmountNaira = (Number(resJson.data?.amount) || 0) / 100;
+    if (Math.abs(verifiedAmountNaira - amount) > 0.05) {
+      throw new functions.https.HttpsError('invalid-argument', `Amount mismatch: Gateway received ₦${verifiedAmountNaira}, but requested ₦${amount}`);
+    }
+  } catch (err: any) {
+    console.error('[Paystack Verification Error]', err);
+    if (err instanceof functions.https.HttpsError) throw err;
+    throw new functions.https.HttpsError('internal', 'Error contacting payment gateway.');
   }
 
   const userRef = db.collection('users').doc(uid);
@@ -1319,5 +1315,194 @@ export const onDeliveryStatusEmailTrigger = functions.firestore
 
     return null;
   });
+
+/**
+ * Secure proxy callable for Gemini AI Dispatch Assistant.
+ * Uses the server-side GEMINI_API_KEY environment variable.
+ * Enforces authentication and input length limits.
+ */
+export const askDispatchAssistant = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to use AI Assistant.');
+  }
+
+  const { prompt } = data;
+  if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+    throw new functions.https.HttpsError('invalid-argument', 'Valid prompt is required.');
+  }
+
+  if (prompt.length > 5000) {
+    throw new functions.https.HttpsError('invalid-argument', 'Prompt exceeds maximum length.');
+  }
+
+  const geminiKey = process.env.GEMINI_API_KEY || functions.config().gemini?.key;
+  if (!geminiKey) {
+    return {
+      success: false,
+      message: 'AI Assistant service is currently in maintenance. Please contact dispatch support.'
+    };
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${geminiKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7 }
+      })
+    });
+
+    if (!response.ok) {
+      console.warn(`[Gemini Assistant API Error] Status: ${response.status}`);
+      return {
+        success: false,
+        message: 'Our dispatch assistant is momentarily unavailable. Please check your active deliveries or contact dispatch support directly.'
+      };
+    }
+
+    const jsonRes: any = await response.json();
+    const candidateText = jsonRes?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (candidateText) {
+      return {
+        success: true,
+        text: candidateText
+      };
+    }
+
+    return {
+      success: true,
+      text: 'How else can I assist you with your logistics and deliveries today?'
+    };
+  } catch (error: any) {
+    console.error('[Gemini Assistant Error]', error);
+    return {
+      success: false,
+      message: 'Unable to communicate with AI Assistant. Please try again shortly.'
+    };
+  }
+});
+
+/**
+ * HTTPS Webhook to process asynchronous Paystack payment events (e.g. Bank Transfer, USSD, Card charge).
+ * Verifies Paystack HMAC-SHA512 signature, records transaction idempotently in system_ledger,
+ * and updates user wallet balance or marks delivery paid.
+ */
+export const paystackWebhook = functions.https.onRequest(async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).send('Method Not Allowed');
+    return;
+  }
+
+  const paystackSecret = process.env.PAYSTACK_SECRET_KEY || functions.config().paystack?.secret;
+  if (!paystackSecret) {
+    console.error('[Paystack Webhook] Missing PAYSTACK_SECRET_KEY configuration.');
+    res.status(500).send('Webhook configuration missing.');
+    return;
+  }
+
+  const crypto = await import('crypto');
+  const signature = req.headers['x-paystack-signature'] as string;
+  const hash = crypto.createHmac('sha512', paystackSecret).update((req as any).rawBody || JSON.stringify(req.body)).digest('hex');
+
+  if (signature !== hash) {
+    console.warn('[Paystack Webhook] Invalid signature rejected.');
+    res.status(401).send('Invalid signature.');
+    return;
+  }
+
+  const event = req.body;
+  if (event?.event === 'charge.success') {
+    const data = event.data;
+    const reference = data.reference;
+    const amountKobo = Number(data.amount) || 0;
+    const amountNaira = amountKobo / 100;
+    const customerEmail = data.customer?.email;
+    const metadata = data.metadata || {};
+    const userId = metadata.userId || metadata.uid;
+    const deliveryId = metadata.deliveryId || metadata.parcelId;
+
+    console.log(`[Paystack Webhook] charge.success: Ref=${reference}, Amount=₦${amountNaira}, Email=${customerEmail}`);
+
+    const ledgerRef = db.collection('system_ledger').doc(reference);
+
+    try {
+      await db.runTransaction(async (txn) => {
+        const ledgerSnap = await txn.get(ledgerRef);
+        if (ledgerSnap.exists) {
+          console.log(`[Paystack Webhook] Reference ${reference} already processed.`);
+          return;
+        }
+
+        // 1. If linked to a user wallet top-up
+        let targetUid = userId;
+        if (!targetUid && customerEmail) {
+          const userQuery = await db.collection('users').where('email', '==', customerEmail.toLowerCase().trim()).limit(1).get();
+          if (!userQuery.empty) {
+            targetUid = userQuery.docs[0].id;
+          }
+        }
+
+        if (targetUid) {
+          const userRef = db.collection('users').doc(targetUid);
+          const userSnap = await txn.get(userRef);
+          if (userSnap.exists) {
+            const currentBal = (userSnap.data()?.walletBalance as number) || 0.0;
+            const newBal = currentBal + amountNaira;
+            txn.update(userRef, {
+              walletBalance: newBal,
+              updatedAt: FieldValue.serverTimestamp()
+            });
+
+            const txRef = userRef.collection('transactions').doc(reference);
+            txn.set(txRef, {
+              id: reference,
+              userId: targetUid,
+              title: 'Wallet Top Up (Paystack Webhook)',
+              amount: amountNaira,
+              isTopUp: true,
+              type: 'CREDIT',
+              status: 'SUCCESS',
+              reference: reference,
+              date: new Date().toLocaleDateString('en-GB'),
+              timestamp: Date.now(),
+              createdAt: FieldValue.serverTimestamp()
+            });
+          }
+        }
+
+        // 2. If linked to a delivery payment
+        if (deliveryId) {
+          const delRef = db.collection('deliveries').doc(deliveryId);
+          txn.update(delRef, {
+            paymentStatus: 'PAID',
+            paymentReference: reference,
+            paidAmount: amountNaira,
+            lastUpdated: Date.now()
+          });
+        }
+
+        // 3. Record in immutable ledger
+        txn.set(ledgerRef, {
+          reference: reference,
+          userId: targetUid || 'anonymous',
+          amount: amountNaira,
+          currency: 'NGN',
+          gateway: 'PAYSTACK',
+          type: deliveryId ? 'DELIVERY_PAYMENT' : 'WALLET_TOPUP',
+          status: 'COMPLETED',
+          webhookVerified: true,
+          createdAt: FieldValue.serverTimestamp()
+        });
+      });
+    } catch (err) {
+      console.error('[Paystack Webhook Transaction Error]', err);
+    }
+  }
+
+  res.status(200).json({ status: 'success' });
+});
+
 
 

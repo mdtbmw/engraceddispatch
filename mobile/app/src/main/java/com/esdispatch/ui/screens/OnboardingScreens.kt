@@ -634,8 +634,8 @@ fun PreloaderScreen(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = "ES",
-                        fontSize = 28.sp,
+                        text = "ESMILES",
+                        fontSize = 24.sp,
                         fontFamily = SpaceGrotesk,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.sp,
@@ -643,10 +643,10 @@ fun PreloaderScreen(
                     )
                     Text(
                         text = "DISPATCH",
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
                         fontFamily = SpaceGrotesk,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 3.sp,
+                        letterSpacing = 2.5.sp,
                         color = if (isLight) Obsidian else Gold
                     )
                 }
