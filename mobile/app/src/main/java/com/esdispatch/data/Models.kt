@@ -210,7 +210,10 @@ data class HeroSlideItem(
     val imageUrl: String = "",
     val active: Boolean = true,
     val tag: String = "FEATURED",
-    val actionText: String = "Explore"
+    val actionText: String = "Explore",
+    val actionType: String = "booking",
+    val promoCode: String = "",
+    val targetRoute: String = ""
 )
 
 data class ParcelDraft(
@@ -350,8 +353,14 @@ data class SupportChatMessage(
     val id: String = java.util.UUID.randomUUID().toString(),
     val senderId: String = "",
     val senderName: String = "",
-    val senderRole: String = "customer", // "customer", "dispatcher", "admin"
+    val senderRole: String = "customer", // "customer", "dispatcher", "admin", "ai"
     val messageText: String = "",
     val timestamp: Long = System.currentTimeMillis(),
-    val deliveryId: String = ""
+    val deliveryId: String = "",
+    val replyToText: String = "",
+    val replyToSender: String = "",
+    val imageUrl: String = "",
+    val avatarUrl: String = "",
+    val isAi: Boolean = false,
+    val urgency: String = "Standard"
 )

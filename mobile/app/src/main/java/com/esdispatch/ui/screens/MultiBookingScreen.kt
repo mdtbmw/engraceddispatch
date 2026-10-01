@@ -469,7 +469,7 @@ fun MultiBookingScreen(
                                             shape = RoundedCornerShape(16.dp),
                                             colors = CardDefaults.cardColors(containerColor = Charcoal),
                                             border = BorderStroke(1.dp, accentColor),
-                                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                                         ) {
                                             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                                                 suggestionItems.forEach { item ->
@@ -707,7 +707,7 @@ fun MultiBookingScreen(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = Charcoal),
                                 border = BorderStroke(1.dp, accentColor),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                             ) {
                                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                                     suggestionItems.forEach { item ->
@@ -988,8 +988,8 @@ fun MultiBookingScreen(
                 .fillMaxWidth(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
-            tonalElevation = 8.dp,
-            shadowElevation = 16.dp
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Row(
                 modifier = Modifier

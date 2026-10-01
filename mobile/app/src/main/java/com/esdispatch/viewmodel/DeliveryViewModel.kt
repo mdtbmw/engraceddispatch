@@ -2105,22 +2105,63 @@ class DeliveryViewModel : WalletViewModel() {
         messageText: String,
         ticketId: String? = null,
         deliveryId: String = "",
+        replyToText: String = "",
+        replyToSender: String = "",
+        imageUrl: String = "",
+        avatarUrl: String = "",
+        isAi: Boolean = false,
+        urgency: String = "Standard",
         onComplete: ((Boolean, String?) -> Unit)? = null
     ) {
         val tid = ticketId ?: _firebaseUserId.value ?: return
-        val senderId = _firebaseUserId.value ?: ""
-        val senderName = _userName.value.ifEmpty { "Customer" }
+        val senderId = if (isAi) "ESAI_ASSISTANT" else (_firebaseUserId.value ?: "")
+        val senderName = if (isAi) "ESAI Virtual Assistant" else (_userName.value.ifEmpty { "Customer" })
+        val senderRole = if (isAi) "ai" else if (_userRole.value == "admin") "admin" else "customer"
         com.esdispatch.data.FirebaseManager.sendSupportChatMessage(
             ticketId = tid,
             senderId = senderId,
             senderName = senderName,
-            senderRole = if (_userRole.value == "admin") "admin" else "customer",
+            senderRole = senderRole,
             messageText = messageText,
             deliveryId = deliveryId,
+            replyToText = replyToText,
+            replyToSender = replyToSender,
+            imageUrl = imageUrl,
+            avatarUrl = avatarUrl,
+            isAi = isAi,
+            urgency = urgency,
             onComplete = { success, err ->
                 onComplete?.invoke(success, err)
             }
         )
+    }
+
+    fun uploadSupportChatImage(
+        ticketId: String,
+        imageBytes: ByteArray,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        try {
+            val msgId = "ATTACH_" + System.currentTimeMillis()
+            val canonicalPath = "support_attachments/$ticketId/$msgId.jpg"
+            val ref = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child(canonicalPath)
+            val metadata = com.google.firebase.storage.StorageMetadata.Builder()
+                .setContentType("image/jpeg")
+                .build()
+            ref.putBytes(imageBytes, metadata)
+                .addOnSuccessListener {
+                    ref.downloadUrl.addOnSuccessListener { uri ->
+                        onComplete(true, uri.toString())
+                    }.addOnFailureListener { e ->
+                        onComplete(false, e.message)
+                    }
+                }
+                .addOnFailureListener { e ->
+                    onComplete(false, e.message)
+                }
+        } catch (e: Exception) {
+            onComplete(false, e.message)
+        }
     }
 
     private val _activeVerificationOtp = MutableStateFlow<String>("")

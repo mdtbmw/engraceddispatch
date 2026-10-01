@@ -59,6 +59,7 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.esdispatch.data.ParcelStatus
 import com.esdispatch.ui.components.PinInputField
+import com.esdispatch.ui.components.RoundedSheet
 import com.esdispatch.ui.components.ScreenHeader
 import com.esdispatch.ui.theme.*
 import com.esdispatch.util.FormatUtils
@@ -86,11 +87,14 @@ fun ProofOfDeliveryScreen(
 
     val parcels by viewModel.parcels.collectAsState()
     val riderAssignments by viewModel.riderAssignments.collectAsState()
-    val parcel = remember(parcels, riderAssignments, parcelId) {
-        parcels.find { it.id == parcelId } ?: riderAssignments.find { it.id == parcelId }
+    val cleanParcelId = remember(parcelId) { parcelId.substringBefore("?") }
+    val isPickupFromQuery = remember(parcelId) { parcelId.contains("isPickup=true") }
+    val parcel = remember(parcels, riderAssignments, cleanParcelId) {
+        parcels.find { it.id == cleanParcelId } ?: riderAssignments.find { it.id == cleanParcelId }
     }
 
-    val isPickup = remember(parcel?.status) {
+    val isPickup = remember(parcel?.status, isPickupFromQuery) {
+        isPickupFromQuery ||
         parcel?.status == ParcelStatus.ASSIGNED ||
         parcel?.status == ParcelStatus.ARRIVED_PICKUP
     }
@@ -167,38 +171,42 @@ fun ProofOfDeliveryScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            ScreenHeader(
-                title = when {
-                    isPickup -> "Pickup Photo Proof"
-                    isSignatureStep -> "Customer Signature"
-                    !isPinVerified -> "Recipient Handover PIN"
-                    capturedBitmap != null -> "Confirm Delivery Photo"
-                    else -> "Capture Delivery Photo"
-                },
-                onBack = {
-                    if (isSignatureStep) {
-                        isSignatureStep = false
-                    } else if (capturedBitmap != null) {
-                        capturedBitmap = null
-                    } else if (isPinVerified && !isPickup && !isAlreadyOtpVerified) {
-                        isPinVerified = false
-                    } else {
-                        navController.popBackStack()
-                    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(HeaderBgColor)
+    ) {
+        ScreenHeader(
+            title = when {
+                isPickup -> "Pickup Photo Proof"
+                isSignatureStep -> "Customer Signature"
+                !isPinVerified -> "Recipient Handover PIN"
+                capturedBitmap != null -> "Confirm Delivery Photo"
+                else -> "Capture Delivery Photo"
+            },
+            onBack = {
+                if (isSignatureStep) {
+                    isSignatureStep = false
+                } else if (capturedBitmap != null) {
+                    capturedBitmap = null
+                } else if (isPinVerified && !isPickup && !isAlreadyOtpVerified) {
+                    isPinVerified = false
+                } else {
+                    navController.popBackStack()
                 }
-            )
-        },
-        containerColor = pageBg
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            }
+        )
+
+        RoundedSheet(
+            modifier = Modifier.weight(1f),
+            containerColor = pageBg
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             // Header Info Pill: Tracking ID & Step Badge
             Surface(
                 modifier = Modifier
@@ -221,7 +229,7 @@ fun ProofOfDeliveryScreen(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = FormatUtils.formatDisplayTrackingId(parcelId),
+                            text = FormatUtils.formatDisplayTrackingId(cleanParcelId),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = primaryText
@@ -283,7 +291,7 @@ fun ProofOfDeliveryScreen(
                             signatureBitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)
                             val sigBytes = stream.toByteArray()
 
-                            viewModel.uploadSignatureAndCompleteDelivery(parcelId, sigBytes, "signature") { success ->
+                            viewModel.uploadSignatureAndCompleteDelivery(cleanParcelId, sigBytes, "signature") { success ->
                                 isUploading = false
                                 Toast.makeText(
                                     context,
@@ -431,7 +439,7 @@ fun ProofOfDeliveryScreen(
                                     isVerifyingOtp = true
                                     otpErrorMessage = null
 
-                                    viewModel.verifyDeliveryOtpByRider(parcelId, otpInput) { otpSuccess, err ->
+                                    viewModel.verifyDeliveryOtpByRider(cleanParcelId, otpInput) { otpSuccess, err ->
                                         isVerifyingOtp = false
                                         if (otpSuccess) {
                                             isPinVerified = true
@@ -523,7 +531,10 @@ fun ProofOfDeliveryScreen(
                             Spacer(modifier = Modifier.height(16.dp))
 
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .navigationBarsPadding()
+                                    .padding(bottom = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 OutlinedButton(
@@ -560,8 +571,8 @@ fun ProofOfDeliveryScreen(
                                         scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
                                         val photoBytes = stream.toByteArray()
 
-                                        viewModel.uploadPickupPhoto(parcelId, photoBytes) { uploadOk, _ ->
-                                            viewModel.updateParcelStatusByRider(parcelId, ParcelStatus.PICKED_UP, 0.40f) { success, err ->
+                                        viewModel.uploadPickupPhoto(cleanParcelId, photoBytes) { uploadOk, _ ->
+                                            viewModel.updateParcelStatusByRider(cleanParcelId, ParcelStatus.PICKED_UP, 0.40f) { success, err ->
                                                 isUploading = false
                                                 if (success) {
                                                     Toast.makeText(context, "Package collected! Status updated to Picked Up.", Toast.LENGTH_SHORT).show()
@@ -596,14 +607,13 @@ fun ProofOfDeliveryScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .weight(1f)
-                                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                                .weight(1f),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Box(
                                 modifier = Modifier
+                                    .weight(1f)
                                     .fillMaxWidth()
-                                    .height(340.dp)
                                     .clip(RoundedCornerShape(18.dp))
                                     .background(Color.Black)
                                     .border(1.5.dp, Gold, RoundedCornerShape(18.dp))
@@ -633,10 +643,13 @@ fun ProofOfDeliveryScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
 
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .navigationBarsPadding()
+                                    .padding(bottom = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 OutlinedButton(
@@ -673,7 +686,7 @@ fun ProofOfDeliveryScreen(
                                         scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
                                         val photoBytes = stream.toByteArray()
 
-                                        viewModel.uploadDeliveryPhotoAndVerify(parcelId, photoBytes, "proof") { photoSuccess, _ ->
+                                        viewModel.uploadDeliveryPhotoAndVerify(cleanParcelId, photoBytes, "proof") { photoSuccess, _ ->
                                             isUploading = false
                                             if (!photoSuccess) {
                                                 Toast.makeText(context, "Failed to upload handover photo. Please check your network and retry.", Toast.LENGTH_LONG).show()
@@ -894,6 +907,7 @@ fun ProofOfDeliveryScreen(
             }
         }
     }
+}
 }
 
 @Composable

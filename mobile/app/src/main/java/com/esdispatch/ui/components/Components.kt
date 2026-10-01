@@ -403,17 +403,17 @@ fun BottomNav(
                     BottomNavItem(
                         icon = {
                             AnimatedHugeIcon(
-                                icon = Hugeicons.Solid.Route,
-                                contentDescription = "Tracking",
-                                tint = if (currentScreen == "ActiveTracking") selectedColor else unselectedColor,
-                                selected = currentScreen == "ActiveTracking",
+                                icon = Hugeicons.Solid.CustomerSupport,
+                                contentDescription = "Support",
+                                tint = if (currentScreen == "Support") selectedColor else unselectedColor,
+                                selected = currentScreen == "Support",
                                 size = 22.dp
                             )
                         },
-                        label = "Tracking",
-                        isSelected = currentScreen == "ActiveTracking",
+                        label = "Support",
+                        isSelected = currentScreen == "Support",
                         modifier = Modifier.width(54.dp),
-                        onClick = { onNavigate("ActiveTracking") }
+                        onClick = { onNavigate("Support") }
                     )
 
                     BottomNavItem(
@@ -617,7 +617,8 @@ fun ScreenHeader(
     onBack: (() -> Unit)? = null,
     rightContent: @Composable (() -> Unit)? = null,
     showLogo: Boolean = false,
-    backgroundColor: Color? = null
+    backgroundColor: Color? = null,
+    shape: Shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
 ) {
     val isDark = MaterialTheme.colorScheme.background == BackgroundDark
     val headerBgColor = backgroundColor ?: (if (isDark) Gold else Obsidian)
@@ -625,19 +626,27 @@ fun ScreenHeader(
     val backButtonBg = if (headerBgColor == Gold) Obsidian.copy(alpha = 0.15f) else GoldenWhiteLight.copy(alpha = 0.15f)
     val backButtonTint = if (headerBgColor == Gold) Obsidian else Gold
 
-    Box(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .background(headerBgColor)
-            .statusBarsPadding()
+            .clip(shape),
+        shape = shape,
+        color = headerBgColor,
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .statusBarsPadding()
         ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
             if (onBack != null) {
                 Box(
                     modifier = Modifier
@@ -697,6 +706,7 @@ fun ScreenHeader(
             }
         }
     }
+}
 }
 
 @Composable
@@ -1336,24 +1346,21 @@ fun SwipeToConfirmButton(
     LaunchedEffect(submitting) {
         if (submitting) {
             if (!reducedMotion) {
-                // Phase 1: Drive smoothly into the end of the button and accelerate off the right edge
                 try { com.esdispatch.util.SoundManager.playDispatchSweep() } catch (_: Throwable) {}
+                bikeAnimY.snapTo(0f)
+                bikeAlpha.snapTo(1f)
+                // Phase 1: Drive smoothly right into the end of the button
                 bikeAnimX.animateTo(
-                    targetValue = trackWidth + with(density) { 60.dp.toPx() },
-                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 340, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                    targetValue = travel,
+                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 220, easing = androidx.compose.animation.core.FastOutSlowInEasing)
                 )
-                // Phase 2: Come out again from the bottom and drive out across the screen
-                bikeAlpha.snapTo(0f)
-                bikeAnimY.snapTo(with(density) { 48.dp.toPx() })
-                bikeAnimX.snapTo(-with(density) { thumbWidth.toPx() })
-                bikeAlpha.animateTo(1f, animationSpec = androidx.compose.animation.core.tween(70))
-
+                // Phase 2: Drive cleanly straight out of the button to the right on the exact same horizontal plane
                 bikeAnimX.animateTo(
-                    targetValue = trackWidth + with(density) { 120.dp.toPx() },
-                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 440, easing = androidx.compose.animation.core.EaseInOutQuart)
+                    targetValue = trackWidth + with(density) { 80.dp.toPx() },
+                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 380, easing = androidx.compose.animation.core.FastOutLinearInEasing)
                 )
             }
-            // Phase 3: Bike has driven out! Trigger confirm callback so the checkout drawer closes and pulsing preloader shows
+            // Phase 3: Bike has driven out of the button! Confirm payment & dismiss checkout drawer
             currentConfirm()
         }
     }

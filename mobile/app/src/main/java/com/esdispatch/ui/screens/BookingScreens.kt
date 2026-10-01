@@ -101,7 +101,8 @@ fun PaymentSuccessScreen(
     val currentUserName by viewModel.userName.collectAsState()
     val currentUserPhone by viewModel.userPhone.collectAsState()
 
-    val displayTrackingId = latestParcel?.id?.ifBlank { null } ?: "ENG-DISPATCH"
+    val rawTracking = latestParcel?.id?.takeIf { it.isNotBlank() } ?: "PENDING"
+    val displayTrackingId = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(rawTracking)
     val displayPrice = latestParcel?.price ?: if (draft.price > 0) draft.price else 0.0
     val displaySenderName = latestParcel?.senderName?.ifBlank { null } ?: currentUserName.ifBlank { draft.senderName.ifBlank { "Customer" } }
     val displaySenderPhone = latestParcel?.senderPhone?.ifBlank { null } ?: currentUserPhone.ifBlank { draft.senderPhone.ifBlank { "N/A" } }
@@ -693,7 +694,8 @@ fun ServiceSelectionScreen(
                 .navigationBarsPadding(),
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
             color = Charcoal,
-            tonalElevation = 8.dp
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Box(
                 modifier = Modifier

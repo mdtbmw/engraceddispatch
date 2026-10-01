@@ -31,7 +31,7 @@ import { auth, db, getSecondaryAuth } from "@/lib/firebase";
 import { normalizePhoneNumber, phoneIndexKey } from "@/lib/phoneUtils";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy, runTransaction, Transaction, serverTimestamp } from "firebase/firestore";
-import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Minus, ArrowRight, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info, Bike } from "lucide-react";
+import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Minus, ArrowRight, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info, Bike, Bot, CornerUpLeft, Maximize2 } from "lucide-react";
 import CMSTab from "./CMSTab";
 import LiveTrackingMap, { RegistryEntry, resolveEndpoint, resolveFromRegistry, isBeninCityCoord, isValidGeoCoord, DEFAULT_GEO_CENTER } from "./LiveTrackingMap";
 import BroadcastNewsTab from "./BroadcastNewsTab";
@@ -2592,12 +2592,12 @@ function AdminDashboardPage() {
   });
 
   const allNavItems: { id: TabId; label: string; icon: React.ReactNode; roles: string[]; badge?: number }[] = [
-    { id: "dashboard", label: "Dashboard", icon: <Folder size={22} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
+    { id: "dashboard", label: "Dashboard", icon: <Folder size={22} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher", "support"] },
     { id: "marketplace", label: "Marketplace & Stores", icon: <ShoppingBag size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
-    { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"], badge: pendingDeliveries.length > 0 ? pendingDeliveries.length : undefined },
+    { id: "shipments", label: "Shipments", icon: <Package size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher", "support"], badge: pendingDeliveries.length > 0 ? pendingDeliveries.length : undefined },
     { id: "payouts", label: "Tip Payouts", icon: <DollarSign size={24} strokeWidth={2} />, roles: ["super_admin", "admin"], badge: pendingTipPayouts.length > 0 ? pendingTipPayouts.length : undefined },
-    { id: "tracking", label: "Live Tracking", icon: <MapPin size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
-    { id: "addresses", label: "Address Book", icon: <Bookmark size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
+    { id: "tracking", label: "Live Tracking", icon: <MapPin size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher", "support"] },
+    { id: "addresses", label: "Address Book", icon: <Bookmark size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher", "support"] },
     { id: "broadcast", label: "Broadcast News", icon: <Radio size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
     { id: "emails", label: "Email Studio", icon: <Mail size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "users", label: "Users", icon: <Users size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
@@ -2607,7 +2607,7 @@ function AdminDashboardPage() {
     { id: "appcards", label: "App Cards", icon: <Layers size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "settings", label: "Settings", icon: <Settings size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
     { id: "cms", label: "Site Content", icon: <FileText size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
-    { id: "support", label: "Live Support", icon: <MessageSquare size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher"] },
+    { id: "support", label: "Live Support", icon: <MessageSquare size={24} strokeWidth={2} />, roles: ["super_admin", "admin", "dispatcher", "support"] },
     { id: "logs", label: "Audit Log", icon: <Headphones size={24} strokeWidth={2} />, roles: ["super_admin", "admin"] },
   ];
   const navItems = allNavItems.filter(n => n.roles.includes(userRole || "super_admin"));
@@ -2832,7 +2832,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
   const ridersCount = visibleUsers.filter(u => u.role === "rider").length;
   const customersCount = visibleUsers.filter(u => u.role === "customer" || !u.role).length;
   const vendorsCount = visibleUsers.filter(u => u.role === "vendor").length;
-  const adminsCount = visibleUsers.filter(u => u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher").length;
+  const adminsCount = visibleUsers.filter(u => u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher" || u.role === "support").length;
 
   const filtered = useMemo(() => {
     const q = (searchQuery || search).toLowerCase().trim();
@@ -2840,7 +2840,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
       // Role filter
       if (roleFilter !== "ALL") {
         if (roleFilter === "customer" && (u.role !== "customer" && u.role !== "")) return false;
-        if (roleFilter === "admin" && (u.role !== "admin" && u.role !== "super_admin" && u.role !== "dispatcher")) return false;
+        if (roleFilter === "admin" && (u.role !== "admin" && u.role !== "super_admin" && u.role !== "dispatcher" && u.role !== "support")) return false;
         if (roleFilter !== "customer" && roleFilter !== "admin" && u.role !== roleFilter) return false;
       }
       // Presence filter
@@ -3053,8 +3053,8 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
       addToast?.("error", "Bike / Vehicle Number is required for couriers");
       return;
     }
-    if ((newUserForm.role === "admin" || newUserForm.role === "dispatcher") && !newUserForm.staffId.trim()) {
-      addToast?.("error", "Staff ID is required for administrative accounts");
+    if ((newUserForm.role === "admin" || newUserForm.role === "dispatcher" || newUserForm.role === "support") && !newUserForm.staffId.trim()) {
+      addToast?.("error", "Staff ID is required for administrative & support accounts");
       return;
     }
 
@@ -3106,7 +3106,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
       if (newUserForm.role === "rider") {
         userDoc.bikeNumber = newUserForm.bikeNumber.trim().toUpperCase();
       }
-      if (newUserForm.role === "admin" || newUserForm.role === "dispatcher") {
+      if (newUserForm.role === "admin" || newUserForm.role === "dispatcher" || newUserForm.role === "support") {
         userDoc.staffId = newUserForm.staffId.trim().toUpperCase();
       }
 
@@ -3838,11 +3838,11 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                           ? "bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20"
                           : u.role === "vendor"
                           ? "bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20"
-                          : u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher"
+                          : u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher" || u.role === "support"
                           ? "bg-amber-500/15 text-amber-800 dark:text-[#FFB800] border border-amber-500/30"
                           : "bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300"
                       }`}>
-                        {u.role || "Customer"}
+                        {u.role === "support" ? "Support" : u.role || "Customer"}
                       </span>
                     </td>
 
@@ -3876,13 +3876,13 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                             </span>
                           </div>
                         </div>
-                      ) : u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher" ? (
+                      ) : u.role === "admin" || u.role === "super_admin" || u.role === "dispatcher" || u.role === "support" ? (
                         <div className="flex flex-col gap-0.5">
                           <span className="font-black text-amber-800 dark:text-[#FFB800] text-xs">
                             {u.staffId || "System Staff"}
                           </span>
                           <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                            {u.role === "dispatcher" ? "Fleet Dispatcher Desk" : "Platform Administrator"}
+                            {u.role === "dispatcher" ? "Fleet Dispatcher Desk" : u.role === "support" ? "Support Specialist Desk" : "Platform Administrator"}
                           </span>
                         </div>
                       ) : (
@@ -4841,6 +4841,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                     { value: "customer", label: "Customer (App Buyer & Sender)" },
                     { value: "vendor", label: "Vendor Store Owner" },
                     { value: "dispatcher", label: "Fleet Dispatcher (Desk Operations)" },
+                    { value: "support", label: "Customer Support Specialist (Live Chat & Tickets)" },
                     { value: "admin", label: "System Administrator" }
                   ]} 
                 />
@@ -4909,8 +4910,8 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                 </div>
               )}
 
-              {/* Administrative (Admin / Dispatcher) Dynamic Fields */}
-              {(newUserForm.role === "admin" || newUserForm.role === "dispatcher") && (
+              {/* Administrative (Admin / Dispatcher / Support) Dynamic Fields */}
+              {(newUserForm.role === "admin" || newUserForm.role === "dispatcher" || newUserForm.role === "support") && (
                 <div className="space-y-3 p-3.5 rounded-2xl bg-purple-500/10 border border-purple-500/20 animate-fade-in">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
@@ -4920,7 +4921,7 @@ function UsersTab({ activeUsers, deliveries = [], searchQuery, db, addLog, addTo
                         required
                         value={newUserForm.staffId} 
                         onChange={e => setNewUserForm(f => ({ ...f, staffId: e.target.value.toUpperCase() }))}
-                        placeholder={newUserForm.role === "dispatcher" ? "e.g. ESD-DISP-002" : "e.g. ESD-ADM-001"}
+                        placeholder={newUserForm.role === "dispatcher" ? "e.g. ESD-DISP-002" : newUserForm.role === "support" ? "e.g. ESD-SUP-001" : "e.g. ESD-ADM-001"}
                         className="w-full h-10 bg-white dark:bg-[#222] border border-gray-300 dark:border-white/15 rounded-xl px-3.5 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/40 font-mono" 
                       />
                     </div>
@@ -9714,6 +9715,9 @@ interface SupportTicket {
   courierName?: string;
   isDispute?: boolean;
   issueType?: string;
+  urgency?: "Standard" | "Urgent";
+  agentType?: "ai" | "human";
+  activeAgentName?: string;
 }
 
 interface SupportChatMessage {
@@ -9723,15 +9727,31 @@ interface SupportChatMessage {
   senderRole: string;
   messageText: string;
   timestamp: number;
+  imageUrl?: string;
+  replyToText?: string;
+  replyToSender?: string;
+  isAi?: boolean;
 }
 
 function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: any }) {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "OPEN" | "DISPUTES" | "RESOLVED" | "CLOSED">("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "OPEN" | "URGENT" | "DISPUTES" | "RESOLVED" | "CLOSED">("ALL");
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
   const [replyText, setReplyText] = useState("");
+  const [replyingTo, setReplyingTo] = useState<SupportChatMessage | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [isHandingOver, setIsHandingOver] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const cannedReplies = [
+    "Checking with dispatch courier now...",
+    "Your shipment is in active transit.",
+    "Courier is arriving at your destination in ~5 mins.",
+    "Dispute received; reviewing delivery timeline.",
+    "Refund has been credited to your wallet balance.",
+    "Please share a photo of the package."
+  ];
 
   useEffect(() => {
     if (!db) return;
@@ -9752,6 +9772,9 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
           courierName: d.courierName || "",
           isDispute: isDisp,
           issueType: d.issueType || (isDisp ? "Consignment Dispute" : undefined),
+          urgency: d.urgency === "Urgent" ? "Urgent" : "Standard",
+          agentType: d.agentType === "human" ? "human" : "ai",
+          activeAgentName: d.activeAgentName || (d.agentType === "human" ? "Human Specialist" : "ESAI Virtual Assistant"),
         });
       });
       list.sort((a, b) => b.lastUpdated - a.lastUpdated);
@@ -9759,6 +9782,9 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
       setLoading(false);
       if (!selectedTicket && list.length > 0) {
         setSelectedTicket(list[0]);
+      } else if (selectedTicket) {
+        const updated = list.find((t) => t.id === selectedTicket.id);
+        if (updated) setSelectedTicket(updated);
       }
     });
     return () => unsub();
@@ -9778,7 +9804,11 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
             senderName: d.senderName || "",
             senderRole: d.senderRole || "customer",
             messageText: d.messageText || "",
-            timestamp: d.timestamp || 0
+            timestamp: d.timestamp || 0,
+            imageUrl: d.imageUrl || undefined,
+            replyToText: d.replyToText || undefined,
+            replyToSender: d.replyToSender || undefined,
+            isAi: !!d.isAi || d.senderRole === "ai" || d.senderId === "ESAI_BOT",
           });
         });
         msgs.sort((a, b) => a.timestamp - b.timestamp);
@@ -9788,26 +9818,36 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
     return () => unsub();
   }, [db, selectedTicket]);
 
-  const handleSendReply = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!replyText.trim() || !selectedTicket || !db) return;
-    const text = replyText.trim();
+  const handleSendReply = async (e?: React.FormEvent, customText?: string) => {
+    if (e) e.preventDefault();
+    const text = (customText ?? replyText).trim();
+    if (!text || !selectedTicket || !db) return;
     setReplyText("");
+    const replyMeta = replyingTo;
+    setReplyingTo(null);
     try {
       const msgId = "MSG-" + Date.now();
       const now = Date.now();
-      const msgData = {
+      const isHumanAttending = selectedTicket.agentType === "human";
+      const msgData: any = {
         id: msgId,
         senderId: "ADMIN_HQ",
-        senderName: "HQ Dispatcher",
+        senderName: isHumanAttending ? (selectedTicket.activeAgentName || "Sarah M. - Senior Support") : "HQ Dispatcher",
         senderRole: "dispatcher",
         messageText: text,
-        timestamp: now
+        timestamp: now,
+        isAi: false,
       };
+      if (replyMeta) {
+        msgData.replyToText = replyMeta.messageText;
+        msgData.replyToSender = replyMeta.senderName;
+      }
       await setDoc(doc(db, "support_chats", selectedTicket.id, "messages", msgId), msgData);
       await updateDoc(doc(db, "support_chats", selectedTicket.id), {
         lastMessage: text,
-        lastUpdated: now
+        lastUpdated: now,
+        agentType: "human",
+        activeAgentName: "Sarah M. - Senior Support",
       });
 
       // Synchronize dispatch reply to delivery chat for mobile app customer/rider
@@ -9820,7 +9860,7 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
             senderName: "Customer Support",
             senderRole: "dispatcher",
             messageText: text,
-            timestamp: now
+            timestamp: now,
           });
         } catch (mErr) {
           console.warn("Could not mirror chat to delivery:", mErr);
@@ -9830,6 +9870,48 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
       addLog("Support Reply", `Replied to ticket ${selectedTicket.ticketId}`);
     } catch (err: any) {
       addToast("error", err.message || "Failed to send reply");
+    }
+  };
+
+  const handleToggleAgent = async () => {
+    if (!selectedTicket || !db || isHandingOver) return;
+    setIsHandingOver(true);
+    const toHuman = selectedTicket.agentType !== "human";
+    const newAgentType = toHuman ? "human" : "ai";
+    const newAgentName = toHuman ? "Sarah M. - Senior Support" : "ESAI Virtual Assistant";
+    try {
+      const now = Date.now();
+      await updateDoc(doc(db, "support_chats", selectedTicket.id), {
+        agentType: newAgentType,
+        activeAgentName: newAgentName,
+        lastUpdated: now,
+      });
+
+      const noteId = "SYS-" + now;
+      const noteText = toHuman
+        ? "Human specialist Sarah M. has joined this conversation to assist you personally."
+        : "Concierge handover complete. ESAI Virtual Assistant has resumed active support.";
+
+      await setDoc(doc(db, "support_chats", selectedTicket.id, "messages", noteId), {
+        id: noteId,
+        senderId: toHuman ? "ADMIN_HQ" : "ESAI_BOT",
+        senderName: toHuman ? "HQ Dispatch" : "ESAI Virtual Assistant",
+        senderRole: toHuman ? "dispatcher" : "ai",
+        messageText: noteText,
+        timestamp: now,
+        isAi: !toHuman,
+      });
+
+      setSelectedTicket({
+        ...selectedTicket,
+        agentType: newAgentType,
+        activeAgentName: newAgentName,
+      });
+      addToast("success", toHuman ? "Assigned human specialist to conversation" : "Handed back conversation to ESAI Assistant");
+    } catch (err: any) {
+      addToast("error", err.message || "Failed to update agent handover");
+    } finally {
+      setIsHandingOver(false);
     }
   };
 
@@ -9862,13 +9944,15 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
     }
   };
 
+  const urgentCount = tickets.filter((t) => t.urgency === "Urgent").length;
+  const disputesCount = tickets.filter((t) => t.isDispute || t.status === "DISPUTED").length;
+
   const filteredTickets = tickets.filter((t) => {
     if (statusFilter === "ALL") return true;
+    if (statusFilter === "URGENT") return t.urgency === "Urgent";
     if (statusFilter === "DISPUTES") return t.isDispute || t.status === "DISPUTED";
     return (t.status || "OPEN").toUpperCase() === statusFilter;
   });
-
-  const disputesCount = tickets.filter(t => t.isDispute || t.status === "DISPUTED").length;
 
   return (
     <div className="tab-content space-y-6">
@@ -9879,18 +9963,19 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
             Live Customer Support & Dispatch Chat
           </h2>
           <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mt-1">
-            Real-time two-way communication channel between customers and central headquarters.
+            Real-time two-way communication channel between customers and central headquarters with integrated ESAI Assistant.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[650px]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[700px]">
+        {/* Left Column: Tickets List */}
         <div className="bg-[#f9f9f9] dark:bg-[#141414] rounded-3xl p-4 border border-black/10 dark:border-white/10 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-2 mb-2">
             <h3 className="font-bold text-sm text-[#111] dark:text-white">Conversations ({filteredTickets.length})</h3>
           </div>
-          <div className="flex items-center gap-1 px-2 mb-3 flex-wrap">
-            {(["ALL", "OPEN", "DISPUTES", "RESOLVED", "CLOSED"] as const).map((filter) => (
+          <div className="flex items-center gap-1.5 px-2 mb-3 flex-wrap">
+            {(["ALL", "OPEN", "URGENT", "DISPUTES", "RESOLVED", "CLOSED"] as const).map((filter) => (
               <button
                 key={filter}
                 type="button"
@@ -9899,17 +9984,27 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                   statusFilter === filter
                     ? filter === "DISPUTES"
                       ? "bg-rose-600 text-white shadow-xs"
+                      : filter === "URGENT"
+                      ? "bg-amber-600 text-white shadow-xs"
                       : "bg-[#FFB800] text-[#111] shadow-xs"
                     : filter === "DISPUTES" && disputesCount > 0
                     ? "bg-rose-500/15 text-rose-500 hover:bg-rose-500/25 border border-rose-500/30"
+                    : filter === "URGENT" && urgentCount > 0
+                    ? "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25 border border-amber-500/30"
                     : "bg-black/5 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:text-[#111] dark:hover:text-white"
                 }`}
               >
                 {filter === "DISPUTES" && <AlertTriangle size={10} className={disputesCount > 0 ? "animate-pulse" : ""} />}
+                {filter === "URGENT" && <Zap size={10} className={urgentCount > 0 ? "animate-pulse" : ""} />}
                 {filter}
                 {filter === "DISPUTES" && disputesCount > 0 && (
                   <span className={`px-1 py-0.2 rounded-full text-[9px] font-black ${statusFilter === "DISPUTES" ? "bg-white/20 text-white" : "bg-rose-500/20 text-rose-500"}`}>
                     {disputesCount}
+                  </span>
+                )}
+                {filter === "URGENT" && urgentCount > 0 && (
+                  <span className={`px-1 py-0.2 rounded-full text-[9px] font-black ${statusFilter === "URGENT" ? "bg-white/20 text-white" : "bg-amber-500/20 text-amber-500"}`}>
+                    {urgentCount}
                   </span>
                 )}
               </button>
@@ -9934,6 +10029,11 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                   <div className="flex justify-between items-center mb-1">
                     <span className="font-bold text-xs">{t.userName}</span>
                     <div className="flex items-center gap-1">
+                      {t.urgency === "Urgent" && (
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-0.5">
+                          <Zap size={9} /> 15m
+                        </span>
+                      )}
                       {(t.isDispute || t.status === "DISPUTED") && (
                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-500 border border-rose-500/30 flex items-center gap-0.5 animate-pulse">
                           <AlertTriangle size={9} /> DISPUTE
@@ -9950,6 +10050,20 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                       </span>
                     </div>
                   </div>
+                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mb-1">
+                    <span className="flex items-center gap-1 font-semibold">
+                      {t.agentType === "human" ? (
+                        <span className="text-blue-600 dark:text-blue-400 flex items-center gap-0.5 font-bold">
+                          <UserCheck size={10} /> Specialist
+                        </span>
+                      ) : (
+                        <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 font-bold">
+                          <Bot size={10} /> ESAI
+                        </span>
+                      )}
+                    </span>
+                    <span>{t.lastUpdated ? new Date(t.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}</span>
+                  </div>
                   <p className={`text-xs truncate ${selectedTicket?.id === t.id ? "text-gray-900 font-medium" : "text-gray-600 dark:text-gray-400 font-medium"}`}>
                     {t.lastMessage || "No messages yet"}
                   </p>
@@ -9959,22 +10073,54 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
           </div>
         </div>
 
+        {/* Right Column: Active Conversation */}
         <div className="lg:col-span-2 bg-[#f9f9f9] dark:bg-[#141414] rounded-3xl p-5 border border-black/10 dark:border-white/10 flex flex-col overflow-hidden">
           {selectedTicket ? (
             <>
+              {/* Conversation Top Header */}
               <div className="pb-3 border-b border-black/10 dark:border-white/10 flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-black text-sm text-[#111] dark:text-white">{selectedTicket.userName}</h4>
+                    {selectedTicket.urgency === "Urgent" && (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                        <Zap size={11} /> Urgent SLA (15m)
+                      </span>
+                    )}
                     {(selectedTicket.isDispute || selectedTicket.status === "DISPUTED") && (
                       <span className="text-[10px] font-black px-2 py-0.5 rounded bg-rose-500/20 text-rose-500 border border-rose-500/30 flex items-center gap-1 animate-pulse">
                         <AlertTriangle size={11} /> {selectedTicket.issueType || "CONSIGNMENT DISPUTE"}
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">Ticket: {selectedTicket.ticketId} • Consignment: #{selectedTicket.parcelId?.slice(0, 8).toUpperCase() || selectedTicket.id.slice(0, 8).toUpperCase()}</p>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-400 font-medium mt-0.5">
+                    Ticket: #{selectedTicket.ticketId} • Parcel: #{selectedTicket.parcelId?.slice(0, 8).toUpperCase() || selectedTicket.id.slice(0, 8).toUpperCase()}
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* AI / Human Handover Control */}
+                  <button
+                    type="button"
+                    onClick={handleToggleAgent}
+                    disabled={isHandingOver}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                      selectedTicket.agentType === "human"
+                        ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 hover:bg-purple-500/25"
+                        : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 hover:bg-blue-500/25"
+                    }`}
+                  >
+                    {selectedTicket.agentType === "human" ? (
+                      <>
+                        <Bot size={13} /> Hand back to ESAI
+                      </>
+                    ) : (
+                      <>
+                        <UserCheck size={13} /> Take Over from ESAI
+                      </>
+                    )}
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleToggleStatus}
@@ -10001,6 +10147,7 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                 </div>
               </div>
 
+              {/* Messages Feed */}
               <div className="flex-1 overflow-y-auto py-4 space-y-3 pr-2">
                 {messages.length === 0 ? (
                   <div className="text-center py-12 text-gray-600 dark:text-gray-400 font-medium text-xs">
@@ -10009,22 +10156,58 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                 ) : (
                   messages.map((m) => {
                     const isStaff = m.senderRole === "dispatcher" || m.senderRole === "admin";
+                    const isAiMsg = m.isAi || m.senderRole === "ai" || m.senderId === "ESAI_BOT";
                     return (
                       <div key={m.id} className={`flex ${isStaff ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-[75%] rounded-2xl p-3.5 text-xs ${
+                        <div className={`max-w-[75%] rounded-2xl p-3.5 text-xs relative group ${
                           isStaff
                             ? "bg-[#FFB800] text-[#111] font-semibold"
+                            : isAiMsg
+                            ? "bg-emerald-500/10 dark:bg-emerald-950/30 text-[#111] dark:text-white border border-emerald-500/30 font-medium"
                             : "bg-white dark:bg-[#242424] text-[#111] dark:text-white border border-black/10 dark:border-white/10 font-medium"
                         }`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-[10px] text-gray-800 dark:text-gray-200">
-                              {isStaff ? "HQ Dispatcher" : selectedTicket.userName}
-                            </span>
-                            <span className="text-[9px] text-gray-600 dark:text-gray-400 font-medium">
-                              {m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
-                            </span>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <div className="flex items-center gap-1.5">
+                              {isAiMsg && <Bot size={11} className="text-emerald-600 dark:text-emerald-400" />}
+                              <span className="font-bold text-[10px] text-gray-800 dark:text-gray-200">
+                                {isStaff ? (m.senderName || "HQ Dispatcher") : isAiMsg ? "ESAI Virtual Assistant" : selectedTicket.userName}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] text-gray-600 dark:text-gray-400 font-medium">
+                                {m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setReplyingTo(m)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 cursor-pointer"
+                                title="Reply to this message"
+                              >
+                                <CornerUpLeft size={11} />
+                              </button>
+                            </div>
                           </div>
-                          <p>{m.messageText}</p>
+
+                          {/* Quoted Reply Snippet */}
+                          {m.replyToText && (
+                            <div className="text-[10px] bg-black/5 dark:bg-white/10 rounded-lg p-1.5 mb-1.5 border-l-2 border-[#FFB800] text-gray-700 dark:text-gray-300">
+                              <span className="font-bold">{m.replyToSender || "Previous message"}:</span> {m.replyToText}
+                            </div>
+                          )}
+
+                          {/* Photo Attachment Thumbnail */}
+                          {m.imageUrl && (
+                            <div className="my-1.5">
+                              <img
+                                src={m.imageUrl}
+                                alt="Attachment"
+                                onClick={() => setLightboxImage(m.imageUrl || null)}
+                                className="max-w-[220px] max-h-[160px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition-opacity border border-black/10 dark:border-white/10"
+                              />
+                            </div>
+                          )}
+
+                          <p className="leading-relaxed whitespace-pre-wrap">{m.messageText}</p>
                         </div>
                       </div>
                     );
@@ -10032,12 +10215,46 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
                 )}
               </div>
 
-              <form onSubmit={handleSendReply} className="pt-3 border-t border-black/10 dark:border-white/10 flex gap-2">
+              {/* Canned Quick Responses Bar */}
+              <div className="pt-2 pb-1 border-t border-black/10 dark:border-white/10 overflow-x-auto flex items-center gap-1.5 text-[10px] no-scrollbar">
+                <span className="text-gray-500 font-bold shrink-0 text-[9px] uppercase tracking-wider">Quick:</span>
+                {cannedReplies.map((reply, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => handleSendReply(undefined, reply)}
+                    className="shrink-0 px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-[#FFB800]/20 hover:border-[#FFB800]/50 border border-black/10 dark:border-white/10 text-[#111] dark:text-gray-200 transition-all font-medium cursor-pointer"
+                  >
+                    {reply}
+                  </button>
+                ))}
+              </div>
+
+              {/* Replying Banner */}
+              {replyingTo && (
+                <div className="flex items-center justify-between bg-[#FFB800]/15 dark:bg-[#FFB800]/10 border border-[#FFB800]/30 rounded-xl px-3 py-1.5 mb-2 text-xs">
+                  <div className="flex items-center gap-2 truncate">
+                    <CornerUpLeft size={13} className="text-[#FFB800] shrink-0" />
+                    <span className="font-bold text-[11px] text-[#111] dark:text-white shrink-0">Replying to {replyingTo.senderName}:</span>
+                    <span className="text-[11px] text-gray-600 dark:text-gray-300 truncate font-medium">"{replyingTo.messageText}"</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingTo(null)}
+                    className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-gray-500 cursor-pointer shrink-0"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
+
+              {/* Reply Input Form */}
+              <form onSubmit={handleSendReply} className="pt-2 border-t border-black/10 dark:border-white/10 flex gap-2">
                 <input
                   type="text"
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
-                  placeholder={`Reply to ${selectedTicket.userName}...`}
+                  placeholder={`Reply as HQ Dispatcher to ${selectedTicket.userName}...`}
                   className="h-10 flex-1 bg-white dark:bg-[#202020] text-[#111] dark:text-white px-3.5 rounded-xl text-xs outline-none border border-black/10 dark:border-white/10 focus:ring-2 focus:ring-[#FFB800]/40"
                 />
                 <button
@@ -10059,6 +10276,30 @@ function SupportTab({ db, addLog, addToast }: { db: any; addLog: any; addToast: 
           )}
         </div>
       </div>
+
+      {/* Lightbox Modal for Photo Attachments */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-3xl max-h-[85vh] bg-[#141414] rounded-3xl p-3 border border-white/20 shadow-2xl flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setLightboxImage(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-black/60 text-white hover:bg-black/90 transition-colors cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+            <img
+              src={lightboxImage}
+              alt="Support Attachment Full View"
+              className="max-h-[75vh] w-auto rounded-2xl object-contain"
+            />
+            <p className="text-xs text-gray-400 font-medium mt-2">Support Attachment Preview</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

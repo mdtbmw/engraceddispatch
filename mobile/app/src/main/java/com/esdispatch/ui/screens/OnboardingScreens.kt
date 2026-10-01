@@ -535,7 +535,7 @@ fun PreloaderScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isLight) BackgroundLight else LuxuryBlack) // Dynamic background
+            .background(AppBackground) // Consistent with the app's background theme
     ) {
         // Luxury Quilted pattern lines under splash
         QuiltedBackground(

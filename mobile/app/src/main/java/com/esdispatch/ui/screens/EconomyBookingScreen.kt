@@ -460,7 +460,7 @@ fun EconomyBookingScreen(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = if (isDark) MapStandardBg else GoldenWhite),
                                 border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.4f) else Slate),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(max = 240.dp)
@@ -609,7 +609,7 @@ fun EconomyBookingScreen(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = if (isDark) MapStandardBg else GoldenWhite),
                                 border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.4f) else Slate),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(max = 240.dp)
@@ -1191,7 +1191,8 @@ fun EconomyBookingScreen(
                     .fillMaxWidth(),
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                 color = Charcoal,
-                tonalElevation = 8.dp
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
             ) {
             Row(
                 modifier = Modifier

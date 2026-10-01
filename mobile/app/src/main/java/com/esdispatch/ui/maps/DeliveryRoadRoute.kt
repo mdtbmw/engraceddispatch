@@ -133,13 +133,7 @@ internal fun rememberRoadRoute(
     val latestFresh by rememberUpdatedState(fresh)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
-    // Immediately generate instant corridor route on frame 0 so the line appears without delay
-    val routeOrigin = initialOrigin ?: courier ?: pickup.position
-    val initialDest = if (phase == "return") pickup.position else delivery.position
-    val initialIntermediate = if (phase in listOf("pickup", "delivery") && pickup.position != null && routeOrigin != pickup.position) pickup.position else null
-    if (state.route == null && routeOrigin != null && initialDest != null) {
-        state.route = generateInstantCorridorRoute(routeOrigin, initialDest, initialIntermediate)
-    }
+    // Real road route begins loading on request — no fake straight line on frame 0
 
     LaunchedEffect(state, lifecycle, retry, initialOrigin) {
         val hasEndpoints = when (phase) {
@@ -210,17 +204,28 @@ internal fun rememberRoadRoute(
     return state
 }
 
-/** Same Google provider as the map. Never replace failed road geometry with a straight line. */
+/** Same Google provider as the map with fast OSRM fallback to ensure zero route loading stalls. */
 private suspend fun fetchRoadRoute(
     context: Context, origin: RoadWaypoint, destination: RoadWaypoint, intermediate: RoadWaypoint?
 ): RoadRoute = withContext(Dispatchers.IO) {
+    try {
+        fetchGoogleRoadRoute(context, origin, destination, intermediate)
+    } catch (e: Exception) {
+        android.util.Log.w("RoadRoute", "Google Routes failed: ${e.message}, falling back to OSRM road routing")
+        fetchOsrmRoadRoute(origin, destination, intermediate)
+    }
+}
+
+private fun fetchGoogleRoadRoute(
+    context: Context, origin: RoadWaypoint, destination: RoadWaypoint, intermediate: RoadWaypoint?
+): RoadRoute {
     require(BuildConfig.GOOGLE_MAPS_API_KEY.isNotBlank())
     val connection = URL("https://routes.googleapis.com/directions/v2:computeRoutes")
         .openConnection() as HttpURLConnection
-    try {
+    return try {
         connection.requestMethod = "POST"
-        connection.connectTimeout = 10000
-        connection.readTimeout = 10000
+        connection.connectTimeout = 4000
+        connection.readTimeout = 4000
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/json")
         connection.setRequestProperty("X-Goog-Api-Key", BuildConfig.GOOGLE_MAPS_API_KEY)
@@ -277,9 +282,6 @@ private suspend fun fetchRoadRoute(
             if (index == legs.length() - 1 && destination.position != null) {
                 val roadCurb = rawPoints.last()
                 val curbDistance = SphericalUtil.computeDistanceBetween(roadCurb, destination.position)
-                // Conservative, high-precision threshold: > 25 meters.
-                // Ordinary roadside storefronts, houses, and driveways are <= 25m.
-                // Genuinely pedestrian-only alleys, courtyards, and deep compounds are > 25m.
                 if (curbDistance > 25.0) {
                     nonVehicular = NonVehicularAccess(
                         isNonVehicular = true,
@@ -288,7 +290,6 @@ private suspend fun fetchRoadRoute(
                         walkingDistanceMeters = curbDistance
                     )
                 } else if (curbDistance > 1.0) {
-                    // Close street frontage: connect motorized route line directly to door
                     rawPoints.add(destination.position)
                 }
             }
@@ -335,6 +336,147 @@ private suspend fun fetchRoadRoute(
         )
     } finally {
         connection.disconnect()
+    }
+}
+
+private fun fetchOsrmRoadRoute(
+    origin: RoadWaypoint, destination: RoadWaypoint, intermediate: RoadWaypoint?
+): RoadRoute {
+    val origPos = origin.position ?: LatLng(6.3350, 5.6037)
+    val destPos = destination.position ?: origPos
+
+    val coords = if (intermediate?.position != null) {
+        "${origPos.longitude},${origPos.latitude};${intermediate.position.longitude},${intermediate.position.latitude};${destPos.longitude},${destPos.latitude}"
+    } else {
+        "${origPos.longitude},${origPos.latitude};${destPos.longitude},${destPos.latitude}"
+    }
+
+    val urlStr = "https://router.project-osrm.org/route/v1/driving/$coords?overview=full&geometries=polyline&steps=true"
+    val conn = URL(urlStr).openConnection() as HttpURLConnection
+    return try {
+        conn.connectTimeout = 5000
+        conn.readTimeout = 5000
+        conn.setRequestProperty("User-Agent", "ESDispatch-Android/2.0")
+        check(conn.responseCode == 200)
+        val text = conn.inputStream.bufferedReader().use { it.readText() }
+        val root = JSONObject(text)
+        check(root.optString("code") == "Ok")
+        val routes = root.getJSONArray("routes")
+        check(routes.length() > 0)
+        val routeObj = routes.getJSONObject(0)
+        val legsArray = routeObj.getJSONArray("legs")
+
+        val processedLegs = List(legsArray.length()) { index ->
+            val legObj = legsArray.getJSONObject(index)
+            val stepsArray = legObj.optJSONArray("steps") ?: JSONArray()
+            val rawPoints = mutableListOf<LatLng>()
+            val stepsList = mutableListOf<RoadStep>()
+
+            for (s in 0 until stepsArray.length()) {
+                val stepObj = stepsArray.getJSONObject(s)
+                val stepGeom = stepObj.optString("geometry")
+                val stepPoints = if (stepGeom.isNotBlank()) PolyUtil.decode(stepGeom) else emptyList()
+                rawPoints.addAll(stepPoints)
+
+                val streetName = stepObj.optString("name")
+                val maneuver = stepObj.optJSONObject("maneuver")
+                val mType = maneuver?.optString("type").orEmpty()
+                val mMod = maneuver?.optString("modifier").orEmpty()
+                val instruction = when {
+                    streetName.isNotBlank() && mMod.isNotBlank() -> "Turn $mMod onto $streetName"
+                    streetName.isNotBlank() -> "Continue onto $streetName"
+                    mMod.isNotBlank() -> "Turn $mMod"
+                    mType.isNotBlank() -> mType.replaceFirstChar { it.uppercase() }
+                    else -> "Continue along route"
+                }
+                stepsList.add(RoadStep(stepPoints, instruction))
+            }
+
+            val dedupedPoints = rawPoints.fold(mutableListOf<LatLng>()) { acc, p ->
+                if (acc.isEmpty() || acc.last() != p) acc.add(p)
+                acc
+            }
+            if (dedupedPoints.size < 2) {
+                if (index == 0 && intermediate?.position != null) {
+                    dedupedPoints.add(0, origPos)
+                    dedupedPoints.add(intermediate.position)
+                } else if (index == 1 && intermediate?.position != null) {
+                    dedupedPoints.add(0, intermediate.position)
+                    dedupedPoints.add(destPos)
+                } else {
+                    dedupedPoints.add(0, origPos)
+                    dedupedPoints.add(destPos)
+                }
+            }
+
+            // 1. Connect origin waypoint
+            if (index == 0) {
+                val startDist = SphericalUtil.computeDistanceBetween(origPos, dedupedPoints.first())
+                if (startDist > 1.0) dedupedPoints.add(0, origPos)
+            }
+
+            // 2. Connect intermediate waypoint (Pickup)
+            if (intermediate?.position != null) {
+                if (index == 0) {
+                    val endDist = SphericalUtil.computeDistanceBetween(dedupedPoints.last(), intermediate.position)
+                    if (endDist > 1.0) dedupedPoints.add(intermediate.position)
+                } else if (index == 1) {
+                    val startDist = SphericalUtil.computeDistanceBetween(intermediate.position, dedupedPoints.first())
+                    if (startDist > 1.0) dedupedPoints.add(0, intermediate.position)
+                }
+            }
+
+            // 3. Connect final destination and detect non-vehicular access
+            var nonVehicular = NonVehicularAccess()
+            if (index == legsArray.length() - 1) {
+                val roadCurb = dedupedPoints.last()
+                val curbDistance = SphericalUtil.computeDistanceBetween(roadCurb, destPos)
+                if (curbDistance > 25.0) {
+                    nonVehicular = NonVehicularAccess(
+                        isNonVehicular = true,
+                        curbPoint = roadCurb,
+                        walkingPoints = listOf(roadCurb, destPos),
+                        walkingDistanceMeters = curbDistance
+                    )
+                } else if (curbDistance > 1.0) {
+                    dedupedPoints.add(destPos)
+                }
+            }
+
+            RoadLeg(
+                points = dedupedPoints,
+                steps = stepsList,
+                meters = legObj.optDouble("distance", 0.0),
+                seconds = legObj.optDouble("duration", 0.0),
+                congested = false,
+                nonVehicularAccess = nonVehicular
+            )
+        }
+
+        val allPoints = mutableListOf<LatLng>()
+        for (l in processedLegs) {
+            if (allPoints.isEmpty()) {
+                allPoints.addAll(l.points)
+            } else {
+                if (allPoints.last() == l.points.first()) {
+                    allPoints.addAll(l.points.drop(1))
+                } else {
+                    allPoints.addAll(l.points)
+                }
+            }
+        }
+
+        val lastNonVehicular = processedLegs.lastOrNull()?.nonVehicularAccess ?: NonVehicularAccess()
+        RoadRoute(
+            legs = processedLegs,
+            fullContinuousPoints = allPoints,
+            walkingSpur = lastNonVehicular.walkingPoints,
+            curbPoint = lastNonVehicular.curbPoint,
+            isNonVehicular = lastNonVehicular.isNonVehicular,
+            walkingDistanceMeters = lastNonVehicular.walkingDistanceMeters
+        )
+    } finally {
+        conn.disconnect()
     }
 }
 

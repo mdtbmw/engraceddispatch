@@ -386,6 +386,15 @@ class MainActivity : FragmentActivity() {
                                     launchSingleTop = true
                                 }
                             }
+                            "Support" -> {
+                                navController.navigate("Support") {
+                                    popUpTo("Dashboard") {
+                                        saveState = true
+                                        inclusive = false
+                                    }
+                                    launchSingleTop = true
+                                }
+                            }
                             "Tracking", "ActiveTracking" -> {
                                 navController.navigate("ActiveTracking") {
                                     popUpTo("Dashboard") {
@@ -613,6 +622,9 @@ class MainActivity : FragmentActivity() {
                     }
                     composable("CustomerAssistant") {
                         CustomerAssistantScreen(viewModel = viewModel, onBack = { handleNavigation("BACK") })
+                    }
+                    composable("Support") {
+                        SupportChatScreen(viewModel = viewModel, onNavigate = handleNavigation)
                     }
                     composable("AIDispatchManager") {
                         AIDispatchManagerScreen(viewModel = viewModel, onBack = { handleNavigation("BACK") })

@@ -3116,6 +3116,12 @@ object FirebaseManager {
         senderRole: String,
         messageText: String,
         deliveryId: String = "",
+        replyToText: String = "",
+        replyToSender: String = "",
+        imageUrl: String = "",
+        avatarUrl: String = "",
+        isAi: Boolean = false,
+        urgency: String = "Standard",
         onComplete: (Boolean, String?) -> Unit
     ) {
         val db = firestore
@@ -3133,7 +3139,13 @@ object FirebaseManager {
             "senderRole" to senderRole,
             "messageText" to messageText,
             "timestamp" to timestamp,
-            "deliveryId" to deliveryId
+            "deliveryId" to deliveryId,
+            "replyToText" to replyToText,
+            "replyToSender" to replyToSender,
+            "imageUrl" to imageUrl,
+            "avatarUrl" to avatarUrl,
+            "isAi" to isAi,
+            "urgency" to urgency
         )
 
         val chatDocRef = db.collection("support_chats").document(ticketId)
@@ -3141,9 +3153,10 @@ object FirebaseManager {
             "ticketId" to ticketId,
             "userId" to senderId,
             "userName" to senderName,
-            "lastMessage" to messageText,
+            "lastMessage" to if (messageText.isNotBlank()) messageText else if (imageUrl.isNotBlank()) "[Image Attachment]" else "Support Message",
             "lastUpdated" to timestamp,
-            "status" to "OPEN"
+            "status" to "OPEN",
+            "urgency" to urgency
         )
         if (deliveryId.isNotBlank()) {
             chatHeader["deliveryId"] = deliveryId
@@ -3190,6 +3203,12 @@ object FirebaseManager {
                         val text = doc.getString("messageText") ?: ""
                         val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
                         val deliveryId = doc.getString("deliveryId") ?: ""
+                        val replyToText = doc.getString("replyToText") ?: ""
+                        val replyToSender = doc.getString("replyToSender") ?: ""
+                        val imageUrl = doc.getString("imageUrl") ?: ""
+                        val avatarUrl = doc.getString("avatarUrl") ?: ""
+                        val isAi = doc.getBoolean("isAi") ?: (senderRole == "ai")
+                        val urgency = doc.getString("urgency") ?: "Standard"
 
                         list.add(
                             SupportChatMessage(
@@ -3199,7 +3218,13 @@ object FirebaseManager {
                                 senderRole = senderRole,
                                 messageText = text,
                                 timestamp = timestamp,
-                                deliveryId = deliveryId
+                                deliveryId = deliveryId,
+                                replyToText = replyToText,
+                                replyToSender = replyToSender,
+                                imageUrl = imageUrl,
+                                avatarUrl = avatarUrl,
+                                isAi = isAi,
+                                urgency = urgency
                             )
                         )
                     } catch (e: Exception) {

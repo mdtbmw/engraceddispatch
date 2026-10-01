@@ -44,6 +44,12 @@ fun GlobalPreloaderOverlay(
     message: String = "",
     modifier: Modifier = Modifier
 ) {
+    val isDark = com.esdispatch.ui.theme.isDarkTheme
+    val bgColor = com.esdispatch.ui.theme.AppBackground
+    val logoColor = if (isDark) Gold else com.esdispatch.ui.theme.Obsidian
+    val textColor = if (isDark) Gold else com.esdispatch.ui.theme.Obsidian
+    val subtextColor = com.esdispatch.ui.theme.TextGray
+
     AnimatedVisibility(
         visible = isVisible,
         enter = fadeIn(animationSpec = tween(150)),
@@ -52,7 +58,7 @@ fun GlobalPreloaderOverlay(
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .background(Color.White) // Solid white background per explicit user direction (strictly non-transparent)
+                .background(bgColor) // Same background color with the background of the app (AppBackground)
                 .zIndex(9999999f)
                 .pointerInput(Unit) {
                     awaitEachGesture {
@@ -89,11 +95,10 @@ fun GlobalPreloaderOverlay(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.padding(horizontal = 32.dp)
             ) {
-                // Raw brand logo in Obsidian on solid white background (AGENTS.md strict contrast lock: No Gold on White)
                 Icon(
                     painter = painterResource(id = R.drawable.ic_logo),
                     contentDescription = "Loading",
-                    tint = com.esdispatch.ui.theme.Obsidian,
+                    tint = logoColor,
                     modifier = Modifier
                         .size(58.dp)
                         .graphicsLayer {
@@ -107,7 +112,7 @@ fun GlobalPreloaderOverlay(
                     Spacer(modifier = Modifier.height(20.dp))
                     Text(
                         text = message,
-                        color = com.esdispatch.ui.theme.Obsidian,
+                        color = textColor,
                         fontSize = 14.sp,
                         fontFamily = com.esdispatch.ui.theme.SpaceGrotesk,
                         fontWeight = FontWeight.Bold,
@@ -116,7 +121,7 @@ fun GlobalPreloaderOverlay(
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "PREMIUM LOGISTICS & DISPATCH",
-                        color = com.esdispatch.ui.theme.TextGray,
+                        color = subtextColor,
                         fontSize = 10.sp,
                         fontFamily = com.esdispatch.ui.theme.SpaceGrotesk,
                         fontWeight = FontWeight.Bold,

@@ -4011,6 +4011,8 @@ fun ProfileEditSheet(
     val userRole by viewModel.userRole.collectAsState()
     val activeViewMode by viewModel.activeViewMode.collectAsState()
     val isRider = userRole == "rider" || activeViewMode == "rider"
+    val isAdmin = userRole == "admin" || userRole == "super_admin"
+    val isLockedCourier = isRider && !isAdmin
 
     var nameInput by remember { mutableStateOf(currentName) }
     var emailInput by remember { mutableStateOf(currentEmail) }
@@ -4042,12 +4044,12 @@ fun ProfileEditSheet(
         ) {
             Text("Edit Profile Information", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppOnSurface)
             Text(
-                text = if (isRider) "Courier personal credentials are administrator-verified." else "Update your personal contact information associated with ESDispatch.",
+                text = if (isLockedCourier) "Courier personal credentials are administrator-verified." else "Update your personal contact information associated with ESDispatch.",
                 fontSize = 13.sp,
                 color = TextGray
             )
 
-            if (isRider) {
+            if (isLockedCourier) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Gold.copy(alpha = 0.12f),
@@ -4072,10 +4074,10 @@ fun ProfileEditSheet(
 
             OutlinedTextField(
                 value = nameInput,
-                onValueChange = { if (!isRider) nameInput = it },
-                readOnly = isRider,
+                onValueChange = { if (!isLockedCourier) nameInput = it },
+                readOnly = isLockedCourier,
                 label = { Text("Full Name") },
-                trailingIcon = if (isRider) { { Icon(Icons.Filled.Lock, "Locked", tint = TextGray, modifier = Modifier.size(18.dp)) } } else null,
+                trailingIcon = if (isLockedCourier) { { Icon(Icons.Filled.Lock, "Locked", tint = TextGray, modifier = Modifier.size(18.dp)) } } else null,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
@@ -4091,10 +4093,10 @@ fun ProfileEditSheet(
 
             OutlinedTextField(
                 value = emailInput,
-                onValueChange = { if (!isRider) emailInput = it },
-                readOnly = isRider,
+                onValueChange = { if (!isLockedCourier) emailInput = it },
+                readOnly = isLockedCourier,
                 label = { Text("Email Address") },
-                trailingIcon = if (isRider) { { Icon(Icons.Filled.Lock, "Locked", tint = TextGray, modifier = Modifier.size(18.dp)) } } else null,
+                trailingIcon = if (isLockedCourier) { { Icon(Icons.Filled.Lock, "Locked", tint = TextGray, modifier = Modifier.size(18.dp)) } } else null,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
@@ -4112,7 +4114,7 @@ fun ProfileEditSheet(
             OutlinedTextField(
                 value = phoneInput,
                 onValueChange = { input ->
-                    if (!isRider) {
+                    if (!isLockedCourier) {
                         val cleanInput = buildString {
                             input.forEachIndexed { index, char ->
                                 if (char == '+' && index == 0) {
@@ -4141,11 +4143,11 @@ fun ProfileEditSheet(
                         }
                     }
                 },
-                readOnly = isRider,
-                isError = !isRider && !isPhoneWell && phoneInput.isNotEmpty(),
+                readOnly = isLockedCourier,
+                isError = !isLockedCourier && !isPhoneWell && phoneInput.isNotEmpty(),
                 visualTransformation = com.esdispatch.util.PhoneVisualTransformation(),
                 label = { Text("Phone Number") },
-                trailingIcon = if (isRider) { { Icon(Icons.Filled.Lock, "Locked", tint = TextGray, modifier = Modifier.size(18.dp)) } } else null,
+                trailingIcon = if (isLockedCourier) { { Icon(Icons.Filled.Lock, "Locked", tint = TextGray, modifier = Modifier.size(18.dp)) } } else null,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
@@ -4159,7 +4161,7 @@ fun ProfileEditSheet(
                     errorBorderColor = Color(0xFFEA4335)
                 )
             )
-            if (!isRider && !isPhoneWell && phoneInput.isNotEmpty()) {
+            if (!isLockedCourier && !isPhoneWell && phoneInput.isNotEmpty()) {
                 Text(
                     text = "Invalid prefix. Must start with local (07/08/09/01) or country code (234/+234)",
                     color = Color(0xFFEA4335),

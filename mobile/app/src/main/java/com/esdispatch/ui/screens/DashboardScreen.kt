@@ -356,6 +356,9 @@ fun DashboardScreen(
     val marketplaceProducts by viewModel.marketplaceProducts.collectAsState()
     val marketplaceStores by viewModel.marketplaceStores.collectAsState()
     val marketplaceEnabled by viewModel.marketplaceEnabled.collectAsState()
+    val showMarketplaceHero = remember(marketplaceEnabled, activeTodayParcels) {
+        marketplaceEnabled && activeTodayParcels.isEmpty()
+    }
 
     val density = LocalDensity.current
     val maxScrollDistancePx = with(density) { 235.dp.toPx() }
@@ -528,8 +531,31 @@ fun DashboardScreen(
                         Box(modifier = Modifier.tourSpotlightTarget("hero_carousel")) {
                             HeroBannerCarousel(
                                 slides = heroSlides,
-                                onSlideClick = { _ ->
-                                    onNavigate("SendParcel")
+                                onSlideClick = { slide ->
+                                    when {
+                                        slide.promoCode.isNotBlank() || slide.actionType == "promo" || slide.tag == "PROMO" -> {
+                                            val code = slide.promoCode.ifBlank { "ESDISPATCH20" }
+                                            viewModel.applyPromoCode(code) { success, msg ->
+                                                com.esdispatch.util.CustomToastBridge.show(
+                                                    if (success) "Promo code $code applied!" else msg,
+                                                    if (success) com.esdispatch.viewmodel.ToastType.SUCCESS else com.esdispatch.viewmodel.ToastType.INFO
+                                                )
+                                            }
+                                            onNavigate("SendParcel")
+                                        }
+                                        slide.actionType == "tracking" || slide.targetRoute == "Tracking" -> {
+                                            onNavigate("Tracking")
+                                        }
+                                        slide.actionType == "marketplace" || slide.targetRoute == "Marketplace" -> {
+                                            onNavigate("Marketplace")
+                                        }
+                                        slide.targetRoute.isNotBlank() -> {
+                                            onNavigate(slide.targetRoute)
+                                        }
+                                        else -> {
+                                            onNavigate("SendParcel")
+                                        }
+                                    }
                                 }
                             )
                         }
@@ -1374,7 +1400,7 @@ fun DashboardScreen(
                             }
                             Surface(
                                 onClick = {
-                                    if (marketplaceEnabled) onNavigate("Marketplace") else onNavigate("Tracking")
+                                    if (showMarketplaceHero) onNavigate("Marketplace") else onNavigate("Tracking")
                                 },
                                 modifier = Modifier
                                     .weight(1f)
@@ -1399,8 +1425,8 @@ fun DashboardScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         AnimatedHugeIcon(
-                                            icon = if (marketplaceEnabled) Hugeicons.Solid.Storefront else Hugeicons.Solid.Route,
-                                            contentDescription = if (marketplaceEnabled) "Market" else "Tracking",
+                                            icon = if (showMarketplaceHero) Hugeicons.Solid.Storefront else Hugeicons.Solid.Route,
+                                            contentDescription = if (showMarketplaceHero) "Market" else "Tracking",
                                             tint = Obsidian, // STRICT LOCK: Obsidian on Gold background!
                                             size = 18.dp
                                         )
@@ -1408,7 +1434,7 @@ fun DashboardScreen(
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column(verticalArrangement = Arrangement.Center) {
                                         Text(
-                                            text = if (marketplaceEnabled) "Marketplace" else "Live Tracking",
+                                            text = if (showMarketplaceHero) "Marketplace" else "Live Tracking",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = TextGray,
@@ -1416,7 +1442,7 @@ fun DashboardScreen(
                                             maxLines = 1
                                         )
                                         Text(
-                                            text = if (marketplaceEnabled) "Browse & Shop" else "Radar & Fleet",
+                                            text = if (showMarketplaceHero) "Browse & Shop" else "Radar & Fleet",
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.Black,
                                             color = AppTextColor,

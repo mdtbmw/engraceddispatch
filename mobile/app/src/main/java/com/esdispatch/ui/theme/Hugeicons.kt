@@ -761,6 +761,49 @@ object Hugeicons {
                 }
             }.build()
         }
+
+        /** Solid Customer Support / Headset / Chat */
+        val CustomerSupport: ImageVector by lazy {
+            ImageVector.Builder(
+                name = "Hugeicon.Solid.CustomerSupport",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f
+            ).apply {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(12.0f, 1.0f)
+                    curveTo(6.48f, 1.0f, 2.0f, 5.48f, 2.0f, 11.0f)
+                    verticalLineTo(17.0f)
+                    curveTo(2.0f, 18.66f, 3.34f, 20.0f, 5.0f, 20.0f)
+                    horizontalLineTo(7.0f)
+                    curveTo(8.1f, 20.0f, 9.0f, 19.1f, 9.0f, 18.0f)
+                    verticalLineTo(13.0f)
+                    curveTo(9.0f, 11.9f, 8.1f, 11.0f, 7.0f, 11.0f)
+                    horizontalLineTo(4.0f)
+                    verticalLineTo(11.0f)
+                    curveTo(4.0f, 6.58f, 7.58f, 3.0f, 12.0f, 3.0f)
+                    curveTo(16.42f, 3.0f, 20.0f, 6.58f, 20.0f, 11.0f)
+                    horizontalLineTo(17.0f)
+                    curveTo(15.9f, 11.0f, 15.0f, 11.9f, 15.0f, 13.0f)
+                    verticalLineTo(18.0f)
+                    curveTo(15.0f, 19.1f, 15.9f, 20.0f, 17.0f, 20.0f)
+                    horizontalLineTo(18.0f)
+                    verticalLineTo(21.0f)
+                    curveTo(18.0f, 22.1f, 17.1f, 23.0f, 16.0f, 23.0f)
+                    horizontalLineTo(11.0f)
+                    curveTo(10.45f, 23.0f, 10.0f, 23.45f, 10.0f, 24.0f)
+                    curveTo(10.0f, 24.55f, 10.45f, 25.0f, 11.0f, 25.0f)
+                    horizontalLineTo(16.0f)
+                    curveTo(18.21f, 25.0f, 20.0f, 23.21f, 20.0f, 21.0f)
+                    verticalLineTo(20.0f)
+                    curveTo(21.1f, 20.0f, 22.0f, 19.1f, 22.0f, 18.0f)
+                    verticalLineTo(11.0f)
+                    curveTo(22.0f, 5.48f, 17.52f, 1.0f, 12.0f, 1.0f)
+                    close()
+                }
+            }.build()
+        }
     }
 }
 
