@@ -969,7 +969,7 @@ fun ActiveTrackingScreen(
                         shape = RoundedCornerShape(18.dp),
                         color = Obsidian,
                         border = BorderStroke(1.dp, Gold),
-                        shadowElevation = 3.dp,
+                        shadowElevation = 0.dp,
                         modifier = Modifier
                             .align(Alignment.CenterHorizontally)
                             .padding(top = 8.dp)
@@ -1199,7 +1199,7 @@ fun ActiveTrackingScreen(
                                 onClick = { drawerState = DrawerState.COLLAPSED },
                                 shape = CircleShape,
                                 color = Gold,
-                                shadowElevation = 10.dp,
+                                shadowElevation = 0.dp,
                                 modifier = Modifier.size(56.dp)
                             ) {
                                 Box(

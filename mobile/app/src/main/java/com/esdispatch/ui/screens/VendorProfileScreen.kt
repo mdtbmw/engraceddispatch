@@ -383,7 +383,7 @@ fun VendorProfileScreen(
                     .height(56.dp),
                 shape = RoundedCornerShape(28.dp),
                 color = Gold,
-                shadowElevation = 8.dp
+                shadowElevation = 0.dp
             ) {
                 Row(
                     modifier = Modifier
