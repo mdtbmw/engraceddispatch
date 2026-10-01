@@ -13,15 +13,12 @@ import {
   Eye,
   Maximize2,
   Minimize2,
-  Layers,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck,
-  Compass,
   Zap,
-  Clock,
   ArrowRight,
-  Sparkles
+  Search,
+  Plus
 } from "lucide-react";
 
 export interface Coord {
@@ -123,6 +120,9 @@ interface Props {
   geoCenter: Coord;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  onNewDispatch?: () => void;
+  searchValue?: string;
+  onSearchChange?: (val: string) => void;
 }
 
 type TileTheme = "googleRoadmap" | "googleHybrid" | "darkObsidian";
@@ -169,8 +169,11 @@ export default function LiveTrackingMap({
   onSelect,
   addressRegistry,
   geoCenter,
-  isFullscreen: externalFullscreen,
-  onToggleFullscreen: externalToggleFullscreen,
+  isFullscreen = false,
+  onToggleFullscreen,
+  onNewDispatch,
+  searchValue = "",
+  onSearchChange
 }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -186,10 +189,7 @@ export default function LiveTrackingMap({
   const [followedRiderId, setFollowedRiderId] = useState<string | null>(null);
   const [isCopiedPhone, setIsCopiedPhone] = useState(false);
   const [sideDrawerOpen, setSideDrawerOpen] = useState(true);
-  const [internalFullscreen, setInternalFullscreen] = useState(false);
-
-  const isFullscreen = externalFullscreen !== undefined ? externalFullscreen : internalFullscreen;
-  const toggleFullscreen = externalToggleFullscreen || (() => setInternalFullscreen(prev => !prev));
+  const initialCenteredRef = useRef(false);
 
   // Compute all couriers and detect active delivery transit
   const { allCouriers, inTransitCouriers, activeDeliveryPoints } = useMemo(() => {
@@ -197,18 +197,17 @@ export default function LiveTrackingMap({
     const inTransit: DriverMarkerData[] = [];
     const activeDelivPoints: { pickup?: Coord; dropoff?: Coord }[] = [];
 
+    // Valid active delivery statuses representing transit
+    const activeStatuses = ["IN_TRANSIT", "OUT_FOR_DELIVERY", "TRANSIT", "ASSIGNED", "PICKED_UP", "ARRIVED", "ON_THE_WAY", "HANDOVER_VERIFIED"];
+
     drivers.forEach((r) => {
-      // Find matching active delivery
+      // Find matching active delivery: must have assigned rider matching r.id or r.uid AND an active in-transit status
       const activeDelivery = deliveries.find(d => {
-        const isAssigned = (
-          d.riderId === r.id ||
-          d.riderId === r.uid ||
-          d.assignedRiderId === r.id ||
-          d.assignedRiderId === r.uid ||
-          (r.activeBookingId && d.id === r.activeBookingId)
-        );
-        const inProgress = !["DELIVERED", "CANCELLED", "FAILED", "RETURNED"].includes(d.status);
-        return isAssigned && inProgress;
+        const dRiderId = (d.riderId || d.assignedRiderId || d.driverId || "").trim();
+        if (!dRiderId || dRiderId === "unassigned" || dRiderId === "none") return false;
+        const matchesRider = (dRiderId === r.id || dRiderId === r.uid);
+        const inTransitStatus = activeStatuses.includes((d.status || "").toUpperCase().trim());
+        return matchesRider && inTransitStatus;
       });
 
       const isOccupied = Boolean(activeDelivery);
@@ -302,6 +301,15 @@ export default function LiveTrackingMap({
       setSideDrawerOpen(true);
     }
   }, [selectedId, inTransitCouriers]);
+
+  // Auto-focus on the one courier in transit on first load if exactly 1 exists
+  useEffect(() => {
+    if (initialCenteredRef.current) return;
+    if (inTransitCouriers.length === 1 && !selectedDriver) {
+      initialCenteredRef.current = true;
+      setSelectedDriver(inTransitCouriers[0]);
+    }
+  }, [inTransitCouriers, selectedDriver]);
 
   // Inject CSS once
   useEffect(() => {
@@ -399,27 +407,27 @@ export default function LiveTrackingMap({
     return () => clearTimeout(timer);
   }, [isFullscreen]);
 
-  // Create DivIcon for rider bike with name tooltip
+  // Create clean DivIcon for rider bike with name tooltip
   const buildBikeIcon = useCallback((c: DriverMarkerData, isSelected: boolean, isFollowed: boolean): L.DivIcon => {
     const speedText = c.speed && c.speed > 0 ? `${Math.round(c.speed)} km/h` : "In Transit";
     const isDelayed = c.isDelayed;
 
     const html = `
       <div style="position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;user-select:none;pointer-events:auto;">
-        <!-- Tooltip Label Badge -->
-        <div style="margin-bottom:6px;padding:3px 8px;border-radius:12px;background:rgba(14,14,16,0.92);border:1.5px solid ${isSelected ? '#FFB800' : isDelayed ? '#F59E0B' : 'rgba(255,184,0,0.7)'};box-shadow:0 6px 16px rgba(0,0,0,0.65);display:flex;align-items:center;gap:5px;white-space:nowrap;backdrop-filter:blur(8px);transform:${isSelected ? 'scale(1.1)' : 'scale(1)'};transition:all 0.2s;">
-          <span style="width:6px;height:6px;border-radius:50%;background:${isDelayed ? '#F59E0B' : '#10B981'};box-shadow:0 0 6px ${isDelayed ? '#F59E0B' : '#10B981'};"></span>
-          <span style="font-size:11px;font-weight:900;color:#FFFFFF;letter-spacing:0.2px;">${escapeHtml(c.name)}</span>
-          <span style="font-size:9px;font-weight:900;color:#FFB800;background:rgba(255,184,0,0.18);padding:1px 5px;border-radius:6px;">${speedText}</span>
+        <!-- Clean Tooltip Label Badge -->
+        <div style="margin-bottom:4px;padding:2px 8px;border-radius:10px;background:#131312;border:1.5px solid ${isSelected ? '#FFFFFF' : '#FFB800'};box-shadow:0 4px 14px rgba(0,0,0,0.65);display:flex;align-items:center;gap:4px;white-space:nowrap;transform:${isSelected ? 'scale(1.08)' : 'scale(1)'};transition:all 0.2s;">
+          <span style="width:5px;height:5px;border-radius:50%;background:${isDelayed ? '#F59E0B' : '#10B981'};box-shadow:0 0 5px ${isDelayed ? '#F59E0B' : '#10B981'};"></span>
+          <span style="font-size:10px;font-weight:900;color:#FFFFFF;letter-spacing:0.2px;">${escapeHtml(c.name)}</span>
+          <span style="font-size:9px;font-weight:900;color:#FFB800;background:rgba(255,184,0,0.18);padding:1px 4px;border-radius:4px;">${speedText}</span>
         </div>
         <!-- Bike Circular Beacon Container -->
         <div style="position:relative;display:flex;align-items:center;justify-content:center;">
-          <div style="position:absolute;inset:-8px;border-radius:50%;background:rgba(255,184,0,0.32);animation:esdispatch-map-pulse 1.8s ease-out infinite;pointer-events:none;"></div>
-          <div style="width:38px;height:38px;border-radius:50%;background:#131312;border:2.5px solid ${isSelected ? '#FFFFFF' : '#FFB800'};display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(0,0,0,0.75);transform:${isSelected ? 'scale(1.15)' : 'scale(1)'};transition:all 0.25s;">
-            <span style="font-size:20px;line-height:1;">🏍️</span>
+          <div style="position:absolute;inset:-6px;border-radius:50%;background:rgba(255,184,0,0.28);animation:esdispatch-map-pulse 2s ease-out infinite;pointer-events:none;"></div>
+          <div style="width:34px;height:34px;border-radius:50%;background:#131312;border:2.5px solid ${isSelected ? '#FFFFFF' : '#FFB800'};display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(0,0,0,0.7);transform:${isSelected ? 'scale(1.1)' : 'scale(1)'};transition:all 0.2s;">
+            <span style="font-size:18px;line-height:1;">🏍️</span>
           </div>
           ${isFollowed ? `
-            <div style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;background:#FFB800;border:2px solid #131312;display:flex;align-items:center;justify-content:center;font-size:8px;color:#131312;font-weight:900;">
+            <div style="position:absolute;top:-3px;right:-3px;width:12px;height:12px;border-radius:50%;background:#FFB800;border:1.5px solid #131312;display:flex;align-items:center;justify-content:center;font-size:7px;color:#131312;font-weight:900;">
               🎯
             </div>` : ""}
         </div>
@@ -429,8 +437,8 @@ export default function LiveTrackingMap({
     return L.divIcon({
       className: "esdispatch-bike-marker",
       html,
-      iconSize: [140, 68],
-      iconAnchor: [70, 52],
+      iconSize: [120, 60],
+      iconAnchor: [60, 46],
     });
   }, []);
 
@@ -504,24 +512,24 @@ export default function LiveTrackingMap({
       className: "esdispatch-pickup-marker",
       html: `
         <div style="display:flex;flex-direction:column;align-items:center;">
-          <div style="margin-bottom:4px;padding:2px 7px;border-radius:10px;background:#0E0E10;border:1px solid #FFB800;color:#FFB800;font-size:10px;font-weight:900;white-space:nowrap;box-shadow:0 3px 8px rgba(0,0,0,0.5);">Pickup</div>
-          <div style="width:26px;height:26px;border-radius:50%;background:#FFB800;border:3px solid #131312;color:#131312;font-weight:900;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.5);">P</div>
+          <div style="margin-bottom:3px;padding:2px 6px;border-radius:8px;background:#0E0E10;border:1px solid #FFB800;color:#FFB800;font-size:9px;font-weight:900;white-space:nowrap;box-shadow:0 3px 8px rgba(0,0,0,0.5);">Pickup</div>
+          <div style="width:24px;height:24px;border-radius:50%;background:#FFB800;border:2.5px solid #131312;color:#131312;font-weight:900;font-size:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,0.5);">P</div>
         </div>
       `,
-      iconSize: [70, 52],
-      iconAnchor: [35, 46],
+      iconSize: [60, 46],
+      iconAnchor: [30, 40],
     });
 
     const deliveryIcon = L.divIcon({
       className: "esdispatch-delivery-marker",
       html: `
         <div style="display:flex;flex-direction:column;align-items:center;">
-          <div style="margin-bottom:4px;padding:2px 7px;border-radius:10px;background:#0E0E10;border:1px solid #10B981;color:#10B981;font-size:10px;font-weight:900;white-space:nowrap;box-shadow:0 3px 8px rgba(0,0,0,0.5);">Destination</div>
-          <div style="width:26px;height:26px;border-radius:50%;background:#131312;border:3px solid #FFB800;color:#FFB800;font-weight:900;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.5);">D</div>
+          <div style="margin-bottom:3px;padding:2px 6px;border-radius:8px;background:#0E0E10;border:1px solid #10B981;color:#10B981;font-size:9px;font-weight:900;white-space:nowrap;box-shadow:0 3px 8px rgba(0,0,0,0.5);">Destination</div>
+          <div style="width:24px;height:24px;border-radius:50%;background:#131312;border:2.5px solid #FFB800;color:#FFB800;font-weight:900;font-size:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,0.5);">D</div>
         </div>
       `,
-      iconSize: [80, 52],
-      iconAnchor: [40, 46],
+      iconSize: [70, 46],
+      iconAnchor: [35, 40],
     });
 
     if (pickup) {
@@ -540,7 +548,7 @@ export default function LiveTrackingMap({
       // Obsidian Casing
       L.polyline(routeCoords, {
         color: "#131312",
-        weight: 9,
+        weight: 8,
         opacity: 0.85,
         lineCap: "round",
         lineJoin: "round",
@@ -549,7 +557,7 @@ export default function LiveTrackingMap({
       // Gold Core Line
       L.polyline(routeCoords, {
         color: "#FFB800",
-        weight: 5,
+        weight: 4.5,
         opacity: 0.95,
         lineCap: "round",
         lineJoin: "round",
@@ -610,64 +618,83 @@ export default function LiveTrackingMap({
   // Listen to escape key to exit fullscreen
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isFullscreen) {
-        toggleFullscreen();
+      if (e.key === "Escape" && isFullscreen && onToggleFullscreen) {
+        onToggleFullscreen();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isFullscreen, toggleFullscreen]);
+  }, [isFullscreen, onToggleFullscreen]);
 
   return (
-    <div className={`relative w-full overflow-hidden transition-all duration-300 ${
-      isFullscreen
-        ? "fixed inset-0 z-[9999] w-screen h-screen bg-[#0A0A0C] flex flex-col p-3 md:p-5"
-        : "h-full w-full rounded-3xl border border-gray-200 dark:border-white/10 shadow-sm bg-[#111216]"
+    <div className={`relative w-full h-full overflow-hidden flex flex-col ${
+      isFullscreen ? "bg-[#0A0A0C]" : "rounded-3xl bg-[#111216]"
     }`}>
       {/* Top Header Bar when in Fullscreen Monitor Mode */}
       {isFullscreen && (
-        <div className="flex items-center justify-between gap-4 pb-3 mb-3 border-b border-white/10 shrink-0">
+        <div className="flex items-center justify-between gap-4 pb-3 mb-2 border-b border-white/10 shrink-0 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-[#FFB800] flex items-center justify-center font-black text-black text-sm">
+            <div className="w-8 h-8 rounded-xl bg-[#FFB800] flex items-center justify-center font-black text-black text-xs shadow-md">
               ES
             </div>
             <div>
-              <h2 className="text-sm font-black text-white flex items-center gap-2">
+              <h2 className="text-xs font-black text-white flex items-center gap-2">
                 LIVE DISPATCH MONITORING COMMAND CENTER
               </h2>
               <p className="text-[10px] text-gray-400 font-medium">
-                Autonomous real-time courier telemetry & route tracking
+                Real-time active courier telemetry & route tracking
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-black">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              {inTransitCouriers.length} in Transit
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/10 text-gray-300 text-xs font-bold">
-              <Bike size={13} className="text-[#FFB800]" />
-              {allCouriers.length} Registered
-            </span>
-            <button
-              onClick={toggleFullscreen}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FFB800] text-black font-extrabold text-xs hover:bg-[#e6a600] active:scale-95 transition-all cursor-pointer"
-            >
-              <Minimize2 size={14} /> Exit Fullscreen
-            </button>
+          {/* Search, Dispatch & Operational Controls in Fullscreen */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {onSearchChange && (
+              <div className="relative w-48 sm:w-60">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchValue}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  placeholder="Search order or courier..."
+                  className="w-full h-8 pl-8 pr-3 rounded-xl bg-white/10 border border-white/15 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-[#FFB800]"
+                />
+              </div>
+            )}
+
+            {onNewDispatch && (
+              <button
+                onClick={onNewDispatch}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FFB800] text-black font-extrabold text-xs shadow-md hover:bg-[#e6a600] active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+              >
+                <Plus size={14} className="stroke-[3]" /> Dispatch Ride
+              </button>
+            )}
+
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-black">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                {inTransitCouriers.length} in Transit
+              </span>
+              <button
+                onClick={onToggleFullscreen}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs border border-white/15 transition-all cursor-pointer"
+              >
+                <Minimize2 size={13} className="text-[#FFB800]" /> Exit Fullscreen
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Map Viewport Area */}
-      <div className="relative w-full h-full min-h-[350px] flex-1 rounded-2xl overflow-hidden esdispatch-custom-map">
+      <div className="relative w-full h-full flex-1 rounded-2xl overflow-hidden esdispatch-custom-map">
         <div ref={mapContainerRef} className="w-full h-full" />
 
-        {/* Floating Top-Center Controller Bar */}
+        {/* Floating Top Controller Bar */}
         <div className="absolute top-3 left-14 sm:left-16 right-auto z-[990] flex items-center gap-2 flex-wrap pointer-events-auto">
           {/* Map Layer Switcher */}
-          <div className="flex items-center p-1 rounded-2xl bg-[#0E0E10]/90 backdrop-blur-md border border-white/15 shadow-xl">
+          <div className="flex items-center p-1 rounded-2xl bg-[#0E0E10]/92 backdrop-blur-md border border-white/15 shadow-xl">
             {(["googleRoadmap", "googleHybrid", "darkObsidian"] as TileTheme[]).map((t) => (
               <button
                 key={t}
@@ -688,43 +715,45 @@ export default function LiveTrackingMap({
             onClick={() => setFilterTransitOnly(prev => !prev)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-[11px] font-extrabold border shadow-xl backdrop-blur-md transition-all cursor-pointer ${
               filterTransitOnly
-                ? "bg-[#0E0E10]/90 text-[#FFB800] border-[#FFB800]/50"
-                : "bg-[#0E0E10]/90 text-gray-300 border-white/15 hover:text-white"
+                ? "bg-[#0E0E10]/92 text-[#FFB800] border-[#FFB800]/50"
+                : "bg-[#0E0E10]/92 text-gray-300 border-white/15 hover:text-white"
             }`}
           >
             <span className={`w-2 h-2 rounded-full ${filterTransitOnly ? "bg-[#FFB800] animate-pulse" : "bg-gray-400"}`} />
-            {filterTransitOnly ? "In Transit Only" : "All Fleet"}
+            {filterTransitOnly ? `In Transit (${inTransitCouriers.length})` : `All Fleet (${allCouriers.length})`}
           </button>
 
-          {/* Focus All Button */}
+          {/* Fit All Button */}
           <button
             onClick={handleFitAllBounds}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-[#0E0E10]/90 hover:bg-[#1a1a1f] text-gray-200 border border-white/15 text-[11px] font-extrabold shadow-xl backdrop-blur-md transition-all cursor-pointer"
-            title="Fit all couriers on map"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-[#0E0E10]/92 hover:bg-[#1a1a1f] text-gray-200 border border-white/15 text-[11px] font-extrabold shadow-xl backdrop-blur-md transition-all cursor-pointer"
+            title="Fit active couriers on map"
           >
-            <Eye size={13} className="text-[#FFB800]" /> Fit All
+            <Eye size={13} className="text-[#FFB800]" /> Fit View
           </button>
 
           {/* Fullscreen Button */}
-          <button
-            onClick={toggleFullscreen}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-[#0E0E10]/90 hover:bg-[#1a1a1f] text-gray-200 border border-white/15 text-[11px] font-extrabold shadow-xl backdrop-blur-md transition-all cursor-pointer"
-            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Monitoring Mode"}
-          >
-            {isFullscreen ? <Minimize2 size={13} className="text-[#FFB800]" /> : <Maximize2 size={13} className="text-[#FFB800]" />}
-            <span className="hidden sm:inline">{isFullscreen ? "Exit" : "Fullscreen"}</span>
-          </button>
+          {onToggleFullscreen && (
+            <button
+              onClick={onToggleFullscreen}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-[#0E0E10]/92 hover:bg-[#1a1a1f] text-gray-200 border border-white/15 text-[11px] font-extrabold shadow-xl backdrop-blur-md transition-all cursor-pointer"
+              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Monitoring Mode"}
+            >
+              {isFullscreen ? <Minimize2 size={13} className="text-[#FFB800]" /> : <Maximize2 size={13} className="text-[#FFB800]" />}
+              <span className="hidden sm:inline">{isFullscreen ? "Exit" : "Fullscreen"}</span>
+            </button>
+          )}
         </div>
 
         {/* Floating Side Drawer (Rider Details OR In-Transit Fleet Roster) */}
         {sideDrawerOpen && (
-          <div className="absolute top-3 right-3 bottom-3 z-[1000] w-80 sm:w-96 max-w-[calc(100%-24px)] bg-[#0E0E10]/95 backdrop-blur-xl border border-[#FFB800]/40 rounded-3xl p-4 shadow-2xl text-white flex flex-col justify-between overflow-hidden animate-fade-in pointer-events-auto">
+          <div className="absolute top-3 right-3 bottom-3 z-[1000] w-80 sm:w-92 max-w-[calc(100%-24px)] bg-[#0E0E10]/95 backdrop-blur-xl border border-[#FFB800]/40 rounded-3xl p-4 shadow-2xl text-white flex flex-col justify-between overflow-hidden animate-fade-in pointer-events-auto">
             {selectedDriver ? (
               /* ================== STATE 1: SELECTED RIDER DETAILS ================== */
               <div className="flex flex-col h-full justify-between overflow-y-auto custom-scrollbar pr-1">
                 <div>
                   {/* Top Bar */}
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
+                  <div className="flex items-center justify-between pb-2.5 border-b border-white/10 shrink-0">
                     <button
                       onClick={() => {
                         setSelectedDriver(null);
@@ -738,7 +767,7 @@ export default function LiveTrackingMap({
                       {followedRiderId === selectedDriver.id && (
                         <span className="px-2 py-0.5 rounded-lg bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/40 text-[9px] font-extrabold flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#FFB800] animate-ping" />
-                          CAMERA LOCKED
+                          LOCKED
                         </span>
                       )}
                       <button
@@ -751,50 +780,49 @@ export default function LiveTrackingMap({
                   </div>
 
                   {/* Hero Profile */}
-                  <div className="flex items-center gap-3.5 my-3.5">
+                  <div className="flex items-center gap-3 my-3">
                     <div className="relative shrink-0">
                       {selectedDriver.photoUrl ? (
                         <img
                           src={selectedDriver.photoUrl}
                           alt={selectedDriver.name}
-                          className="w-14 h-14 rounded-full object-cover border-2 border-[#FFB800] shadow-lg bg-[#1a1a1f]"
+                          className="w-13 h-13 rounded-full object-cover border-2 border-[#FFB800] shadow-lg bg-[#1a1a1f]"
                           onError={(e) => {
-                            // Fallback to initials if photo fails to load
                             (e.target as HTMLElement).style.display = "none";
                           }}
                         />
                       ) : null}
                       {/* Initials Fallback */}
                       <div
-                        className={`w-14 h-14 rounded-full bg-[#131312] border-2 border-[#FFB800] items-center justify-center text-base font-black text-[#FFB800] shadow-lg ${
+                        className={`w-13 h-13 rounded-full bg-[#131312] border-2 border-[#FFB800] items-center justify-center text-sm font-black text-[#FFB800] shadow-lg ${
                           selectedDriver.photoUrl ? "hidden" : "flex"
                         }`}
                       >
                         {selectedDriver.name.slice(0, 2).toUpperCase()}
                       </div>
-                      <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-[#131312] ${
+                      <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#131312] ${
                         selectedDriver.isDelayed ? "bg-amber-500" : "bg-emerald-400"
                       }`} />
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <h4 className="text-base font-black text-white truncate">{selectedDriver.name}</h4>
-                      <p className="text-xs text-gray-400 font-medium truncate mt-0.5">
+                      <h4 className="text-sm font-black text-white truncate">{selectedDriver.name}</h4>
+                      <p className="text-[11px] text-gray-400 font-medium truncate mt-0.5">
                         {selectedDriver.vehicleType || "Motorcycle"} {selectedDriver.vehiclePlate ? `• ${selectedDriver.vehiclePlate}` : ""}
                       </p>
-                      <div className="flex items-center gap-2 mt-1.5">
+                      <div className="flex items-center gap-2 mt-1">
                         <span className="text-[10px] font-black text-[#FFB800] bg-[#FFB800]/15 px-2 py-0.5 rounded-md">
                           ★ {selectedDriver.rating ? selectedDriver.rating.toFixed(1) : "5.0"}
                         </span>
                         <span className="text-[10px] text-gray-400 font-medium">
-                          {selectedDriver.lastUpdateAgo ? `GPS: ${selectedDriver.lastUpdateAgo}` : "Live GPS"}
+                          {selectedDriver.lastUpdateAgo ? `GPS: ${selectedDriver.lastUpdateAgo}` : "Live Signal"}
                         </span>
                       </div>
                     </div>
                   </div>
 
                   {/* Action Buttons: Call & Focus */}
-                  <div className="grid grid-cols-2 gap-2 mb-3.5">
+                  <div className="grid grid-cols-2 gap-2 mb-3">
                     {selectedDriver.phone ? (
                       <a
                         href={`tel:${selectedDriver.phone}`}
@@ -817,21 +845,21 @@ export default function LiveTrackingMap({
                       }`}
                     >
                       <Crosshair size={13} />
-                      {followedRiderId === selectedDriver.id ? "Locked" : "Focus on Rider"}
+                      {followedRiderId === selectedDriver.id ? "Locked" : "Focus Camera"}
                     </button>
                   </div>
 
                   {/* Telemetry Strip */}
-                  <div className="grid grid-cols-2 gap-2 mb-3.5">
-                    <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="p-2 rounded-xl bg-white/5 border border-white/10">
                       <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Live Speed</p>
-                      <p className="text-sm font-black text-white mt-0.5 flex items-center gap-1">
-                        <Zap size={13} className="text-[#FFB800]" />
+                      <p className="text-xs font-black text-white mt-0.5 flex items-center gap-1">
+                        <Zap size={12} className="text-[#FFB800]" />
                         {selectedDriver.speed && selectedDriver.speed > 0 ? `${Math.round(selectedDriver.speed)} km/h` : "In Transit"}
                       </p>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
-                      <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Phone Number</p>
+                    <div className="p-2 rounded-xl bg-white/5 border border-white/10">
+                      <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Phone</p>
                       <p
                         onClick={() => copyPhoneNumber(selectedDriver.phone || "")}
                         className="text-xs font-bold text-white mt-0.5 truncate cursor-pointer hover:text-[#FFB800] flex items-center gap-1"
@@ -845,9 +873,9 @@ export default function LiveTrackingMap({
 
                   {/* Active Delivery Information */}
                   {selectedDriver.activeDelivery ? (
-                    <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2 mb-3.5">
+                    <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2 mb-3">
                       <div className="flex items-center justify-between text-[11px] font-bold">
-                        <span className="text-gray-300">Active Delivery</span>
+                        <span className="text-gray-300">Active Mission</span>
                         <span className="text-[#FFB800] font-mono">#{selectedDriver.activeDelivery.id.slice(0, 8).toUpperCase()}</span>
                       </div>
                       <div>
@@ -856,20 +884,20 @@ export default function LiveTrackingMap({
                           Customer: {selectedDriver.activeDelivery.receiverName} {selectedDriver.activeDelivery.receiverPhone ? `• ${selectedDriver.activeDelivery.receiverPhone}` : ""}
                         </p>
                       </div>
-                      <div className="space-y-1.5 text-[11px] pt-2 border-t border-white/10">
+                      <div className="space-y-1 text-[11px] pt-1.5 border-t border-white/10">
                         <p className="text-gray-300 truncate flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded-full bg-[#FFB800] text-black font-black text-[9px] flex items-center justify-center shrink-0">P</span>
+                          <span className="w-3.5 h-3.5 rounded-full bg-[#FFB800] text-black font-black text-[8px] flex items-center justify-center shrink-0">P</span>
                           <span className="truncate">{selectedDriver.activeDelivery.pickupAddress || "Pickup location"}</span>
                         </p>
                         <p className="text-gray-300 truncate flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded-full bg-emerald-500 text-white font-black text-[9px] flex items-center justify-center shrink-0">D</span>
+                          <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 text-white font-black text-[8px] flex items-center justify-center shrink-0">D</span>
                           <span className="truncate">{selectedDriver.activeDelivery.deliveryAddress || "Delivery destination"}</span>
                         </p>
                       </div>
                     </div>
                   ) : (
-                    <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-gray-400 text-center mb-3.5">
-                      Courier is currently online and available for dispatch.
+                    <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-gray-400 text-center mb-3">
+                      Courier is online and available for dispatch.
                     </div>
                   )}
                 </div>
@@ -895,32 +923,32 @@ export default function LiveTrackingMap({
             ) : (
               /* ================== STATE 2: ACTIVE TRANSIT ROSTER ================== */
               <div className="flex flex-col h-full justify-between">
-                <div className="pb-3 border-b border-white/10 shrink-0">
+                <div className="pb-2.5 border-b border-white/10 shrink-0">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-black text-sm text-white flex items-center gap-2">
-                      <Bike className="w-4 h-4 text-[#FFB800]" /> Fleet in Transit
+                    <h3 className="font-black text-xs text-white flex items-center gap-1.5">
+                      <Bike className="w-4 h-4 text-[#FFB800]" /> Couriers in Transit
                     </h3>
                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black border border-emerald-500/30">
                       {inTransitCouriers.length} Moving
                     </span>
                   </div>
                   <p className="text-[10px] text-gray-400 mt-1">
-                    Click any courier to follow camera & view live route telemetry
+                    Click any courier to follow camera & view route
                   </p>
                 </div>
 
                 {/* Scrollable Courier Roster */}
                 <div className="flex-1 overflow-y-auto space-y-2 py-2 pr-1 custom-scrollbar">
                   {inTransitCouriers.length === 0 ? (
-                    <div className="py-12 text-center text-gray-400">
-                      <Bike className="w-9 h-9 text-gray-600 mx-auto mb-2 opacity-50" />
-                      <p className="text-xs font-bold text-gray-300">No active couriers in transit</p>
-                      <p className="text-[10px] text-gray-500 mt-1 max-w-[220px] mx-auto">
+                    <div className="py-10 text-center text-gray-400">
+                      <Bike className="w-8 h-8 text-gray-600 mx-auto mb-2 opacity-50" />
+                      <p className="text-xs font-bold text-gray-300">No couriers currently in transit</p>
+                      <p className="text-[10px] text-gray-500 mt-1 max-w-[200px] mx-auto">
                         Immediately a courier accepts an order, they appear on this map live.
                       </p>
                       <button
                         onClick={() => setFilterTransitOnly(false)}
-                        className="mt-3 text-[11px] font-bold text-[#FFB800] hover:underline"
+                        className="mt-3 text-[11px] font-bold text-[#FFB800] hover:underline cursor-pointer"
                       >
                         Show all {allCouriers.length} registered riders →
                       </button>
@@ -932,7 +960,7 @@ export default function LiveTrackingMap({
                         <div
                           key={c.id}
                           onClick={() => handleFocusDriver(c)}
-                          className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#FFB800]/50 transition-all cursor-pointer group flex items-center justify-between gap-2.5"
+                          className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#FFB800]/50 transition-all cursor-pointer group flex items-center justify-between gap-2"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             {/* Avatar */}
@@ -941,20 +969,20 @@ export default function LiveTrackingMap({
                                 <img
                                   src={c.photoUrl}
                                   alt={c.name}
-                                  className="w-10 h-10 rounded-full object-cover border-2 border-[#FFB800] bg-[#1a1a1f]"
+                                  className="w-9 h-9 rounded-full object-cover border-2 border-[#FFB800] bg-[#1a1a1f]"
                                   onError={(e) => {
                                     (e.target as HTMLElement).style.display = "none";
                                   }}
                                 />
                               ) : null}
                               <div
-                                className={`w-10 h-10 rounded-full bg-[#131312] border-2 border-[#FFB800] items-center justify-center text-xs font-black text-[#FFB800] ${
+                                className={`w-9 h-9 rounded-full bg-[#131312] border-2 border-[#FFB800] items-center justify-center text-xs font-black text-[#FFB800] ${
                                   c.photoUrl ? "hidden" : "flex"
                                 }`}
                               >
                                 {c.name.slice(0, 2).toUpperCase()}
                               </div>
-                              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-[#131312]" />
+                              <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-400 border border-[#131312]" />
                             </div>
 
                             <div className="min-w-0">
@@ -967,8 +995,8 @@ export default function LiveTrackingMap({
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="px-2 py-0.5 rounded-lg bg-[#FFB800]/15 text-[#FFB800] text-[10px] font-black">
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="px-1.5 py-0.5 rounded-lg bg-[#FFB800]/15 text-[#FFB800] text-[9px] font-black">
                               {speed}
                             </span>
                             <button
@@ -977,10 +1005,10 @@ export default function LiveTrackingMap({
                                 e.stopPropagation();
                                 handleFocusDriver(c);
                               }}
-                              className="p-1.5 rounded-xl bg-white/10 hover:bg-[#FFB800] hover:text-black text-gray-300 transition-colors"
+                              className="p-1 rounded-xl bg-white/10 hover:bg-[#FFB800] hover:text-black text-gray-300 transition-colors cursor-pointer"
                               title="Focus & Track"
                             >
-                              <Crosshair size={13} />
+                              <Crosshair size={12} />
                             </button>
                           </div>
                         </div>
@@ -990,13 +1018,13 @@ export default function LiveTrackingMap({
                 </div>
 
                 {/* Bottom Toggle Bar */}
-                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-gray-400 shrink-0">
+                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[10px] text-gray-400 shrink-0">
                   <span>{allCouriers.length} Total Couriers on Fleet</span>
                   <button
                     onClick={handleFitAllBounds}
                     className="text-[#FFB800] font-black hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <Eye size={12} /> Fit All
+                    <Eye size={11} /> Fit All
                   </button>
                 </div>
               </div>
@@ -1008,10 +1036,10 @@ export default function LiveTrackingMap({
         {!sideDrawerOpen && (
           <button
             onClick={() => setSideDrawerOpen(true)}
-            className="absolute top-3 right-3 z-[1000] px-3.5 py-2 rounded-2xl bg-[#0E0E10]/95 border border-[#FFB800]/50 text-white font-extrabold text-xs shadow-2xl backdrop-blur-md hover:bg-[#1a1a1f] flex items-center gap-2 cursor-pointer pointer-events-auto"
+            className="absolute top-3 right-3 z-[1000] px-3 py-1.5 rounded-2xl bg-[#0E0E10]/95 border border-[#FFB800]/50 text-white font-extrabold text-xs shadow-2xl backdrop-blur-md hover:bg-[#1a1a1f] flex items-center gap-1.5 cursor-pointer pointer-events-auto"
           >
-            <Bike size={14} className="text-[#FFB800]" />
-            <span>Open Fleet Panel ({inTransitCouriers.length})</span>
+            <Bike size={13} className="text-[#FFB800]" />
+            <span>Fleet Panel ({inTransitCouriers.length})</span>
           </button>
         )}
       </div>

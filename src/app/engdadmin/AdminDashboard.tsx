@@ -33,7 +33,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, on
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, Timestamp, getDoc, getDocs, writeBatch, addDoc, increment, limit, orderBy, runTransaction, Transaction, serverTimestamp } from "firebase/firestore";
 import { Download, Shield, Truck, Package, ShoppingBag, Store, Users, User, Settings, Activity, Lock, Mail, Key, CheckCircle, CheckCircle2, AlertTriangle, Plus, Minus, ArrowRight, Trash2, LogOut, Search, Sliders, Award, DollarSign, Zap, Globe, UserPlus, BarChart3, MapPin, ShieldAlert, Image as ImageIcon, Menu, X, ShieldCheck, RefreshCw, UserCheck, UserX, Clock, TrendingUp, Edit3, Copy, Check, Percent, Gift, Star, Layers, Eye, EyeOff, Calendar, ChevronDown, ChevronUp, Phone, AtSign, Hash, Save, Bell, Send, ChevronLeft, ChevronRight, Bookmark, Folder, FileCheck, MessageSquare, Headphones, Settings2, LayoutGrid, FileText, Moon, Sun, Pencil, Repeat, Printer, Power, Wrench, Database, Tag, Radio, Sparkles, Info, Bike } from "lucide-react";
 import CMSTab from "./CMSTab";
-import LiveTrackingMap, { RegistryEntry, resolveEndpoint, resolveFromRegistry, isBeninCityCoord, DEFAULT_GEO_CENTER } from "./LiveTrackingMap";
+import LiveTrackingMap, { RegistryEntry, resolveEndpoint, resolveFromRegistry, isBeninCityCoord, isValidGeoCoord, DEFAULT_GEO_CENTER } from "./LiveTrackingMap";
 import BroadcastNewsTab from "./BroadcastNewsTab";
 import AddressBookTab from "./AddressBookTab";
 import { SoundEngine } from "@/lib/interaction/SoundEngine";
@@ -10412,6 +10412,29 @@ function BannersTab({ banners, db, addLog, addToast }: { banners: Banner[]; db: 
 function TrackingTab({ deliveries, drivers, addressRegistry, geoCenter, onNewDispatch }: { deliveries: Delivery[]; drivers: UserProfile[]; addressRegistry: RegistryEntry[]; geoCenter: { lat: number; lng: number }; onNewDispatch?: () => void }) {
   const [trackSearch, setTrackSearch] = useState("");
   const [tSelectedId, setTSelectedId] = useState<string | null>(null);
+  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const toggleFullscreen = () => {
+    setIsMapFullscreen(prev => {
+      const next = !prev;
+      if (typeof document !== "undefined") {
+        if (next) {
+          document.documentElement.requestFullscreen?.().catch(() => {});
+        } else {
+          if (document.fullscreenElement) {
+            document.exitFullscreen?.().catch(() => {});
+          }
+        }
+      }
+      return next;
+    });
+  };
+
   const activeD = deliveries.filter(d => d.status !== "DELIVERED" && d.status !== "CANCELLED");
   const filtered = trackSearch ? activeD.filter(d => d.id.includes(trackSearch) || d.receiverName.toLowerCase().includes(trackSearch.toLowerCase()) || d.itemName?.toLowerCase().includes(trackSearch.toLowerCase())) : activeD;
   const [tPage, setTPage] = useState(0);
@@ -10419,14 +10442,17 @@ function TrackingTab({ deliveries, drivers, addressRegistry, geoCenter, onNewDis
   const tTotalPages = Math.max(1, Math.ceil(filtered.length / tPerPage));
   const pagedT = filtered.slice(tPage * tPerPage, (tPage + 1) * tPerPage);
   useEffect(() => { setTPage(0); }, [trackSearch]);
+
   const inTransitDeliveries = deliveries.filter(d =>
-    ["TRANSIT", "ASSIGNED", "PICKED_UP", "ARRIVED", "OUT_FOR_DELIVERY", "HANDOVER_VERIFIED", "IN_TRANSIT", "ON_THE_WAY"].includes(d.status)
+    ["TRANSIT", "ASSIGNED", "PICKED_UP", "ARRIVED", "OUT_FOR_DELIVERY", "HANDOVER_VERIFIED", "IN_TRANSIT", "ON_THE_WAY"].includes((d.status || "").toUpperCase().trim())
   );
   const inTransitDriverIds = new Set(
-    inTransitDeliveries.map(d => d.riderId || d.assignedRiderId || d.driverId).filter(Boolean)
+    inTransitDeliveries
+      .map(d => (d.riderId || d.assignedRiderId || d.driverId || "").trim())
+      .filter(id => Boolean(id) && id !== "unassigned" && id !== "none")
   );
-  const inTransitDriversCount = drivers.filter(d => inTransitDriverIds.has(d.id) || inTransitDriverIds.has(d.uid) || d.activeBookingId).length;
-  const driversOnMapCount = drivers.filter(d => d.lat && d.lng).length;
+  const inTransitDriversCount = drivers.filter(d => inTransitDriverIds.has(d.id) || inTransitDriverIds.has(d.uid)).length;
+  const driversOnMapCount = drivers.filter(d => d.lat && d.lng && isValidGeoCoord(d.lat, d.lng)).length;
 
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
@@ -10464,9 +10490,41 @@ function TrackingTab({ deliveries, drivers, addressRegistry, geoCenter, onNewDis
         )}
       </div>
     </div>
-    <div className="h-[580px] md:h-[640px] rounded-3xl overflow-hidden border border-gray-200 dark:border-white/10 shadow-sm relative">
-      <LiveTrackingMap deliveries={filtered} drivers={drivers} selectedId={tSelectedId} onSelect={setTSelectedId} addressRegistry={addressRegistry} geoCenter={geoCenter} />
-    </div>
+
+    {isMapFullscreen && isMounted ? createPortal(
+      <div className="fixed inset-0 z-[999999] w-screen h-screen bg-[#0A0A0C] flex flex-col p-3 md:p-5 overflow-hidden">
+        <LiveTrackingMap
+          deliveries={filtered}
+          drivers={drivers}
+          selectedId={tSelectedId}
+          onSelect={setTSelectedId}
+          addressRegistry={addressRegistry}
+          geoCenter={geoCenter}
+          isFullscreen={true}
+          onToggleFullscreen={toggleFullscreen}
+          onNewDispatch={onNewDispatch}
+          searchValue={trackSearch}
+          onSearchChange={setTrackSearch}
+        />
+      </div>,
+      document.body
+    ) : (
+      <div className="h-[580px] md:h-[640px] rounded-3xl overflow-hidden border border-gray-200 dark:border-white/10 shadow-sm relative">
+        <LiveTrackingMap
+          deliveries={filtered}
+          drivers={drivers}
+          selectedId={tSelectedId}
+          onSelect={setTSelectedId}
+          addressRegistry={addressRegistry}
+          geoCenter={geoCenter}
+          isFullscreen={false}
+          onToggleFullscreen={toggleFullscreen}
+          onNewDispatch={onNewDispatch}
+          searchValue={trackSearch}
+          onSearchChange={setTrackSearch}
+        />
+      </div>
+    )}
     <div className="grid gap-4">
       {pagedT.length === 0 && <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 rounded-3xl p-8 text-center"><p className="text-sm text-gray-600 dark:text-gray-400 font-medium">No active deliveries.</p></div>}
       {pagedT.map(d => {
