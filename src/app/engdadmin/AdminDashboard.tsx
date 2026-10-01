@@ -129,6 +129,9 @@ interface Delivery {
   deliveryLng?: number;
   driverId?: string;
   driverName?: string;
+  assignedRiderId?: string;
+  initialCourierLat?: number;
+  initialCourierLng?: number;
   createdAt?: any;
   updatedAt?: any;
   reservedRiderId?: string;
@@ -10416,15 +10419,44 @@ function TrackingTab({ deliveries, drivers, addressRegistry, geoCenter, onNewDis
   const tTotalPages = Math.max(1, Math.ceil(filtered.length / tPerPage));
   const pagedT = filtered.slice(tPage * tPerPage, (tPage + 1) * tPerPage);
   useEffect(() => { setTPage(0); }, [trackSearch]);
+  const inTransitDeliveries = deliveries.filter(d =>
+    ["TRANSIT", "ASSIGNED", "PICKED_UP", "ARRIVED", "OUT_FOR_DELIVERY", "HANDOVER_VERIFIED", "IN_TRANSIT", "ON_THE_WAY"].includes(d.status)
+  );
+  const inTransitDriverIds = new Set(
+    inTransitDeliveries.map(d => d.riderId || d.assignedRiderId || d.driverId).filter(Boolean)
+  );
+  const inTransitDriversCount = drivers.filter(d => inTransitDriverIds.has(d.id) || inTransitDriverIds.has(d.uid) || d.activeBookingId).length;
+  const driversOnMapCount = drivers.filter(d => d.lat && d.lng).length;
+
   return <div className="tab-content space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-4">
-      <div><h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2"><MapPin className="w-5 h-5 text-[#FFB800]" /> Live Tracking</h1><p className="text-xs text-gray-600 dark:text-gray-400 font-medium mt-1">{activeD.length} active deliveries, {drivers.filter(d => d.lat && d.lng).length} riders on map</p></div>
-      <div className="flex items-center gap-3 flex-wrap">
-        <SearchInput value={trackSearch} onChange={setTrackSearch} placeholder="Search by ID, name, item..." />
+      <div>
+        <h1 className="text-xl font-black text-[#111] dark:text-white flex items-center gap-2">
+          <MapPin className="w-5 h-5 text-[#FFB800]" /> Live Tracking
+        </h1>
+        <div className="flex items-center gap-2.5 mt-2 flex-wrap">
+          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-900 dark:text-[#FFB800] text-xs font-black shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-[#FFB800] animate-pulse" />
+            {activeD.length} Active {activeD.length === 1 ? "Delivery" : "Deliveries"}
+          </span>
+          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-400 text-xs font-black shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            {inTransitDriversCount} in Transit
+          </span>
+          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-xs">
+            <Bike size={14} className="text-[#FFB800]" />
+            {driversOnMapCount} Riders on Map
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="w-full sm:w-72 md:w-80">
+          <SearchInput value={trackSearch} onChange={setTrackSearch} placeholder="Search by ID, name, item..." />
+        </div>
         {onNewDispatch && (
           <button
             onClick={onNewDispatch}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#FFB800] text-black font-extrabold text-xs shadow-md hover:bg-[#e6a600] active:scale-95 transition-all cursor-pointer"
+            className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#FFB800] text-black font-extrabold text-xs shadow-md hover:bg-[#e6a600] active:scale-95 transition-all cursor-pointer whitespace-nowrap"
           >
             <Plus size={16} className="stroke-[3]" />
             Dispatch Ride
@@ -10432,7 +10464,7 @@ function TrackingTab({ deliveries, drivers, addressRegistry, geoCenter, onNewDis
         )}
       </div>
     </div>
-    <div className="h-[400px] rounded-3xl overflow-hidden border border-gray-200 dark:border-white/10 shadow-sm">
+    <div className="h-[580px] md:h-[640px] rounded-3xl overflow-hidden border border-gray-200 dark:border-white/10 shadow-sm relative">
       <LiveTrackingMap deliveries={filtered} drivers={drivers} selectedId={tSelectedId} onSelect={setTSelectedId} addressRegistry={addressRegistry} geoCenter={geoCenter} />
     </div>
     <div className="grid gap-4">
