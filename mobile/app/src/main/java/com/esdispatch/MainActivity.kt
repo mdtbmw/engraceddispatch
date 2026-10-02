@@ -129,7 +129,6 @@ class MainActivity : FragmentActivity() {
     override fun onPause() {
         super.onPause()
         lastBackgroundTime = System.currentTimeMillis()
-        checkAndLockApp()
     }
 
     override fun onStop() {
@@ -140,6 +139,7 @@ class MainActivity : FragmentActivity() {
     private fun checkAndLockApp() {
         if (!::viewModel.isInitialized) return
         if (viewModel.isGoogleAuthInProgress.value) return
+        if (viewModel.isVoiceCallActive.value) return
 
         // STRICT: An active rider shift session is NOT subject to customer PIN lock!
         // When user is a rider and is currently online/working, do NOT lock the app on screen off/minimize.

@@ -3142,15 +3142,27 @@ object FirebaseManager {
         )
 
         val chatDocRef = db.collection("support_chats").document(ticketId)
+        val currentAuthUid = auth?.currentUser?.uid.orEmpty()
+        val customerUserId = when {
+            currentAuthUid.isNotBlank() -> currentAuthUid
+            senderId != "ESAI_ASSISTANT" && senderRole != "ai" -> senderId
+            else -> ""
+        }
+
         val chatHeader = hashMapOf<String, Any>(
             "ticketId" to ticketId,
-            "userId" to senderId,
-            "userName" to senderName,
             "lastMessage" to if (messageText.isNotBlank()) messageText else if (imageUrl.isNotBlank()) "[Image Attachment]" else "Support Message",
             "lastUpdated" to timestamp,
             "status" to "OPEN",
             "urgency" to urgency
         )
+        if (customerUserId.isNotBlank()) {
+            chatHeader["userId"] = customerUserId
+            chatHeader["customerId"] = customerUserId
+        }
+        if (senderRole != "ai") {
+            chatHeader["userName"] = senderName
+        }
         if (deliveryId.isNotBlank()) {
             chatHeader["deliveryId"] = deliveryId
         }

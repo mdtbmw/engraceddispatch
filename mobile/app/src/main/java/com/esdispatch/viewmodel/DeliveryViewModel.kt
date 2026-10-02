@@ -2114,6 +2114,11 @@ class DeliveryViewModel : WalletViewModel() {
         _supportChatMessages.value = emptyList()
     }
 
+    val isVoiceCallActive = kotlinx.coroutines.flow.MutableStateFlow(false)
+    fun setVoiceCallActive(active: Boolean) {
+        isVoiceCallActive.value = active
+    }
+
     fun sendSupportChatMessage(
         messageText: String,
         ticketId: String? = null,
@@ -2130,6 +2135,27 @@ class DeliveryViewModel : WalletViewModel() {
         val senderId = if (isAi) "ESAI_ASSISTANT" else (_firebaseUserId.value ?: "")
         val senderName = if (isAi) "ESAI Virtual Assistant" else (_userName.value.ifEmpty { "Customer" })
         val senderRole = if (isAi) "ai" else if (_userRole.value == "admin") "admin" else "customer"
+
+        // OPTIMISTIC LOCAL RENDERING (Frame 0 - zero lag)
+        val optimisticMsg = com.esdispatch.data.SupportChatMessage(
+            id = "LOCAL_" + System.currentTimeMillis() + "_" + java.util.UUID.randomUUID().toString().take(6),
+            senderId = senderId,
+            senderName = senderName,
+            senderRole = senderRole,
+            messageText = messageText,
+            timestamp = System.currentTimeMillis(),
+            deliveryId = deliveryId,
+            replyToText = replyToText,
+            replyToSender = replyToSender,
+            imageUrl = imageUrl,
+            avatarUrl = avatarUrl,
+            isAi = isAi,
+            urgency = urgency
+        )
+        val currentList = _supportChatMessages.value.toMutableList()
+        currentList.add(optimisticMsg)
+        _supportChatMessages.value = currentList
+
         com.esdispatch.data.FirebaseManager.sendSupportChatMessage(
             ticketId = tid,
             senderId = senderId,
@@ -7158,7 +7184,7 @@ class DeliveryViewModel : WalletViewModel() {
             val apiKey = BuildConfig.GEMINI_API_KEY
             if (apiKey.isNotBlank() && !apiKey.contains("PLACEHOLDER") && apiKey != "MY_GEMINI_API_KEY") {
                 try {
-                    val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$apiKey"
+                    val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=$apiKey"
 
                     val jsonBody = JSONObject().apply {
                         put("contents", JSONArray().apply {
@@ -7217,13 +7243,29 @@ class DeliveryViewModel : WalletViewModel() {
         ticketId: String,
         urgency: String
     ): String {
-        val lower = prompt.lowercase()
+        val lower = prompt.lowercase().trim()
         val displayId = parcel?.let { com.esdispatch.util.FormatUtils.formatDisplayTrackingId(it.id) } ?: ""
         val courier = parcel?.courierName?.takeIf { it.isNotBlank() } ?: "Our assigned fleet courier"
         val destination = parcel?.deliveryAddress?.takeIf { it.isNotBlank() } ?: "your destination"
         val pickup = parcel?.pickupAddress?.takeIf { it.isNotBlank() } ?: "the pickup address"
 
         return when {
+            lower.contains("how are you") || lower.contains("how do you do") || lower.contains("how are you doing") -> {
+                "I'm doing very well, thank you for asking! I'm here at ESDispatch central operations ready to assist. How can I help you with your deliveries or tracking today?"
+            }
+            lower.matches(Regex(".*\\b(hello|hi|hey|good day|good morning|good afternoon|good evening)\\b.*")) -> {
+                if (parcel != null && (parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.ASSIGNED || parcel.status == ParcelStatus.PICKED_UP)) {
+                    "Hello! I have your active shipment $displayId open (${parcel.itemName.ifBlank { "package" }} with courier $courier). How can I assist you with this delivery today?"
+                } else {
+                    "Hello there! Welcome to ESDispatch Concierge. How can I assist you with your logistics today?"
+                }
+            }
+            lower.contains("thank") || lower.contains("appreciate") -> {
+                "You're very welcome! Our dispatch team is always on standby for you. Let me know if you need anything else!"
+            }
+            lower.contains("who are you") || lower.contains("what is your name") || lower.contains("what can you do") -> {
+                "I am ESAI, your intelligent logistics concierge for ESDispatch. I can track your packages live across Benin City, give you instant fare quotes, connect you with your rider, or dispatch an express courier."
+            }
             lower.contains("where") || lower.contains("track") || lower.contains("status") || lower.contains("location") || lower.contains("rider") -> {
                 if (parcel != null) {
                     when (parcel.status) {

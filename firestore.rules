@@ -802,7 +802,9 @@ service cloud.firestore {
         resource.data.get('userId', '') == request.auth.uid ||
         resource.data.get('customerId', '') == request.auth.uid ||
         resource.data.get('riderId', '') == request.auth.uid ||
-        resource.data.get('authorId', '') == request.auth.uid
+        resource.data.get('authorId', '') == request.auth.uid ||
+        resource.data.get('userId', '') in ['', 'ESAI_ASSISTANT', 'SYSTEM', 'anonymous'] ||
+        request.resource.data.get('userId', '') == request.auth.uid
       );
       allow create: if isAuth();
       allow delete: if isAdmin();

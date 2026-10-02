@@ -17,11 +17,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.esdispatch.util.VoiceGuidanceManager
+import com.esdispatch.util.GoogleCloudVoiceEngine
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -44,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -51,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -411,7 +415,7 @@ fun SupportChatScreen(
                     shape = RoundedCornerShape(12.dp),
                     color = if (urgency == "Urgent") Color(0xFFFF5252).copy(alpha = 0.2f) else Obsidian.copy(alpha = 0.15f),
                     border = BorderStroke(1.dp, if (urgency == "Urgent") Color(0xFFFF5252) else Obsidian.copy(alpha = 0.3f)),
-                    modifier = Modifier.clickable {
+                    onClick = {
                         urgency = if (urgency == "Standard") "Urgent" else "Standard"
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         Toast.makeText(context, "Ticket priority updated to $urgency", Toast.LENGTH_SHORT).show()
@@ -442,11 +446,9 @@ fun SupportChatScreen(
             containerColor = pageBg
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .imePadding()
+                modifier = Modifier.fillMaxSize()
             ) {
-                // Top Meta Card: Ticket Info, SLA Countdown & Linked Parcel
+                // Top Meta Card: Ticket Info & Linked Parcel
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -479,48 +481,30 @@ fun SupportChatScreen(
                                     color = secondaryText
                                 )
                                 Text(
-                                    text = if (isRepresentativeJoined) "Representative Live" else "ESAI Active",
+                                    text = if (isRepresentativeJoined) "Representative Live" else "Concierge Active",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (isRepresentativeJoined) Color(0xFF4CAF50) else Gold
                                 )
                             }
 
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                // Live Concierge Voice Call Button
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Gold,
-                                    modifier = Modifier.clickable {
-                                        isCallActive = true
-                                        showVoiceCallHUD = true
-                                    }
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(Icons.Filled.Call, contentDescription = "Voice Call", tint = Obsidian, modifier = Modifier.size(13.dp))
-                                        Text("Voice Call", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Obsidian)
-                                    }
+                            // Live Concierge Voice Call Button
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Gold,
+                                onClick = {
+                                    viewModel.setVoiceCallActive(true)
+                                    isCallActive = true
+                                    showVoiceCallHUD = true
                                 }
-
-                                // SLA Countdown
-                                val minutes = slaSecondsRemaining / 60
-                                val seconds = slaSecondsRemaining % 60
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (isDark) LuxuryBlack else GoldenWhite,
-                                    border = BorderStroke(0.8.dp, if (urgency == "Urgent") Color(0xFFFF5252) else Gold.copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
-                                    Text(
-                                        text = "SLA ${String.format("%02d:%02d", minutes, seconds)}",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (urgency == "Urgent") Color(0xFFFF5252) else primaryText,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                                    )
+                                    Icon(Icons.Filled.Call, contentDescription = "Voice Call", tint = Obsidian, modifier = Modifier.size(13.dp))
+                                    Text("Voice Call", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Obsidian)
                                 }
                             }
                         }
@@ -531,9 +515,8 @@ fun SupportChatScreen(
                             shape = RoundedCornerShape(10.dp),
                             color = if (isDark) Charcoal.copy(alpha = 0.7f) else Slate.copy(alpha = 0.25f),
                             border = BorderStroke(1.dp, if (selectedParcel != null) Gold.copy(alpha = 0.5f) else (if (isDark) Slate.copy(alpha = 0.4f) else Slate)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showParcelSelectorSheet = true }
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { showParcelSelectorSheet = true }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -558,7 +541,7 @@ fun SupportChatScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "Status: ${p.status.name} • Tap to switch parcel",
+                                            text = "Status: ${p.status.name} • Tap to switch",
                                             fontSize = 9.sp,
                                             color = secondaryText
                                         )
@@ -577,7 +560,7 @@ fun SupportChatScreen(
                                     }
                                 } else {
                                     Text(
-                                        text = if (parcels.isNotEmpty()) "Select shipment to inquire (${parcels.size} available)..." else "No parcels found • Inquire generally",
+                                        text = if (parcels.isNotEmpty()) "Select shipment to inquire (${parcels.size} available)..." else "No active parcels • Inquire generally",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Gold,
@@ -609,7 +592,7 @@ fun SupportChatScreen(
                                         shape = RoundedCornerShape(8.dp),
                                         color = if (isSelected) Gold else (if (isDark) Charcoal else Slate.copy(alpha = 0.35f)),
                                         border = BorderStroke(0.8.dp, if (isSelected) Gold else Gold.copy(alpha = 0.3f)),
-                                        modifier = Modifier.clickable {
+                                        onClick = {
                                             selectedParcel = if (isSelected) null else p
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             if (!isSelected) {
@@ -666,13 +649,13 @@ fun SupportChatScreen(
                     exit = fadeOut() + shrinkVertically()
                 ) {
                     Surface(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showVoiceCallHUD = true
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 4.dp)
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                showVoiceCallHUD = true
-                            },
+                            .padding(horizontal = 14.dp, vertical = 4.dp),
                         shape = RoundedCornerShape(12.dp),
                         color = if (isDark) Charcoal else GoldenWhiteSurface,
                         border = BorderStroke(1.dp, Gold)
@@ -868,12 +851,12 @@ fun SupportChatScreen(
                 ) {
                     items(dynamicSuggestions) { (prompt, icon) ->
                         Surface(
+                            onClick = {
+                                handleSendMessage(prompt)
+                            },
                             shape = RoundedCornerShape(20.dp),
                             color = if (isDark) Charcoal else Slate.copy(alpha = 0.35f),
-                            border = BorderStroke(0.8.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate),
-                            modifier = Modifier.clickable {
-                                handleSendMessage(prompt)
-                            }
+                            border = BorderStroke(0.8.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -995,31 +978,33 @@ fun SupportChatScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                            .imePadding()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         // Discard Voice Note
-                        IconButton(
+                        Surface(
                             onClick = {
                                 isRecordingVoiceNote = false
                                 recordingDuration = 0
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFE53935).copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            color = Color(0xFFE53935).copy(alpha = 0.15f),
+                            modifier = Modifier.size(44.dp)
                         ) {
-                            Icon(Icons.Filled.Close, contentDescription = "Discard Recording", tint = Color(0xFFE53935), modifier = Modifier.size(20.dp))
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.Close, contentDescription = "Discard Recording", tint = Color(0xFFE53935), modifier = Modifier.size(20.dp))
+                            }
                         }
 
-                        // Waveform & Recording Timer
+                        // Waveform & Recording Timer Capsule
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp),
-                            shape = RoundedCornerShape(24.dp),
+                                .height(48.dp),
+                            shape = RoundedCornerShape(26.dp),
                             color = if (isDark) Obsidian else Color.White,
                             border = BorderStroke(1.dp, Gold)
                         ) {
@@ -1038,7 +1023,7 @@ fun SupportChatScreen(
                                     ) {}
                                     Text(
                                         text = String.format("0:%02d", recordingDuration),
-                                        fontSize = 12.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = primaryText
                                     )
@@ -1050,18 +1035,16 @@ fun SupportChatScreen(
 
                         // Send Voice Note Button
                         Surface(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(CircleShape)
-                                .clickable {
-                                    val duration = recordingDuration
-                                    isRecordingVoiceNote = false
-                                    recordingDuration = 0
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    handleSendMessage("Voice Note (0:${String.format("%02d", duration)}) - Dispatch motorcycle to Airport Road, Benin City")
-                                },
+                            onClick = {
+                                val duration = recordingDuration
+                                isRecordingVoiceNote = false
+                                recordingDuration = 0
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                handleSendMessage("Voice Note (0:${String.format("%02d", duration)})")
+                            },
                             shape = CircleShape,
-                            color = Gold
+                            color = Gold,
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(Icons.Filled.Send, contentDescription = "Send Voice Note", tint = Obsidian, modifier = Modifier.size(20.dp))
@@ -1073,103 +1056,143 @@ fun SupportChatScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                            .imePadding()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Attachment Icon Button
-                        IconButton(
-                            onClick = {
-                                imagePickerLauncher.launch("image/*")
-                            },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(if (isDark) Charcoal else Slate.copy(alpha = 0.35f))
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.AddPhotoAlternate,
-                                contentDescription = "Attach Photo",
-                                tint = if (selectedImageBitmap != null) Gold else primaryText,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        // Voice Note Recording Toggle
-                        IconButton(
-                            onClick = {
-                                isRecordingVoiceNote = true
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(if (isDark) Charcoal else Slate.copy(alpha = 0.35f))
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Mic,
-                                contentDescription = "Record Voice Note",
-                                tint = primaryText,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        // Text Input Field
-                        OutlinedTextField(
-                            value = messageText,
-                            onValueChange = { messageText = it },
-                            placeholder = { Text("Ask support or report an issue...", fontSize = 13.sp, color = secondaryText) },
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 44.dp, max = 110.dp),
-                            shape = RoundedCornerShape(24.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Gold,
-                                unfocusedBorderColor = if (isDark) Slate.copy(alpha = 0.4f) else Slate,
-                                focusedContainerColor = if (isDark) Obsidian else Color.White,
-                                unfocusedContainerColor = if (isDark) Obsidian else Color.White,
-                                focusedTextColor = primaryText,
-                                unfocusedTextColor = primaryText
-                            ),
-                            singleLine = false,
-                            maxLines = 3
-                        )
-
-                        // Send / Live Voice Call Button (Gold circular with Obsidian icon)
-                        val hasInput = messageText.isNotBlank() || selectedImageBitmap != null
+                        // 1. Unified Rounded Capsule containing: Add Photo, Text Input, and Morphing Mic/Send
                         Surface(
                             modifier = Modifier
-                                .size(46.dp)
-                                .clip(CircleShape)
-                                .clickable(enabled = !isSending) {
-                                    if (hasInput) {
-                                        handleSendMessage()
-                                    } else {
-                                        isCallActive = true
-                                        showVoiceCallHUD = true
-                                    }
-                                },
-                            shape = CircleShape,
-                            color = Gold
+                                .weight(1f)
+                                .heightIn(min = 48.dp, max = 120.dp),
+                            shape = RoundedCornerShape(26.dp),
+                            color = if (isDark) Obsidian else Color.White,
+                            border = BorderStroke(1.dp, if (isDark) Slate.copy(alpha = 0.5f) else Slate.copy(alpha = 0.8f))
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                if (isSending) {
-                                    CircularProgressIndicator(color = Obsidian, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                } else if (hasInput) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Add Photo Attachment Button inside Capsule on the left
+                                IconButton(
+                                    onClick = { imagePickerLauncher.launch("image/*") },
+                                    modifier = Modifier.size(38.dp)
+                                ) {
                                     Icon(
-                                        imageVector = Icons.Filled.Send,
-                                        contentDescription = "Send Message",
-                                        tint = Obsidian,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Filled.Call,
-                                        contentDescription = "Live Voice Concierge Call",
-                                        tint = Obsidian,
-                                        modifier = Modifier.size(20.dp)
+                                        imageVector = Icons.Filled.AddPhotoAlternate,
+                                        contentDescription = "Attach Photo",
+                                        tint = if (selectedImageBitmap != null) Gold else (if (isDark) TextGray else Color.Gray),
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
+
+                                // Typing Text Field
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (messageText.isEmpty()) {
+                                        Text(
+                                            text = "Ask support or describe delivery...",
+                                            fontSize = 13.5.sp,
+                                            color = secondaryText,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    BasicTextField(
+                                        value = messageText,
+                                        onValueChange = { messageText = it },
+                                        textStyle = TextStyle(
+                                            fontSize = 14.sp,
+                                            color = primaryText,
+                                            fontWeight = FontWeight.Normal
+                                        ),
+                                        cursorBrush = SolidColor(Gold),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        maxLines = 4
+                                    )
+                                }
+
+                                // Morphing Action inside Capsule: Mic when empty, Send when input exists
+                                val hasInput = messageText.isNotBlank() || selectedImageBitmap != null
+                                AnimatedContent(
+                                    targetState = hasInput,
+                                    transitionSpec = {
+                                        (fadeIn(animationSpec = tween(180)) + scaleIn(initialScale = 0.8f, animationSpec = tween(180)))
+                                            .togetherWith(fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 0.8f, animationSpec = tween(180)))
+                                    },
+                                    label = "MorphingCapsuleAction"
+                                ) { targetHasInput ->
+                                    if (targetHasInput) {
+                                        Surface(
+                                            onClick = {
+                                                if (!isSending) handleSendMessage()
+                                            },
+                                            shape = CircleShape,
+                                            color = Gold,
+                                            modifier = Modifier.size(38.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                if (isSending) {
+                                                    CircularProgressIndicator(
+                                                        color = Obsidian,
+                                                        modifier = Modifier.size(16.dp),
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.ArrowUpward,
+                                                        contentDescription = "Send Message",
+                                                        tint = Obsidian,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        IconButton(
+                                            onClick = {
+                                                isRecordingVoiceNote = true
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            },
+                                            modifier = Modifier.size(38.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Mic,
+                                                contentDescription = "Record Voice Note",
+                                                tint = Gold,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Anchored Live Call Button on the right outside the capsule
+                        Surface(
+                            onClick = {
+                                isCallActive = true
+                                showVoiceCallHUD = true
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            shape = CircleShape,
+                            color = Gold,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Call,
+                                    contentDescription = "Live Voice Call",
+                                    tint = Obsidian,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
                         }
                     }
@@ -1199,7 +1222,8 @@ fun SupportChatScreen(
                     val duration = if (durationSec > 0) durationSec else callActiveSeconds
                     isCallActive = false
                     showVoiceCallHUD = false
-                    com.esdispatch.util.VoiceGuidanceManager.stop()
+                    GoogleCloudVoiceEngine.stop()
+                    viewModel.setVoiceCallActive(false)
                     val mins = duration / 60
                     val secs = duration % 60
                     val summaryText = "Voice Concierge Call Completed (${String.format("%02d:%02d", mins, secs)}). Inquiry resolved."
@@ -1214,13 +1238,15 @@ fun SupportChatScreen(
                 onNavigateToBooking = {
                     isCallActive = false
                     showVoiceCallHUD = false
-                    com.esdispatch.util.VoiceGuidanceManager.stop()
+                    GoogleCloudVoiceEngine.stop()
+                    viewModel.setVoiceCallActive(false)
                     onNavigate("SendParcel")
                 },
                 onNavigateToTracking = {
                     isCallActive = false
                     showVoiceCallHUD = false
-                    com.esdispatch.util.VoiceGuidanceManager.stop()
+                    GoogleCloudVoiceEngine.stop()
+                    viewModel.setVoiceCallActive(false)
                     onNavigate("ActiveTracking")
                 }
             )
@@ -1410,7 +1436,17 @@ private fun SupportMessageBubble(
                     if (!isUser && message.isAi) {
                         val msgLower = message.messageText.lowercase()
                         when {
-                            msgLower.contains("motorcycle") || msgLower.contains("courier") || msgLower.contains("dispatch") || msgLower.contains("book") || msgLower.contains("fare") -> {
+                            // Tracking card for active shipment inquiries or delivery ID
+                            message.deliveryId.isNotBlank() || msgLower.contains("active shipment") || msgLower.contains("in transit") || msgLower.contains("radar") || (msgLower.contains("track") && !msgLower.contains("untracked")) -> {
+                                ChatTrackingActionCard(
+                                    deliveryId = message.deliveryId.ifBlank { "ESD-TRK-784" },
+                                    isDark = isDark,
+                                    onOpenLiveMap = { onNavigate("ActiveTracking") }
+                                )
+                            }
+                            // Only prompt booking confirmation if explicitly drafted or requested for an UNBOOKED parcel
+                            (msgLower.contains("confirm booking") || msgLower.contains("confirm & book") || msgLower.contains("ready to dispatch") || (msgLower.contains("dispatch draft") && !msgLower.contains("active")))
+                                && message.deliveryId.isBlank() -> {
                                 ChatBookingActionCard(
                                     isDark = isDark,
                                     isActionActive = isLatestAction,
@@ -1418,20 +1454,13 @@ private fun SupportMessageBubble(
                                     onSelectLocation = { onQuickAction("Select destination for courier dispatch") }
                                 )
                             }
-                            message.deliveryId.isNotBlank() || msgLower.contains("shipment") || msgLower.contains("transit") || msgLower.contains("radar") || msgLower.contains("track") -> {
-                                ChatTrackingActionCard(
-                                    deliveryId = message.deliveryId.ifBlank { "ESD-TRK-784" },
-                                    isDark = isDark,
-                                    onOpenLiveMap = { onNavigate("ActiveTracking") }
-                                )
-                            }
-                            msgLower.contains("wallet") || msgLower.contains("refund") || msgLower.contains("balance") || msgLower.contains("escrow") -> {
+                            msgLower.contains("wallet balance") || msgLower.contains("top up wallet") || msgLower.contains("escrow payment") -> {
                                 ChatWalletActionCard(
                                     isDark = isDark,
                                     onOpenWallet = { onNavigate("Wallet") }
                                 )
                             }
-                            msgLower.contains("address") || msgLower.contains("location") || msgLower.contains("landmark") -> {
+                            msgLower.contains("select delivery location") || msgLower.contains("choose pickup hub") -> {
                                 ChatLocationActionCard(
                                     isDark = isDark,
                                     onLocationChosen = { loc -> onQuickAction("Set delivery location: $loc") }
@@ -1661,10 +1690,11 @@ private fun ChatBookingActionCard(
             } else {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Surface(
+                        onClick = { onSelectLocation() },
                         shape = RoundedCornerShape(8.dp),
                         color = if (isDark) Obsidian else Slate.copy(alpha = 0.2f),
                         border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.4f)),
-                        modifier = Modifier.weight(1f).clickable { onSelectLocation() }
+                        modifier = Modifier.weight(1f)
                     ) {
                         Text(
                             text = "Change Route",
@@ -1677,9 +1707,10 @@ private fun ChatBookingActionCard(
                     }
 
                     Surface(
+                        onClick = { onConfirm() },
                         shape = RoundedCornerShape(8.dp),
                         color = Gold,
-                        modifier = Modifier.weight(1.3f).clickable { onConfirm() }
+                        modifier = Modifier.weight(1.3f)
                     ) {
                         Text(
                             text = "Confirm & Book",
@@ -1726,9 +1757,10 @@ private fun ChatTrackingActionCard(
             Text("Assigned Courier: Central Fleet Rider • In Transit on Ring Road", fontSize = 11.sp, color = if (isDark) Color.White else Obsidian)
 
             Surface(
+                onClick = { onOpenLiveMap() },
                 shape = RoundedCornerShape(8.dp),
                 color = Gold,
-                modifier = Modifier.fillMaxWidth().clickable { onOpenLiveMap() }
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier.padding(vertical = 7.dp),
@@ -1773,9 +1805,10 @@ private fun ChatWalletActionCard(
             Text("All transactions, dispatch fees, and refunds are instant and protected under ESDispatch Escrow.", fontSize = 11.sp, color = if (isDark) Color.White else Obsidian)
 
             Surface(
+                onClick = { onOpenWallet() },
                 shape = RoundedCornerShape(8.dp),
                 color = Gold,
-                modifier = Modifier.fillMaxWidth().clickable { onOpenWallet() }
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = "Open Wallet Ledger",
@@ -1813,10 +1846,10 @@ private fun ChatLocationActionCard(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 items(hubs) { hub ->
                     Surface(
+                        onClick = { onLocationChosen(hub) },
                         shape = RoundedCornerShape(6.dp),
                         color = if (isDark) Obsidian else Slate.copy(alpha = 0.25f),
-                        border = BorderStroke(0.7.dp, Gold.copy(alpha = 0.3f)),
-                        modifier = Modifier.clickable { onLocationChosen(hub) }
+                        border = BorderStroke(0.7.dp, Gold.copy(alpha = 0.3f))
                     ) {
                         Text(
                             text = hub,
@@ -1830,9 +1863,10 @@ private fun ChatLocationActionCard(
             }
 
             Surface(
+                onClick = { onLocationChosen("Current GPS Location") },
                 shape = RoundedCornerShape(8.dp),
                 color = Gold,
-                modifier = Modifier.fillMaxWidth().clickable { onLocationChosen("Current GPS Location") }
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier.padding(vertical = 6.dp),
@@ -1871,7 +1905,7 @@ fun VoiceCallHUDModal(
 
     var isMuted by remember { mutableStateOf(false) }
     var isSpeakerOn by remember { mutableStateOf(true) }
-    val isSpeaking by VoiceGuidanceManager.isSpeakingFlow.collectAsState()
+    val isSpeaking by GoogleCloudVoiceEngine.isSpeakingFlow.collectAsState()
 
     var conversationStateText by remember { mutableStateOf("Connecting to voice line...") }
     var isProcessingAI by remember { mutableStateOf(false) }
@@ -1901,7 +1935,8 @@ fun VoiceCallHUDModal(
     // Audio routing via AudioManager
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
     DisposableEffect(Unit) {
-        VoiceGuidanceManager.initialize(context)
+        GoogleCloudVoiceEngine.initialize(context)
+        viewModel?.setVoiceCallActive(true)
         val prevMode = audioManager?.mode ?: AudioManager.MODE_NORMAL
         val prevSpeaker = audioManager?.isSpeakerphoneOn ?: false
         try {
@@ -1911,7 +1946,8 @@ fun VoiceCallHUDModal(
 
         onDispose {
             try {
-                VoiceGuidanceManager.stop()
+                GoogleCloudVoiceEngine.stop()
+                viewModel?.setVoiceCallActive(false)
                 audioManager?.mode = prevMode
                 audioManager?.isSpeakerphoneOn = prevSpeaker
             } catch (_: Exception) {}
@@ -2010,7 +2046,7 @@ fun VoiceCallHUDModal(
                             )
 
                             conversationStateText = "Concierge speaking..."
-                            VoiceGuidanceManager.speak(aiAnswer, isUrgent = true) {
+                            GoogleCloudVoiceEngine.speak(context, aiAnswer) {
                                 if (!isMuted) {
                                     conversationStateText = "Listening... Speak now"
                                     listenToCustomer()
@@ -2048,7 +2084,7 @@ fun VoiceCallHUDModal(
     }
 
     LaunchedEffect(isMuted) {
-        VoiceGuidanceManager.setMuted(isMuted)
+        GoogleCloudVoiceEngine.setMuted(isMuted)
         if (isMuted) {
             try {
                 speechRecognizer?.stopListening()
@@ -2072,7 +2108,7 @@ fun VoiceCallHUDModal(
         } else {
             "Hello! You are connected to ESDispatch live dispatch concierge. How can I assist you with your logistics today?"
         }
-        VoiceGuidanceManager.speak(greeting, isUrgent = true) {
+        GoogleCloudVoiceEngine.speak(context, greeting) {
             if (!isMuted) {
                 conversationStateText = "Listening... Speak now"
                 listenToCustomer()
@@ -2434,7 +2470,8 @@ fun VoiceCallHUDModal(
                     IconButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            VoiceGuidanceManager.stop()
+                            GoogleCloudVoiceEngine.stop()
+                            viewModel?.setVoiceCallActive(false)
                             onEndCall(callSeconds, "")
                         },
                         modifier = Modifier
@@ -2516,9 +2553,9 @@ fun SelectParcelBottomSheet(
                     )
                 }
                 Surface(
+                    onClick = { onDismiss() },
                     shape = CircleShape,
-                    color = if (isDark) Charcoal else Slate.copy(alpha = 0.3f),
-                    modifier = Modifier.clickable { onDismiss() }
+                    color = if (isDark) Charcoal else Slate.copy(alpha = 0.3f)
                 ) {
                     Icon(
                         Icons.Filled.Close,
@@ -2579,17 +2616,16 @@ fun SelectParcelBottomSheet(
                         val isSelected = parcel.id == selectedParcelId
                         val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
                         Surface(
+                            onClick = {
+                                onSelect(parcel)
+                            },
                             shape = RoundedCornerShape(14.dp),
                             color = if (isSelected) (if (isDark) Charcoal else GoldenWhiteSurface) else (if (isDark) Charcoal.copy(alpha = 0.6f) else GoldenWhiteLight),
                             border = BorderStroke(
                                 if (isSelected) 1.5.dp else 1.dp,
                                 if (isSelected) Gold else (if (isDark) Slate.copy(alpha = 0.3f) else Slate.copy(alpha = 0.5f))
                             ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onSelect(parcel)
-                                }
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
                                 modifier = Modifier.padding(12.dp),

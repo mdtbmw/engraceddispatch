@@ -375,7 +375,7 @@ fun CustomerAssistantTab(
         ) {
             quickActions.forEach { action ->
                 Surface(
-                    modifier = Modifier.clickable {
+                    onClick = {
                         onSendMessage(action)
                     },
                     shape = RoundedCornerShape(12.dp),
@@ -755,12 +755,11 @@ fun ControlCenterTab(
                             availableDeliveries.forEach { parcel ->
                                 val isSelected = selectedParcel?.id == parcel.id
                                 Card(
-                                    modifier = Modifier
-                                        .width(200.dp)
-                                        .clickable {
-                                            selectedParcel = parcel
-                                            viewModel.runSmartAssignment(parcel.pickupAddress, parcel.weight, false)
-                                        },
+                                    onClick = {
+                                        selectedParcel = parcel
+                                        viewModel.runSmartAssignment(parcel.pickupAddress, parcel.weight, false)
+                                    },
+                                    modifier = Modifier.width(200.dp),
                                     colors = CardDefaults.cardColors(
                                         containerColor = if (isSelected) Gold else (if (isLight) BackgroundLight else LuxuryBlack)
                                     ),
@@ -2255,9 +2254,10 @@ fun BulkDeliveryManagementSection(
                 items(parcels) { parcel ->
                     val isSelected = selectedParcelIds.contains(parcel.id)
                     Surface(
-                        modifier = Modifier.fillMaxWidth().clickable {
+                        onClick = {
                             selectedParcelIds = if (isSelected) selectedParcelIds - parcel.id else selectedParcelIds + parcel.id
                         },
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp),
                         color = if (isSelected) textHighlight.copy(alpha = 0.15f) else Charcoal,
                         border = BorderStroke(1.dp, if (isSelected) textHighlight else labelColor.copy(alpha = 0.2f))
