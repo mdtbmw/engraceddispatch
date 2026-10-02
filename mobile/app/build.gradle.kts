@@ -18,17 +18,14 @@ android {
   val envFile = rootProject.file("../.env")
   val localPropsFile = rootProject.file("local.properties")
   val envProps = mutableMapOf<String, String>()
-  if (localPropsFile.exists()) {
-    val lp = java.util.Properties()
-    localPropsFile.inputStream().use { lp.load(it) }
-    lp.forEach { (k, v) -> envProps[k.toString()] = v.toString() }
-  }
-  if (envFile.exists()) {
-    envFile.readLines().forEach { line ->
-      val trimmed = line.trim()
-      if (trimmed.isNotEmpty() && !trimmed.startsWith("#") && trimmed.contains("=")) {
-        val parts = trimmed.split("=", limit = 2)
-        envProps[parts[0].trim()] = parts[1].trim()
+  listOf(localPropsFile, envFile).forEach { f ->
+    if (f.exists()) {
+      f.readLines().forEach { line ->
+        val trimmed = line.trim()
+        if (trimmed.isNotEmpty() && !trimmed.startsWith("#") && trimmed.contains("=")) {
+          val parts = trimmed.split("=", limit = 2)
+          envProps[parts[0].trim()] = parts[1].trim()
+        }
       }
     }
   }
