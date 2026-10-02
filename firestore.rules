@@ -243,8 +243,53 @@ service cloud.firestore {
 
       // User scoped deliveries (accessible to owner, admin, dispatcher, and assigned or claiming couriers)
       match /deliveries/{deliveryId} {
-        allow read: if isOwner(userId) || isAdmin() || isDispatcher() || (isAuth() && (resource.data.get('riderId', '') == request.auth.uid || resource.data.get('assignedRiderId', '') == request.auth.uid || resource.data.get('driverId', '') == request.auth.uid));
-        allow write: if isOwner(userId) || isAdmin() || isDispatcher() || (isAuth() && (request.resource.data.get('userId', '') == request.auth.uid || request.resource.data.get('senderId', '') == request.auth.uid || resource.data.get('riderId', '') == request.auth.uid || request.resource.data.get('riderId', '') == request.auth.uid || isAvailableDelivery(resource.data)));
+        allow read: if isOwner(userId) || isAdmin() || isDispatcher() || (isAuth() && (
+          (resource != null && (
+            resource.data.get('riderId', '') == request.auth.uid ||
+            resource.data.get('assignedRiderId', '') == request.auth.uid ||
+            resource.data.get('driverId', '') == request.auth.uid
+          )) ||
+          (exists(/databases/$(database)/documents/deliveries/$(deliveryId)) && (
+            get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.get('riderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.get('assignedRiderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.get('driverId', '') == request.auth.uid
+          )) ||
+          (exists(/databases/$(database)/documents/parcels/$(deliveryId)) && (
+            get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('riderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('assignedRiderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('driverId', '') == request.auth.uid
+          ))
+        ));
+
+        allow write: if isOwner(userId) || isAdmin() || isDispatcher() || (isAuth() && (
+          request.resource.data.get('userId', '') == request.auth.uid ||
+          request.resource.data.get('senderId', '') == request.auth.uid ||
+          request.resource.data.get('riderId', '') == request.auth.uid ||
+          request.resource.data.get('assignedRiderId', '') == request.auth.uid ||
+          request.resource.data.get('driverId', '') == request.auth.uid ||
+          (resource != null && (
+            resource.data.get('riderId', '') == request.auth.uid ||
+            resource.data.get('assignedRiderId', '') == request.auth.uid ||
+            resource.data.get('driverId', '') == request.auth.uid ||
+            isAvailableDelivery(resource.data) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'courierLatitude', 'courierLongitude', 'courierBearing', 'courierSpeed',
+              'courierAccuracy', 'courierLastUpdated', 'initialCourierLat', 'initialCourierLng',
+              'lastUpdated', 'updatedAt', 'status', 'progress'
+            ])
+          )) ||
+          (exists(/databases/$(database)/documents/deliveries/$(deliveryId)) && (
+            get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.get('riderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.get('assignedRiderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.get('driverId', '') == request.auth.uid
+          )) ||
+          (exists(/databases/$(database)/documents/parcels/$(deliveryId)) && (
+            get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('riderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('assignedRiderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('driverId', '') == request.auth.uid
+          ))
+        ));
+
         allow delete: if isOwner(userId) || isAdmin();
 
         match /chats/{msgId} {
@@ -350,28 +395,62 @@ service cloud.firestore {
     // ===============================================================
 
     match /deliveries/{deliveryId} {
-      // Scoped access for participants, fleet dispatchers, admins, pool deliveries, or verified recipient phone match
+      // Scoped access for participants, fleet dispatchers, admins, pool deliveries, verified recipient phone match, or assigned couriers
       allow get, list: if isAuth() && (
         isAdmin() ||
         isDispatcher() ||
         isDeliveryParticipant(resource.data) ||
         isAvailableDelivery(resource.data) ||
-        (request.auth.token.get('phone_number', '') != '' && request.auth.token.phone_number == resource.data.get('receiverPhone', ''))
+        (request.auth.token.get('phone_number', '') != '' && request.auth.token.phone_number == resource.data.get('receiverPhone', '')) ||
+        (exists(/databases/$(database)/documents/parcels/$(deliveryId)) && (
+          get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('riderId', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('assignedRiderId', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('driverId', '') == request.auth.uid
+        ))
       );
 
       allow create: if isAuth();
 
-      // Participants, dispatchers, admins, booking customer, and couriers claiming unassigned deliveries can update
+      // Participants, dispatchers, admins, booking customer, couriers updating status/telemetry, and claiming unassigned deliveries
       allow update: if isAuth() && (
         isAdmin() ||
         isDispatcher() ||
         isDeliveryParticipant(resource.data) ||
+        isDeliveryParticipant(request.resource.data) ||
         isAvailableDelivery(resource.data) ||
         request.resource.data.get('userId', '') == request.auth.uid ||
         request.resource.data.get('customerId', '') == request.auth.uid ||
         request.resource.data.get('riderId', '') == request.auth.uid ||
+        request.resource.data.get('assignedRiderId', '') == request.auth.uid ||
         request.resource.data.get('driverId', '') == request.auth.uid ||
-        resource.data.get('riderId', '') in ['', 'unassigned']
+        resource.data.get('riderId', '') in ['', 'unassigned'] ||
+        // Couriers updating telemetry (GPS coordinates, heading, speed, accuracy, timestamps)
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'courierLatitude', 'courierLongitude', 'courierBearing', 'courierSpeed',
+          'courierAccuracy', 'courierLastUpdated', 'initialCourierLat', 'initialCourierLng',
+          'lastUpdated', 'updatedAt'
+        ]) ||
+        // Couriers updating delivery status or progress transitions
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'progress', 'lastUpdated', 'updatedAt']) && (
+            resource.data.get('riderId', '') == request.auth.uid ||
+            resource.data.get('assignedRiderId', '') == request.auth.uid ||
+            resource.data.get('driverId', '') == request.auth.uid ||
+            resource.data.get('reservedRiderId', '') == request.auth.uid ||
+            request.resource.data.get('riderId', '') == request.auth.uid ||
+            request.resource.data.get('assignedRiderId', '') == request.auth.uid ||
+            request.resource.data.get('driverId', '') == request.auth.uid ||
+            isAvailableDelivery(resource.data)
+          )
+        ) ||
+        // Cross-collection courier match if delivery is tracked in parcels
+        (
+          exists(/databases/$(database)/documents/parcels/$(deliveryId)) && (
+            get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('riderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('assignedRiderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/parcels/$(deliveryId)).data.get('driverId', '') == request.auth.uid
+          )
+        )
       );
 
       allow delete: if isAdmin();
@@ -404,27 +483,62 @@ service cloud.firestore {
     }
 
     match /parcels/{parcelId} {
-      // Scoped access for participants, fleet dispatchers, admins, pool deliveries, or verified recipient phone match
+      // Scoped access for participants, fleet dispatchers, admins, pool deliveries, verified recipient phone match, or assigned couriers
       allow get, list: if isAuth() && (
         isAdmin() ||
         isDispatcher() ||
         isDeliveryParticipant(resource.data) ||
         isAvailableDelivery(resource.data) ||
-        (request.auth.token.get('phone_number', '') != '' && request.auth.token.phone_number == resource.data.get('receiverPhone', ''))
+        (request.auth.token.get('phone_number', '') != '' && request.auth.token.phone_number == resource.data.get('receiverPhone', '')) ||
+        (exists(/databases/$(database)/documents/deliveries/$(parcelId)) && (
+          get(/databases/$(database)/documents/deliveries/$(parcelId)).data.get('riderId', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/deliveries/$(parcelId)).data.get('assignedRiderId', '') == request.auth.uid ||
+          get(/databases/$(database)/documents/deliveries/$(parcelId)).data.get('driverId', '') == request.auth.uid
+        ))
       );
 
       allow create: if isAuth();
 
+      // Participants, dispatchers, admins, booking customer, couriers updating status/telemetry, and claiming unassigned deliveries
       allow update: if isAuth() && (
         isAdmin() ||
         isDispatcher() ||
         isDeliveryParticipant(resource.data) ||
+        isDeliveryParticipant(request.resource.data) ||
         isAvailableDelivery(resource.data) ||
         request.resource.data.get('userId', '') == request.auth.uid ||
         request.resource.data.get('customerId', '') == request.auth.uid ||
         request.resource.data.get('riderId', '') == request.auth.uid ||
+        request.resource.data.get('assignedRiderId', '') == request.auth.uid ||
         request.resource.data.get('driverId', '') == request.auth.uid ||
-        resource.data.get('riderId', '') in ['', 'unassigned']
+        resource.data.get('riderId', '') in ['', 'unassigned'] ||
+        // Couriers updating telemetry (GPS coordinates, heading, speed, accuracy, timestamps)
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'courierLatitude', 'courierLongitude', 'courierBearing', 'courierSpeed',
+          'courierAccuracy', 'courierLastUpdated', 'initialCourierLat', 'initialCourierLng',
+          'lastUpdated', 'updatedAt'
+        ]) ||
+        // Couriers updating delivery status or progress transitions
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'progress', 'lastUpdated', 'updatedAt']) && (
+            resource.data.get('riderId', '') == request.auth.uid ||
+            resource.data.get('assignedRiderId', '') == request.auth.uid ||
+            resource.data.get('driverId', '') == request.auth.uid ||
+            resource.data.get('reservedRiderId', '') == request.auth.uid ||
+            request.resource.data.get('riderId', '') == request.auth.uid ||
+            request.resource.data.get('assignedRiderId', '') == request.auth.uid ||
+            request.resource.data.get('driverId', '') == request.auth.uid ||
+            isAvailableDelivery(resource.data)
+          )
+        ) ||
+        // Cross-collection courier match if delivery is tracked in deliveries
+        (
+          exists(/databases/$(database)/documents/deliveries/$(parcelId)) && (
+            get(/databases/$(database)/documents/deliveries/$(parcelId)).data.get('riderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/deliveries/$(parcelId)).data.get('assignedRiderId', '') == request.auth.uid ||
+            get(/databases/$(database)/documents/deliveries/$(parcelId)).data.get('driverId', '') == request.auth.uid
+          )
+        )
       );
 
       allow delete: if isAdmin();

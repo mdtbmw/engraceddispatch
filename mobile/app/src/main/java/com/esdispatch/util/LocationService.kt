@@ -201,8 +201,8 @@ class LocationService : Service() {
                 }
         }
 
-        // 2. Direct sync to deliveries/{activeParcelId} for real-time customer map tracking (throttled 4s)
-        if (!pId.isNullOrBlank() && now - lastDeliveryLocationSync > 4000L) {
+        // 2. Direct sync to deliveries/{activeParcelId} for real-time customer map tracking (throttled 2s)
+        if (!pId.isNullOrBlank() && now - lastDeliveryLocationSync >= 2000L) {
             lastDeliveryLocationSync = now
             val deliveryUpdate = hashMapOf<String, Any>(
                 "courierLatitude" to location.latitude,
@@ -372,13 +372,24 @@ class LocationService : Service() {
             parcelId: String,
             stopLat: Double?,
             stopLng: Double?,
-            stopType: String
+            stopType: String,
+            context: Context? = null
         ) {
             activeParcelId = parcelId
             activeStopLat = stopLat
             activeStopLng = stopLng
             activeStopType = stopType
             hasTriggeredArrivalForCurrentStop = false
+            if (context != null) {
+                start(
+                    context = context,
+                    parcelId = parcelId,
+                    batchId = null,
+                    stopLat = stopLat,
+                    stopLng = stopLng,
+                    stopType = stopType
+                )
+            }
         }
 
         fun stop(context: Context) {

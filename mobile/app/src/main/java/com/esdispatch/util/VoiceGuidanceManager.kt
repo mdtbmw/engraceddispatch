@@ -18,6 +18,11 @@ object VoiceGuidanceManager : TextToSpeech.OnInitListener {
     private var lastSpokenPhrase = ""
     private var lastSpokenTime = 0L
 
+    private val _isSpeakingFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isSpeakingFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _isSpeakingFlow
+
+    private var activeSpeechCallback: (() -> Unit)? = null
+
     fun initialize(context: Context) {
         if (tts == null) {
             try {
@@ -37,6 +42,21 @@ object VoiceGuidanceManager : TextToSpeech.OnInitListener {
             }
             tts?.setSpeechRate(0.95f) // Natural, intelligible driving cadence
             tts?.setPitch(1.0f)
+            tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    _isSpeakingFlow.value = true
+                }
+                override fun onDone(utteranceId: String?) {
+                    _isSpeakingFlow.value = false
+                    val cb = activeSpeechCallback
+                    activeSpeechCallback = null
+                    cb?.invoke()
+                }
+                override fun onError(utteranceId: String?) {
+                    _isSpeakingFlow.value = false
+                    activeSpeechCallback = null
+                }
+            })
             isInitialized = true
             Log.d(TAG, "TextToSpeech successfully initialized.")
         } else {
@@ -60,31 +80,42 @@ object VoiceGuidanceManager : TextToSpeech.OnInitListener {
         return isMuted
     }
 
-    fun speak(text: String, isUrgent: Boolean = false) {
-        if (isMuted || !isInitialized || text.isBlank()) return
+    fun speak(text: String, isUrgent: Boolean = false, onDone: (() -> Unit)? = null) {
+        if (isMuted || !isInitialized || text.isBlank()) {
+            onDone?.invoke()
+            return
+        }
 
         val now = System.currentTimeMillis()
         // Deduplicate repeating guidance within 8 seconds unless urgent
         if (!isUrgent && text.equals(lastSpokenPhrase, ignoreCase = true) && (now - lastSpokenTime < 8000L)) {
+            onDone?.invoke()
             return
         }
 
         lastSpokenPhrase = text
         lastSpokenTime = now
+        activeSpeechCallback = onDone
 
         try {
             val queueMode = if (isUrgent) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
             val params = Bundle().apply {
                 putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
             }
-            tts?.speak(text, queueMode, params, "TTS_${System.currentTimeMillis()}")
+            val utteranceId = "TTS_${System.currentTimeMillis()}"
+            _isSpeakingFlow.value = true
+            tts?.speak(text, queueMode, params, utteranceId)
         } catch (e: Exception) {
             Log.w(TAG, "Error speaking text: ${e.message}")
+            _isSpeakingFlow.value = false
+            onDone?.invoke()
         }
     }
 
     fun stop() {
         try {
+            _isSpeakingFlow.value = false
+            activeSpeechCallback = null
             tts?.stop()
         } catch (_: Exception) {}
     }

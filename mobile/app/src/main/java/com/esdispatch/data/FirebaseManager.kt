@@ -2366,6 +2366,7 @@ object FirebaseManager {
         bearing: Float = 0f,
         speed: Float = 0f,
         accuracy: Float = 0f,
+        userId: String? = null,
         onComplete: (Boolean, String?) -> Unit = { _, _ -> }
     ) {
         val db = firestore
@@ -2385,27 +2386,19 @@ object FirebaseManager {
         if (accuracy != 0f) updateMap["courierAccuracy"] = accuracy.toDouble()
 
         val docRef = db.collection("deliveries").document(parcelId)
-        docRef.get().addOnSuccessListener { snapshot ->
-            if (snapshot.exists()) {
-                val parcelUserId = snapshot.getString("userId") ?: ""
-                
-                db.runTransaction { transaction ->
-                    updateMap.forEach { (k, v) -> transaction.update(docRef, k, v) }
-                }.addOnSuccessListener {
-                    if (parcelUserId.isNotEmpty()) {
-                        val userDocRef = db.collection("users").document(parcelUserId).collection("deliveries").document(parcelId)
-                        userDocRef.update(updateMap)
-                    }
-                    onComplete(true, null)
-                }.addOnFailureListener { e ->
-                    onComplete(false, e.message ?: "Failed to update GPS coordinates.")
+        docRef.set(updateMap, com.google.firebase.firestore.SetOptions.merge())
+            .addOnSuccessListener {
+                val effectiveUserId = userId?.takeIf { it.isNotBlank() }
+                if (effectiveUserId != null) {
+                    val userDocRef = db.collection("users").document(effectiveUserId).collection("deliveries").document(parcelId)
+                    userDocRef.set(updateMap, com.google.firebase.firestore.SetOptions.merge())
                 }
-            } else {
-                onComplete(false, "Parcel not found.")
+                onComplete(true, null)
             }
-        }.addOnFailureListener { e ->
-            onComplete(false, e.message ?: "Failed to fetch parcel.")
-        }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to update GPS telemetry: ${e.message}")
+                onComplete(false, e.message ?: "Failed to update GPS coordinates.")
+            }
     }
 
     /**

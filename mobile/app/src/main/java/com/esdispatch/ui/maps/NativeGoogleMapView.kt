@@ -101,7 +101,7 @@ fun NativeGoogleMapView(
             delay(5000)
         }
     }
-    val fresh = courier != null && courierLastUpdated > 0 && now - courierLastUpdated in -5000L..60000L
+    val fresh = courier != null && (courierLastUpdated == 0L || now - courierLastUpdated in -15000L..120000L)
     val road = rememberRoadRoute(context, pickup, delivery, phase, courier, fresh, routeRetry, initialRiderPos)
     val leg0 = road.route?.legs?.firstOrNull()
     val leg1 = road.route?.legs?.getOrNull(1)

@@ -16,7 +16,13 @@ android {
   compileSdk = 35
 
   val envFile = rootProject.file("../.env")
+  val localPropsFile = rootProject.file("local.properties")
   val envProps = mutableMapOf<String, String>()
+  if (localPropsFile.exists()) {
+    val lp = java.util.Properties()
+    localPropsFile.inputStream().use { lp.load(it) }
+    lp.forEach { (k, v) -> envProps[k.toString()] = v.toString() }
+  }
   if (envFile.exists()) {
     envFile.readLines().forEach { line ->
       val trimmed = line.trim()
@@ -27,8 +33,10 @@ android {
     }
   }
   fun resolveEnv(key: String, defaultVal: String = ""): String {
+    val altKey = key.lowercase().replace('_', '.')
     return System.getenv(key)?.removeSurrounding("\"")?.takeIf { it.isNotBlank() }
       ?: envProps[key]?.removeSurrounding("\"")?.takeIf { it.isNotBlank() }
+      ?: envProps[altKey]?.removeSurrounding("\"")?.takeIf { it.isNotBlank() }
       ?: defaultVal
   }
 
@@ -45,8 +53,10 @@ android {
     buildConfigField("String", "PAYSTACK_PUBLIC_KEY", "\"$paystackKey\"")
     val googleWebClientId = resolveEnv("GOOGLE_WEB_CLIENT_ID")
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
-    // GEMINI_API_KEY is handled securely via backend Cloud Functions (askDispatchAssistant)
-    buildConfigField("String", "GEMINI_API_KEY", "\"\"")
+    val geminiApiKey = resolveEnv("GEMINI_API_KEY")
+    buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
+    val ttsApiKey = resolveEnv("TTS_API_KEY")
+    buildConfigField("String", "TTS_API_KEY", "\"$ttsApiKey\"")
     val googleMapsApiKey = resolveEnv("GOOGLE_MAPS_API_KEY")
     buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsApiKey\"")
     manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey

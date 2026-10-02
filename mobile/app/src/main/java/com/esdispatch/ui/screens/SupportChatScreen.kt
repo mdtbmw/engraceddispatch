@@ -1,11 +1,22 @@
 package com.esdispatch.ui.screens
 
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioManager
 import android.net.Uri
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.esdispatch.util.VoiceGuidanceManager
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -278,81 +289,16 @@ fun SupportChatScreen(
                     urgency = urgency
                 )
             } else if (!isRepresentativeJoined) {
-                // ESAI Smart Logistics Logic
+                // ESAI Smart Logistics Assistant (Gemini 3.5-flash-lite + Dispatch Telemetry)
                 isAiTyping = true
-                typingAgentText = "ESAI is typing..."
-                delay(1600)
+                typingAgentText = "ESAI is thinking..."
 
-                val parcel = selectedParcel
-                val activeParcelsList = activeParcels
-                val aiReply = when {
-                    lower.contains("inquir") || lower.contains("shipment") || lower.contains("selected") -> {
-                        if (parcel != null) {
-                            val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
-                            when (parcel.status) {
-                                ParcelStatus.DELIVERED -> {
-                                    "I have linked your completed shipment **$displayId** (${parcel.itemName.ifBlank { "Delivery Package" }}). " +
-                                            "Our system records that this delivery was completed to **${parcel.deliveryAddress.ifBlank { "recipient address" }}** with verified recipient PIN handover. " +
-                                            "Would you like an electronic receipt, want to tip the assigned courier, or need to report any discrepancy?"
-                                }
-                                ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
-                                    val courierInfo = if (parcel.courierName.isNotBlank()) "Courier **${parcel.courierName}** (${parcel.riderBikeNumber.ifBlank { "Dispatch Motorcycle" }})" else "An assigned fleet courier"
-                                    "Your shipment **$displayId** is currently in **TRANSIT**. $courierInfo is en route along Benin City corridors towards **${parcel.deliveryAddress}**. " +
-                                            "Telemetry confirms normal pace. Tap **Track on Live Radar** below for real-time map GPS tracking."
-                                }
-                                ParcelStatus.ARRIVED_PICKUP -> {
-                                    "Courier **${parcel.courierName.ifBlank { "Fleet Rider" }}** has arrived at the pickup location (**${parcel.pickupAddress}**) to collect **$displayId**."
-                                }
-                                ParcelStatus.PENDING -> {
-                                    "Shipment **$displayId** (${parcel.itemName}) is registered and queued in our Central Dispatch Pool. Couriers within your pickup radius are receiving the mission broadcast right now."
-                                }
-                                ParcelStatus.CANCELLED -> {
-                                    "Shipment **$displayId** was cancelled. Any associated delivery charges or escrow holds have been refunded back to your wallet balance."
-                                }
-                                else -> {
-                                    "Shipment **$displayId** (${parcel.itemName}) is currently in status **${parcel.status.name}**. Let me know how I can assist you with this order."
-                                }
-                            }
-                        } else {
-                            "You can link any active or completed delivery to this ticket by tapping the parcel selector bar above."
-                        }
-                    }
-                    lower.contains("where") || lower.contains("track") || lower.contains("status") || lower.contains("rider") -> {
-                        if (parcel != null) {
-                            val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
-                            "Your shipment **$displayId** (${parcel.itemName.ifBlank { "Package" }}) is currently **${parcel.status.name}**." +
-                                    (if (parcel.courierName.isNotBlank()) "\n• Assigned Courier: **${parcel.courierName}**" else "\n• Searching available fleet couriers.") +
-                                    (if (parcel.deliveryAddress.isNotBlank()) "\n• Destination: **${parcel.deliveryAddress}**" else "") +
-                                    "\nOur telemetry indicates safe transit across Benin City corridors. Tap 'Live Radar' on your dashboard for live GPS tracking."
-                        } else if (activeParcelsList.isNotEmpty()) {
-                            val p = activeParcelsList.first()
-                            val displayId = FormatUtils.formatDisplayTrackingId(p.id)
-                            "You have an active shipment **$displayId** (${p.itemName}). Status: **${p.status.name}**. Assigned courier: **${p.courierName.ifBlank { "Searching rider pool" }}**."
-                        } else {
-                            "You currently have no active deliveries in transit. To book a new courier, tap 'Send Package' on your dashboard, or use the dispatch draft below."
-                        }
-                    }
-                    lower.contains("book") || lower.contains("send") || lower.contains("dispatch") || lower.contains("bike") -> {
-                        "I have prepared an express dispatch draft for you below. Our motorcycle couriers are on standby across Ring Road, GRA, Uselu, and Airport Road corridors. Tap **Confirm & Book** to proceed or **Change Route** to adjust landmarks."
-                    }
-                    lower.contains("delay") || lower.contains("traffic") || lower.contains("late") -> {
-                        "Benin City operational corridors (Ring Road, Uselu, and Sapele Road) occasionally experience peak congestion. Our fleet routing dynamically reroutes riders to avoid bottlenecks. Your delivery is prioritized!"
-                    }
-                    lower.contains("address") || lower.contains("change") || lower.contains("redirect") -> {
-                        "To update the delivery destination for an active parcel, please provide the new landmark or street name here. I will notify the assigned courier immediately."
-                    }
-                    lower.contains("wallet") || lower.contains("refund") || lower.contains("payment") || lower.contains("balance") -> {
-                        "All payments and escrow deposits in ESDispatch are securely protected. If a dispatch was cancelled, your refund is automatically returned to your wallet balance within seconds."
-                    }
-                    lower.contains("market") || lower.contains("store") || lower.contains("product") -> {
-                        "Our Marketplace connects verified Benin City vendors. Orders placed through Marketplace stores include automated dispatch delivery directly to your doorstep."
-                    }
-                    else -> {
-                        "Thank you for reaching out to ESDispatch Support. I have logged this inquiry under Ticket **#$ticketNumber** ($urgency priority). " +
-                                (if (parcel != null) "Currently linked to shipment **${FormatUtils.formatDisplayTrackingId(parcel.id)}**. " else "") +
-                                "How can I assist you with your deliveries, bookings, or account today?"
-                    }
-                }
+                val aiReply = viewModel.queryDispatchAssistant(
+                    prompt = userPrompt,
+                    parcel = selectedParcel,
+                    ticketId = ticketNumber,
+                    urgency = urgency
+                )
 
                 viewModel.sendSupportChatMessage(
                     messageText = aiReply,
@@ -1244,11 +1190,16 @@ fun SupportChatScreen(
                 isRepresentativeJoined = isRepresentativeJoined,
                 representativeName = representativeName,
                 callSeconds = callActiveSeconds,
+                selectedParcel = selectedParcel,
+                ticketNumber = ticketNumber,
+                urgency = urgency,
+                viewModel = viewModel,
                 onDismiss = { showVoiceCallHUD = false },
                 onEndCall = { durationSec, _ ->
                     val duration = if (durationSec > 0) durationSec else callActiveSeconds
                     isCallActive = false
                     showVoiceCallHUD = false
+                    com.esdispatch.util.VoiceGuidanceManager.stop()
                     val mins = duration / 60
                     val secs = duration % 60
                     val summaryText = "Voice Concierge Call Completed (${String.format("%02d:%02d", mins, secs)}). Inquiry resolved."
@@ -1263,11 +1214,13 @@ fun SupportChatScreen(
                 onNavigateToBooking = {
                     isCallActive = false
                     showVoiceCallHUD = false
+                    com.esdispatch.util.VoiceGuidanceManager.stop()
                     onNavigate("SendParcel")
                 },
                 onNavigateToTracking = {
                     isCallActive = false
                     showVoiceCallHUD = false
+                    com.esdispatch.util.VoiceGuidanceManager.stop()
                     onNavigate("ActiveTracking")
                 }
             )
@@ -1903,19 +1856,234 @@ fun VoiceCallHUDModal(
     isRepresentativeJoined: Boolean,
     representativeName: String,
     callSeconds: Int = 0,
+    selectedParcel: Parcel? = null,
+    ticketNumber: String = "",
+    urgency: String = "Standard",
+    viewModel: DeliveryViewModel? = null,
     onDismiss: () -> Unit,
     onEndCall: (durationSec: Int, actionTaken: String) -> Unit,
     onNavigateToBooking: () -> Unit = {},
     onNavigateToTracking: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val coroutineScope = rememberCoroutineScope()
+
     var isMuted by remember { mutableStateOf(false) }
     var isSpeakerOn by remember { mutableStateOf(true) }
+    val isSpeaking by VoiceGuidanceManager.isSpeakingFlow.collectAsState()
 
-    // Concentric breathing rings animation for active speech/connection
+    var conversationStateText by remember { mutableStateOf("Connecting to voice line...") }
+    var isProcessingAI by remember { mutableStateOf(false) }
+    var micRmsLevel by remember { mutableFloatStateOf(0f) }
+
+    // Check & request RECORD_AUDIO permission
+    var hasMicPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasMicPermission = granted
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasMicPermission) {
+            permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // Audio routing via AudioManager
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
+    DisposableEffect(Unit) {
+        VoiceGuidanceManager.initialize(context)
+        val prevMode = audioManager?.mode ?: AudioManager.MODE_NORMAL
+        val prevSpeaker = audioManager?.isSpeakerphoneOn ?: false
+        try {
+            audioManager?.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioManager?.isSpeakerphoneOn = isSpeakerOn
+        } catch (_: Exception) {}
+
+        onDispose {
+            try {
+                VoiceGuidanceManager.stop()
+                audioManager?.mode = prevMode
+                audioManager?.isSpeakerphoneOn = prevSpeaker
+            } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(isSpeakerOn) {
+        try {
+            audioManager?.isSpeakerphoneOn = isSpeakerOn
+        } catch (_: Exception) {}
+    }
+
+    // SpeechRecognizer for real speech-to-text
+    val speechRecognizer = remember {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        } else null
+    }
+
+    fun listenToCustomer() {
+        if (isMuted || isSpeaking || isProcessingAI || !hasMicPermission) return
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
+            speechRecognizer?.startListening(intent)
+            conversationStateText = "Listening... Speak now"
+        } catch (e: Exception) {
+            Log.w("VoiceCall", "Failed to start listening: ${e.message}")
+        }
+    }
+
+    DisposableEffect(speechRecognizer, hasMicPermission) {
+        if (speechRecognizer == null) return@DisposableEffect onDispose {}
+
+        val listener = object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                if (!isMuted && !isSpeaking && !isProcessingAI) {
+                    conversationStateText = "Listening... Speak now"
+                }
+            }
+            override fun onBeginningOfSpeech() {
+                conversationStateText = "Listening to you..."
+            }
+            override fun onRmsChanged(rmsdB: Float) {
+                micRmsLevel = (rmsdB.coerceIn(0f, 10f) / 10f)
+            }
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {
+                conversationStateText = "Processing speech..."
+            }
+            override fun onError(error: Int) {
+                micRmsLevel = 0f
+                if (!isMuted && !isSpeaking && !isProcessingAI) {
+                    coroutineScope.launch {
+                        delay(900)
+                        if (!isMuted && !isSpeaking && !isProcessingAI) {
+                            listenToCustomer()
+                        }
+                    }
+                }
+            }
+            override fun onResults(results: Bundle?) {
+                micRmsLevel = 0f
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val recognizedText = matches?.firstOrNull()?.trim()
+                if (!recognizedText.isNullOrBlank()) {
+                    conversationStateText = "Thinking..."
+                    isProcessingAI = true
+                    coroutineScope.launch {
+                        try {
+                            val aiAnswer = viewModel?.queryDispatchAssistant(
+                                prompt = recognizedText,
+                                parcel = selectedParcel,
+                                ticketId = ticketNumber,
+                                urgency = urgency
+                            ) ?: "Your delivery is in progress along Benin City corridors."
+
+                            // Post to chat record
+                            viewModel?.sendSupportChatMessage(
+                                messageText = recognizedText,
+                                ticketId = ticketNumber,
+                                deliveryId = selectedParcel?.id ?: "",
+                                isAi = false,
+                                urgency = urgency
+                            )
+                            viewModel?.sendSupportChatMessage(
+                                messageText = aiAnswer,
+                                ticketId = ticketNumber,
+                                deliveryId = selectedParcel?.id ?: "",
+                                isAi = true,
+                                urgency = urgency
+                            )
+
+                            conversationStateText = "Concierge speaking..."
+                            VoiceGuidanceManager.speak(aiAnswer, isUrgent = true) {
+                                if (!isMuted) {
+                                    conversationStateText = "Listening... Speak now"
+                                    listenToCustomer()
+                                }
+                            }
+                        } catch (_: Exception) {
+                            conversationStateText = "Voice line active"
+                        } finally {
+                            isProcessingAI = false
+                        }
+                    }
+                } else {
+                    if (!isMuted && !isSpeaking && !isProcessingAI) {
+                        listenToCustomer()
+                    }
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (!partial.isNullOrBlank()) {
+                    conversationStateText = "\"$partial...\""
+                }
+            }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+
+        speechRecognizer.setRecognitionListener(listener)
+
+        onDispose {
+            try {
+                speechRecognizer.stopListening()
+                speechRecognizer.destroy()
+            } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(isMuted) {
+        VoiceGuidanceManager.setMuted(isMuted)
+        if (isMuted) {
+            try {
+                speechRecognizer?.stopListening()
+            } catch (_: Exception) {}
+            conversationStateText = "Microphone muted"
+        } else {
+            if (!isSpeaking && !isProcessingAI) {
+                conversationStateText = "Listening... Speak now"
+                listenToCustomer()
+            }
+        }
+    }
+
+    // Call Greeting on connect
+    LaunchedEffect(Unit) {
+        delay(400)
+        conversationStateText = "Concierge speaking..."
+        val greeting = if (selectedParcel != null) {
+            val displayId = FormatUtils.formatDisplayTrackingId(selectedParcel.id)
+            "Hello! You are connected to ESDispatch live dispatch concierge. I have your active shipment $displayId open. How can I assist you today?"
+        } else {
+            "Hello! You are connected to ESDispatch live dispatch concierge. How can I assist you with your logistics today?"
+        }
+        VoiceGuidanceManager.speak(greeting, isUrgent = true) {
+            if (!isMuted) {
+                conversationStateText = "Listening... Speak now"
+                listenToCustomer()
+            }
+        }
+    }
+
+    // Breathing rings animation for active speech/connection
     val infiniteTransition = rememberInfiniteTransition(label = "VoiceCallRings")
     val ring1Scale by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
+        initialValue = 0.88f,
         targetValue = 1.35f,
         animationSpec = infiniteRepeatable(
             animation = tween(2400, easing = FastOutSlowInEasing),
@@ -1933,7 +2101,7 @@ fun VoiceCallHUDModal(
         label = "ring1Alpha"
     )
     val ring2Scale by infiniteTransition.animateFloat(
-        initialValue = 0.75f,
+        initialValue = 0.78f,
         targetValue = 1.20f,
         animationSpec = infiniteRepeatable(
             animation = tween(2400, delayMillis = 600, easing = FastOutSlowInEasing),
@@ -1951,7 +2119,7 @@ fun VoiceCallHUDModal(
         label = "ring2Alpha"
     )
 
-    // Animated audio waveform heights (reacts rhythmically during call)
+    // Animated waveform bars
     val wave1 by infiniteTransition.animateFloat(initialValue = 6f, targetValue = 24f, animationSpec = infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w1")
     val wave2 by infiniteTransition.animateFloat(initialValue = 16f, targetValue = 8f, animationSpec = infiniteRepeatable(tween(480, delayMillis = 80, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w2")
     val wave3 by infiniteTransition.animateFloat(initialValue = 10f, targetValue = 28f, animationSpec = infiniteRepeatable(tween(390, delayMillis = 160, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w3")
@@ -1960,10 +2128,11 @@ fun VoiceCallHUDModal(
     val wave6 by infiniteTransition.animateFloat(initialValue = 18f, targetValue = 10f, animationSpec = infiniteRepeatable(tween(410, delayMillis = 200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w6")
     val wave7 by infiniteTransition.animateFloat(initialValue = 7f, targetValue = 20f, animationSpec = infiniteRepeatable(tween(460, delayMillis = 280, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "w7")
 
-    // Theme-adaptive styling: strictly NOT black or dark mode unless dark theme is enabled!
-    val screenBg = if (isDark) LuxuryBlack else GoldenWhite
+    // Theme-adaptive styling: strictly NOT black or dark mode unless dark theme is applied!
+    val screenBg = if (isDark) LuxuryBlack else Color(0xFFF9F9FB)
+    val cardBg = if (isDark) Charcoal else Color.White
     val controlBg = if (isDark) Charcoal else Color.White
-    val controlBorder = if (isDark) Gold.copy(alpha = 0.25f) else Slate.copy(alpha = 0.4f)
+    val controlBorder = if (isDark) Gold.copy(alpha = 0.25f) else Slate.copy(alpha = 0.35f)
     val callerTitle = if (isRepresentativeJoined) representativeName else "Support Concierge"
     val callerSubtitle = if (isRepresentativeJoined) "Customer Care Specialist" else "Live Dispatch Assistant"
     val formattedDuration = String.format("%02d:%02d", callSeconds / 60, callSeconds % 60)
@@ -1997,7 +2166,8 @@ fun VoiceCallHUDModal(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(CircleShape)
-                        .background(if (isDark) Charcoal else Slate.copy(alpha = 0.25f))
+                        .background(if (isDark) Charcoal else Color.White)
+                        .border(1.dp, controlBorder, CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.KeyboardArrowDown,
@@ -2022,14 +2192,14 @@ fun VoiceCallHUDModal(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = if (callSeconds < 3) Gold else Color(0xFF4CAF50),
+                            color = if (callSeconds < 2) Gold else if (isSpeaking) Gold else Color(0xFF4CAF50),
                             modifier = Modifier.size(6.dp)
                         ) {}
                         Text(
-                            text = if (callSeconds < 3) "Connecting..." else "Connected",
+                            text = if (callSeconds < 2) "Connecting..." else if (isSpeaking) "Speaking" else "Connected",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (callSeconds < 3) Gold else (if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32))
+                            color = if (callSeconds < 2) Gold else (if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32))
                         )
                     }
                 }
@@ -2037,8 +2207,8 @@ fun VoiceCallHUDModal(
                 // Call Duration Badge
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = if (isDark) Charcoal else Color.White,
-                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate.copy(alpha = 0.4f))
+                    color = cardBg,
+                    border = BorderStroke(1.dp, controlBorder)
                 ) {
                     Text(
                         text = formattedDuration,
@@ -2066,7 +2236,7 @@ fun VoiceCallHUDModal(
                             .size(190.dp)
                             .scale(ring1Scale)
                             .clip(CircleShape)
-                            .border(1.5.dp, Gold.copy(alpha = if (isDark) ring1Alpha * 0.45f else ring1Alpha * 0.25f), CircleShape)
+                            .border(1.5.dp, Gold.copy(alpha = if (isDark) ring1Alpha * 0.45f else ring1Alpha * 0.35f), CircleShape)
                     )
                     // Outer Ring 2
                     Box(
@@ -2074,14 +2244,14 @@ fun VoiceCallHUDModal(
                             .size(150.dp)
                             .scale(ring2Scale)
                             .clip(CircleShape)
-                            .border(1.5.dp, Gold.copy(alpha = if (isDark) ring2Alpha * 0.35f else ring2Alpha * 0.20f), CircleShape)
+                            .border(1.5.dp, Gold.copy(alpha = if (isDark) ring2Alpha * 0.35f else ring2Alpha * 0.25f), CircleShape)
                     )
-                    // Core Orb: Obsidian surface with Gold border and icon ensures maximum contrast in both light and dark modes
+                    // Center Avatar Orb
                     Box(
                         modifier = Modifier
-                            .size(108.dp)
+                            .size(110.dp)
                             .clip(CircleShape)
-                            .background(if (isDark) Charcoal else Obsidian)
+                            .background(cardBg)
                             .border(2.5.dp, Gold, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
@@ -2089,7 +2259,7 @@ fun VoiceCallHUDModal(
                             imageVector = if (isRepresentativeJoined) Icons.Filled.SupportAgent else Icons.Filled.HeadsetMic,
                             contentDescription = null,
                             tint = Gold,
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(50.dp)
                         )
                     }
                 }
@@ -2116,32 +2286,50 @@ fun VoiceCallHUDModal(
                 // Clean status chip
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = if (isMuted) Color(0xFFE53935).copy(alpha = 0.12f) else (if (isDark) Charcoal else Slate.copy(alpha = 0.22f)),
-                    border = BorderStroke(0.8.dp, if (isMuted) Color(0xFFE53935).copy(alpha = 0.4f) else (if (isDark) Gold.copy(alpha = 0.25f) else Color.Transparent))
+                    color = if (isMuted) Color(0xFFE53935).copy(alpha = 0.1f) else cardBg,
+                    border = BorderStroke(1.dp, if (isMuted) Color(0xFFE53935).copy(alpha = 0.5f) else controlBorder)
                 ) {
-                    Text(
-                        text = if (callSeconds < 3) "Establishing voice line..." else if (isMuted) "Microphone is muted" else "Voice line active",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (isMuted) Color(0xFFE53935) else (if (isDark) Gold else Obsidian),
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isMuted) Color(0xFFE53935) else if (isSpeaking) Gold else Color(0xFF4CAF50),
+                            modifier = Modifier.size(6.dp)
+                        ) {}
+                        Text(
+                            text = conversationStateText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isMuted) Color(0xFFE53935) else (if (isDark) Gold else Obsidian),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // Rhythmic Audio Waveform Bars (Clean, uncluttered, animated)
+                // Rhythmic Audio Waveform Bars
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.height(34.dp)
                 ) {
-                    val bars = listOf(wave1, wave2, wave3, wave4, wave5, wave6, wave7)
-                    bars.forEach { h ->
+                    val rawBars = listOf(wave1, wave2, wave3, wave4, wave5, wave6, wave7)
+                    rawBars.forEach { h ->
+                        val barHeight = when {
+                            isMuted -> 4f
+                            isSpeaking -> h
+                            micRmsLevel > 0.1f -> (h * (0.5f + micRmsLevel)).coerceIn(6f, 32f)
+                            else -> 5f
+                        }
                         Surface(
                             modifier = Modifier
                                 .width(3.5.dp)
-                                .height((if (isMuted) 4f else h).dp),
+                                .height(barHeight.dp),
                             shape = RoundedCornerShape(2.dp),
                             color = if (isMuted) TextGray else Gold
                         ) {}
@@ -2246,6 +2434,7 @@ fun VoiceCallHUDModal(
                     IconButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            VoiceGuidanceManager.stop()
                             onEndCall(callSeconds, "")
                         },
                         modifier = Modifier

@@ -2437,6 +2437,37 @@ fun RiderLiveGpsTelemetryCard(
         pickupCoords
     }
 
+    LaunchedEffect(parcelId, status, targetCoords) {
+        val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasFine && status !in listOf(ParcelStatus.DELIVERED, ParcelStatus.CANCELLED, ParcelStatus.RETURNED)) {
+            val stopType = if (status in listOf(ParcelStatus.ASSIGNED, ParcelStatus.ARRIVED_PICKUP)) "PICKUP" else "DELIVERY"
+            com.esdispatch.util.LocationService.start(
+                context = context,
+                parcelId = parcelId,
+                batchId = null,
+                stopLat = targetCoords.first,
+                stopLng = targetCoords.second,
+                stopType = stopType
+            )
+        }
+    }
+
+    LaunchedEffect(liveLoc, parcelId) {
+        liveLoc?.let { loc ->
+            viewModel.updateCourierLocationByRider(
+                parcelId = parcelId,
+                lat = loc.latitude,
+                lng = loc.longitude,
+                bearing = loc.bearing,
+                speed = loc.speed,
+                accuracy = loc.accuracy
+            )
+        }
+    }
+
     val targetLabel = if (status == ParcelStatus.TRANSIT || status == ParcelStatus.OUT_FOR_DELIVERY || status == ParcelStatus.ARRIVED) {
         "Recipient"
     } else {

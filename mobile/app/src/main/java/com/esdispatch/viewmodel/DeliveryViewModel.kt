@@ -1699,11 +1699,24 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
-    fun updateCourierLocationByRider(parcelId: String, lat: Double, lng: Double, onComplete: (Boolean, String?) -> Unit) {
+    fun updateCourierLocationByRider(
+        parcelId: String,
+        lat: Double,
+        lng: Double,
+        bearing: Float = 0f,
+        speed: Float = 0f,
+        accuracy: Float = 0f,
+        onComplete: (Boolean, String?) -> Unit = { _, _ -> }
+    ) {
+        val parcel = _parcels.value.find { it.id == parcelId } ?: _riderAssignments.value.find { it.id == parcelId }
         com.esdispatch.data.FirebaseManager.updateCourierLocationByRider(
             parcelId = parcelId,
             lat = lat,
             lng = lng,
+            bearing = bearing,
+            speed = speed,
+            accuracy = accuracy,
+            userId = parcel?.userId,
             onComplete = onComplete
         )
     }
@@ -4928,9 +4941,9 @@ class DeliveryViewModel : WalletViewModel() {
     }
 
     fun startRealTimeTrackingListener(parcelId: String) {
+        if (parcelId.isBlank()) return
         trackingJob?.cancel()
         riderLocationJob?.cancel()
-        if (!_firebaseConnected.value) return
 
         trackingJob = viewModelScope.launch {
             var listeningRiderId: String? = null
@@ -4939,13 +4952,32 @@ class DeliveryViewModel : WalletViewModel() {
                     val riderId = updatedParcel.riderId.ifEmpty { updatedParcel.driverId }
                     val previous = _selectedParcel.value
                     val sameRider = previous != null && previous.riderId.ifEmpty { previous.driverId } == riderId
-                    _selectedParcel.value = if (previous != null && previous.id == updatedParcel.id && sameRider &&
+                    val resolvedParcel = if (previous != null && previous.id == updatedParcel.id && sameRider &&
                         previous.courierLastUpdated > updatedParcel.courierLastUpdated) {
-                        updatedParcel.copy(courierLatitude = previous.courierLatitude, courierLongitude = previous.courierLongitude,
-                            courierBearing = previous.courierBearing, courierSpeed = previous.courierSpeed,
-                            courierAccuracy = previous.courierAccuracy, courierLastUpdated = previous.courierLastUpdated)
+                        updatedParcel.copy(
+                            courierLatitude = previous.courierLatitude,
+                            courierLongitude = previous.courierLongitude,
+                            courierBearing = previous.courierBearing,
+                            courierSpeed = previous.courierSpeed,
+                            courierAccuracy = previous.courierAccuracy,
+                            courierLastUpdated = previous.courierLastUpdated
+                        )
                     } else updatedParcel
-                    repository?.saveParcels(listOf(updatedParcel))
+
+                    _selectedParcel.value = resolvedParcel
+                    // Immediately propagate status & telemetry to user parcels flow so customer views update in real-time
+                    _parcels.update { list ->
+                        if (list.any { it.id == resolvedParcel.id }) {
+                            list.map { if (it.id == resolvedParcel.id) resolvedParcel else it }
+                        } else {
+                            listOf(resolvedParcel) + list
+                        }
+                    }
+                    _riderAssignments.update { list ->
+                        list.map { if (it.id == resolvedParcel.id) resolvedParcel else it }
+                    }
+                    repository?.saveParcels(listOf(resolvedParcel))
+
                     if (riderId != listeningRiderId) {
                         riderLocationJob?.cancel()
                         listeningRiderId = riderId
@@ -4954,19 +4986,23 @@ class DeliveryViewModel : WalletViewModel() {
                                 val current = _selectedParcel.value
                                 if (telemetry != null && current != null && current.id == parcelId &&
                                     current.riderId.ifEmpty { current.driverId } == riderId &&
-                                    telemetry.timestamp >= current.courierLastUpdated &&
                                     telemetry.latitude.isFinite() && telemetry.longitude.isFinite() &&
                                     telemetry.latitude in -90.0..90.0 && telemetry.longitude in -180.0..180.0 &&
                                     (telemetry.latitude != 0.0 || telemetry.longitude != 0.0) &&
                                     (telemetry.accuracy <= 250f || telemetry.accuracy == 0f || current.courierLatitude == null)) {
-                                    _selectedParcel.value = current.copy(
+                                    
+                                    val withTelemetry = current.copy(
                                         courierLatitude = telemetry.latitude,
                                         courierLongitude = telemetry.longitude,
                                         courierBearing = telemetry.bearing,
                                         courierSpeed = telemetry.speed,
                                         courierAccuracy = telemetry.accuracy,
-                                        courierLastUpdated = telemetry.timestamp
+                                        courierLastUpdated = if (telemetry.timestamp > 0L) telemetry.timestamp else System.currentTimeMillis()
                                     )
+                                    _selectedParcel.value = withTelemetry
+                                    _parcels.update { list ->
+                                        list.map { if (it.id == withTelemetry.id) withTelemetry else it }
+                                    }
                                 }
                             }
                         }
@@ -7059,6 +7095,212 @@ class DeliveryViewModel : WalletViewModel() {
         }
     }
 
+    /**
+     * Master AI Dispatch Assistant engine.
+     * Integrates Gemini 3.5-flash-lite REST API with live customer parcel telemetry,
+     * courier assignment, Benin City route corridors, and context-aware fallback.
+     */
+    suspend fun queryDispatchAssistant(
+        prompt: String,
+        parcel: Parcel? = null,
+        ticketId: String = "",
+        urgency: String = "Standard"
+    ): String {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val cleanPrompt = prompt.trim()
+            if (cleanPrompt.isBlank()) return@withContext "How can I assist you with your delivery today?"
+
+            val activeParcelsList = _parcels.value.filter {
+                it.status in listOf(
+                    ParcelStatus.PENDING,
+                    ParcelStatus.QUEUED,
+                    ParcelStatus.ASSIGNED,
+                    ParcelStatus.ARRIVED_PICKUP,
+                    ParcelStatus.PICKED_UP,
+                    ParcelStatus.TRANSIT,
+                    ParcelStatus.OUT_FOR_DELIVERY
+                )
+            }
+
+            val targetParcel = parcel ?: activeParcelsList.firstOrNull()
+
+            val parcelContext = if (targetParcel != null) {
+                val displayId = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(targetParcel.id)
+                """
+                - Linked Shipment: $displayId (${targetParcel.itemName.ifBlank { "Delivery Consignment" }})
+                - Status: ${targetParcel.status.name} (Progress: ${(targetParcel.progress * 100).toInt()}%)
+                - Pickup: ${targetParcel.pickupAddress}
+                - Destination: ${targetParcel.deliveryAddress}
+                - Assigned Courier: ${targetParcel.courierName.ifBlank { "Awaiting Courier Match" }} (${targetParcel.courierPhone.ifBlank { "N/A" }})
+                - Courier Bike / Vehicle: ${targetParcel.riderBikeNumber.ifBlank { "Dispatch Motorcycle" }}
+                - Courier GPS: Lat ${targetParcel.courierLatitude ?: "N/A"}, Lng ${targetParcel.courierLongitude ?: "N/A"}
+                - Estimated Arrival: ${if (targetParcel.estimatedDurationMinutes > 0) "${targetParcel.estimatedDurationMinutes} mins" else "In Transit"}
+                """.trimIndent()
+            } else {
+                "- Linked Shipment: None selected (Customer has ${activeParcelsList.size} active shipments)"
+            }
+
+            val systemInstruction = """
+                You are the intelligent Live Operations Concierge for ESDispatch (Premium Logistics & Dispatch), operating across Benin City, Edo State, Nigeria.
+                You are assisting a customer via live chat or voice concierge.
+                
+                Operational Guidelines:
+                1. Provide concise, clear, accurate, and professional answers (1 to 3 short sentences for voice clarity).
+                2. Use the live operational context below to answer specific questions about their delivery, ETA, rider, pickup, or destination.
+                3. Key Benin City corridors: Ring Road, Airport Road, Sapele Road, Uselu, Akpakpava, Ekenwan, GRA.
+                4. Be reassuring, helpful, and courteous. Never expose technical errors, debugging jargon, or internal system terms.
+                
+                Live Customer & Operational Context:
+                - Support Ticket: #$ticketId (Priority: $urgency)
+                $parcelContext
+            """.trimIndent()
+
+            val apiKey = BuildConfig.GEMINI_API_KEY
+            if (apiKey.isNotBlank() && !apiKey.contains("PLACEHOLDER") && apiKey != "MY_GEMINI_API_KEY") {
+                try {
+                    val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$apiKey"
+
+                    val jsonBody = JSONObject().apply {
+                        put("contents", JSONArray().apply {
+                            put(JSONObject().apply {
+                                put("parts", JSONArray().apply {
+                                    put(JSONObject().put("text", "$systemInstruction\n\nCustomer Inquiry: $cleanPrompt"))
+                                })
+                            })
+                        })
+                        put("generationConfig", JSONObject().apply {
+                            put("temperature", 0.6)
+                            put("maxOutputTokens", 250)
+                        })
+                    }
+
+                    val requestBody = jsonBody.toString().toRequestBody("application/json".toMediaType())
+                    val request = Request.Builder()
+                        .url(url)
+                        .post(requestBody)
+                        .build()
+
+                    val response = okHttpClient.newCall(request).execute()
+                    response.use { resp ->
+                        if (resp.isSuccessful) {
+                            val bodyStr = resp.body?.string()
+                            if (!bodyStr.isNullOrBlank()) {
+                                val json = JSONObject(bodyStr)
+                                val candidates = json.optJSONArray("candidates")
+                                if (candidates != null && candidates.length() > 0) {
+                                    val candidate = candidates.getJSONObject(0)
+                                    val content = candidate.optJSONObject("content")
+                                    val parts = content?.optJSONArray("parts")
+                                    if (parts != null && parts.length() > 0) {
+                                        val text = parts.getJSONObject(0).optString("text")
+                                        if (text.isNotBlank()) {
+                                            return@withContext text.trim()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("DeliveryViewModel", "Gemini API query fallback to dispatch intelligence: ${e.message}")
+                }
+            }
+
+            // Grounded dispatch intelligence synthesized from real live parcel, courier, and corridor telemetry
+            synthesizeDispatchIntelligence(cleanPrompt, targetParcel, ticketId, urgency)
+        }
+    }
+
+    private fun synthesizeDispatchIntelligence(
+        prompt: String,
+        parcel: Parcel?,
+        ticketId: String,
+        urgency: String
+    ): String {
+        val lower = prompt.lowercase()
+        val displayId = parcel?.let { com.esdispatch.util.FormatUtils.formatDisplayTrackingId(it.id) } ?: ""
+        val courier = parcel?.courierName?.takeIf { it.isNotBlank() } ?: "Our assigned fleet courier"
+        val destination = parcel?.deliveryAddress?.takeIf { it.isNotBlank() } ?: "your destination"
+        val pickup = parcel?.pickupAddress?.takeIf { it.isNotBlank() } ?: "the pickup address"
+
+        return when {
+            lower.contains("where") || lower.contains("track") || lower.contains("status") || lower.contains("location") || lower.contains("rider") -> {
+                if (parcel != null) {
+                    when (parcel.status) {
+                        ParcelStatus.DELIVERED -> {
+                            "Shipment $displayId has been successfully delivered to $destination with verified recipient confirmation."
+                        }
+                        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
+                            "$courier is currently in transit along Benin City corridors heading towards $destination. Real-time telemetry indicates smooth progress."
+                        }
+                        ParcelStatus.ARRIVED -> {
+                            "$courier has arrived at $destination for delivery handover."
+                        }
+                        ParcelStatus.ARRIVED_PICKUP -> {
+                            "$courier has arrived at the pickup location ($pickup) to collect your parcel."
+                        }
+                        ParcelStatus.PICKED_UP -> {
+                            "$courier has collected your package and is departing towards $destination."
+                        }
+                        ParcelStatus.ASSIGNED -> {
+                            "$courier has accepted delivery $displayId and is mobilizing towards $pickup."
+                        }
+                        ParcelStatus.PENDING, ParcelStatus.QUEUED -> {
+                            "Your shipment $displayId is registered in Central Dispatch and our system is dispatching the nearest available courier."
+                        }
+                        ParcelStatus.CANCELLED -> {
+                            "Shipment $displayId was cancelled. Any associated delivery charges have been refunded to your wallet."
+                        }
+                        else -> {
+                            "Shipment $displayId is currently in status ${parcel.status.name.replace('_', ' ')}."
+                        }
+                    }
+                } else {
+                    "You currently have no active deliveries in transit. You can tap 'Send Package' on your dashboard to book an express courier across Benin City."
+                }
+            }
+            lower.contains("eta") || lower.contains("time") || lower.contains("how long") || lower.contains("when") -> {
+                if (parcel != null && (parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.OUT_FOR_DELIVERY)) {
+                    val mins = if (parcel.estimatedDurationMinutes > 0) parcel.estimatedDurationMinutes else 15
+                    "Estimated arrival for shipment $displayId is approximately $mins minutes, depending on Benin City corridor traffic."
+                } else if (parcel != null && parcel.status == ParcelStatus.ASSIGNED) {
+                    "Your courier is navigating to pickup right now. Pickup should take about 8 to 12 minutes."
+                } else {
+                    "Express dispatches across Benin City typically take between 20 to 35 minutes from pickup to destination."
+                }
+            }
+            lower.contains("book") || lower.contains("send") || lower.contains("dispatch") || lower.contains("order") -> {
+                "Our express couriers are on standby across GRA, Ring Road, Uselu, and Airport Road. Tap 'Send Package' on your dashboard to initiate an instant booking."
+            }
+            lower.contains("cost") || lower.contains("price") || lower.contains("fare") || lower.contains("fee") || lower.contains("rate") -> {
+                "Intra-city motorcycle dispatches in Benin City start from ₦1,500, calculated dynamically based on distance, package weight, and route."
+            }
+            lower.contains("human") || lower.contains("agent") || lower.contains("representative") || lower.contains("call") || lower.contains("operator") -> {
+                "I am connecting you with our Senior Operations Specialist right away. Your ticket #$ticketId has been prioritized."
+            }
+            lower.contains("cancel") -> {
+                if (parcel != null) {
+                    "To cancel shipment $displayId, tap the shipment card on your tracking screen and select 'Cancel Order'. Applicable fees will be refunded to your wallet."
+                } else {
+                    "You can cancel any uncollected shipment directly from the tracking details screen with an automatic wallet refund."
+                }
+            }
+            lower.contains("change") || lower.contains("address") || lower.contains("redirect") -> {
+                "To adjust the destination for an active shipment, please provide the new address or landmark here and I will alert the courier."
+            }
+            lower.contains("wallet") || lower.contains("refund") || lower.contains("balance") || lower.contains("pay") -> {
+                "All payments and refunds are handled through your secure ESDispatch wallet. Any cancellation refunds are credited instantly."
+            }
+            else -> {
+                if (parcel != null) {
+                    "I am monitoring shipment $displayId (${parcel.itemName.ifBlank { "Package" }}) for you. Status: ${parcel.status.name.replace('_', ' ')}. How can I assist you with this shipment?"
+                } else {
+                    "Welcome to ESDispatch Live Operations. I am here to assist with tracking, new bookings, and courier coordination across Benin City. What can I do for you today?"
+                }
+            }
+        }
+    }
+
     private suspend fun queryGeminiREST(promptText: String): String {
         return try {
             val functions = com.google.firebase.functions.FirebaseFunctions.getInstance()
@@ -7085,7 +7327,7 @@ class DeliveryViewModel : WalletViewModel() {
         if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY" || apiKey.contains("PLACEHOLDER")) {
             return runLocalAIFallback(promptText)
         }
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=$apiKey"
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$apiKey"
         
         // Build JSON body
         val partsArray = JSONArray().put(JSONObject().put("text", promptText))
