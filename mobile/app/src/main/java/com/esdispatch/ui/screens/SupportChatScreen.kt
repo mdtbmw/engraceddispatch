@@ -70,6 +70,7 @@ import com.esdispatch.data.ParcelStatus
 import com.esdispatch.data.SupportChatMessage
 import com.esdispatch.ui.components.RoundedSheet
 import com.esdispatch.ui.components.ScreenHeader
+import com.esdispatch.ui.components.tactilePress
 import com.esdispatch.ui.theme.*
 import com.esdispatch.util.FormatUtils
 import com.esdispatch.viewmodel.DeliveryViewModel
@@ -154,6 +155,7 @@ fun SupportChatScreen(
     var isRecordingVoiceNote by remember { mutableStateOf(false) }
     var recordingDuration by remember { mutableStateOf(0) }
     var showParcelSelectorSheet by remember { mutableStateOf(false) }
+    var showActiveShipmentSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(isCallActive) {
         if (isCallActive) {
@@ -220,7 +222,7 @@ fun SupportChatScreen(
             viewModel.sendSupportChatMessage(
                 messageText = welcomeText,
                 ticketId = ticketNumber,
-                deliveryId = selectedParcel?.id ?: "",
+                deliveryId = "",
                 isAi = true,
                 urgency = urgency
             )
@@ -248,20 +250,22 @@ fun SupportChatScreen(
         val lower = userPrompt.lowercase()
         val isHumanRequest = lower.contains("human") || lower.contains("agent") || lower.contains("representative") ||
                 lower.contains("customer care") || lower.contains("speak to someone") || lower.contains("talk to someone") ||
-                lower.contains("call me") || lower.contains("manager")
+                lower.contains("call me") || lower.contains("manager") || lower.contains("dispute") || lower.contains("complaint")
+        val isBookingRequest = lower.contains("book") || lower.contains("send package") || lower.contains("send parcel") ||
+                lower.contains("dispatch") || lower.contains("new ride") || lower.contains("need a rider") || lower.contains("need a courier")
 
         coroutineScope.launch {
             if (isHumanRequest && !isRepresentativeJoined) {
                 // Switching Flow
                 isAiTyping = true
                 typingAgentText = "ESAI is typing..."
-                delay(1200)
+                delay(1000)
 
-                val handoverMsg = "You have a customer care representative available now. I'm switching you over to dispatch operations right away..."
+                val handoverMsg = "Connecting you with our Central Dispatch Operations supervisor right away..."
                 viewModel.sendSupportChatMessage(
                     messageText = handoverMsg,
                     ticketId = ticketNumber,
-                    deliveryId = selectedParcel?.id ?: "",
+                    deliveryId = "",
                     isAi = true,
                     urgency = urgency
                 )
@@ -269,7 +273,7 @@ fun SupportChatScreen(
 
                 // Transitioning indicator
                 isSwitchingToHuman = true
-                delay(2200)
+                delay(2000)
                 isSwitchingToHuman = false
                 isRepresentativeJoined = true
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -277,7 +281,7 @@ fun SupportChatScreen(
                 // Human Representative Joins
                 isAiTyping = true
                 typingAgentText = "$representativeName is typing..."
-                delay(1500)
+                delay(1200)
                 isAiTyping = false
 
                 val repIntro = "Hello ${currentUserName.ifBlank { "there" }}! My name is $representativeName from ESDispatch Central Operations. I've taken over your ticket (#$ticketNumber). How can I assist you directly?"
@@ -293,21 +297,23 @@ fun SupportChatScreen(
                     urgency = urgency
                 )
             } else if (!isRepresentativeJoined) {
-                // ESAI Smart Logistics Assistant (Gemini 3.5-flash-lite + Dispatch Telemetry)
+                // ESAI Smart Logistics Assistant (Autonomous Logistics Intelligence)
                 isAiTyping = true
                 typingAgentText = "ESAI is thinking..."
 
+                val targetParcel = if (isBookingRequest) null else selectedParcel
                 val aiReply = viewModel.queryDispatchAssistant(
                     prompt = userPrompt,
-                    parcel = selectedParcel,
+                    parcel = targetParcel,
                     ticketId = ticketNumber,
                     urgency = urgency
                 )
 
+                val linkedId = if (isBookingRequest) "" else (selectedParcel?.id ?: "")
                 viewModel.sendSupportChatMessage(
                     messageText = aiReply,
                     ticketId = ticketNumber,
-                    deliveryId = selectedParcel?.id ?: "",
+                    deliveryId = linkedId,
                     isAi = true,
                     urgency = urgency
                 )
@@ -316,7 +322,7 @@ fun SupportChatScreen(
                 // Representative response
                 isAiTyping = true
                 typingAgentText = "$representativeName is typing..."
-                delay(2000)
+                delay(1500)
                 isAiTyping = false
 
                 val repReply = "I have updated your ticket notes regarding: \"${userPrompt.take(40)}\". Our dispatch team is monitoring this closely."
@@ -338,6 +344,12 @@ fun SupportChatScreen(
 
         if (cleanText.isBlank() && !hasImage) return
         if (isSending) return
+
+        val isBookingRequest = cleanText.lowercase().let {
+            it.contains("book") || it.contains("send package") || it.contains("send parcel") ||
+            it.contains("dispatch") || it.contains("new ride") || it.contains("need a rider") || it.contains("need a courier")
+        }
+        val linkedId = if (isBookingRequest) "" else (selectedParcel?.id ?: "")
 
         isSending = true
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -363,7 +375,7 @@ fun SupportChatScreen(
                     viewModel.sendSupportChatMessage(
                         messageText = cleanText,
                         ticketId = ticketNumber,
-                        deliveryId = selectedParcel?.id ?: "",
+                        deliveryId = linkedId,
                         replyToText = quotedText,
                         replyToSender = quotedSender,
                         imageUrl = downloadUrl,
@@ -376,7 +388,7 @@ fun SupportChatScreen(
                     viewModel.sendSupportChatMessage(
                         messageText = cleanText,
                         ticketId = ticketNumber,
-                        deliveryId = selectedParcel?.id ?: "",
+                        deliveryId = linkedId,
                         replyToText = quotedText,
                         replyToSender = quotedSender,
                         isAi = false,
@@ -390,7 +402,7 @@ fun SupportChatScreen(
             viewModel.sendSupportChatMessage(
                 messageText = cleanText,
                 ticketId = ticketNumber,
-                deliveryId = selectedParcel?.id ?: "",
+                deliveryId = linkedId,
                 replyToText = quotedText,
                 replyToSender = quotedSender,
                 isAi = false,
@@ -406,35 +418,115 @@ fun SupportChatScreen(
             .fillMaxSize()
             .background(HeaderBgColor)
     ) {
-        // 1. Unified Standard ScreenHeader
+        // 1. Unified Standard ScreenHeader with Compact Status Pill & Voice Call
         ScreenHeader(
-            title = "Customer Support",
+            title = if (isRepresentativeJoined) "Support Dispatch" else "ESAI Concierge",
             onBack = { onNavigate("Dashboard") },
             rightContent = {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (urgency == "Urgent") Color(0xFFFF5252).copy(alpha = 0.2f) else Obsidian.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, if (urgency == "Urgent") Color(0xFFFF5252) else Obsidian.copy(alpha = 0.3f)),
-                    onClick = {
-                        urgency = if (urgency == "Standard") "Urgent" else "Standard"
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        Toast.makeText(context, "Ticket priority updated to $urgency", Toast.LENGTH_SHORT).show()
-                    }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        if (urgency == "Urgent") {
-                            Icon(Icons.Filled.Bolt, contentDescription = null, tint = Color(0xFFFF5252), modifier = Modifier.size(14.dp))
+                    // Active Shipment Pop-Up Pill (Compact, Non-Intrusive, Header Embedded)
+                    if (activeParcels.isNotEmpty()) {
+                        val activeParcel = selectedParcel ?: activeParcels.first()
+                        val displayTrk = FormatUtils.formatDisplayTrackingId(activeParcel.id)
+                        val pillText = if (activeParcels.size > 1) "${activeParcels.size} Active" else displayTrk
+                        val pillBg = if (isDark) Obsidian.copy(alpha = 0.15f) else GoldenWhiteLight.copy(alpha = 0.15f)
+                        val pillBorder = if (isDark) Obsidian.copy(alpha = 0.35f) else Gold.copy(alpha = 0.4f)
+                        val pillContentColor = if (isDark) Obsidian else GoldenWhiteLight
+
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = pillBg,
+                            border = BorderStroke(1.dp, pillBorder),
+                            modifier = Modifier.tactilePress(shape = RoundedCornerShape(14.dp)) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                showActiveShipmentSheet = true
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFF4CAF50),
+                                    modifier = Modifier.size(6.dp)
+                                ) {}
+                                Icon(
+                                    Icons.Filled.LocalShipping,
+                                    contentDescription = "Active Shipments",
+                                    tint = pillContentColor,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = pillText,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = pillContentColor
+                                )
+                                Icon(
+                                    Icons.Filled.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = pillContentColor,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
                         }
-                        Text(
-                            text = urgency.uppercase(),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = if (urgency == "Urgent") Color(0xFFFF5252) else Obsidian
-                        )
+                    }
+
+                    // Anchored Voice Call Button
+                    val callBtnBg = if (isDark) Obsidian else Gold
+                    val callBtnTint = if (isDark) Gold else Obsidian
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = callBtnBg,
+                        modifier = Modifier.tactilePress(shape = RoundedCornerShape(14.dp)) {
+                            viewModel.setVoiceCallActive(true)
+                            isCallActive = true
+                            showVoiceCallHUD = true
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Filled.Call, contentDescription = "Voice Call", tint = callBtnTint, modifier = Modifier.size(12.dp))
+                            Text("Call", fontSize = 10.sp, fontWeight = FontWeight.Black, color = callBtnTint)
+                        }
+                    }
+
+                    // Urgency Toggle Badge (Only shown in Human Escalation Mode or if explicitly marked Urgent)
+                    if (isRepresentativeJoined || urgency == "Urgent") {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (urgency == "Urgent") Color(0xFFFF5252).copy(alpha = 0.2f) else (if (isDark) Obsidian.copy(alpha = 0.15f) else GoldenWhiteLight.copy(alpha = 0.15f)),
+                            border = BorderStroke(1.dp, if (urgency == "Urgent") Color(0xFFFF5252) else (if (isDark) Obsidian.copy(alpha = 0.3f) else Gold.copy(alpha = 0.3f))),
+                            modifier = Modifier.tactilePress(shape = RoundedCornerShape(12.dp)) {
+                                urgency = if (urgency == "Standard") "Urgent" else "Standard"
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                Toast.makeText(context, "Ticket priority updated to $urgency", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                if (urgency == "Urgent") {
+                                    Icon(Icons.Filled.Bolt, contentDescription = null, tint = Color(0xFFFF5252), modifier = Modifier.size(11.dp))
+                                }
+                                Text(
+                                    text = urgency.uppercase(),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (urgency == "Urgent") Color(0xFFFF5252) else (if (isDark) Obsidian else GoldenWhiteLight)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -448,171 +540,6 @@ fun SupportChatScreen(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                // Top Meta Card: Ticket Info & Linked Parcel
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    color = cardBg,
-                    border = BorderStroke(1.dp, if (isDark) Gold.copy(alpha = 0.25f) else Slate.copy(alpha = 0.6f))
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isRepresentativeJoined) Color(0xFF4CAF50) else Gold,
-                                    modifier = Modifier.size(8.dp)
-                                ) {}
-                                Text(
-                                    text = ticketNumber,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = primaryText
-                                )
-                                Text(
-                                    text = "•",
-                                    fontSize = 12.sp,
-                                    color = secondaryText
-                                )
-                                Text(
-                                    text = if (isRepresentativeJoined) "Representative Live" else "Concierge Active",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (isRepresentativeJoined) Color(0xFF4CAF50) else Gold
-                                )
-                            }
-
-                            // Live Concierge Voice Call Button
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Gold,
-                                onClick = {
-                                    viewModel.setVoiceCallActive(true)
-                                    isCallActive = true
-                                    showVoiceCallHUD = true
-                                }
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Icon(Icons.Filled.Call, contentDescription = "Voice Call", tint = Obsidian, modifier = Modifier.size(13.dp))
-                                    Text("Voice Call", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Obsidian)
-                                }
-                            }
-                        }
-
-                        // Linked Shipment Selector Row
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (isDark) Charcoal.copy(alpha = 0.7f) else Slate.copy(alpha = 0.25f),
-                            border = BorderStroke(1.dp, if (selectedParcel != null) Gold.copy(alpha = 0.5f) else (if (isDark) Slate.copy(alpha = 0.4f) else Slate)),
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { showParcelSelectorSheet = true }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    Icons.Filled.LocalShipping,
-                                    contentDescription = null,
-                                    tint = Gold,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                if (selectedParcel != null) {
-                                    val p = selectedParcel!!
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "Linked: ${FormatUtils.formatDisplayTrackingId(p.id)} • ${p.itemName.ifBlank { "Delivery Package" }}",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = primaryText,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "Status: ${p.status.name} • Tap to switch",
-                                            fontSize = 9.sp,
-                                            color = secondaryText
-                                        )
-                                    }
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = Gold
-                                    ) {
-                                        Text(
-                                            text = "Switch",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Obsidian,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                                        )
-                                    }
-                                } else {
-                                    Text(
-                                        text = if (parcels.isNotEmpty()) "Select shipment to inquire (${parcels.size} available)..." else "No active parcels • Inquire generally",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Gold,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Icon(
-                                        Icons.Filled.ChevronRight,
-                                        contentDescription = null,
-                                        tint = Gold,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Quick 1-tap Active Parcel Chips if active shipments exist
-                        if (activeParcels.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                item {
-                                    Text("Active:", fontSize = 10.sp, color = secondaryText, fontWeight = FontWeight.SemiBold)
-                                }
-                                items(activeParcels) { p ->
-                                    val isSelected = selectedParcel?.id == p.id
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isSelected) Gold else (if (isDark) Charcoal else Slate.copy(alpha = 0.35f)),
-                                        border = BorderStroke(0.8.dp, if (isSelected) Gold else Gold.copy(alpha = 0.3f)),
-                                        onClick = {
-                                            selectedParcel = if (isSelected) null else p
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            if (!isSelected) {
-                                                handleSendMessage("Inquiring about active shipment ${FormatUtils.formatDisplayTrackingId(p.id)} (${p.itemName.ifBlank { "Package" }})")
-                                            }
-                                        }
-                                    ) {
-                                        Text(
-                                            text = FormatUtils.formatDisplayTrackingId(p.id),
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isSelected) Obsidian else primaryText,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
 
                 // Smooth Transition Banner (When switching from ESAI to Human Agent)
                 AnimatedVisibility(
@@ -851,12 +778,12 @@ fun SupportChatScreen(
                 ) {
                     items(dynamicSuggestions) { (prompt, icon) ->
                         Surface(
-                            onClick = {
-                                handleSendMessage(prompt)
-                            },
                             shape = RoundedCornerShape(20.dp),
                             color = if (isDark) Charcoal else Slate.copy(alpha = 0.35f),
-                            border = BorderStroke(0.8.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate)
+                            border = BorderStroke(0.8.dp, if (isDark) Gold.copy(alpha = 0.3f) else Slate),
+                            modifier = Modifier.tactilePress(shape = RoundedCornerShape(20.dp)) {
+                                handleSendMessage(prompt)
+                            }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -985,14 +912,15 @@ fun SupportChatScreen(
                     ) {
                         // Discard Voice Note
                         Surface(
-                            onClick = {
-                                isRecordingVoiceNote = false
-                                recordingDuration = 0
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            },
                             shape = CircleShape,
                             color = Color(0xFFE53935).copy(alpha = 0.15f),
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier
+                                .size(44.dp)
+                                .tactilePress(shape = CircleShape) {
+                                    isRecordingVoiceNote = false
+                                    recordingDuration = 0
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(Icons.Filled.Close, contentDescription = "Discard Recording", tint = Color(0xFFE53935), modifier = Modifier.size(20.dp))
@@ -1035,16 +963,17 @@ fun SupportChatScreen(
 
                         // Send Voice Note Button
                         Surface(
-                            onClick = {
-                                val duration = recordingDuration
-                                isRecordingVoiceNote = false
-                                recordingDuration = 0
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                handleSendMessage("Voice Note (0:${String.format("%02d", duration)})")
-                            },
                             shape = CircleShape,
                             color = Gold,
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier
+                                .size(48.dp)
+                                .tactilePress(shape = CircleShape) {
+                                    val duration = recordingDuration
+                                    isRecordingVoiceNote = false
+                                    recordingDuration = 0
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    handleSendMessage("Voice Note (0:${String.format("%02d", duration)})")
+                                }
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(Icons.Filled.Send, contentDescription = "Send Voice Note", tint = Obsidian, modifier = Modifier.size(20.dp))
@@ -1109,7 +1038,7 @@ fun SupportChatScreen(
                                         value = messageText,
                                         onValueChange = { messageText = it },
                                         textStyle = TextStyle(
-                                            fontSize = 14.sp,
+                                             fontSize = 14.sp,
                                             color = primaryText,
                                             fontWeight = FontWeight.Normal
                                         ),
@@ -1131,12 +1060,13 @@ fun SupportChatScreen(
                                 ) { targetHasInput ->
                                     if (targetHasInput) {
                                         Surface(
-                                            onClick = {
-                                                if (!isSending) handleSendMessage()
-                                            },
                                             shape = CircleShape,
                                             color = Gold,
-                                            modifier = Modifier.size(38.dp)
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .tactilePress(shape = CircleShape) {
+                                                    if (!isSending) handleSendMessage()
+                                                }
                                         ) {
                                             Box(contentAlignment = Alignment.Center) {
                                                 if (isSending) {
@@ -1177,14 +1107,15 @@ fun SupportChatScreen(
 
                         // 2. Anchored Live Call Button on the right outside the capsule
                         Surface(
-                            onClick = {
-                                isCallActive = true
-                                showVoiceCallHUD = true
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            },
                             shape = CircleShape,
                             color = Gold,
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier
+                                .size(48.dp)
+                                .tactilePress(shape = CircleShape) {
+                                    isCallActive = true
+                                    showVoiceCallHUD = true
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -1266,6 +1197,37 @@ fun SupportChatScreen(
                     showParcelSelectorSheet = false
                     val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
                     handleSendMessage("Inquiring about shipment #$displayId (${parcel.itemName.ifBlank { "Delivery Package" }})")
+                }
+            )
+        }
+
+        // 5. Active Shipment Bottom Sheet (Tapped from header pill)
+        if (showActiveShipmentSheet && activeParcels.isNotEmpty()) {
+            ActiveShipmentBottomSheet(
+                activeParcels = activeParcels,
+                isDark = isDark,
+                primaryText = primaryText,
+                secondaryText = secondaryText,
+                onDismiss = { showActiveShipmentSheet = false },
+                onSelectParcel = { parcel ->
+                    selectedParcel = parcel
+                    showActiveShipmentSheet = false
+                    val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
+                    handleSendMessage("Inquiring about active shipment #$displayId (${parcel.itemName.ifBlank { "Delivery Package" }})")
+                },
+                onTrackOnMap = { parcel ->
+                    selectedParcel = parcel
+                    showActiveShipmentSheet = false
+                    onNavigate("ActiveTracking")
+                },
+                onCallCourier = { parcel ->
+                    val courierPhone = parcel.courierPhone.ifBlank { parcel.reservedCourierPhone }
+                    if (courierPhone.isNotBlank()) {
+                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$courierPhone"))
+                        context.startActivity(intent)
+                    } else {
+                        Toast.makeText(context, "Courier phone number not yet available", Toast.LENGTH_SHORT).show()
+                    }
                 }
             )
         }
@@ -1436,30 +1398,38 @@ private fun SupportMessageBubble(
                     if (!isUser && message.isAi) {
                         val msgLower = message.messageText.lowercase()
                         when {
-                            // Tracking card for active shipment inquiries or delivery ID
-                            message.deliveryId.isNotBlank() || msgLower.contains("active shipment") || msgLower.contains("in transit") || msgLower.contains("radar") || (msgLower.contains("track") && !msgLower.contains("untracked")) -> {
+                            // 1. New Booking Action Card (Explicitly prioritized for booking intents)
+                            msgLower.contains("book motorcycle") || msgLower.contains("book dispatch") ||
+                            msgLower.contains("new motorcycle dispatch") || msgLower.contains("express motorcycle") ||
+                            msgLower.contains("configure your pickup") || msgLower.contains("send package") ||
+                            msgLower.contains("dispatch draft") || msgLower.contains("confirm & book") ||
+                            (msgLower.contains("book") && !msgLower.contains("booked") && message.deliveryId.isBlank()) -> {
+                                ChatNewBookingActionCard(
+                                    isDark = isDark,
+                                    onBookNow = { onNavigate("SendParcel") },
+                                    onSelectCorridor = { corridorPrompt -> onQuickAction(corridorPrompt) }
+                                )
+                            }
+                            // 2. Tracking card for active shipment inquiries or delivery ID
+                            (message.deliveryId.isNotBlank() && !msgLower.contains("book motorcycle") && !msgLower.contains("new dispatch")) ||
+                            msgLower.contains("in transit") || msgLower.contains("radar") ||
+                            (msgLower.contains("track") && !msgLower.contains("untracked") && !msgLower.contains("book")) ||
+                            (msgLower.contains("courier") && (msgLower.contains("eta") || msgLower.contains("mobilizing") || msgLower.contains("heading") || msgLower.contains("arrived"))) -> {
                                 ChatTrackingActionCard(
                                     deliveryId = message.deliveryId.ifBlank { "ESD-TRK-784" },
                                     isDark = isDark,
                                     onOpenLiveMap = { onNavigate("ActiveTracking") }
                                 )
                             }
-                            // Only prompt booking confirmation if explicitly drafted or requested for an UNBOOKED parcel
-                            (msgLower.contains("confirm booking") || msgLower.contains("confirm & book") || msgLower.contains("ready to dispatch") || (msgLower.contains("dispatch draft") && !msgLower.contains("active")))
-                                && message.deliveryId.isBlank() -> {
-                                ChatBookingActionCard(
-                                    isDark = isDark,
-                                    isActionActive = isLatestAction,
-                                    onConfirm = { onNavigate("SendParcel") },
-                                    onSelectLocation = { onQuickAction("Select destination for courier dispatch") }
-                                )
-                            }
-                            msgLower.contains("wallet balance") || msgLower.contains("top up wallet") || msgLower.contains("escrow payment") -> {
+                            // 3. Wallet Balance Card
+                            msgLower.contains("wallet balance") || msgLower.contains("top up wallet") ||
+                            msgLower.contains("escrow payment") || msgLower.contains("wallet ledger") -> {
                                 ChatWalletActionCard(
                                     isDark = isDark,
                                     onOpenWallet = { onNavigate("Wallet") }
                                 )
                             }
+                            // 4. Select Delivery Location Card
                             msgLower.contains("select delivery location") || msgLower.contains("choose pickup hub") -> {
                                 ChatLocationActionCard(
                                     isDark = isDark,
@@ -1615,6 +1585,118 @@ private fun WaveformBars() {
 }
 
 @Composable
+private fun ChatNewBookingActionCard(
+    isDark: Boolean,
+    onBookNow: () -> Unit,
+    onSelectCorridor: (String) -> Unit
+) {
+    val quickCorridors = listOf(
+        "Ring Rd ⇄ Ugbowo (₦1,200)",
+        "GRA ⇄ Airport Rd (₦1,000)",
+        "Ring Rd ⇄ Ikpoba Hill (₦1,400)",
+        "Sapele Rd ⇄ Bypass (₦1,500)"
+    )
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = if (isDark) Charcoal else GoldenWhiteSurface,
+        border = BorderStroke(1.dp, Gold)
+    ) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Icon(
+                        Icons.Filled.DirectionsBike,
+                        contentDescription = null,
+                        tint = Gold,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        "EXPRESS MOTORCYCLE DISPATCH",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Gold
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Gold.copy(alpha = 0.2f),
+                    border = BorderStroke(0.5.dp, Gold.copy(alpha = 0.5f))
+                ) {
+                    Text(
+                        text = "ON-DEMAND",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Gold,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = "Dispatch a motorcycle courier for prompt pickup anywhere in Benin City. Select a corridor for quick quote or configure your booking directly.",
+                fontSize = 11.sp,
+                color = if (isDark) Color.White else Obsidian,
+                lineHeight = 15.sp
+            )
+
+            // Quick corridor chips
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(quickCorridors) { corridor ->
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isDark) Obsidian else Slate.copy(alpha = 0.15f),
+                        border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.35f)),
+                        modifier = Modifier.tactilePress(shape = RoundedCornerShape(8.dp)) {
+                            onSelectCorridor("Quote fare for $corridor")
+                        }
+                    ) {
+                        Text(
+                            text = corridor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Gold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            // Primary CTA: Book Now
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Gold,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .tactilePress(shape = RoundedCornerShape(8.dp)) { onBookNow() }
+            ) {
+                Row(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.AddCircle, contentDescription = null, tint = Obsidian, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Open Booking Console",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Obsidian
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ChatBookingActionCard(
     isDark: Boolean,
     isActionActive: Boolean = true,
@@ -1690,11 +1772,12 @@ private fun ChatBookingActionCard(
             } else {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Surface(
-                        onClick = { onSelectLocation() },
                         shape = RoundedCornerShape(8.dp),
                         color = if (isDark) Obsidian else Slate.copy(alpha = 0.2f),
                         border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.4f)),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .tactilePress(shape = RoundedCornerShape(8.dp)) { onSelectLocation() }
                     ) {
                         Text(
                             text = "Change Route",
@@ -1707,10 +1790,11 @@ private fun ChatBookingActionCard(
                     }
 
                     Surface(
-                        onClick = { onConfirm() },
                         shape = RoundedCornerShape(8.dp),
                         color = Gold,
-                        modifier = Modifier.weight(1.3f)
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .tactilePress(shape = RoundedCornerShape(8.dp)) { onConfirm() }
                     ) {
                         Text(
                             text = "Confirm & Book",
@@ -1757,10 +1841,11 @@ private fun ChatTrackingActionCard(
             Text("Assigned Courier: Central Fleet Rider • In Transit on Ring Road", fontSize = 11.sp, color = if (isDark) Color.White else Obsidian)
 
             Surface(
-                onClick = { onOpenLiveMap() },
                 shape = RoundedCornerShape(8.dp),
                 color = Gold,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .tactilePress(shape = RoundedCornerShape(8.dp)) { onOpenLiveMap() }
             ) {
                 Row(
                     modifier = Modifier.padding(vertical = 7.dp),
@@ -1805,10 +1890,11 @@ private fun ChatWalletActionCard(
             Text("All transactions, dispatch fees, and refunds are instant and protected under ESDispatch Escrow.", fontSize = 11.sp, color = if (isDark) Color.White else Obsidian)
 
             Surface(
-                onClick = { onOpenWallet() },
                 shape = RoundedCornerShape(8.dp),
                 color = Gold,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .tactilePress(shape = RoundedCornerShape(8.dp)) { onOpenWallet() }
             ) {
                 Text(
                     text = "Open Wallet Ledger",
@@ -1846,10 +1932,10 @@ private fun ChatLocationActionCard(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 items(hubs) { hub ->
                     Surface(
-                        onClick = { onLocationChosen(hub) },
                         shape = RoundedCornerShape(6.dp),
                         color = if (isDark) Obsidian else Slate.copy(alpha = 0.25f),
-                        border = BorderStroke(0.7.dp, Gold.copy(alpha = 0.3f))
+                        border = BorderStroke(0.7.dp, Gold.copy(alpha = 0.3f)),
+                        modifier = Modifier.tactilePress(shape = RoundedCornerShape(6.dp)) { onLocationChosen(hub) }
                     ) {
                         Text(
                             text = hub,
@@ -1863,10 +1949,11 @@ private fun ChatLocationActionCard(
             }
 
             Surface(
-                onClick = { onLocationChosen("Current GPS Location") },
                 shape = RoundedCornerShape(8.dp),
                 color = Gold,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .tactilePress(shape = RoundedCornerShape(8.dp)) { onLocationChosen("Current GPS Location") }
             ) {
                 Row(
                     modifier = Modifier.padding(vertical = 6.dp),
@@ -2553,9 +2640,9 @@ fun SelectParcelBottomSheet(
                     )
                 }
                 Surface(
-                    onClick = { onDismiss() },
                     shape = CircleShape,
-                    color = if (isDark) Charcoal else Slate.copy(alpha = 0.3f)
+                    color = if (isDark) Charcoal else Slate.copy(alpha = 0.3f),
+                    modifier = Modifier.tactilePress(shape = CircleShape) { onDismiss() }
                 ) {
                     Icon(
                         Icons.Filled.Close,
@@ -2616,16 +2703,17 @@ fun SelectParcelBottomSheet(
                         val isSelected = parcel.id == selectedParcelId
                         val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
                         Surface(
-                            onClick = {
-                                onSelect(parcel)
-                            },
                             shape = RoundedCornerShape(14.dp),
                             color = if (isSelected) (if (isDark) Charcoal else GoldenWhiteSurface) else (if (isDark) Charcoal.copy(alpha = 0.6f) else GoldenWhiteLight),
                             border = BorderStroke(
                                 if (isSelected) 1.5.dp else 1.dp,
                                 if (isSelected) Gold else (if (isDark) Slate.copy(alpha = 0.3f) else Slate.copy(alpha = 0.5f))
                             ),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .tactilePress(shape = RoundedCornerShape(14.dp)) {
+                                    onSelect(parcel)
+                                }
                         ) {
                             Row(
                                 modifier = Modifier.padding(12.dp),
@@ -2720,4 +2808,286 @@ fun SelectParcelBottomSheet(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ActiveShipmentBottomSheet(
+    activeParcels: List<Parcel>,
+    isDark: Boolean,
+    primaryText: Color,
+    secondaryText: Color,
+    onDismiss: () -> Unit,
+    onSelectParcel: (Parcel) -> Unit,
+    onTrackOnMap: (Parcel) -> Unit,
+    onCallCourier: (Parcel) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = if (isDark) Charcoal else GoldenWhiteSurface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        dragHandle = {
+            Surface(
+                modifier = Modifier.padding(vertical = 10.dp),
+                color = Gold.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(2.dp)
+            ) {
+                Box(modifier = Modifier.size(width = 40.dp, height = 4.dp))
+            }
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Surface(shape = CircleShape, color = Color(0xFF4CAF50), modifier = Modifier.size(8.dp)) {}
+                        Text(
+                            text = "ACTIVE SHIPMENTS RADAR",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = primaryText
+                        )
+                    }
+                    Text(
+                        text = "${activeParcels.size} active order${if (activeParcels.size > 1) "s" else ""} in transit or queued",
+                        fontSize = 11.sp,
+                        color = secondaryText
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isDark) Obsidian else Slate.copy(alpha = 0.15f),
+                    modifier = Modifier.tactilePress(shape = RoundedCornerShape(12.dp)) { onDismiss() }
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Close",
+                        tint = secondaryText,
+                        modifier = Modifier.padding(6.dp).size(16.dp)
+                    )
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(activeParcels, key = { it.id }) { parcel ->
+                    val displayId = FormatUtils.formatDisplayTrackingId(parcel.id)
+                    val courierPhone = parcel.courierPhone.ifBlank { parcel.reservedCourierPhone }
+                    val courierName = parcel.courierName.ifBlank { parcel.reservedCourierName.ifBlank { "Central Fleet Rider" } }
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isDark) Obsidian else GoldenWhiteLight,
+                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Order ID & Status Header
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(
+                                        Icons.Filled.LocalShipping,
+                                        contentDescription = null,
+                                        tint = Gold,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = displayId,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = primaryText
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = when (parcel.status) {
+                                        ParcelStatus.DELIVERED -> Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                        ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> Gold.copy(alpha = 0.2f)
+                                        else -> Slate.copy(alpha = 0.3f)
+                                    }
+                                ) {
+                                    Text(
+                                        text = parcel.status.name.replace("_", " "),
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = when (parcel.status) {
+                                            ParcelStatus.DELIVERED -> Color(0xFF4CAF50)
+                                            ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> Gold
+                                            else -> primaryText
+                                        },
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+
+                            // Item & Route info
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(
+                                    text = parcel.itemName.ifBlank { "Standard Logistics Package" },
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = primaryText
+                                )
+                                if (parcel.pickupAddress.isNotBlank()) {
+                                    Text(
+                                        text = "Pickup: ${parcel.pickupAddress}",
+                                        fontSize = 10.sp,
+                                        color = secondaryText,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                if (parcel.deliveryAddress.isNotBlank()) {
+                                    Text(
+                                        text = "Drop-off: ${parcel.deliveryAddress}",
+                                        fontSize = 10.sp,
+                                        color = secondaryText,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            // Assigned Courier Info
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isDark) Charcoal else Slate.copy(alpha = 0.1f),
+                                border = BorderStroke(0.5.dp, Gold.copy(alpha = 0.2f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Gold.copy(alpha = 0.2f),
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    Icons.Filled.DirectionsBike,
+                                                    contentDescription = null,
+                                                    tint = Gold,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                            }
+                                        }
+                                        Column {
+                                            Text(
+                                                text = courierName,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = primaryText
+                                            )
+                                            Text(
+                                                text = if (courierPhone.isNotBlank()) courierPhone else "Dispatch Network Rider",
+                                                fontSize = 9.sp,
+                                                color = secondaryText
+                                            )
+                                        }
+                                    }
+
+                                    if (courierPhone.isNotBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Gold,
+                                            modifier = Modifier.tactilePress(shape = RoundedCornerShape(8.dp)) {
+                                                onCallCourier(parcel)
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(Icons.Filled.Phone, contentDescription = "Call", tint = Obsidian, modifier = Modifier.size(12.dp))
+                                                Text("Call", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Obsidian)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Action Buttons (Live Map + Inquire in Chat)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isDark) Charcoal else Slate.copy(alpha = 0.2f),
+                                    border = BorderStroke(0.8.dp, Gold.copy(alpha = 0.4f)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .tactilePress(shape = RoundedCornerShape(8.dp)) {
+                                            onSelectParcel(parcel)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 7.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.Chat, contentDescription = null, tint = Gold, modifier = Modifier.size(13.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Ask Concierge", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Gold,
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .tactilePress(shape = RoundedCornerShape(8.dp)) {
+                                            onTrackOnMap(parcel)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 7.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.Radar, contentDescription = null, tint = Obsidian, modifier = Modifier.size(13.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Live Map Radar", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Obsidian)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 

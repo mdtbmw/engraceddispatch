@@ -17,6 +17,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.composed
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.Close
@@ -2006,4 +2008,32 @@ fun CancelDeliverySecurityDialog(
     )
 }
 
-
+/**
+ * Standard tactile press modifier adhering to ESDISPATCH motion physics:
+ * - Spring-damped touch compression (TouchPress token: stiffness 400f, dampingRatio 0.70f)
+ * - Strict clipping to specified shape before touch events
+ * - Zero unclipped gray rectangular bounds on press/hold
+ */
+fun Modifier.tactilePress(
+    shape: Shape = RoundedCornerShape(12.dp),
+    onClick: () -> Unit
+): Modifier = composed {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1.0f,
+        animationSpec = spring(stiffness = 400f, dampingRatio = 0.70f),
+        label = "tactilePressScale"
+    )
+    this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clip(shape)
+        .clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick
+        )
+}

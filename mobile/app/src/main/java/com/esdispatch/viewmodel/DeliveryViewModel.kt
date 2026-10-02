@@ -7244,100 +7244,153 @@ class DeliveryViewModel : WalletViewModel() {
         urgency: String
     ): String {
         val lower = prompt.lowercase().trim()
-        val displayId = parcel?.let { com.esdispatch.util.FormatUtils.formatDisplayTrackingId(it.id) } ?: ""
-        val courier = parcel?.courierName?.takeIf { it.isNotBlank() } ?: "Our assigned fleet courier"
-        val destination = parcel?.deliveryAddress?.takeIf { it.isNotBlank() } ?: "your destination"
-        val pickup = parcel?.pickupAddress?.takeIf { it.isNotBlank() } ?: "the pickup address"
+        val allParcels = _parcels.value
+        val activeList = allParcels.filter {
+            it.status in listOf(
+                ParcelStatus.PENDING,
+                ParcelStatus.QUEUED,
+                ParcelStatus.ASSIGNED,
+                ParcelStatus.ARRIVED_PICKUP,
+                ParcelStatus.PICKED_UP,
+                ParcelStatus.TRANSIT,
+                ParcelStatus.OUT_FOR_DELIVERY
+            )
+        }
+        val effectiveParcel = parcel ?: activeList.firstOrNull()
+        val displayId = effectiveParcel?.let { com.esdispatch.util.FormatUtils.formatDisplayTrackingId(it.id) } ?: ""
+        val courier = effectiveParcel?.courierName?.takeIf { it.isNotBlank() } ?: "Our assigned fleet courier"
+        val destination = effectiveParcel?.deliveryAddress?.takeIf { it.isNotBlank() } ?: "the destination address"
+        val pickup = effectiveParcel?.pickupAddress?.takeIf { it.isNotBlank() } ?: "the pickup location"
+        val currentBal = _walletBalance.value
+        val points = _loyaltyPoints.value
+        val userName = _userName.value.trim().split(" ").firstOrNull()?.takeIf { it.isNotBlank() } ?: "there"
 
         return when {
-            lower.contains("how are you") || lower.contains("how do you do") || lower.contains("how are you doing") -> {
-                "I'm doing very well, thank you for asking! I'm here at ESDispatch central operations ready to assist. How can I help you with your deliveries or tracking today?"
+            // 1. Wallet Balance & Account Financials
+            lower.contains("balance") || lower.contains("wallet") || lower.contains("how much do i have") ||
+            lower.contains("account balance") || lower.contains("my money") || lower.contains("credit") -> {
+                val formattedBal = String.format("%,.2f", currentBal)
+                "Your active ESDispatch wallet balance is ₦$formattedBal, and you currently have $points loyalty points. You can top up or manage payment methods in your Wallet anytime."
             }
-            lower.matches(Regex(".*\\b(hello|hi|hey|good day|good morning|good afternoon|good evening)\\b.*")) -> {
-                if (parcel != null && (parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.ASSIGNED || parcel.status == ParcelStatus.PICKED_UP)) {
-                    "Hello! I have your active shipment $displayId open (${parcel.itemName.ifBlank { "package" }} with courier $courier). How can I assist you with this delivery today?"
-                } else {
-                    "Hello there! Welcome to ESDispatch Concierge. How can I assist you with your logistics today?"
+
+            // 2. Booking a New Ride / Dispatching Express Courier
+            lower.contains("book motorcycle") || lower.contains("book dispatch") || lower.contains("book a ride") ||
+            lower.contains("book ride") || lower.contains("send package") || lower.contains("send parcel") ||
+            lower.contains("new booking") || lower.contains("new dispatch") || lower.contains("dispatch bike") ||
+            lower.contains("dispatch motorcycle") || lower.contains("need a rider") || lower.contains("need a courier") ||
+            lower.contains("send item") -> {
+                "I can set up a new express motorcycle dispatch across Benin City for you right away. Our fleet covers all major corridors including GRA, Ring Road, Ugbowo, and Airport Road. Tap below to configure your pickup and delivery."
+            }
+
+            // 3. Benin City Corridor Fare & Rate Quotes
+            lower.contains("how much to") || lower.contains("how much is") || lower.contains("fare to") ||
+            lower.contains("cost to") || lower.contains("price to") || lower.contains("estimate to") ||
+            lower.contains("delivery rate") || lower.contains("fare estimate") || lower.contains("rates") -> {
+                when {
+                    lower.contains("ugbowo") || lower.contains("uniben") -> {
+                        "Express motorcycle dispatch to Ugbowo / UNIBEN corridor is estimated at approximately ₦1,800 to ₦2,200 depending on your pickup hub."
+                    }
+                    lower.contains("airport") || lower.contains("gra") -> {
+                        "Express dispatch within the GRA / Airport Road corridor is estimated at ₦1,200 to ₦1,500."
+                    }
+                    lower.contains("sapele") || lower.contains("limit") -> {
+                        "Motorcycle dispatch along the Sapele Road corridor is estimated at ₦1,400 to ₦1,800."
+                    }
+                    lower.contains("ikpoba") || lower.contains("aduwawa") -> {
+                        "Express courier to Ikpoba Hill / Aduwawa corridor is estimated at ₦1,800 to ₦2,400."
+                    }
+                    lower.contains("ekenwan") || lower.contains("ekewan") -> {
+                        "Express dispatch to Ekenwan Road is estimated at ₦1,500 to ₦1,900."
+                    }
+                    lower.contains("uselu") -> {
+                        "Express dispatch to Uselu corridor is estimated at ₦1,400 to ₦1,700."
+                    }
+                    else -> {
+                        "Express motorcycle dispatch across Benin City starts at ₦1,200 for standard distances up to 5km, with transparent dynamic distance pricing."
+                    }
                 }
             }
-            lower.contains("thank") || lower.contains("appreciate") -> {
-                "You're very welcome! Our dispatch team is always on standby for you. Let me know if you need anything else!"
-            }
-            lower.contains("who are you") || lower.contains("what is your name") || lower.contains("what can you do") -> {
-                "I am ESAI, your intelligent logistics concierge for ESDispatch. I can track your packages live across Benin City, give you instant fare quotes, connect you with your rider, or dispatch an express courier."
-            }
-            lower.contains("where") || lower.contains("track") || lower.contains("status") || lower.contains("location") || lower.contains("rider") -> {
-                if (parcel != null) {
-                    when (parcel.status) {
+
+            // 4. Courier Tracking, Real-Time Location & ETA
+            lower.contains("where is") || lower.contains("where's") || lower.contains("track") ||
+            lower.contains("status") || lower.contains("location") || lower.contains("rider") ||
+            lower.contains("courier") || lower.contains("eta") || lower.contains("how long") ||
+            lower.contains("when will") -> {
+                if (effectiveParcel != null) {
+                    val eta = if (effectiveParcel.estimatedDurationMinutes > 0) effectiveParcel.estimatedDurationMinutes else 15
+                    when (effectiveParcel.status) {
                         ParcelStatus.DELIVERED -> {
-                            "Shipment $displayId has been successfully delivered to $destination with verified recipient confirmation."
+                            "Shipment $displayId was successfully delivered to $destination with verified recipient confirmation."
                         }
                         ParcelStatus.TRANSIT, ParcelStatus.OUT_FOR_DELIVERY -> {
-                            "$courier is currently in transit along Benin City corridors heading towards $destination. Real-time telemetry indicates smooth progress."
+                            "$courier is currently in transit along Benin City corridors heading toward $destination. Estimated arrival is approximately $eta minutes."
                         }
                         ParcelStatus.ARRIVED -> {
-                            "$courier has arrived at $destination for delivery handover."
+                            "$courier has arrived at $destination for package handover."
                         }
                         ParcelStatus.ARRIVED_PICKUP -> {
                             "$courier has arrived at the pickup location ($pickup) to collect your parcel."
                         }
                         ParcelStatus.PICKED_UP -> {
-                            "$courier has collected your package and is departing towards $destination."
+                            "$courier has collected your package and is in motion toward $destination. ETA: ~$eta mins."
                         }
                         ParcelStatus.ASSIGNED -> {
-                            "$courier has accepted delivery $displayId and is mobilizing towards $pickup."
+                            "$courier has accepted shipment $displayId and is mobilizing toward $pickup. ETA to pickup: ~8-12 minutes."
                         }
                         ParcelStatus.PENDING, ParcelStatus.QUEUED -> {
-                            "Your shipment $displayId is registered in Central Dispatch and our system is dispatching the nearest available courier."
+                            "Shipment $displayId is in the Central Dispatch queue. Our routing system is assigning the closest verified fleet courier."
                         }
                         ParcelStatus.CANCELLED -> {
-                            "Shipment $displayId was cancelled. Any associated delivery charges have been refunded to your wallet."
+                            "Shipment $displayId was cancelled. Any applicable delivery charges have been refunded to your wallet."
                         }
                         else -> {
-                            "Shipment $displayId is currently in status ${parcel.status.name.replace('_', ' ')}."
+                            "Shipment $displayId is currently in status ${effectiveParcel.status.name.replace('_', ' ')}."
                         }
                     }
                 } else {
-                    "You currently have no active deliveries in transit. You can tap 'Send Package' on your dashboard to book an express courier across Benin City."
+                    "You currently have no active deliveries in transit. Would you like to dispatch an express motorcycle courier across Benin City?"
                 }
             }
-            lower.contains("eta") || lower.contains("time") || lower.contains("how long") || lower.contains("when") -> {
-                if (parcel != null && (parcel.status == ParcelStatus.TRANSIT || parcel.status == ParcelStatus.OUT_FOR_DELIVERY)) {
-                    val mins = if (parcel.estimatedDurationMinutes > 0) parcel.estimatedDurationMinutes else 15
-                    "Estimated arrival for shipment $displayId is approximately $mins minutes, depending on Benin City corridor traffic."
-                } else if (parcel != null && parcel.status == ParcelStatus.ASSIGNED) {
-                    "Your courier is navigating to pickup right now. Pickup should take about 8 to 12 minutes."
+
+            // 5. Human Escalation & Dispute Support
+            lower.contains("human") || lower.contains("agent") || lower.contains("representative") ||
+            lower.contains("customer care") || lower.contains("speak to someone") || lower.contains("talk to someone") ||
+            lower.contains("call me") || lower.contains("manager") || lower.contains("dispute") ||
+            lower.contains("damaged") || lower.contains("rude") || lower.contains("complaint") -> {
+                "I am connecting you with our Central Dispatch Operations supervisor right away. Your ticket #$ticketId has been prioritized."
+            }
+
+            // 6. Conversational Greetings & Small Talk
+            lower.matches(Regex(".*\\b(hello|hi|hey|good day|good morning|good afternoon|good evening)\\b.*")) -> {
+                if (activeList.isNotEmpty()) {
+                    val p = activeList.first()
+                    val pTrk = com.esdispatch.util.FormatUtils.formatDisplayTrackingId(p.id)
+                    "Hello $userName! Welcome to ESDispatch Concierge. You have active delivery $pTrk in progress. How can I assist you with this shipment, a new booking, or account balance today?"
                 } else {
-                    "Express dispatches across Benin City typically take between 20 to 35 minutes from pickup to destination."
+                    "Hello $userName! Welcome to ESDispatch Concierge. How can I assist you with express dispatch, tracking, or rates across Benin City today?"
                 }
             }
-            lower.contains("book") || lower.contains("send") || lower.contains("dispatch") || lower.contains("order") -> {
-                "Our express couriers are on standby across GRA, Ring Road, Uselu, and Airport Road. Tap 'Send Package' on your dashboard to initiate an instant booking."
+            lower.contains("how are you") || lower.contains("how do you do") || lower.contains("how are you doing") -> {
+                "I'm operating at peak efficiency, thank you for asking! Central operations are live across all Benin City corridors. What can I do for you today?"
             }
-            lower.contains("cost") || lower.contains("price") || lower.contains("fare") || lower.contains("fee") || lower.contains("rate") -> {
-                "Intra-city motorcycle dispatches in Benin City start from ₦1,500, calculated dynamically based on distance, package weight, and route."
+            lower.contains("thank") || lower.contains("appreciate") -> {
+                "You're very welcome! Our dispatch fleet is always at your service. Let me know if you need anything else."
             }
-            lower.contains("human") || lower.contains("agent") || lower.contains("representative") || lower.contains("call") || lower.contains("operator") -> {
-                "I am connecting you with our Senior Operations Specialist right away. Your ticket #$ticketId has been prioritized."
+            lower.contains("who are you") || lower.contains("what can you do") -> {
+                "I am ESAI, your intelligent logistics concierge for ESDispatch. I can check your live wallet balance, track your courier's location and ETA in real time, calculate corridor fares across Benin City, or dispatch a new express motorcycle courier."
             }
             lower.contains("cancel") -> {
-                if (parcel != null) {
-                    "To cancel shipment $displayId, tap the shipment card on your tracking screen and select 'Cancel Order'. Applicable fees will be refunded to your wallet."
+                if (effectiveParcel != null) {
+                    "To cancel shipment $displayId, tap the shipment pill in the top header or visit the tracking screen. Any deducted fees will be automatically refunded to your wallet."
                 } else {
-                    "You can cancel any uncollected shipment directly from the tracking details screen with an automatic wallet refund."
+                    "You can cancel any uncollected shipment directly from the tracking screen with an automatic wallet refund."
                 }
             }
-            lower.contains("change") || lower.contains("address") || lower.contains("redirect") -> {
-                "To adjust the destination for an active shipment, please provide the new address or landmark here and I will alert the courier."
-            }
-            lower.contains("wallet") || lower.contains("refund") || lower.contains("balance") || lower.contains("pay") -> {
-                "All payments and refunds are handled through your secure ESDispatch wallet. Any cancellation refunds are credited instantly."
-            }
             else -> {
-                if (parcel != null) {
-                    "I am monitoring shipment $displayId (${parcel.itemName.ifBlank { "Package" }}) for you. Status: ${parcel.status.name.replace('_', ' ')}. How can I assist you with this shipment?"
+                if (effectiveParcel != null) {
+                    "I am monitoring active delivery $displayId (${effectiveParcel.itemName.ifBlank { "Package" }}) for you. Status: ${effectiveParcel.status.name.replace('_', ' ')}. How can I assist you with this delivery, a new booking, or checking your wallet balance?"
                 } else {
-                    "Welcome to ESDispatch Live Operations. I am here to assist with tracking, new bookings, and courier coordination across Benin City. What can I do for you today?"
+                    "Welcome to ESDispatch Live Operations. I can check your wallet balance, calculate dispatch fares, track active riders, or book a new motorcycle courier across Benin City. What would you like to do?"
                 }
             }
         }
